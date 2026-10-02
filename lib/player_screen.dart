@@ -182,15 +182,13 @@ class _PlayerScreenState extends State<PlayerScreen>
     widget.store.addListener(_accessChanged);
     _player =
         widget.playerFactory?.call() ??
-        (Platform.isAndroid
-            ? LunaExoPlayer()
-            : Player(
-                configuration: const PlayerConfiguration(
-                  bufferSize: 32 * 1024 * 1024,
-                  logLevel: MPVLogLevel.error,
-                ),
-              ));
-    _video = widget.videoBuilder == null && !Platform.isAndroid
+        Player(
+          configuration: const PlayerConfiguration(
+            bufferSize: 32 * 1024 * 1024,
+            logLevel: MPVLogLevel.error,
+          ),
+        );
+    _video = widget.videoBuilder == null
         ? VideoController(
             _player,
             configuration: VideoControllerConfiguration(
