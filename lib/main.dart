@@ -24,7 +24,7 @@ import 'diary_service.dart';
 
 Future<void> main(List<String> arguments) async {
   WidgetsFlutterBinding.ensureInitialized();
-  DiaryService.add('[App] 应用启动，版本: 0.2.68+75, 平台: ${Platform.operatingSystem}');
+  DiaryService.add('[App] 应用启动，版本: 0.2.69+76, 平台: ${Platform.operatingSystem}');
   if (Platform.isAndroid) {
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemChrome.setSystemUIOverlayStyle(AppTheme.systemBars(Brightness.dark));
@@ -229,6 +229,11 @@ class DuanjuApp extends StatelessWidget {
     builder: (context, child) {
       final mode = store?.displayMode ?? 'auto';
       final tv = mode == 'television' || mode == 'auto' && television;
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => FocusManager.instance.highlightStrategy = tv
+            ? FocusHighlightStrategy.alwaysTraditional
+            : FocusHighlightStrategy.automatic,
+      );
       final theme = Theme.of(context);
       return AnnotatedRegion<SystemUiOverlayStyle>(
         value: AppTheme.systemBars(theme.brightness),

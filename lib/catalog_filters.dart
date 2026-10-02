@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 
 import 'app_layout.dart';
 import 'models.dart';
-import 'remote_widgets.dart';
 
 class CatalogFilters extends StatefulWidget {
   const CatalogFilters({
@@ -68,20 +67,25 @@ class _CatalogFiltersState extends State<CatalogFilters> {
                     Padding(
                       key: _anchors.putIfAbsent(entry.id, GlobalKey.new),
                       padding: const EdgeInsets.only(right: 6),
-                      child: television
-                          ? RemoteButton(
-                              key: ValueKey('category-${entry.id}'),
-                              label: entry.name,
-                              selected: entry.id == widget.category,
-                              onPressed: () => widget.onCategory(entry.id),
-                            )
-                          : ChoiceChip(
-                              key: ValueKey('category-${entry.id}'),
-                              label: Text(entry.name),
-                              selected: entry.id == widget.category,
-                              showCheckmark: false,
-                              onSelected: (_) => widget.onCategory(entry.id),
-                            ),
+                      child: ChoiceChip(
+                        key: ValueKey('category-${entry.id}'),
+                        label: Text(entry.name),
+                        selected: entry.id == widget.category,
+                        showCheckmark: false,
+                        side: television
+                            ? WidgetStateBorderSide.resolveWith(
+                                (states) => states.contains(WidgetState.focused)
+                                    ? BorderSide(
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.primary,
+                                        width: 3,
+                                      )
+                                    : null,
+                              )
+                            : null,
+                        onSelected: (_) => widget.onCategory(entry.id),
+                      ),
                     ),
                 ],
               ),

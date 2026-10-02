@@ -817,6 +817,28 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context, constraints) {
         final television = AppLayout.isTelevision(context);
         final desktop = constraints.maxWidth >= 840;
+        final destinations = [
+          const NavigationRailDestination(
+            icon: Icon(Icons.explore_outlined),
+            selectedIcon: Icon(Icons.explore),
+            label: Text('发现'),
+          ),
+          const NavigationRailDestination(
+            icon: Icon(Icons.bookmark_border_rounded),
+            selectedIcon: Icon(Icons.bookmark_rounded),
+            label: Text('追剧'),
+          ),
+          const NavigationRailDestination(
+            icon: Icon(Icons.history_rounded),
+            label: Text('最近观看'),
+          ),
+          if (widget.store.canDownload)
+            const NavigationRailDestination(
+              icon: Icon(Icons.download_outlined),
+              selectedIcon: Icon(Icons.download_rounded),
+              label: Text('下载'),
+            ),
+        ];
         final scaffold = Scaffold(
           appBar: AppBar(
             toolbarHeight: television ? 64 : null,
@@ -1026,66 +1048,16 @@ class _HomeScreenState extends State<HomeScreen> {
             top: false,
             child: Row(
               children: [
-                if (television) ...[
-                  SizedBox(
-                    width: 164,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(8, 24, 8, 12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          for (final entry in [
-                            (Icons.explore_rounded, '发现'),
-                            (Icons.bookmark_rounded, '追剧'),
-                            (Icons.history_rounded, '最近观看'),
-                            if (widget.store.canDownload)
-                              (Icons.download_rounded, '下载'),
-                          ].indexed)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 14),
-                              child: RemoteButton(
-                                key: ValueKey('tv-nav-${entry.$1}'),
-                                label: entry.$2.$2,
-                                icon: entry.$2.$1,
-                                selected: _tab == entry.$1,
-                                autofocus: entry.$1 == 0,
-                                onPressed: () => _onNavSelected(entry.$1),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const VerticalDivider(width: 1),
-                ] else if (desktop) ...[
-                  NavigationRail(
-                    selectedIndex: _tab,
-                    onDestinationSelected: _onNavSelected,
-                    labelType: NavigationRailLabelType.all,
-                    groupAlignment: -.8,
-                    destinations: [
-                      NavigationRailDestination(
-                        icon: Icon(Icons.explore_outlined),
-                        selectedIcon: Icon(Icons.explore),
-                        label: Text('发现'),
-                      ),
-                      NavigationRailDestination(
-                        icon: Icon(Icons.bookmark_border_rounded),
-                        selectedIcon: Icon(Icons.bookmark_rounded),
-                        label: Text('追剧'),
-                      ),
-                      NavigationRailDestination(
-                        icon: Icon(Icons.history_rounded),
-                        label: Text('最近观看'),
-                      ),
-                      if (widget.store.canDownload)
-                        NavigationRailDestination(
-                          icon: Icon(Icons.download_outlined),
-                          selectedIcon: Icon(Icons.download_rounded),
-                          label: Text('下载'),
+                if (desktop || television) ...[
+                  television
+                      ? _televisionNavigation(destinations)
+                      : NavigationRail(
+                          selectedIndex: _tab,
+                          onDestinationSelected: _onNavSelected,
+                          labelType: NavigationRailLabelType.all,
+                          groupAlignment: -.8,
+                          destinations: destinations,
                         ),
-                    ],
-                  ),
                   const VerticalDivider(width: 1, thickness: 1),
                 ],
                 Expanded(
@@ -1172,6 +1144,56 @@ class _HomeScreenState extends State<HomeScreen> {
       },
     ),
   );
+
+  Widget _televisionNavigation(List<NavigationRailDestination> destinations) {
+    final theme = NavigationRailTheme.of(context);
+    return SizedBox(
+      width: 96,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final (index, destination) in destinations.indexed)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: RemoteTarget(
+                  key: ValueKey('tv-nav-$index'),
+                  autofocus: index == 0,
+                  onPressed: () => _onNavSelected(index),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconTheme.merge(
+                          data:
+                              (index == _tab
+                                  ? theme.selectedIconTheme
+                                  : theme.unselectedIconTheme) ??
+                              const IconThemeData(),
+                          child: index == _tab
+                              ? destination.selectedIcon
+                              : destination.icon,
+                        ),
+                        const SizedBox(height: 4),
+                        DefaultTextStyle.merge(
+                          textAlign: TextAlign.center,
+                          style: index == _tab
+                              ? theme.selectedLabelTextStyle
+                              : theme.unselectedLabelTextStyle,
+                          child: destination.label,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _catalog({required bool selectionInBody}) {
     final items = _visible;
