@@ -73,6 +73,8 @@ class LocalStore extends ChangeNotifier {
       _locked = forceLogin && profile.protected;
       _loadSourceGate();
       _loadLibrary();
+      _loadSeriesCandidates();
+      _queue(() => _moveSeriesCandidates().catchError((Object _) {}));
     } catch (_) {
       _block('本地用户配置损坏，已锁定访问。原始记录已保留，请重新读取或从备份恢复。');
     }
@@ -252,7 +254,6 @@ class LocalStore extends ChangeNotifier {
     _history.clear();
     _favorites.clear();
     _followStates.clear();
-    _seriesCandidates.clear();
     if (_configurationError != null) return;
     for (final row in readJsonList(_string(_key('history')))) {
       try {
@@ -284,7 +285,16 @@ class LocalStore extends ChangeNotifier {
         );
       }
     }
-    for (final row in readJsonList(_string(_key('seriesCandidates')))) {
+  }
+
+  String _seriesKey([String? id]) => 'seriesCandidates.${id ?? _current}';
+
+  void _loadSeriesCandidates() {
+    _seriesCandidates.clear();
+    if (_configurationError != null) return;
+    for (final row in readJsonList(
+      preferences.getString(_seriesKey()) ?? _string(_key('seriesCandidates')),
+    )) {
       try {
         final drama = Drama.fromJson(row);
         if (drama.source == SourceSite.hongguo.id) {
@@ -292,6 +302,25 @@ class LocalStore extends ChangeNotifier {
         }
       } catch (_) {}
     }
+  }
+
+  Future<void> _moveSeriesCandidates() async {
+    if (_configurationError != null) return;
+    final legacy = {
+      for (final profile in _profiles)
+        profile.id: ?_string(_key('seriesCandidates', profile.id)),
+    };
+    if (legacy.isEmpty) return;
+    for (final entry in legacy.entries) {
+      if (preferences.getString(_seriesKey(entry.key)) == null) {
+        await preferences.setString(_seriesKey(entry.key), entry.value);
+      }
+    }
+    await _commit(
+      {},
+      remove: legacy.keys.map((id) => _key('seriesCandidates', id)),
+      trackSync: false,
+    );
   }
 
   List<WatchEntry> get history =>
@@ -817,15 +846,17 @@ class LocalStore extends ChangeNotifier {
         history.values.map((entry) => entry.toJson()).toList(),
       );
       final statesJson = _encodeFollowStates(states);
-      final seriesCandidateJson = cacheSeriesCandidates
-          ? jsonEncode(
-              (seriesCandidates.values.toList()
-                    ..sort((a, b) => a.id.compareTo(b.id)))
-                  .take(2000)
-                  .map((entry) => entry.toJson())
-                  .toList(),
-            )
+      final cachedCandidates = cacheSeriesCandidates
+          ? (seriesCandidates.values.toList()
+                  ..sort((a, b) => a.id.compareTo(b.id)))
+                .take(2000)
+                .toList()
           : null;
+      final seriesCandidateJson = cachedCandidates == null
+          ? null
+          : jsonEncode(
+              cachedCandidates.map((entry) => entry.toJson()).toList(),
+            );
       if (favoriteJson !=
           jsonEncode(
             _favorites.values.map((entry) => entry.toJson()).toList(),
@@ -839,18 +870,21 @@ class LocalStore extends ChangeNotifier {
       if (statesJson != _encodeFollowStates(_followStates)) {
         changes[_key('followStates')] = statesJson;
       }
-      if (seriesCandidateJson != null &&
-          seriesCandidateJson !=
-              jsonEncode(
-                (_seriesCandidates.values.toList()
-                      ..sort((a, b) => a.id.compareTo(b.id)))
-                    .take(2000)
-                    .map((entry) => entry.toJson())
-                    .toList(),
-              )) {
-        changes[_key('seriesCandidates')] = seriesCandidateJson;
+      final seriesChanged =
+          seriesCandidateJson != null &&
+          seriesCandidateJson != preferences.getString(_seriesKey());
+      if (seriesChanged) {
+        await preferences.setString(_seriesKey(), seriesCandidateJson);
+        _seriesCandidates
+          ..clear()
+          ..addEntries(
+            cachedCandidates!.map((drama) => MapEntry(drama.id, drama)),
+          );
       }
-      if (changes.isEmpty) return;
+      if (changes.isEmpty) {
+        if (seriesChanged) _notify();
+        return;
+      }
       await _commit(changes);
       _loadLibrary();
       _notify();
@@ -885,6 +919,7 @@ class LocalStore extends ChangeNotifier {
     _current = id;
     _locked = false;
     _loadLibrary();
+    _loadSeriesCandidates();
     _epoch++;
     _notify();
   });
@@ -974,6 +1009,7 @@ class LocalStore extends ChangeNotifier {
         profiles.map((profile) => profile.toJson()).toList(),
       ),
     }, remove: LocalSnapshot.libraryKeys.map((key) => _key(key, id)));
+    await preferences.remove(_seriesKey(id));
     _profiles = profiles;
     _notify();
   });
@@ -1000,7 +1036,8 @@ class LocalStore extends ChangeNotifier {
               _string(_key('followStates', profile.id)) ?? '{}',
             ),
             'seriesCandidates': readJsonList(
-              _string(_key('seriesCandidates', profile.id)),
+              preferences.getString(_seriesKey(profile.id)) ??
+                  _string(_key('seriesCandidates', profile.id)),
             ),
             'mediaHistory': jsonDecode(
               _string(_key('mediaHistory', profile.id)) ?? '{}',
@@ -1134,9 +1171,6 @@ class LocalStore extends ChangeNotifier {
         _key('followStates', profile.id): jsonEncode(
           library['followStates'] ?? {},
         ),
-        _key('seriesCandidates', profile.id): jsonEncode(
-          library['seriesCandidates'] ?? [],
-        ),
         _key('mediaHistory', profile.id): jsonEncode(
           library['mediaHistory'] ?? {},
         ),
@@ -1155,12 +1189,22 @@ class LocalStore extends ChangeNotifier {
       });
     }
     await _commit(values, replace: true);
+    for (final key in preferences.getKeys().toList()) {
+      if (key.startsWith('seriesCandidates.')) await preferences.remove(key);
+    }
+    for (final profile in profiles) {
+      await preferences.setString(
+        _seriesKey(profile.id),
+        jsonEncode((libraries[profile.id] as Map)['seriesCandidates'] ?? []),
+      );
+    }
     _profiles = profiles;
     _current = profiles.firstWhere((profile) => profile.admin).id;
     _configurationError = null;
     _locked = forceLogin && profile.protected;
     _loadSourceGate();
     _loadLibrary();
+    _loadSeriesCandidates();
     _epoch++;
     _notify();
   }
