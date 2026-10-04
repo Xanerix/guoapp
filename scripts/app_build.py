@@ -11,6 +11,10 @@ class BuildVariant:
         return '真果鉴' if self.all_sources else '红果鉴'
 
     @property
+    def latin_name(self):
+        return 'ZhenGuoJian' if self.all_sources else 'HongGuoJian'
+
+    @property
     def slug(self):
         return 'zhenguojian' if self.all_sources else 'hongguojian'
 

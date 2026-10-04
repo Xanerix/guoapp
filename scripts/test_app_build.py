@@ -41,8 +41,10 @@ class AppBuildTests(unittest.TestCase):
             for enabled in [True, False]:
                 configure(path, dart_defines('ALL_SOURCES=' + str(enabled).lower()))
                 actual = plistlib.loads(path.read_bytes())
-                self.assertEqual(actual['CFBundleDisplayName'], '真果鉴' if enabled else '红果鉴')
+                self.assertEqual(actual['CFBundleDisplayName'], 'ZhenGuoJian' if enabled else 'HongGuoJian')
                 self.assertEqual(actual['CFBundleName'], 'zhenguojian' if enabled else 'hongguojian')
+                localized = plistlib.loads((path.parent / 'zh-Hans.lproj' / 'InfoPlist.strings').read_bytes())
+                self.assertEqual(localized, {'CFBundleDisplayName': '真果鉴' if enabled else '红果鉴'})
                 for key, value in original.items():
                     self.assertEqual(actual[key], value)
 
