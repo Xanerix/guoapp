@@ -3,16 +3,15 @@ name: Build app packages
 on:
   push:
     branches: [main, master]
-    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: app-build-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: app-build-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 env:
   GOPROXY: https://proxy.golang.org,direct
@@ -34,10 +33,10 @@ jobs:
           flutter-version: '3.47.4'
           channel: stable
           cache: true
-      - run: flutter pub get
+      - run: flutter pub get --enforce-lockfile
       - run: dart format --output=none --set-exit-if-changed lib test integration_test test_driver
         continue-on-error: true
-      - run: dart analyze lib test integration_test test_driver
+      - run: dart analyze --fatal-infos lib test integration_test test_driver
         continue-on-error: true
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       # 测试当前不阻塞出包（开发优先、集中验证暂缓），结果仍会显示在运行详情里。
@@ -52,7 +51,39 @@ jobs:
         working-directory: native
         continue-on-error: true
 
+  prepare:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "只能从 main 分支手动发布，当前为 $GITHUB_REF。" >&2
+            exit 1
+          fi
+          version=$(sed -n 's/^version:[[:space:]]*//p' pubspec.yaml | head -n1)
+          if [ -z "$version" ]; then
+            echo "pubspec.yaml 缺少 version。" >&2
+            exit 1
+          fi
+          tag="app-v${version//+/-}"
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null || gh release view "$tag" >/dev/null 2>&1; then
+            echo "版本 $version（$tag）已发布过，请先提升 pubspec.yaml 的 version。" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
   android:
+    needs: prepare
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
@@ -88,14 +119,11 @@ jobs:
           accept-android-sdk-licenses: true
       - run: sdkmanager 'ndk;28.2.13676358'
       - name: Configure Android signing
-        id: signing
         run: |
           python scripts/configure_signing.py
-          if [ -f android/key.properties ]; then
-            echo "release=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "release=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::未配置发布签名 Secrets，本次 APK 使用 debug 签名，仅供测试，不可用于正式分发。"
+          if [ ! -f android/key.properties ]; then
+            echo "未配置发布签名 Secrets，拒绝发布 debug 签名的 APK。" >&2
+            exit 1
           fi
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -104,14 +132,15 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
       - run: python scripts/build_android.py ${{ matrix.arguments }}
       - name: 校验 APK 签名证书
-        if: steps.signing.outputs.release == 'true'
         shell: bash
+        env:
+          ANDROID_CERT_SHA256: ${{ vars.ANDROID_CERT_SHA256 }}
         run: |
           set -euo pipefail
-          expected='${{ vars.ANDROID_CERT_SHA256 }}'
+          expected=$(printf '%s' "$ANDROID_CERT_SHA256" | tr -d ': ' | tr '[:upper:]' '[:lower:]')
           if [ -z "$expected" ]; then
-            echo "未设置仓库变量 ANDROID_CERT_SHA256，跳过证书指纹比对。" >&2
-            exit 0
+            echo "未设置仓库变量 ANDROID_CERT_SHA256，无法确认发布证书。" >&2
+            exit 1
           fi
           apksigner=$(find "${ANDROID_HOME}/build-tools" -name apksigner -type f 2>/dev/null | sort | tail -n1 || true)
           if [ -z "$apksigner" ]; then
@@ -138,9 +167,9 @@ jobs:
           path: dist/android/*
           if-no-files-found: error
           retention-days: 14
+
   windows:
-    if: false
-    needs: checks
+    needs: prepare
     runs-on: windows-latest
     timeout-minutes: 45
     strategy:
@@ -153,9 +182,43 @@ jobs:
             arguments: '--all-sources'
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: native/go.mod
+          cache-dependency-path: native/go.sum
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.4'
+          channel: stable
+          cache: true
+      - name: Set up MinGW-w64
+        shell: pwsh
+        run: |
+          choco install mingw --no-progress -y
+          $exe = Get-ChildItem -Path 'C:\ProgramData\mingw64', 'C:\ProgramData\chocolatey\lib\mingw' `
+                   -Recurse -Include 'x86_64-w64-mingw32-gcc.exe', 'gcc.exe' -ErrorAction SilentlyContinue |
+                 Select-Object -First 1 -ExpandProperty FullName
+          if (-not $exe) { $exe = (Get-Command x86_64-w64-mingw32-gcc -ErrorAction SilentlyContinue).Source }
+          if (-not $exe) { throw 'MinGW-w64 安装失败，找不到 gcc' }
+          Split-Path $exe | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          & $exe --version | Select-Object -First 1
+      - run: python scripts/build_windows.py ${{ matrix.arguments }}
+      - run: choco install ffmpeg --no-progress -y
+      # 运行器没有音频和图形设备，播放器自检的超时结果不阻塞出包，结论仍显示在运行详情里。
+      - run: python scripts/smoke_windows.py ${{ matrix.arguments }}
+        continue-on-error: true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.edition }}-windows
+          path: dist/windows/*
+          if-no-files-found: error
+          retention-days: 14
 
   ios:
-    needs: checks
+    needs: prepare
     runs-on: macos-latest
     timeout-minutes: 60
     strategy:
@@ -205,8 +268,7 @@ jobs:
           retention-days: 14
 
   release:
-    needs: [android]
-    if: always() && needs.android.result == 'success'
+    needs: [checks, prepare, android, windows, ios]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -215,12 +277,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          pattern: '*-android'
           path: artifacts
       - name: 生成发布文件清单
         run: |
           set -euo pipefail
-          version=$(sed -n 's/^version:[[:space:]]*//p' pubspec.yaml | head -n1)
           mkdir -p release
           for directory in artifacts/*/; do
             for file in "$directory"*; do
@@ -239,21 +299,17 @@ jobs:
       - name: 发布 Release
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          ANDROID_CERT_SHA256: ${{ vars.ANDROID_CERT_SHA256 }}
         run: |
           set -euo pipefail
-          version=$(sed -n 's/^version:[[:space:]]*//p' pubspec.yaml | head -n1)
-          tag="app-v${version//+/-}"
-          apk_note="Android（已用固定发布证书签名，可覆盖安装升级，无需卸载）："
-          if printf '%s\n' "${{ vars.ANDROID_CERT_SHA256 }}" | grep -q .; then
-            apk_note="Android（已用固定发布证书签名，可覆盖安装升级，无需卸载）："
-          else
-            apk_note="Android（未配置发布签名，当前为 debug 签名，仅供测试，不能覆盖正式版安装）："
-          fi
           {
-            printf '%s\n\n' "版本 ${version}。两个版本功能相同，区别只在站源范围，按需选择："
+            printf '%s\n\n' "版本 ${VERSION}。两个版本功能相同，区别只在站源范围，按需选择："
             printf '%s\n' "- 红果鉴 hongguojian：仅红果站源"
             printf '%s\n' "- 真果鉴 zhenguojian：全部站源"
-            printf '\n%s\n' "$apk_note"
+            printf '\n%s\n' "本版更换了 Android 签名证书：从旧版升级请先在应用内导出备份，卸载旧版后安装新版，再恢复备份。"
+            printf '\n%s\n' "Android（固定发布证书签名，可覆盖安装升级）："
             printf '%s\n' "- *-arm64-v8a.apk：绝大多数手机选这个"
             printf '%s\n' "- *-armeabi-v7a.apk：较老的 32 位手机"
             printf '%s\n' "- *-x86_64.apk：模拟器"
@@ -263,21 +319,6 @@ jobs:
             printf '\n%s\n' "Windows（解压后运行 hongguojian.exe 或 zhenguojian.exe）："
             printf '%s\n' "- *-windows-x64.zip：Windows 10/11 x64 完整包；构建机没有音频和图形设备，播放自检未通过，未做设备验收"
             printf '\n%s\n' "校验：SHA256SUMS.txt"
-            if printf '%s\n' "${{ vars.ANDROID_CERT_SHA256 }}" | grep -q .; then
-              printf '%s\n' "签名证书 SHA-256：${{ vars.ANDROID_CERT_SHA256 }}"
-            else
-              printf '%s\n' "签名证书：未配置（当前为 debug 签名）"
-            fi
+            printf '%s\n' "签名证书 SHA-256：${ANDROID_CERT_SHA256}"
           } > notes.md
-          if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" release/* --clobber
-            gh release edit "$tag" --title "红果鉴 / 真果鉴 ${version}" --notes-file notes.md
-            # 清理上一次构建留下、本轮已不再产出的附件，避免下载到过期文件。
-            for name in $(gh release view "$tag" --json assets --jq '.assets[].name'); do
-              if [ ! -e "release/$name" ]; then
-                gh release delete-asset "$tag" "$name" --yes
-              fi
-            done
-          else
-            gh release create "$tag" release/* --title "红果鉴 / 真果鉴 ${version}" --notes-file notes.md
-          fi
+          gh release create "$TAG" release/* --target "$GITHUB_SHA" --title "红果鉴 / 真果鉴 ${VERSION}" --notes-file notes.md

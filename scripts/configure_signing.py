@@ -13,13 +13,13 @@ if not runner_temp:
 key_file = Path(runner_temp) / 'duanju-release.jks'
 properties_file = root / 'android' / 'key.properties'
 if options.clean:
-    if key_file.exists():
-        key_file.unlink()
+    for path in [key_file, properties_file]:
+        if path.exists():
+            path.unlink()
     raise SystemExit(0)
 
 if properties_file.exists():
-    print('检测到已配置固定签名文件 android/key.properties，直接使用该正式签名。')
-    raise SystemExit(0)
+    raise SystemExit('android/key.properties 不应入库，CI 只使用 Secrets 签名。')
 
 names = ['ANDROID_KEYSTORE_BASE64', 'ANDROID_KEYSTORE_PASSWORD',
          'ANDROID_KEY_ALIAS', 'ANDROID_KEY_PASSWORD']
