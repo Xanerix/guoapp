@@ -16,13 +16,12 @@ import 'home_screen.dart';
 import 'local_store.dart';
 import 'profiles_screen.dart';
 import 'media_library.dart';
-import 'package_smoke.dart';
 import 'lan_controller.dart';
 import 'player_screen.dart';
 import 'video_enhancement_assets.dart';
 import 'diary_service.dart';
 
-Future<void> main(List<String> arguments) async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   DiaryService.add('[App] 应用启动，版本: 0.2.69+76, 平台: ${Platform.operatingSystem}');
   if (Platform.isAndroid) {
@@ -34,10 +33,6 @@ Future<void> main(List<String> arguments) async {
   }
   MediaKit.ensureInitialized();
   VideoEnhancementAssets.registerLicenses();
-  if (Platform.isWindows && arguments.firstOrNull == '--package-smoke') {
-    await runPackageSmoke(arguments);
-    return;
-  }
   final device = await AppDevice.detect();
   runApp(AppBootstrap(device: device));
 }

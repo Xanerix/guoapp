@@ -55,12 +55,12 @@ Flutter 多端独立短剧 / 影视应用
 | 产物 | 内容 |
 | --- | --- |
 | `*-android` | 三种架构 APK，必须使用发布证书签名并通过指纹校验 |
-| `*-windows` | Windows x64 ZIP；构建机没有音频和图形设备，播放自检结果不阻塞 |
+| `*-windows` | Windows x64 ZIP |
 | `*-ios-unsigned` | arm64 iPhone 未签名 IPA，下载后自行签名安装 |
 
 checks（格式、分析、测试不阻塞）、Android、Windows、iOS 全部成功后才创建 tag 和 Release；任一平台失败就不发布。已有 Release 不会被覆盖。手动发布流程为开发快照，尚未完成首次运行验证。
 
-Android 签名只使用仓库 Secrets：`ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`；同时需要配置仓库变量 `ANDROID_CERT_SHA256`（证书 SHA-256，冒号和大小写不限）。缺少任意一项都会发布失败。`android/key.properties` 和证书文件不入库。
+Android 签名只使用仓库 Secrets：`ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`；同时需要配置仓库变量 `ANDROID_CERT_SHA256`（证书 SHA-256，冒号和大小写不限）。缺少任意一项都会发布失败。CI 通过环境变量把签名传给 Gradle；本机构建使用 `android/key.properties`。`key.properties` 和证书文件不入库。
 
 ## 开发与构建
 
@@ -75,13 +75,7 @@ iOS 需要 macOS、完整 Xcode 和 CocoaPods。
 python3 scripts/build_android.py                 # 红果鉴
 python3 scripts/build_android.py --all-sources   # 真果鉴
 python3 scripts/build_android.py --abi arm64-v8a
-python3 scripts/build_android.py --cn-mirrors    # 国内镜像
-~~~
-
-~~~powershell
-.\scripts\build_windows.ps1
-.\scripts\build_windows.ps1 -AllSources
-.\scripts\build_windows.ps1 -ChinaMirrors
+python scripts/build_windows.py [--all-sources]
 ~~~
 
 ~~~sh
@@ -105,39 +99,17 @@ flutter run
 
 播放器使用 [media_kit](https://github.com/media-kit/media-kit) / libmpv，合并和导出使用 [FFmpegKit min-gpl](https://github.com/sk3llo/ffmpeg_kit_flutter)（含 GPL 媒体组件）。FFmpegKit 不参与正常播放或下载的转码。
 
-### 集中检查与真机回归
+### 集中检查
 
 ~~~sh
-python3 -m unittest discover -s scripts -p 'test_*.py'
-dart format --output=none --set-exit-if-changed lib test integration_test test_driver
-dart analyze --fatal-infos lib test integration_test test_driver
+dart format --output=none --set-exit-if-changed lib test
+dart analyze --fatal-infos lib test
 flutter test --dart-define=DISABLE_REMOTE_IMAGES=true
 flutter test --dart-define=DISABLE_REMOTE_IMAGES=true --dart-define=ALL_SOURCES=true
 cd native
 go test -race ./...
 go test -race -ldflags="-X duanjuapp/native/core.buildAllSources=true" ./...
 ~~~
-
-Android 设备回归（连接并授权 USB 调试、保持解锁）：
-
-~~~sh
-python3 scripts/create_test_media.py
-python3 scripts/serve_test_media.py
-adb reverse tcp:38473 tcp:38473
-flutter drive --driver=test_driver/playback.dart --target=integration_test/playback_test.dart \
-  --dart-define=DISABLE_REMOTE_IMAGES=true --dart-define=FIXTURE_BASE_URL=http://127.0.0.1:38473
-~~~
-
-结果在 `build/device-test/results/`；结束后停服务并 `adb reverse --remove tcp:38473`。
-
-### 源码同步
-
-~~~sh
-python3 scripts/finish_task.py --message "本次实际完成的变更"
-python3 scripts/sync_source.py --check
-~~~
-
-脚本只同步纯源码到同级 `../guoapp`，并生成 `真果·鉴-YYYYMMDDHHMM.zip` 源码压缩包；不执行 Git 提交、分支或推送。
 
 ## 目录结构
 
@@ -147,8 +119,8 @@ python3 scripts/sync_source.py --check
 | `native/core`、`native/bridge` | 独立站源核心、缓存、下载、目录迁移及 C ABI |
 | `android`、`windows`、`ios` | 平台工程与必要资源 |
 | `assets/video_enhancement`、`packages/media_kit_libs_windows_video` | 增强 Shader 与许可、固定 Windows 媒体依赖插件 |
-| `scripts`、`.github/workflows` | 构建、签名、验证、同步和版本快照 |
-| `test`、`integration_test` | 自动化与设备回归 |
+| `scripts`、`.github/workflows` | 构建与发布 |
+| `test` | 自动化测试 |
 
 ## 站源开发约定
 
