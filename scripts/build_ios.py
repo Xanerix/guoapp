@@ -1,5 +1,4 @@
 import argparse
-import hashlib
 import os
 import platform
 import re
@@ -128,12 +127,7 @@ def main():
         for symbol in ['_DuanjuRequest', '_DuanjuFree']:
             if symbol not in symbols:
                 raise SystemExit('iOS 包缺少 FFI 入口：' + symbol)
-        destination = output / f'{variant.slug}-{version}-ios-unsigned-app.zip'
-        run(['ditto', '-c', '-k', '--sequesterRsrc', '--keepParent', str(application), str(destination)])
-        validate_package(destination, 'Runner.app')
-        artifacts.append(destination)
-        # 额外打包未签名 IPA：IPA 结构为 zip 内 Payload/Runner.app。
-        # 便于用户用 AltStore / Sideloadly / TrollStore 自签后直接安装。
+        # IPA 结构为 zip 内 Payload/Runner.app，便于用户用 AltStore / Sideloadly / TrollStore 自签后直接安装。
         payload = output / 'Payload'
         if payload.exists():
             shutil.rmtree(payload)
@@ -148,15 +142,8 @@ def main():
         artifacts.append(ipa)
     if not artifacts:
         raise SystemExit('未生成 iOS 安装包。')
-    checksums = []
-    for artifact in sorted(output.glob(f'*-{version}-ios*')):
-        digest = hashlib.sha256()
-        with artifact.open('rb') as stream:
-            for chunk in iter(lambda: stream.read(1024 * 1024), b''):
-                digest.update(chunk)
-        checksums.append(f'{digest.hexdigest()}  {artifact.name}')
+    for artifact in artifacts:
         print(artifact)
-    (output / 'SHA256SUMS.txt').write_text('\n'.join(checksums) + '\n', encoding='ascii')
 
 
 if __name__ == '__main__':

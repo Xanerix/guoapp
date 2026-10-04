@@ -1,22 +1,13 @@
-import argparse
 import base64
 import os
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
-parser = argparse.ArgumentParser()
-parser.add_argument('--clean', action='store_true')
-options = parser.parse_args()
 runner_temp = os.environ.get('RUNNER_TEMP')
 if not runner_temp:
     raise SystemExit('此脚本用于 GitHub Actions；本机构建请配置 android/key.properties。')
 key_file = Path(runner_temp) / 'duanju-release.jks'
 properties_file = root / 'android' / 'key.properties'
-if options.clean:
-    for path in [key_file, properties_file]:
-        if path.exists():
-            path.unlink()
-    raise SystemExit(0)
 
 if properties_file.exists():
     raise SystemExit('android/key.properties 不应入库，CI 只使用 Secrets 签名。')
@@ -24,11 +15,8 @@ if properties_file.exists():
 names = ['ANDROID_KEYSTORE_BASE64', 'ANDROID_KEYSTORE_PASSWORD',
          'ANDROID_KEY_ALIAS', 'ANDROID_KEY_PASSWORD']
 values = [os.environ.get(name, '') for name in names]
-if not any(values):
-    print('未配置签名 Secrets 且无预置签名：生成预览 APK。')
-    raise SystemExit(0)
 if not all(values):
-    raise SystemExit('Android 签名需要同时配置全部四个 Secrets。')
+    raise SystemExit('Android 签名需要同时配置全部四个 Secrets，拒绝发布 debug 签名的 APK。')
 try:
     data = base64.b64decode(''.join(values[0].split()), validate=True)
 except ValueError:

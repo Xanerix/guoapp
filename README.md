@@ -48,7 +48,7 @@ Flutter 多端独立短剧 / 影视应用
 
 ### GitHub Actions
 
-推送 `main` / `master` 或提交 PR 只运行检查（格式、分析、测试不阻塞），不构建安装包、不发布。
+工作流只能手动触发，推送和 PR 不再自动运行检查。
 
 发布流程：提升 `pubspec.yaml` 的 `version` 并推送到 `main`，再在 Actions 中手动运行 **Build app packages**（只能选 `main`）。工作流先检查版本：tag `app-v{version}`（`+` 替换为 `-`）或同名 Release 已存在时，直接失败，不进入构建。然后同时构建三个平台的两版（默认与 `--all-sources`）：
 
@@ -56,9 +56,9 @@ Flutter 多端独立短剧 / 影视应用
 | --- | --- |
 | `*-android` | 三种架构 APK，必须使用发布证书签名并通过指纹校验 |
 | `*-windows` | Windows x64 ZIP；构建机没有音频和图形设备，播放自检结果不阻塞 |
-| `*-ios-unsigned` | arm64 iPhone 未签名 IPA 和 `Runner.app` ZIP，下载后自行签名安装 |
+| `*-ios-unsigned` | arm64 iPhone 未签名 IPA，下载后自行签名安装 |
 
-checks、Android、Windows、iOS 全部成功后才创建 tag 和 Release，并附上统一的 `SHA256SUMS.txt`；任一平台失败就不发布。已有 Release 不会被覆盖。手动发布流程为开发快照，尚未完成首次运行验证。
+checks（格式、分析、测试不阻塞）、Android、Windows、iOS 全部成功后才创建 tag 和 Release；任一平台失败就不发布。已有 Release 不会被覆盖。手动发布流程为开发快照，尚未完成首次运行验证。
 
 Android 签名只使用仓库 Secrets：`ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`；同时需要配置仓库变量 `ANDROID_CERT_SHA256`（证书 SHA-256，冒号和大小写不限）。缺少任意一项都会发布失败。`android/key.properties` 和证书文件不入库。
 

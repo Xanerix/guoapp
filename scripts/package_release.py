@@ -1,5 +1,4 @@
 import argparse
-import hashlib
 import re
 import shutil
 import zipfile
@@ -55,12 +54,5 @@ else:
                 archive.write(source, relative)
     artifacts.append(target)
 
-checksums = []
-for artifact in sorted(output.glob(f'*-{version}-*')):
-    digest = hashlib.sha256()
-    with artifact.open('rb') as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b''):
-            digest.update(chunk)
-    checksums.append(f'{digest.hexdigest()}  {artifact.name}')
+for artifact in artifacts:
     print(artifact)
-(output / 'SHA256SUMS.txt').write_text('\n'.join(checksums) + '\n', encoding='ascii')

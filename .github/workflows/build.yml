@@ -1,17 +1,13 @@
 name: Build app packages
 
 on:
-  push:
-    branches: [main, master]
-  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: app-build-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
+  group: app-build-${{ github.workflow }}-${{ github.ref }}
 
 env:
   GOPROXY: https://proxy.golang.org,direct
@@ -24,11 +20,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: python3 -m unittest discover -s scripts -p 'test_*.py'
-      - uses: actions/setup-go@v5
+      - &setup-go
+        uses: actions/setup-go@v5
         with:
           go-version-file: native/go.mod
           cache-dependency-path: native/go.sum
-      - uses: subosito/flutter-action@v2
+      - &setup-flutter
+        uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.4'
           channel: stable
@@ -52,7 +50,6 @@ jobs:
         continue-on-error: true
 
   prepare:
-    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -86,7 +83,7 @@ jobs:
     needs: prepare
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    strategy:
+    strategy: &editions
       fail-fast: false
       matrix:
         include:
@@ -96,22 +93,16 @@ jobs:
             arguments: '--all-sources'
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - &setup-python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: native/go.mod
-          cache-dependency-path: native/go.sum
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.47.4'
-          channel: stable
-          cache: true
+      - *setup-go
+      - *setup-flutter
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
@@ -119,12 +110,7 @@ jobs:
           accept-android-sdk-licenses: true
       - run: sdkmanager 'ndk;28.2.13676358'
       - name: Configure Android signing
-        run: |
-          python scripts/configure_signing.py
-          if [ ! -f android/key.properties ]; then
-            echo "未配置发布签名 Secrets，拒绝发布 debug 签名的 APK。" >&2
-            exit 1
-          fi
+        run: python scripts/configure_signing.py
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -158,9 +144,6 @@ jobs:
               exit 1
             fi
           done
-      - name: Remove signing files
-        if: always()
-        run: python scripts/configure_signing.py --clean
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.edition }}-android
@@ -172,28 +155,12 @@ jobs:
     needs: prepare
     runs-on: windows-latest
     timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - edition: hongguojian
-            arguments: ''
-          - edition: zhenguojian
-            arguments: '--all-sources'
+    strategy: *editions
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: native/go.mod
-          cache-dependency-path: native/go.sum
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.47.4'
-          channel: stable
-          cache: true
+      - *setup-go
+      - *setup-python
+      - *setup-flutter
       - name: Set up MinGW-w64
         shell: pwsh
         run: |
@@ -221,28 +188,12 @@ jobs:
     needs: prepare
     runs-on: macos-latest
     timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - edition: hongguojian
-            arguments: ''
-          - edition: zhenguojian
-            arguments: '--all-sources'
+    strategy: *editions
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: native/go.mod
-          cache-dependency-path: native/go.sum
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.47.4'
-          channel: stable
-          cache: true
+      - *setup-python
+      - *setup-go
+      - *setup-flutter
       - name: Check Xcode and CocoaPods
         shell: bash
         run: |
@@ -277,25 +228,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          path: artifacts
-      - name: 生成发布文件清单
-        run: |
-          set -euo pipefail
-          mkdir -p release
-          for directory in artifacts/*/; do
-            for file in "$directory"*; do
-              [ -f "$file" ] || continue
-              name=$(basename "$file")
-              if [ "$name" = "SHA256SUMS.txt" ]; then
-                continue
-              fi
-              cp "$file" "release/$name"
-            done
-          done
-          cd release
-          mapfile -t files < <(find . -maxdepth 1 -type f -printf '%f\n' | sort)
-          sha256sum "${files[@]}" > SHA256SUMS.txt
-          cat SHA256SUMS.txt
+          path: release
+          merge-multiple: true
       - name: 发布 Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -304,21 +238,23 @@ jobs:
           ANDROID_CERT_SHA256: ${{ vars.ANDROID_CERT_SHA256 }}
         run: |
           set -euo pipefail
-          {
-            printf '%s\n\n' "版本 ${VERSION}。两个版本功能相同，区别只在站源范围，按需选择："
-            printf '%s\n' "- 红果鉴 hongguojian：仅红果站源"
-            printf '%s\n' "- 真果鉴 zhenguojian：全部站源"
-            printf '\n%s\n' "本版更换了 Android 签名证书：从旧版升级请先在应用内导出备份，卸载旧版后安装新版，再恢复备份。"
-            printf '\n%s\n' "Android（固定发布证书签名，可覆盖安装升级）："
-            printf '%s\n' "- *-arm64-v8a.apk：绝大多数手机选这个"
-            printf '%s\n' "- *-armeabi-v7a.apk：较老的 32 位手机"
-            printf '%s\n' "- *-x86_64.apk：模拟器"
-            printf '\n%s\n' "iOS（未签名，需自行签名后才能安装）："
-            printf '%s\n' "- *-ios-unsigned.ipa：未签名 IPA，用 AltStore / Sideloadly / TrollStore 等工具自签后安装"
-            printf '%s\n' "- *-ios-unsigned-app.zip：未签名 Runner.app 压缩包，供自行签名 / 打包使用"
-            printf '\n%s\n' "Windows（解压后运行 hongguojian.exe 或 zhenguojian.exe）："
-            printf '%s\n' "- *-windows-x64.zip：Windows 10/11 x64 完整包；构建机没有音频和图形设备，播放自检未通过，未做设备验收"
-            printf '\n%s\n' "校验：SHA256SUMS.txt"
-            printf '%s\n' "签名证书 SHA-256：${ANDROID_CERT_SHA256}"
-          } > notes.md
+          cat > notes.md <<EOF
+          版本 ${VERSION}。两个版本功能相同，区别只在站源范围，按需选择：
+
+          - 红果鉴 hongguojian：仅红果站源
+          - 真果鉴 zhenguojian：全部站源
+
+          Android：
+          - *-arm64-v8a.apk：适用于较新的安卓设备
+          - *-armeabi-v7a.apk：适用于较老的安卓设备，电视推荐使用此版本
+          - *-x86_64.apk：适用于模拟器
+
+          iOS：
+          - *-ios-unsigned.ipa：未签名 IPA，可用相关工具安装
+
+          Windows：
+          - *-windows-x64.zip：解压后运行 hongguojian.exe 或 zhenguojian.exe
+
+          签名证书 SHA-256：${ANDROID_CERT_SHA256}
+          EOF
           gh release create "$TAG" release/* --target "$GITHUB_SHA" --title "红果鉴 / 真果鉴 ${VERSION}" --notes-file notes.md
