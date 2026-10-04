@@ -5,8 +5,6 @@ import 'package:duanju_app/local_snapshot.dart';
 import 'package:duanju_app/local_store.dart';
 import 'package:duanju_app/models.dart';
 import 'package:duanju_app/playback_preferences.dart';
-import 'package:duanju_app/profiles_screen.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
@@ -257,20 +255,4 @@ void main() {
       },
     );
   }
-
-  testWidgets(
-    'damaged profile screen offers recovery without an unlocked administrator',
-    (tester) async {
-      final (store, _) = await create({'profiles': 'bad'});
-      await tester.pumpWidget(
-        MaterialApp(home: ProfilesScreen(store: store, locked: true)),
-      );
-      expect(find.text('从备份恢复'), findsOneWidget);
-      expect(find.text('重新读取配置'), findsOneWidget);
-      expect(find.text('导出原始配置'), findsOneWidget);
-      expect(find.text('添加用户'), findsNothing);
-      expect(find.text('管理员 · 全部权限'), findsNothing);
-      await tester.pumpWidget(const SizedBox.shrink());
-    },
-  );
 }

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -100,7 +101,8 @@ func TestLegacyAnonymousCatalogAndSessionReuse(t *testing.T) {
 		t.Fatal("automatic session changed user configuration")
 	}
 	info, err := os.Stat(filepath.Join(d.cfg.dataDir, "huangguo-session.json"))
-	if err != nil || info.Mode().Perm() != 0600 {
+	// Windows 不支持 Unix 权限位，只在其他平台校验 0600。
+	if err != nil || runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
 		t.Fatal("anonymous session must be private", err)
 	}
 	restarted := &Downloader{cfg: d.cfg, providerHosts: map[string]string{}}

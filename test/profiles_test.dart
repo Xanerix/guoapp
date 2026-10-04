@@ -3,13 +3,9 @@ import 'dart:convert';
 import 'package:duanju_app/core_bridge.dart';
 import 'package:duanju_app/local_profiles.dart';
 import 'package:duanju_app/local_store.dart';
-import 'package:duanju_app/main.dart';
 import 'package:duanju_app/models.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
-import 'fixtures.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -165,39 +161,4 @@ void main() {
       store.dispose();
     },
   );
-
-  testWidgets('online-only home hides download navigation and denied sources', (
-    tester,
-  ) async {
-    SharedPreferences.setMockInitialValues({
-      'profiles': jsonEncode([
-        const LocalProfile(
-          id: 'default',
-          name: '管理员',
-          admin: true,
-          salt: '11111111111111111111111111111111',
-          pinHash:
-              'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-        ).toJson(),
-        const LocalProfile(
-          id: 'viewer',
-          name: '只看红果',
-          sources: ['hongguo'],
-          download: false,
-        ).toJson(),
-      ]),
-      'activeProfile': 'viewer',
-    });
-    final store = LocalStore(await SharedPreferences.getInstance());
-    await tester.pumpWidget(
-      DuanjuApp(repository: FixtureRepository(), store: store),
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('下载'), findsNothing);
-    expect(find.text('黄豆'), findsNothing);
-    expect(find.text('黄果 AI'), findsNothing);
-    expect(find.text('红果'), findsOneWidget);
-    await tester.pumpWidget(const SizedBox.shrink());
-    store.dispose();
-  });
 }

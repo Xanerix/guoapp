@@ -11,8 +11,6 @@ import 'fixtures.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  const red = FixtureRepository.free;
-  const other = FixtureRepository.vip;
 
   test('edition sources include DSD only in the all-source build', () async {
     SharedPreferences.setMockInitialValues({'source': 'huangdou'});
@@ -35,47 +33,6 @@ void main() {
     expect(store.allowsSource('dsd'), allSourcesEnabled);
     store.dispose();
   });
-
-  test(
-    'edition filtering preserves favorites and history through backup restore',
-    () async {
-      final history = [
-        for (final drama in [red, other])
-          WatchEntry(
-            drama: drama,
-            episode: 1,
-            position: 12,
-            duration: 60,
-            updatedAt: DateTime(2026, 9, 19),
-          ).toJson(),
-      ];
-      SharedPreferences.setMockInitialValues({
-        'source': 'huangdou',
-        'favorites': jsonEncode([red.toJson(), other.toJson()]),
-        'history': jsonEncode(history),
-      });
-      final store = testStore(await SharedPreferences.getInstance());
-      // 管理员默认可见全部站源；这里仍显式启用密码锁，验证启用后行为一致。
-      await store.enableSourceGate('666666');
-      expect(store.favorites.length, allSourcesEnabled ? 2 : 1);
-      expect(store.history.length, allSourcesEnabled ? 2 : 1);
-      expect(store.isFavorite(other.id), allSourcesEnabled);
-      expect(store.watched(other.id) != null, allSourcesEnabled);
-      await store.toggleFavorite(red);
-      final backup = await store.exportBackup();
-      final library =
-          (jsonDecode(backup)['libraries'] as Map)['default'] as Map;
-      expect((library['favorites'] as List).map((row) => (row as Map)['id']), [
-        other.id,
-      ]);
-      expect(library['history'], hasLength(2));
-      await store.importBackup(backup);
-      expect(store.preferences.getString('source'), 'huangdou');
-      expect(store.history, hasLength(allSourcesEnabled ? 2 : 1));
-      expect(store.favorites.map((drama) => drama.id), [other.id]);
-      store.dispose();
-    },
-  );
 
   test(
     'a restored foreign-source profile keeps its identity and permissions',

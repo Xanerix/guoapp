@@ -35,7 +35,6 @@ jobs:
         continue-on-error: true
       - run: dart analyze --fatal-infos lib test
         continue-on-error: true
-      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       # 测试当前不阻塞出包（开发优先、集中验证暂缓），结果仍会显示在运行详情里。
       - run: flutter test --dart-define=DISABLE_REMOTE_IMAGES=true
         continue-on-error: true

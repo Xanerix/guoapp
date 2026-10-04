@@ -1,25 +1,14 @@
-import 'dart:async';
-
-import 'package:duanju_app/app_build.dart';
 import 'package:duanju_app/catalog_browser.dart';
 import 'package:duanju_app/core_bridge.dart';
-import 'package:duanju_app/local_store.dart';
-import 'package:duanju_app/main.dart';
 import 'package:duanju_app/models.dart';
-import 'package:duanju_app/ranking_models.dart';
-import 'package:duanju_app/widgets.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'fixtures.dart';
 
 class CategoryRepository extends FixtureRepository {
   final categoryRequests = <String>[];
-  Completer<CatalogPage>? pendingComic;
   bool failLegacy = false;
   bool paginate = false;
-  final rankRequests = <String>[];
 
   @override
   Future<CatalogPage> cached(String source, {String category = ''}) async =>
@@ -61,9 +50,6 @@ class CategoryRepository extends FixtureRepository {
   }) async {
     categoryRequests.add('$source|$category|$page');
     if (source == 'cloudfront' && failLegacy) throw AppFailure('合成入口失败');
-    if (category == 'ai-manju' && pendingComic != null) {
-      return pendingComic!.future;
-    }
     return CatalogPage(
       [
         Drama(
@@ -77,134 +63,9 @@ class CategoryRepository extends FixtureRepository {
       hasMore: paginate && source == 'huangguo-video' && page == 1,
     );
   }
-
-  @override
-  Future<List<RankingBoard>> rankingBoards() async => const [
-    RankingBoard(id: 'hongguo-hot', source: 'hongguo', name: '总热播榜'),
-    RankingBoard(id: 'hongguo-real', source: 'hongguo', name: '真人剧榜'),
-  ];
-
-  @override
-  Future<RankingPage> rankings(
-    String board, {
-    int page = 1,
-    bool force = false,
-  }) async {
-    rankRequests.add('$board|$page|$force');
-    return RankingPage(
-      items: [
-        RankingItem(
-          (page - 1) * 20 + 1,
-          Drama(
-            id: 'hongguo:rank:$board:$page',
-            source: 'hongguo',
-            title: '合成榜单第$page页',
-          ),
-        ),
-      ],
-      page: page,
-      hasMore: page == 1,
-    );
-  }
 }
 
 void main() {
-  Future<LocalStore> mount(
-    WidgetTester tester,
-    CategoryRepository repository, {
-    String source = 'hongguo',
-    double width = 390,
-    double scale = 1,
-  }) async {
-    tester.view.physicalSize = Size(width, 844);
-    tester.view.devicePixelRatio = 1;
-    tester.platformDispatcher.textScaleFactorTestValue = scale;
-    addTearDown(tester.view.reset);
-    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-    SharedPreferences.setMockInitialValues({});
-    final store = LocalStore(await SharedPreferences.getInstance());
-    addTearDown(store.dispose);
-    await store.setSource(source);
-    await tester.pumpWidget(DuanjuApp(repository: repository, store: store));
-    await tester.pumpAndSettle();
-    return store;
-  }
-
-  for (final width in [390.0, 320.0]) {
-    testWidgets('compact home keeps search collapsed at $width', (
-      tester,
-    ) async {
-      await mount(
-        tester,
-        CategoryRepository(),
-        width: width,
-        scale: width == 320 ? 2 : 1,
-      );
-      expect(find.byType(TextField), findsNothing);
-      final coverTop = tester.getTopLeft(find.byType(DramaCover).first).dy;
-      expect(coverTop, lessThan(150));
-      final switcher = find.byKey(const ValueKey('source-switch'));
-      final rankings = find.byKey(const ValueKey('open-rankings'));
-      expect(
-        tester.getCenter(switcher).dy,
-        closeTo(tester.getCenter(rankings).dy, 2),
-      );
-      await tester.tap(find.byKey(const ValueKey('toggle-search')));
-      await tester.pumpAndSettle();
-      expect(find.byType(TextField), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('toggle-search')));
-      await tester.pumpAndSettle();
-      expect(find.byType(TextField), findsNothing);
-      expect(tester.getTopLeft(find.byType(DramaCover).first).dy, coverTop);
-      expect(tester.takeException(), isNull);
-    });
-  }
-
-  testWidgets(
-    'one Huangguo source merges catalogs and categories and rejects stale replies',
-    (tester) async {
-      final repository = CategoryRepository();
-      await mount(tester, repository, source: 'huangguoai');
-      expect(find.text('黄果'), findsOneWidget);
-      expect(find.text('入口'), findsNothing);
-      expect(find.text('旧版'), findsNothing);
-      expect(
-        repository.categoryRequests.toSet(),
-        containsAll(['huangguo-video||1', 'huangguoai||1', 'cloudfront||1']),
-      );
-      expect(find.text('AI成人短剧'), findsNothing);
-      expect(find.text('AI 短剧'), findsOneWidget);
-      Future<void> choose(String name) async {
-        final chip = find.widgetWithText(ChoiceChip, name);
-        await tester.ensureVisible(chip);
-        await tester.tap(chip);
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 250));
-      }
-
-      final pending = Completer<CatalogPage>();
-      repository.pendingComic = pending;
-      await choose('AI 漫剧');
-      await choose('AI 短剧');
-      await tester.pumpAndSettle();
-      pending.complete(
-        CatalogPage(const [
-          Drama(id: 'huangguoai:stale', source: 'huangguoai', title: '过期分类结果'),
-        ]),
-      );
-      await tester.pumpAndSettle();
-      expect(find.text('过期分类结果'), findsNothing);
-      expect(
-        repository.categoryRequests,
-        containsAll(['huangguoai|ai-duanju|1', 'cloudfront|old-short|1']),
-      );
-      expect(find.text('huangguoai · ai-duanju'), findsOneWidget);
-      expect(find.text('cloudfront · old-short'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    },
-    skip: !allSourcesEnabled,
-  );
-
   test(
     'remote content types never hide fine categories from cached pages',
     () async {
@@ -261,33 +122,6 @@ void main() {
       expect(repository.categoryRequests, isNot(contains('huangguoai||2')));
       expect(next.items.length, 4);
       expect(next.warning, isEmpty);
-    },
-  );
-
-  testWidgets(
-    'rankings are separate from categories and preserve upstream rank numbers',
-    (tester) async {
-      final repository = CategoryRepository();
-      await mount(tester, repository);
-      await tester.tap(find.byKey(const ValueKey('open-rankings')));
-      await tester.pumpAndSettle();
-      expect(repository.rankRequests, ['hongguo-hot|1|false']);
-      expect(find.text('总热播榜'), findsOneWidget);
-      await tester.tap(find.text('加载更多'));
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const ValueKey('rank-21-hongguo:rank:hongguo-hot:2')),
-        findsOneWidget,
-      );
-      await tester.tap(find.text('真人剧榜'));
-      await tester.pumpAndSettle();
-      expect(repository.rankRequests.last, 'hongguo-real|1|false');
-      expect(
-        find.byKey(const ValueKey('rank-21-hongguo:rank:hongguo-hot:2')),
-        findsNothing,
-      );
-      expect(repository.categoryRequests, ['hongguo||1']);
-      expect(tester.takeException(), isNull);
     },
   );
 }

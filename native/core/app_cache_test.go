@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -182,12 +183,17 @@ func TestNativeCoverRedirectAndBoundedDiskCache(t *testing.T) {
 func TestNativeCatalogCacheFreshnessPagingAndRefresh(t *testing.T) {
 	var calls atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls.Add(1)
-		if r.URL.Path != "/api/videos/category/ai-duanju" {
+		if !strings.HasPrefix(r.URL.Path, "/api/videos/category/ai-") {
 			t.Error("test must only request synthetic catalog metadata", r.URL.Path)
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
+		// 「全部」会并发请求每个 AI 分类，只让 ai-duanju 返回数据并计数。
+		if r.URL.Path != "/api/videos/category/ai-duanju" {
+			json.NewEncoder(w).Encode(map[string]any{"data": []any{}})
+			return
+		}
+		calls.Add(1)
 		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 		count := 24
 		if page > 1 {
