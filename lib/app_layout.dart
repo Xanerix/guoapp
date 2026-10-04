@@ -90,7 +90,9 @@ class AppDevice {
   static Future<void> setBrightness(double brightness) async {
     if (defaultTargetPlatform != TargetPlatform.android) return;
     try {
-      await channel.invokeMethod('setBrightness', {'brightness': brightness.clamp(0.01, 1.0)});
+      await channel.invokeMethod('setBrightness', {
+        'brightness': brightness.clamp(0.01, 1.0),
+      });
     } catch (_) {}
   }
 

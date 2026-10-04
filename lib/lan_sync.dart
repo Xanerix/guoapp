@@ -101,8 +101,9 @@ extension LanSynchronization on LanController {
     try {
       return await operation(ticket);
     } catch (failure) {
-      if (run == _run && epoch == store.profileEpoch)
+      if (run == _run && epoch == store.profileEpoch) {
         syncMessage = failure.toString();
+      }
       rethrow;
     } finally {
       _syncing = false;
@@ -117,8 +118,9 @@ extension LanSynchronization on LanController {
 
   Future<void> synchronize({bool automatic = false}) async {
     if (automatic &&
-        (_manual || !autoSync || connection?.autoSync != true || syncing))
+        (_manual || !autoSync || connection?.autoSync != true || syncing)) {
       return;
+    }
     await _syncOperation((ticket) async {
       final preview = await _planSync(LanSyncMode.merge, ticket);
       await _commitSync(preview, ticket, automatic: automatic);
@@ -166,8 +168,9 @@ extension LanSynchronization on LanController {
         throw const FormatException('对方记录超过同步上限');
       }
       for (final entry in items.entries) {
-        if (hashes.containsKey(entry.key))
+        if (hashes.containsKey(entry.key)) {
           throw const FormatException('对方版本摘要重复');
+        }
         hashes[lanText(entry.key, 512)] = lanText(entry.value, 64);
       }
       remoteSkipped = intValue(summary['skipped']).clamp(0, LanDocument.limit);
@@ -198,8 +201,9 @@ extension LanSynchronization on LanController {
       }, owner: 'sync');
       _checkSync(ticket, remote);
       final rows = response['records'];
-      if (rows is! List || rows.isEmpty || rows.length > keys.length)
+      if (rows is! List || rows.isEmpty || rows.length > keys.length) {
         throw const FormatException('对方差异记录不完整');
+      }
       final returnedKeys = keys.take(rows.length).toSet();
       for (final row in rows) {
         final record = LanRecord.fromJson(row);
@@ -319,11 +323,7 @@ extension LanSynchronization on LanController {
             'offset': start,
             'records': batch.map((record) => record.toJson()).toList(),
           }, owner: 'sync');
-          syncMessage =
-              '正在同步 ' +
-              end.toString() +
-              ' / ' +
-              preview.remoteChanges.length.toString();
+          syncMessage = '正在同步 $end / ${preview.remoteChanges.length}';
           _notify();
           start = end;
         }
@@ -336,16 +336,18 @@ extension LanSynchronization on LanController {
           final saved = await _request('sync/commit', {
             'operation': operation,
           }, owner: 'sync');
-          if (lanMap(saved['receipt'])['hash'] != finalHash)
+          if (lanMap(saved['receipt'])['hash'] != finalHash) {
             throw StateError('未能确认对方保存的版本');
+          }
           remoteSaved = true;
         } catch (_) {
           final saved = await _request('sync/receipt', {
             'operation': operation,
           }, owner: 'sync');
           if (saved['receipt'] == null ||
-              lanMap(saved['receipt'])['hash'] != finalHash)
+              lanMap(saved['receipt'])['hash'] != finalHash) {
             rethrow;
+          }
           remoteSaved = true;
         }
       }
@@ -395,8 +397,9 @@ extension LanSynchronization on LanController {
               failure.toString(),
         );
       }
-      if (remoteCommitRequested)
-        throw StateError('尚未确认对方是否保存，重连后再次合并可补齐；本机原记录保留。' + failure.toString());
+      if (remoteCommitRequested) {
+        throw StateError('尚未确认对方是否保存，重连后再次合并可补齐；本机原记录保留。$failure');
+      }
       rethrow;
     }
     _notify();
@@ -419,16 +422,18 @@ extension LanSynchronization on LanController {
     if (path == 'sync/summary') {
       final sources = _receiveScope(body, remote);
       final base = document.hashFor(sources);
-      if (body['base'] != null && body['base'] != base)
+      if (body['base'] != null && body['base'] != base) {
         throw StateError('对方记录刚刚变化，请重新同步');
+      }
       final offset = body['offset'];
       final records =
           document.records.values
               .where((record) => sources.contains(record.drama.source))
               .toList()
             ..sort((a, b) => a.id.compareTo(b.id));
-      if (offset is! int || offset < 0 || offset > records.length)
+      if (offset is! int || offset < 0 || offset > records.length) {
         throw const FormatException('同步分页无效');
+      }
       final end = min(offset + 128, records.length);
       return {
         'base': base,
@@ -442,8 +447,9 @@ extension LanSynchronization on LanController {
     }
     if (path == 'sync/records') {
       final sources = _receiveScope(body, remote);
-      if (document.hashFor(sources) != body['base'])
+      if (document.hashFor(sources) != body['base']) {
         throw StateError('对方记录刚刚变化，请重新同步');
+      }
       final ids = body['ids'];
       if (ids is! List ||
           ids.isEmpty ||
@@ -455,8 +461,9 @@ extension LanSynchronization on LanController {
       var bytes = 0;
       for (final id in ids) {
         final record = document.records[id];
-        if (record == null || !sources.contains(record.drama.source))
+        if (record == null || !sources.contains(record.drama.source)) {
           throw StateError('分集记录已变化，请重新同步');
+        }
         final row = record.toJson();
         final size = utf8.encode(jsonEncode(row)).length + 1;
         if (size > 512 * 1024) throw StateError('单条同步记录过大，请先处理记录冲突');
@@ -467,8 +474,9 @@ extension LanSynchronization on LanController {
       return {'records': records};
     }
     final operation = lanText(body['operation'], 32);
-    if (!RegExp(r'^[a-f0-9]{32}$').hasMatch(operation))
+    if (!RegExp(r'^[a-f0-9]{32}$').hasMatch(operation)) {
       throw const FormatException('同步操作标识无效');
+    }
     final receipt = store.lanReceipt(operation);
     if (path == 'sync/receipt') return {'receipt': receipt};
     if (path == 'sync/cancel') {
@@ -482,8 +490,9 @@ extension LanSynchronization on LanController {
     if (receipt != null) return {'receipt': receipt};
     if (path == 'sync/begin') {
       if (_syncing || _manual) throw StateError('对方正在操作同步，请稍后重试');
-      if (_incomingSync != null && _incomingSync!.operation != operation)
+      if (_incomingSync != null && _incomingSync!.operation != operation) {
         throw StateError('对方正在接收其他同步批次');
+      }
       final sources = _receiveScope(body, remote);
       final count = body['count'];
       final base = lanText(body['base'], 64);
@@ -552,11 +561,7 @@ extension LanSynchronization on LanController {
         _incomingSync = null;
         throw StateError('接收记录超过保存上限，原记录已保留');
       }
-      syncMessage =
-          '正在接收 ' +
-          pending.records.length.toString() +
-          ' / ' +
-          pending.count.toString();
+      syncMessage = '正在接收 ${pending.records.length} / ${pending.count}';
       _notify();
       return {'received': pending.records.length};
     }
@@ -581,8 +586,9 @@ extension LanSynchronization on LanController {
         }
         next.records[record.id] = record;
       }
-      if (next.hashFor(pending.sources) != pending.finalHash)
+      if (next.hashFor(pending.sources) != pending.finalHash) {
         throw StateError('同步结果与预览版本不一致');
+      }
       final count = LanChangeCount.between(document.records, next.records);
       pending.committing = true;
       await store.applyLanRecords(
@@ -596,8 +602,9 @@ extension LanSynchronization on LanController {
             connection == remote &&
             (!pending.automatic || autoSync),
       );
-      if (connection != remote || store.profileEpoch != _sessionEpoch)
+      if (connection != remote || store.profileEpoch != _sessionEpoch) {
         throw StateError('记录已保存，连接状态已变更');
+      }
       if (identical(_incomingSync, pending)) _incomingSync = null;
       lastSync = DateTime.now();
       lastLocalCount = count;

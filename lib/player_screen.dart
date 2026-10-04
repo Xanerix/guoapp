@@ -346,8 +346,9 @@ class _PlayerScreenState extends State<PlayerScreen>
     if (_profileEpoch != widget.store.profileEpoch ||
         handoff?.cancelled == true) {
       handoff?.fail('接收用户已变更，推送已取消');
-      if (handoff != null)
+      if (handoff != null) {
         unawaited(_releasePlayback(handoff.plan.session, 'handoff_discarded'));
+      }
       _loading = false;
       _error = '播放接收已取消';
     } else {
@@ -569,10 +570,7 @@ class _PlayerScreenState extends State<PlayerScreen>
       LanPlaybackHost(
         identity: _lanIdentity,
         title:
-            widget.detail.drama.title +
-            ' · 第 ' +
-            widget.detail.episodes[_index].number.toString() +
-            ' 集',
+            '${widget.detail.drama.title} · 第 ${widget.detail.episodes[_index].number} 集',
         stop: _stopForLan,
       ),
     );
@@ -589,8 +587,9 @@ class _PlayerScreenState extends State<PlayerScreen>
         _error != null ||
         _openedIndex != _index ||
         _index != widget.initialIndex ||
-        widget.store.profileEpoch != _profileEpoch)
+        widget.store.profileEpoch != _profileEpoch) {
       return;
+    }
     final state = _player.state;
     final position = state.position.inMilliseconds / 1000;
     final duration = state.duration.inMilliseconds / 1000;
@@ -602,8 +601,9 @@ class _PlayerScreenState extends State<PlayerScreen>
         state.buffering ||
         (state.width ?? 0) <= 0 ||
         position < handoff.position - .5 ||
-        position > handoff.position + 20)
+        position > handoff.position + 20) {
       return;
+    }
     _lanFirstPosition ??= position;
     if (position >= _lanFirstPosition! + .15) handoff.acknowledge(position);
   }
@@ -613,8 +613,9 @@ class _PlayerScreenState extends State<PlayerScreen>
     await _serialize(() async {
       if (_closed ||
           generation != _generation ||
-          widget.store.profileEpoch != _profileEpoch)
+          widget.store.profileEpoch != _profileEpoch) {
         return;
+      }
       _playIntent = false;
       _interactions.cancel();
       _enhancement.suspend();
@@ -631,8 +632,9 @@ class _PlayerScreenState extends State<PlayerScreen>
         _closed ||
         _loading ||
         _error != null ||
-        widget.mediaId != null)
+        widget.mediaId != null) {
       return;
+    }
     final generation = _generation;
     final index = _index;
     bool current() =>
@@ -1233,8 +1235,9 @@ class _PlayerScreenState extends State<PlayerScreen>
       preload: true,
     );
     await widget.store.setPlaybackPreferences(nextPreferences);
-    if (!mounted || _closed || widget.store.profileEpoch != _profileEpoch)
+    if (!mounted || _closed || widget.store.profileEpoch != _profileEpoch) {
       return;
+    }
     final qualityChanged = nextPreferences.quality != _requestedQuality;
     _enhancement.setPreferences(nextPreferences.enhancement);
     setState(() {
@@ -1768,7 +1771,7 @@ class _PlayerScreenState extends State<PlayerScreen>
                 widget.videoBuilder!(layeredControls)
               else if (_player is LunaExoPlayer)
                 LunaExoVideoView(
-                  player: _player as LunaExoPlayer,
+                  player: _player,
                   fit: BoxFit.contain,
                   controls: (_) => layeredControls,
                 )

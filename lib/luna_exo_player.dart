@@ -2,26 +2,35 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
-import 'package:media_kit/src/models/player_log.dart';
-import 'package:media_kit/src/models/player_stream.dart';
-import 'package:media_kit/src/player/platform_player.dart';
 import 'package:video_player/video_player.dart';
 import 'diary_service.dart';
 
 /// 模拟与 media_kit.PlayerStream 接口对齐的流集合
 class LunaPlayerStreams implements PlayerStream {
-  final StreamController<Duration> positionController = StreamController<Duration>.broadcast();
-  final StreamController<Duration> durationController = StreamController<Duration>.broadcast();
-  final StreamController<Duration> bufferController = StreamController<Duration>.broadcast();
-  final StreamController<bool> playingController = StreamController<bool>.broadcast();
-  final StreamController<bool> bufferingController = StreamController<bool>.broadcast();
-  final StreamController<bool> completedController = StreamController<bool>.broadcast();
-  final StreamController<String> errorController = StreamController<String>.broadcast();
-  final StreamController<double> volumeController = StreamController<double>.broadcast();
-  final StreamController<double> rateController = StreamController<double>.broadcast();
-  final StreamController<VideoParams> videoParamsController = StreamController<VideoParams>.broadcast();
-  final StreamController<PlayerLog> logController = StreamController<PlayerLog>.broadcast();
-  final StreamController<double> pitchController = StreamController<double>.broadcast();
+  final StreamController<Duration> positionController =
+      StreamController<Duration>.broadcast();
+  final StreamController<Duration> durationController =
+      StreamController<Duration>.broadcast();
+  final StreamController<Duration> bufferController =
+      StreamController<Duration>.broadcast();
+  final StreamController<bool> playingController =
+      StreamController<bool>.broadcast();
+  final StreamController<bool> bufferingController =
+      StreamController<bool>.broadcast();
+  final StreamController<bool> completedController =
+      StreamController<bool>.broadcast();
+  final StreamController<String> errorController =
+      StreamController<String>.broadcast();
+  final StreamController<double> volumeController =
+      StreamController<double>.broadcast();
+  final StreamController<double> rateController =
+      StreamController<double>.broadcast();
+  final StreamController<VideoParams> videoParamsController =
+      StreamController<VideoParams>.broadcast();
+  final StreamController<PlayerLog> logController =
+      StreamController<PlayerLog>.broadcast();
+  final StreamController<double> pitchController =
+      StreamController<double>.broadcast();
 
   @override
   Stream<Duration> get position => positionController.stream;
@@ -155,7 +164,8 @@ class LunaExoPlayer implements Player {
           'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36';
     }
 
-    bool isHls = url.toLowerCase().contains('.m3u8') ||
+    bool isHls =
+        url.toLowerCase().contains('.m3u8') ||
         url.toLowerCase().contains('hls') ||
         (headers['accept']?.contains('mpegurl') ?? false);
 
@@ -166,20 +176,29 @@ class LunaExoPlayer implements Player {
     }
 
     // 先导探测：如果尚未显式判定为 HLS，向网络地址快速嗅探前置响应头与内容，智能识别
-    if (!isHls && uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
+    if (!isHls &&
+        uri != null &&
+        (uri.scheme == 'http' || uri.scheme == 'https')) {
       try {
-        final client = HttpClient()..connectionTimeout = const Duration(seconds: 3);
+        final client = HttpClient()
+          ..connectionTimeout = const Duration(seconds: 3);
         final req = await client.getUrl(uri);
         headers.forEach((k, v) => req.headers.set(k, v));
         req.headers.set('Range', 'bytes=0-512');
         final resp = await req.close();
         final cType = resp.headers.contentType?.toString().toLowerCase() ?? '';
         final chunks = await resp.take(1).toList();
-        final firstChunk = chunks.isNotEmpty ? String.fromCharCodes(chunks.first) : '';
-        DiaryService.add('[Sniff] 探测结果: status=${resp.statusCode}, contentType=$cType, prefix=${firstChunk.length > 20 ? firstChunk.substring(0, 20) : firstChunk}');
+        final firstChunk = chunks.isNotEmpty
+            ? String.fromCharCodes(chunks.first)
+            : '';
+        DiaryService.add(
+          '[Sniff] 探测结果: status=${resp.statusCode}, contentType=$cType, prefix=${firstChunk.length > 20 ? firstChunk.substring(0, 20) : firstChunk}',
+        );
         if (cType.contains('mpegurl') || firstChunk.contains('#EXTM3U')) {
           isHls = true;
-          DiaryService.add('[Sniff] 自动识别为 HLS 流，注入 formatHint: VideoFormat.hls');
+          DiaryService.add(
+            '[Sniff] 自动识别为 HLS 流，注入 formatHint: VideoFormat.hls',
+          );
         }
         client.close(force: true);
       } catch (e) {
@@ -189,11 +208,15 @@ class LunaExoPlayer implements Player {
 
     VideoFormat? formatHint = isHls ? VideoFormat.hls : null;
 
-    DiaryService.add('[ExoPlayer] open(gen=$myGen): url=$url, isHls=$isHls, formatHint=$formatHint, headers=${headers.keys.toList()}');
+    DiaryService.add(
+      '[ExoPlayer] open(gen=$myGen): url=$url, isHls=$isHls, formatHint=$formatHint, headers=${headers.keys.toList()}',
+    );
 
     VideoPlayerController c;
     if (url.startsWith('/') || (uri != null && uri.scheme == 'file')) {
-      final filePath = uri != null && uri.scheme == 'file' ? uri.toFilePath() : url;
+      final filePath = uri != null && uri.scheme == 'file'
+          ? uri.toFilePath()
+          : url;
       DiaryService.add('[ExoPlayer] 本地文件播放: $filePath');
       c = VideoPlayerController.file(
         File(filePath),
@@ -209,23 +232,31 @@ class LunaExoPlayer implements Player {
     }
 
     try {
-      DiaryService.add('[ExoPlayer] c.initialize() 开始 (formatHint=$formatHint)...');
+      DiaryService.add(
+        '[ExoPlayer] c.initialize() 开始 (formatHint=$formatHint)...',
+      );
       await c.initialize();
       DiaryService.add(
-          '[ExoPlayer] c.initialize() 成功! duration=${c.value.duration}, size=${c.value.size}, isInitialized=${c.value.isInitialized}');
+        '[ExoPlayer] c.initialize() 成功! duration=${c.value.duration}, size=${c.value.size}, isInitialized=${c.value.isInitialized}',
+      );
     } catch (e, stack) {
       DiaryService.add('[ExoPlayer] 首次 initialize 失败: $e');
       // 如果首次尝试失败，且为网络视频，则原地使用交替格式（HLS <-> MP4）自愈重试
       if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
-        final alternateFormat = formatHint == VideoFormat.hls ? null : VideoFormat.hls;
-        DiaryService.add('[ExoPlayer] 启动自愈重试，切换格式为 formatHint=$alternateFormat...');
+        final alternateFormat = formatHint == VideoFormat.hls
+            ? null
+            : VideoFormat.hls;
+        DiaryService.add(
+          '[ExoPlayer] 启动自愈重试，切换格式为 formatHint=$alternateFormat...',
+        );
         try {
           await c.dispose();
         } catch (_) {}
 
         final retryHeaders = Map<String, String>.from(headers);
         if (alternateFormat == VideoFormat.hls) {
-          retryHeaders['Accept'] = 'application/vnd.apple.mpegurl,application/x-mpegURL,*/*';
+          retryHeaders['Accept'] =
+              'application/vnd.apple.mpegurl,application/x-mpegURL,*/*';
         }
         c = VideoPlayerController.networkUrl(
           uri,
@@ -238,7 +269,9 @@ class LunaExoPlayer implements Player {
           formatHint = alternateFormat;
           DiaryService.add('[ExoPlayer] 自愈重试成功! duration=${c.value.duration}');
         } catch (retryErr, retryStack) {
-          DiaryService.add('[ExoPlayer] 自愈重试依然失败! 异常: $retryErr\n堆栈: $retryStack');
+          DiaryService.add(
+            '[ExoPlayer] 自愈重试依然失败! 异常: $retryErr\n堆栈: $retryStack',
+          );
           if (myGen == _openGeneration) {
             _safeAdd(stream.errorController, retryErr.toString());
           }
@@ -539,10 +572,7 @@ class LunaExoVideoView extends StatelessWidget {
           children: [
             if (hasVideo)
               Center(
-                child: AspectRatio(
-                  aspectRatio: ratio,
-                  child: VideoPlayer(c),
-                ),
+                child: AspectRatio(aspectRatio: ratio, child: VideoPlayer(c)),
               )
             else
               const ColoredBox(color: Colors.black),

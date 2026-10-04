@@ -212,7 +212,7 @@ class _LanSyncScreenState extends State<LanSyncScreen> {
                       ListTile(
                         leading: Icon(lanDeviceIcon(link.kind)),
                         title: Text(link.deviceName),
-                        subtitle: Text('本机用户 · ' + link.store.profile.name),
+                        subtitle: Text('本机用户 · ${link.store.profile.name}'),
                         trailing: IconButton(
                           tooltip: '修改设备名称',
                           onPressed: _busy ? null : _rename,
@@ -241,7 +241,7 @@ class _LanSyncScreenState extends State<LanSyncScreen> {
                         subtitle: Text(
                           remote == null
                               ? '仅发现一台设备时自动连接，多台时由发起端选择'
-                              : '对方用户 · ' + remote.user,
+                              : '对方用户 · ${remote.user}',
                         ),
                         trailing: remote == null
                             ? null
@@ -310,27 +310,22 @@ class _LanSyncScreenState extends State<LanSyncScreen> {
                               Text(link.syncMessage),
                               if (link.lastSync != null)
                                 Text(
-                                  '最近同步 · ' +
-                                      MaterialLocalizations.of(
-                                        context,
-                                      ).formatTimeOfDay(
-                                        TimeOfDay.fromDateTime(link.lastSync!),
-                                      ),
+                                  '最近同步 · ${MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(link.lastSync!))}',
                                   style: Theme.of(context).textTheme.bodySmall,
                                 ),
                               if (link.lastLocalCount != null)
                                 Text(
-                                  '本机：' + link.lastLocalCount!.label,
+                                  '本机：${link.lastLocalCount!.label}',
                                   style: Theme.of(context).textTheme.bodySmall,
                                 ),
                               if (link.lastRemoteCount != null)
                                 Text(
-                                  '对方：' + link.lastRemoteCount!.label,
+                                  '对方：${link.lastRemoteCount!.label}',
                                   style: Theme.of(context).textTheme.bodySmall,
                                 ),
                               if (link.skipped > 0)
                                 Text(
-                                  '保留范围外记录：' + link.skipped.toString(),
+                                  '保留范围外记录：${link.skipped}',
                                   style: Theme.of(context).textTheme.bodySmall,
                                 ),
                             ],
@@ -499,21 +494,24 @@ class _LanDevicesState extends State<_LanDevices> {
       _target = peer;
     });
     try {
-      if (_epoch != link.store.profileEpoch || link.store.locked)
+      if (_epoch != link.store.profileEpoch || link.store.locked) {
         throw StateError('当前用户已变更');
+      }
       final selected = peer ?? await link.probe(_address.text);
-      if (!mounted || _epoch != link.store.profileEpoch || link.store.locked)
+      if (!mounted || _epoch != link.store.profileEpoch || link.store.locked) {
         return;
+      }
       _target = selected;
       await link.connect(selected);
       _changed();
     } catch (error) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _error = error.toString();
           _selected = false;
           _target = null;
         });
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -545,8 +543,9 @@ class _LanDevicesState extends State<_LanDevices> {
   Widget build(BuildContext context) {
     final peers = [...link.peers];
     final remembered = link.remembered;
-    if (remembered != null && !peers.any((peer) => peer.id == remembered.id))
+    if (remembered != null && !peers.any((peer) => peer.id == remembered.id)) {
       peers.add(remembered);
+    }
     return SafeArea(
       top: false,
       child: Column(
@@ -741,11 +740,12 @@ class _LanManualState extends State<_LanManual> {
         if (mounted) Navigator.pop(context);
       }
     } catch (error) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _error = error.toString();
           _preview = null;
         });
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -831,33 +831,23 @@ class _LanManualState extends State<_LanManual> {
                               style: Theme.of(context).textTheme.titleMedium,
                             ),
                             const SizedBox(height: 12),
-                            Text('本机 · ' + link.store.profile.name),
+                            Text('本机 · ${link.store.profile.name}'),
                             Text(preview.localCount.label),
                             const SizedBox(height: 12),
-                            Text(name + ' · ' + preview.connection.user),
+                            Text('$name · ${preview.connection.user}'),
                             Text(preview.remoteCount.label),
                             if (preview.skipped > 0)
                               Padding(
                                 padding: const EdgeInsets.only(top: 12),
-                                child: Text(
-                                  '双方范围外的 ' +
-                                      preview.skipped.toString() +
-                                      ' 条记录会保留',
-                                ),
+                                child: Text('双方范围外的 ${preview.skipped} 条记录会保留'),
                               ),
                             if (_mode != LanSyncMode.merge)
                               Padding(
                                 padding: const EdgeInsets.only(top: 16),
                                 child: Text(
                                   _mode == LanSyncMode.push
-                                      ? '将覆盖 $name 的当前用户记录；移除 ' +
-                                            preview.remoteCount.removed
-                                                .toString() +
-                                            ' 部追剧。'
-                                      : '将覆盖本机当前用户记录；移除 ' +
-                                            preview.localCount.removed
-                                                .toString() +
-                                            ' 部追剧。',
+                                      ? '将覆盖 $name 的当前用户记录；移除 ${preview.remoteCount.removed} 部追剧。'
+                                      : '将覆盖本机当前用户记录；移除 ${preview.localCount.removed} 部追剧。',
                                 ),
                               ),
                           ],
@@ -918,10 +908,7 @@ class _LanConflicts extends StatelessWidget {
         _ => row['manual'] == true ? '已看 · 手动标记' : '已看',
       };
     }
-    return '第 ' +
-        row['episode'].toString() +
-        ' 集 · ' +
-        formatPosition((row['position'] as num).toDouble());
+    return '第 ${row['episode']} 集 · ${formatPosition((row['position'] as num).toDouble())}';
   }
 
   @override
@@ -1020,7 +1007,7 @@ class LanPushButton extends StatelessWidget {
       builder: (context, _) => IconButton(
         tooltip: link.connection == null
             ? '推送'
-            : '推送到 ' + link.connection!.peer.name,
+            : '推送到 ${link.connection!.peer.name}',
         onPressed: onPressed,
         constraints: const BoxConstraints.tightFor(width: 36, height: 36),
         padding: EdgeInsets.zero,
@@ -1155,8 +1142,7 @@ class _LanPushPanelState extends State<_LanPushPanel> {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    '接收设备 · ' +
-                        (widget.controller.connection?.peer.name ?? '连接已断开'),
+                    '接收设备 · ${widget.controller.connection?.peer.name ?? '连接已断开'}',
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 24),

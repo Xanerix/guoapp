@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -18,11 +17,10 @@ class VideoEnhancementController extends ChangeNotifier {
   VideoEnhancementController({
     required this.player,
     required VideoController? video,
-    required VideoEnhancementPreferences preferences,
+    required this._preferences,
     required String category,
     required List<String> tags,
-  }) : _preferences = preferences,
-       _animationHint = videoHasAnimationTags(category, tags) {
+  }) : _animationHint = videoHasAnimationTags(category, tags) {
     final native = player.platform;
     supported = video != null && native is NativePlayer && Platform.isWindows;
     if (!supported) {
@@ -377,8 +375,9 @@ class VideoEnhancementController extends ChangeNotifier {
         final remaining = current
             .where((item) => !_ownedShaders.contains(item))
             .toList();
-        if (current.length != remaining.length)
+        if (current.length != remaining.length) {
           _mpv!.setStrings('glsl-shaders', remaining);
+        }
       }
     } catch (error) {
       failure = error;
@@ -487,8 +486,9 @@ class VideoEnhancementController extends ChangeNotifier {
     final active = _applyingBackend ?? _applied?.backend;
     if (active == null ||
         active == VideoEnhancementBackend.original ||
-        _circuitOpen)
+        _circuitOpen) {
       return;
+    }
     final graphics =
         prefix.contains('d3d11vpp') ||
         prefix.contains(_filterLabel) ||
@@ -500,8 +500,9 @@ class VideoEnhancementController extends ChangeNotifier {
         log.level == 'warn' &&
             RegExp(r'fail|error|unsupported|disabled').hasMatch(text);
     if (graphics && failed) {
-      if (_recentEnhancementErrors.length >= 16)
+      if (_recentEnhancementErrors.length >= 16) {
         _recentEnhancementErrors.clear();
+      }
       _recentEnhancementErrors.add(log.text.trim());
       _failBackend(const VideoEnhancementFailure('render'));
     }
@@ -579,8 +580,9 @@ class VideoEnhancementController extends ChangeNotifier {
         _circuitOpen ||
         !_foreground ||
         !_ready ||
-        _preferences.mode == VideoEnhancementMode.off)
+        _preferences.mode == VideoEnhancementMode.off) {
       return;
+    }
     final future = _monitor();
     _monitoring = future;
     unawaited(
@@ -595,16 +597,21 @@ class VideoEnhancementController extends ChangeNotifier {
       final value = await _device
           .invokeMapMethod<String, dynamic>('playbackPower')
           .timeout(const Duration(seconds: 2));
-      if (!_closed && value != null)
+      if (!_closed && value != null) {
         _power = VideoEnhancementPower.fromMap(value);
+      }
     } catch (_) {}
   }
 
   Future<void> _monitor() async {
     try {
       await _readPower();
-      if (_closed || !_initialized || _circuitOpen || _applyingBackend != null)
+      if (_closed ||
+          !_initialized ||
+          _circuitOpen ||
+          _applyingBackend != null) {
         return;
+      }
       final oldCapabilities = (_gpu, _luma, _hardware, _opaque8Bit);
       _readCapabilities();
       if (oldCapabilities != (_gpu, _luma, _hardware, _opaque8Bit)) _schedule();
@@ -705,8 +712,9 @@ class VideoEnhancementController extends ChangeNotifier {
   bool _hardwareFramesChanged(VideoEnhancementDecision selected) {
     final output = _mpv!.read('video-out-params');
     final filters = _mpv!.read('vf');
-    if (output is! Map || filters is! List || selected.output == null)
+    if (output is! Map || filters is! List || selected.output == null) {
       return false;
+    }
     final width = (output['w'] as num?)?.toDouble() ?? 0;
     final height = (output['h'] as num?)?.toDouble() ?? 0;
     return filters.any(
@@ -754,8 +762,9 @@ class VideoEnhancementController extends ChangeNotifier {
     var ownMs = 0.0;
     var timed = false;
     for (final pass in fresh.whereType<Map>()) {
-      if (!_isOwnPass(pass['desc']?.toString() ?? '', selected.backend))
+      if (!_isOwnPass(pass['desc']?.toString() ?? '', selected.backend)) {
         continue;
+      }
       final last = pass['last'];
       if (last is num && last >= 0) {
         ownMs += last / 1000000;

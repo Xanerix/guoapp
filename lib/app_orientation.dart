@@ -7,8 +7,7 @@ import 'package:flutter/widgets.dart';
 import 'app_layout.dart';
 
 class AppOrientationController {
-  AppOrientationController({required bool television})
-    : _television = television;
+  AppOrientationController({required this._television});
 
   bool _television;
   bool _disposed = false;

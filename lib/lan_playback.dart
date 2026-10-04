@@ -76,8 +76,9 @@ extension LanPlayback on LanController {
     final pending = _preparedPlayback;
     if (pending == null ||
         pending.state == 'playing' ||
-        pending.state == 'starting')
+        pending.state == 'starting') {
       return;
+    }
     if (DateTime.now().difference(pending.created) >
         const Duration(minutes: 2)) {
       await _cancelIncomingPlayback();
@@ -90,26 +91,30 @@ extension LanPlayback on LanController {
     LanConnection remote,
   ) async {
     final id = lanText(body['id'], 32);
-    if (!RegExp(r'^[a-f0-9]{32}$').hasMatch(id))
+    if (!RegExp(r'^[a-f0-9]{32}$').hasMatch(id)) {
       throw const FormatException('播放交接标识无效');
+    }
     var pending = _preparedPlayback;
     if (path == 'play/cancel') {
-      if (pending?.id == id && pending?.remote == remote)
+      if (pending?.id == id && pending?.remote == remote) {
         await _cancelIncomingPlayback(id: id);
+      }
       _playReceipts.putIfAbsent(id, () => {'id': id, 'state': 'cancelled'});
       _trimPlayReceipts();
       return _playReceipts[id]!;
     }
-    if (pending?.id != id && _playReceipts.containsKey(id))
+    if (pending?.id != id && _playReceipts.containsKey(id)) {
       return _playReceipts[id]!;
+    }
     if (path == 'play/prepare') {
       final intent = LanPlaybackIntent.fromJson(body['intent']);
       if (!store.allowsSource(intent.drama.source) ||
           !remote.sources.contains(intent.drama.source)) {
         throw StateError('接收设备当前用户没有此站源权限');
       }
-      if (!intent.playing || openPlayback == null)
+      if (!intent.playing || openPlayback == null) {
         throw StateError('接收设备暂不能开始播放');
+      }
       if (pending != null && pending.id == id) {
         if (pending.intent.identity != intent.identity ||
             pending.remote != remote) {
@@ -149,8 +154,9 @@ extension LanPlayback on LanController {
           position > 604800) {
         throw const FormatException('推送播放位置无效');
       }
-      if (body['identity'] != pending.intent.identity)
+      if (body['identity'] != pending.intent.identity) {
         throw StateError('推送的分集已变化');
+      }
       pending.playback!.position = position.toDouble();
       pending.state = 'starting';
       unawaited(_startPlayback(pending));
@@ -173,8 +179,9 @@ extension LanPlayback on LanController {
                 )
                 .toList()
               ..sort((a, b) => a.episode.number.compareTo(b.episode.number));
-        if (pending.cancelled || _preparedPlayback != pending || _run != run)
+        if (pending.cancelled || _preparedPlayback != pending || _run != run) {
           return;
+        }
         final selected = jobs
             .where(
               (job) =>
@@ -202,18 +209,21 @@ extension LanPlayback on LanController {
         }
       }
       if (pending.cancelled || _preparedPlayback != pending || _run != run) {
-        if (plan != null)
+        if (plan != null) {
           await repository.release(plan.session).catchError((Object _) {});
+        }
         return;
       }
       detail ??= await repository.detail(pending.intent.drama);
       if (pending.cancelled || _preparedPlayback != pending || _run != run) {
-        if (plan != null)
+        if (plan != null) {
           await repository.release(plan.session).catchError((Object _) {});
+        }
         return;
       }
-      if (detail.drama.id != pending.intent.drama.id)
+      if (detail.drama.id != pending.intent.drama.id) {
         throw StateError('接收端剧目身份不一致');
+      }
       final index = detail.episodes.indexWhere(
         (episode) =>
             episode.number == pending.intent.episode &&
@@ -274,8 +284,9 @@ extension LanPlayback on LanController {
         await playback.stop?.call();
         return;
       }
-      if (result['state'] != 'playing')
+      if (result['state'] != 'playing') {
         throw StateError(result['message'] as String? ?? '接收端播放失败');
+      }
       pending.state = 'playing';
       pending.actualPosition = (result['position'] as num).toDouble();
       _playReceipts[pending.id] = pending.result;
@@ -307,8 +318,9 @@ extension LanPlayback on LanController {
     final remote = connection;
     if (remote == null) throw StateError('请先选择接收设备');
     final intent = snapshot();
-    if (!remote.sources.contains(intent.drama.source))
+    if (!remote.sources.contains(intent.drama.source)) {
       throw StateError('对方当前用户没有此站源权限');
+    }
     final run = _run;
     final id = lanID();
     final ticket = ++_pushSequence;
@@ -352,7 +364,7 @@ extension LanPlayback on LanController {
       if (!valid()) throw StateError('播放内容已变更，忽略过期交接');
       await onAccepted();
       accepted = true;
-      pushMessage = '已在 ' + remote.peer.name + ' 播放';
+      pushMessage = '已在 ${remote.peer.name} 播放';
       flush();
     } catch (failure) {
       if (ticket == _pushSequence) pushMessage = failure.toString();

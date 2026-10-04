@@ -21,8 +21,9 @@ extension LocalStoreSync on LocalStore {
     final records = <String, LanRecord>{};
     for (final row in raw) {
       final record = LanRecord.fromJson(row);
-      if (records.containsKey(record.id))
+      if (records.containsKey(record.id)) {
         throw const FormatException('备份同步记录重复');
+      }
       records[record.id] = record;
     }
     final favorites = (library['favorites'] as List)

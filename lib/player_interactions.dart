@@ -12,10 +12,7 @@ import 'widgets.dart';
 enum SwipeAction { none, brightness, episode }
 
 class GestureHudState {
-  const GestureHudState({
-    this.type = SwipeAction.none,
-    this.value = 0.0,
-  });
+  const GestureHudState({this.type = SwipeAction.none, this.value = 0.0});
   final SwipeAction type;
   final double value; // 0.0 ~ 1.0
 }
@@ -33,12 +30,14 @@ class PlayerInteractions extends ChangeNotifier {
     _playing = player.stream.playing.listen((playing) {
       if (!playing) cancel();
     });
-    AppDevice.getBrightness().then((val) {
-      if (!_disposed) {
-        _brightness = val;
-        notifyListeners();
-      }
-    }).catchError((_) {});
+    AppDevice.getBrightness()
+        .then((val) {
+          if (!_disposed) {
+            _brightness = val;
+            notifyListeners();
+          }
+        })
+        .catchError((_) {});
   }
 
   final Player player;
@@ -72,7 +71,6 @@ class PlayerInteractions extends ChangeNotifier {
   GestureHudState _hudState = const GestureHudState();
   double _brightness = 0.5;
   double _initialBrightness = 0.5;
-  double _viewWidth = 0.0;
   double _viewHeight = 0.0;
   Timer? _hudTimer;
 
@@ -90,6 +88,7 @@ class PlayerInteractions extends ChangeNotifier {
   void dismissBrightnessHud() {
     _scheduleDismissHud();
   }
+
   String get feedback => _feedback;
   bool get boosting => _boosting;
   bool get suppressTap => DateTime.now().isBefore(_ignoreTapUntil);
@@ -186,7 +185,6 @@ class PlayerInteractions extends ChangeNotifier {
     _started = event.timeStamp;
     _swipeEnabled = swipeEnabled && event.kind == PointerDeviceKind.touch;
     _swipeThreshold = math.max(30, math.min(80, height * .08));
-    _viewWidth = width;
     _viewHeight = height;
     _moved = _held = false;
     _swipeAction = SwipeAction.none;
@@ -239,7 +237,9 @@ class PlayerInteractions extends ChangeNotifier {
     }
     if (_pointer != event.pointer || _origin == null) return;
     final delta = (_lastPosition ?? event.localPosition) - _origin!;
-    final isVertical = delta.dy.abs() >= _swipeThreshold && delta.dy.abs() > delta.dx.abs() * 1.5;
+    final isVertical =
+        delta.dy.abs() >= _swipeThreshold &&
+        delta.dy.abs() > delta.dx.abs() * 1.5;
 
     if (_swipeAction == SwipeAction.episode &&
         _swipeEnabled &&

@@ -236,7 +236,14 @@ class _TelevisionControlsState extends State<TelevisionControls> {
     for (final subscription in _subscriptions) {
       subscription.cancel();
     }
-    for (final node in [_surface, _play, _episodes, _diary, _settings, _progress]) {
+    for (final node in [
+      _surface,
+      _play,
+      _episodes,
+      _diary,
+      _settings,
+      _progress,
+    ]) {
       node.dispose();
     }
     super.dispose();

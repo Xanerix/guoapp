@@ -83,8 +83,9 @@ class LanController extends ChangeNotifier with WidgetsBindingObserver {
   Map<String, dynamic> get _checkedSettings {
     final value = store.lanSettings;
     for (final key in ['enabled', 'autoSync']) {
-      if (value.containsKey(key) && value[key] is! bool)
+      if (value.containsKey(key) && value[key] is! bool) {
         throw const FormatException('设备互联开关无效');
+      }
     }
     if (value.containsKey('name')) lanText(value['name'], 60);
     final pins = lanMap(value['pins'] ?? {});
@@ -147,7 +148,7 @@ class LanController extends ChangeNotifier with WidgetsBindingObserver {
             .fold(0, (count, record) => count + record.conflicts);
   List<LanPeer> get peers => List.unmodifiable(_peers);
   String get connectionLabel => connection != null
-      ? '已连接 · ' + connection!.peer.name
+      ? '已连接 · ${connection!.peer.name}'
       : _connecting
       ? '正在连接'
       : receiving
@@ -330,8 +331,9 @@ class LanController extends ChangeNotifier with WidgetsBindingObserver {
       discovery.removeListener(_discovered);
       await nsd.stopDiscovery(discovery).catchError((Object _) {});
     }
-    if (registration != null)
+    if (registration != null) {
       await nsd.unregister(registration).catchError((Object _) {});
+    }
     _notify();
   }
 
@@ -356,7 +358,7 @@ class LanController extends ChangeNotifier with WidgetsBindingObserver {
     try {
       final registration = await nsd.register(
         nsd.Service(
-          name: 'Zgj-' + local!.id.substring(0, 12),
+          name: 'Zgj-${local!.id.substring(0, 12)}',
           type: serviceType,
           port: local!.port,
           txt: {
@@ -428,8 +430,8 @@ class LanController extends ChangeNotifier with WidgetsBindingObserver {
           final host = address.address;
           addresses.add(
             host.contains(':')
-                ? '[$host]:' + service.port.toString()
-                : '$host:' + service.port.toString(),
+                ? '[$host]:${service.port}'
+                : '$host:${service.port}',
           );
         }
         if (addresses.isEmpty || text('caps') != 'sync,play') continue;
@@ -505,8 +507,9 @@ class LanController extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> forget(LanPeer peer) async {
     final epoch = store.profileEpoch;
-    if (connection?.peer.id == peer.id || _selected == peer.id)
+    if (connection?.peer.id == peer.id || _selected == peer.id) {
       await disconnect();
+    }
     _checkUser(epoch);
     final values = {..._checkedSettings};
     final pins = lanMap(values['pins'] ?? {})..remove(peer.id);
@@ -537,8 +540,9 @@ class LanController extends ChangeNotifier with WidgetsBindingObserver {
     final epoch = store.profileEpoch;
     await ensureEnabled();
     _checkUser(epoch);
-    if (connection?.peer.id == peer.id && connection?.peer.pin == peer.pin)
+    if (connection?.peer.id == peer.id && connection?.peer.pin == peer.pin) {
       return;
+    }
     if (_connecting || _pairing != null) throw StateError('正在连接设备，请稍候');
     _checkPin(peer);
     if (connection != null) await disconnect();
@@ -553,8 +557,9 @@ class LanController extends ChangeNotifier with WidgetsBindingObserver {
         'deviceId': peer.id,
         'pin': peer.pin,
       });
-      if (_disposed || run != _run || _selected != peer.id || !receiving)
+      if (_disposed || run != _run || _selected != peer.id || !receiving) {
         throw StateError('连接已取消');
+      }
       Object? lastError;
       for (final address in peer.addresses) {
         try {
@@ -573,12 +578,14 @@ class LanController extends ChangeNotifier with WidgetsBindingObserver {
                   : null,
             },
           });
-          if (_disposed || run != _run || _selected != peer.id)
+          if (_disposed || run != _run || _selected != peer.id) {
             throw StateError('连接已取消');
+          }
           final remote = _connection(peer, address, data);
           await _remember(peer, remote.account);
-          if (_disposed || run != _run || _selected != peer.id)
+          if (_disposed || run != _run || _selected != peer.id) {
             throw StateError('连接已取消');
+          }
           connection = remote;
           syncMessage = autoSync && remote.autoSync
               ? '已连接，等待同步'
@@ -642,8 +649,9 @@ class LanController extends ChangeNotifier with WidgetsBindingObserver {
         !receiving ||
         connection != null ||
         _connecting ||
-        DateTime.now().isBefore(_retryAt))
+        DateTime.now().isBefore(_retryAt)) {
       return;
+    }
     try {
       final previous = remembered;
       final peer = previous == null
@@ -653,8 +661,10 @@ class LanController extends ChangeNotifier with WidgetsBindingObserver {
       if (peer == null) return;
       if (previous == null &&
           local!.id.compareTo(peer.id) > 0 &&
-          DateTime.now().difference(_scanStarted) < const Duration(seconds: 7))
+          DateTime.now().difference(_scanStarted) <
+              const Duration(seconds: 7)) {
         return;
+      }
       await connect(peer, automatic: true);
     } catch (failure) {
       error = failure.toString();
@@ -677,8 +687,9 @@ class LanController extends ChangeNotifier with WidgetsBindingObserver {
   Future<Map<String, dynamic>> _acceptPair(Map<String, dynamic> event) async {
     final body = lanMap(event['payload']);
     final peer = LanPeer.fromJson(body);
-    if (peer.id != event['peerId'] || peer.pin != event['pin'])
+    if (peer.id != event['peerId'] || peer.pin != event['pin']) {
       throw StateError('设备身份不一致');
+    }
     _checkPin(peer);
     if (body['expectedAccount'] != null &&
         body['expectedAccount'] != store.lanDocument.replica) {
@@ -784,8 +795,9 @@ class LanController extends ChangeNotifier with WidgetsBindingObserver {
             _,
           ) async {
             try {
-              if (run != _run || connection != remote)
+              if (run != _run || connection != remote) {
                 throw StateError('设备连接已变更');
+              }
               completer.complete(await _receiveSync(path, body, remote));
             } catch (error, stack) {
               completer.completeError(error, stack);
@@ -872,14 +884,15 @@ class LanController extends ChangeNotifier with WidgetsBindingObserver {
         connection?.autoSync != true ||
         _manual ||
         syncing ||
-        _disposed)
+        _disposed) {
       return;
+    }
     _lastAutomatic = DateTime.now();
     final run = _run;
     unawaited(
       synchronize(automatic: true).catchError((Object failure) {
         if (run != _run || _disposed) return;
-        syncMessage = '等待重试 · ' + failure.toString();
+        syncMessage = '等待重试 · $failure';
         _notify();
       }),
     );
@@ -904,8 +917,9 @@ class LanController extends ChangeNotifier with WidgetsBindingObserver {
     final remote = connection;
     try {
       final data = await _request('status', {});
-      if (data['account'] != remote!.account)
+      if (data['account'] != remote!.account) {
         throw StateError('对方已切换用户，请重新选择设备');
+      }
       remote.autoSync = data['autoSync'] == true;
       if (data['manual'] != true &&
           DateTime.now().difference(_lastAutomatic) >=
