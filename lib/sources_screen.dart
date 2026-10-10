@@ -238,7 +238,7 @@ class _SourcesScreenState extends State<SourcesScreen> {
     final healthExpanded = _expandedHealth.contains(source.id);
     final colors = Theme.of(context).colorScheme;
     return Card(
-      key: ValueKey('source-${source.id}'),
+      key: PageStorageKey('source-${source.id}'),
       margin: const EdgeInsets.only(bottom: 16),
       child: Padding(
         padding: const EdgeInsets.all(16),
