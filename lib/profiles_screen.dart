@@ -419,7 +419,7 @@ class _ProfileEditorState extends State<ProfileEditor> {
             const SizedBox(height: 20),
             if (widget.profile?.admin != true) ...[
               Text('允许访问的站源', style: Theme.of(context).textTheme.titleMedium),
-              for (final source in widget.store.sources)
+              for (final source in SourceSite.values)
                 CheckboxListTile(
                   contentPadding: EdgeInsets.zero,
                   controlAffinity: ListTileControlAffinity.leading,

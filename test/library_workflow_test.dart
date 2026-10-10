@@ -20,8 +20,10 @@ void main() {
   Future<LocalStore> create() async {
     SharedPreferences.setMockInitialValues({});
     final store = testStore(await SharedPreferences.getInstance());
-    // 管理员默认可见全部站源；显式启用密码锁以覆盖解锁后的站源范围。
-    await store.enableSourceGate('666666');
+    // 敏感站源默认关闭；全部开启以覆盖完整站源范围。
+    for (final source in SourceSite.values) {
+      await store.setSourceEnabled(source.id, true);
+    }
     addTearDown(store.dispose);
     return store;
   }

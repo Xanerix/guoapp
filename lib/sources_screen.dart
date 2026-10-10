@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'app_build.dart';
 import 'core_bridge.dart';
 import 'local_store.dart';
 import 'models.dart';
@@ -131,6 +132,16 @@ class _SourcesScreenState extends State<SourcesScreen> {
     }
   }
 
+  Future<void> _toggle(SourceSite source, bool enabled) async {
+    setState(() => _errors.remove(source.id));
+    try {
+      await widget.store.setSourceEnabled(source.id, enabled);
+      if (enabled) unawaited(_refresh());
+    } catch (error) {
+      if (mounted) setState(() => _errors[source.id] = error.toString());
+    }
+  }
+
   Future<void> _copy(SourceSite source, SourceStatus status) async {
     final text = StringBuffer('${source.name}\n');
     text.writeln(
@@ -162,7 +173,7 @@ class _SourcesScreenState extends State<SourcesScreen> {
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: widget.store,
     builder: (context, _) {
-      final sources = widget.store.sources.toList()
+      final sources = widget.store.permittedSources
         ..sort((a, b) {
           final aFirst = a.id == widget.initialSource ? 0 : 1;
           final bFirst = b.id == widget.initialSource ? 0 : 1;
@@ -237,6 +248,55 @@ class _SourcesScreenState extends State<SourcesScreen> {
     final health = status?.health;
     final healthExpanded = _expandedHealth.contains(source.id);
     final colors = Theme.of(context).colorScheme;
+    final switchedOn = widget.store.sourceEnabled(source.id);
+    final admin = widget.store.profile.admin;
+    final header = Row(
+      children: [
+        const Icon(Icons.dns_outlined),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            source.name,
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+        ),
+        if (switchedOn) Text('${status?.count ?? 0} 部'),
+        if (allSourcesEnabled) ...[
+          const SizedBox(width: 8),
+          Switch(
+            key: ValueKey('switch-${source.id}'),
+            value: switchedOn,
+            onChanged: admin ? (value) => _toggle(source, value) : null,
+          ),
+        ],
+      ],
+    );
+    if (!switchedOn) {
+      final closedError = _errors[source.id] ?? '';
+      return Card(
+        key: PageStorageKey('source-${source.id}'),
+        margin: const EdgeInsets.only(bottom: 16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              header,
+              const SizedBox(height: 8),
+              Text(admin ? '已关闭，开启后在首页、搜索和记录中显示' : '已关闭，仅管理员可以开启'),
+              if (closedError.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    closedError,
+                    style: TextStyle(color: colors.error),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    }
     return Card(
       key: PageStorageKey('source-${source.id}'),
       margin: const EdgeInsets.only(bottom: 16),
@@ -245,19 +305,7 @@ class _SourcesScreenState extends State<SourcesScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                const Icon(Icons.dns_outlined),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    source.name,
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                ),
-                Text('${status?.count ?? 0} 部'),
-              ],
-            ),
+            header,
             const SizedBox(height: 8),
             Text('最近更新：${sourceTimestamp(status?.updatedAt)}'),
             if (status != null && status.count > 0)

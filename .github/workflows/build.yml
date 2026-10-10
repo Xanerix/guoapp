@@ -259,4 +259,14 @@ jobs:
 
           签名证书 SHA-256：${ANDROID_CERT_SHA256}
           EOF
+          changes="$(awk -v heading="## ${VERSION}" '
+            $0 == heading { found = 1; next }
+            found && /^## / { exit }
+            found && !started && /^[[:space:]]*$/ { next }
+            found { started = 1; print }
+          ' CHANGELOG.md)"
+          if [ -n "$changes" ]; then
+            { printf '更新内容：\n\n%s\n\n' "$changes"; cat notes.md; } > notes.tmp
+            mv notes.tmp notes.md
+          fi
           gh release create "$TAG" release/* --target "$GITHUB_SHA" --title "红果鉴 / 真果鉴 ${VERSION}" --notes-file notes.md

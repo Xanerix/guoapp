@@ -4,10 +4,6 @@ import 'package:duanju_app/local_profiles.dart';
 import 'package:duanju_app/local_store.dart';
 import 'package:duanju_app/models.dart';
 
-/// 站源密码锁测试夹具：为非管理员会话预先写入可解锁的密码锁配置。
-const gateSalt = '0123456789abcdef0123456789abcdef';
-const gatePin = '666666';
-
 /// 测试用 pin 哈希：与 [hashProfilePin] 同格式（64 位十六进制），但不用 isolate。
 /// flutter test 的 fake async 环境下 [Isolate.run] 永不完成，会让用例挂到超时。
 Future<String> testPinHasher(String pin, String salt) async {
@@ -21,15 +17,6 @@ Future<String> testPinHasher(String pin, String salt) async {
 /// 构造注入测试哈希的 [LocalStore]。
 LocalStore testStore(SharedPreferences preferences) =>
     LocalStore(preferences, pinHasher: testPinHasher);
-
-Future<Map<String, Object>> gatePreferences() async => {
-  'sourceGateEnabled': true,
-  'sourceGateSalt': gateSalt,
-  'sourceGateHash': await testPinHasher(gatePin, gateSalt),
-};
-
-/// 解锁默认隐藏的站源，供需要访问全部站源的用例复用。
-Future<void> unlockGate(LocalStore store) => store.unlockSources(gatePin);
 
 class FixtureRepository extends AppRepository {
   int detailCalls = 0;

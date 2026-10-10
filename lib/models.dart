@@ -38,10 +38,10 @@ class SourceSite {
     '韩剧 · 韩国电影 · 综艺动漫',
   );
 
-  /// 默认可见的站源：红果、韩小圈、鬼片网、青空次元。
+  /// 默认开启的站源：红果、韩小圈、鬼片网、青空次元。
   static const primaryValues = [hongguo, hanxiaoquan, guipian, sorani];
 
-  /// 敏感站源：默认隐藏，输入解锁密码后才显示。
+  /// 敏感站源：默认关闭，可在站源管理中开启。
   static const restrictedValues = [
     SourceSite('huangdou', '黄豆', '精选短剧'),
     SourceSite('huangju', '剧果', '热门 · 最新 · 分类短剧'),
@@ -56,16 +56,8 @@ class SourceSite {
   static const values = allSourcesEnabled ? knownValues : [hongguo];
   static bool isAvailable(String id) => values.any((site) => site.id == id);
   static bool isKnown(String id) => allValues.any((site) => site.id == id);
-  static bool isPrimary(String id) =>
-      primaryValues.any((site) => site.id == id);
   static bool isRestricted(String id) =>
       restrictedValues.any((site) => site.id == id);
-
-  /// 运行时可见站源：未解锁时只保留 [primaryValues]。
-  static List<SourceSite> visibleValues({required bool unlocked}) => [
-    for (final site in values)
-      if (unlocked || isPrimary(site.id)) site,
-  ];
   static SourceSite byId(String id) =>
       allValues.firstWhere((site) => site.id == id, orElse: () => hongguo);
 }

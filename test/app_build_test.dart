@@ -16,7 +16,7 @@ void main() {
     SharedPreferences.setMockInitialValues({'source': 'huangdou'});
     final store = testStore(await SharedPreferences.getInstance());
     expect(appSlug, allSourcesEnabled ? 'zhenguojian' : 'hongguojian');
-    // 默认只显示红果、韩小圈、鬼片网与青空次元，其余站源需要密码解锁。
+    // 默认只开启红果、韩小圈、鬼片网与青空次元，其余站源需在站源管理中开启。
     expect(store.sources.length, allSourcesEnabled ? 4 : 1);
     expect(
       SourceSite.values.any((source) => source.id == 'dsd'),
@@ -27,10 +27,13 @@ void main() {
     expect(SourceSite.byId('dsd').name, '帝果');
     expect(store.allowsSource('dsd'), isFalse);
     expect(store.source, 'hongguo');
-    await store.enableSourceGate('666666');
-    expect(store.sourcesUnlocked, isTrue);
-    expect(store.sources.length, allSourcesEnabled ? 11 : 1);
-    expect(store.allowsSource('dsd'), allSourcesEnabled);
+    if (allSourcesEnabled) {
+      await store.setSourceEnabled('dsd', true);
+      expect(store.sources.length, 5);
+      expect(store.allowsSource('dsd'), isTrue);
+    } else {
+      await expectLater(store.setSourceEnabled('dsd', true), throwsStateError);
+    }
     store.dispose();
   });
 
@@ -38,7 +41,7 @@ void main() {
     'a restored foreign-source profile keeps its identity and permissions',
     () async {
       SharedPreferences.setMockInitialValues({
-        ...await gatePreferences(),
+        'sourceSwitches': jsonEncode({'huangdou': true}),
         'profiles': jsonEncode([
           LocalProfile(
             id: 'default',
@@ -58,7 +61,6 @@ void main() {
         'profile.viewer.source': 'huangdou',
       });
       final store = testStore(await SharedPreferences.getInstance());
-      await unlockGate(store);
       expect(store.profile.id, 'viewer');
       expect(store.profile.admin, isFalse);
       expect(store.profile.sources, ['huangdou']);
@@ -72,7 +74,7 @@ void main() {
 
   test('restored DSD profile data follows edition availability', () async {
     SharedPreferences.setMockInitialValues({
-      ...await gatePreferences(),
+      'sourceSwitches': jsonEncode({'dsd': true}),
       'profiles': jsonEncode([
         LocalProfile(
           id: 'default',
@@ -92,7 +94,6 @@ void main() {
       'profile.viewer.source': 'dsd',
     });
     final store = testStore(await SharedPreferences.getInstance());
-    await unlockGate(store);
     expect(store.configurationError, isNull);
     expect(store.profile.sources, ['dsd']);
     expect(

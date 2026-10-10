@@ -24,8 +24,6 @@ import 'vip_icon.dart';
 import 'settings_screen.dart';
 import 'profiles_screen.dart';
 import 'search_input.dart';
-import 'source_gate_dialog.dart';
-import 'source_gate_taps.dart';
 import 'sources_screen.dart';
 import 'batch_download_screen.dart';
 import 'batch_downloads.dart';
@@ -69,7 +67,6 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _refreshingUpdatedCache = false;
   bool _selectionMode = false;
   bool _showRecommendations = false;
-  final _recentTaps = RepeatTapGate();
   String _sourceSignature = '';
   bool _catalogLoadScheduled = false;
 
@@ -673,25 +670,6 @@ class _HomeScreenState extends State<HomeScreen> {
     _selectedDramas.clear();
   });
 
-  /// 连点「最近观看」6 次弹出站源密码锁（用于启用 / 关闭密码功能）。
-  /// 仅多源包（真果鉴）生效；红果鉴单源包无密码功能。
-  void _onNavSelected(int tab) {
-    if (allSourcesEnabled && tab == 2) {
-      if (_recentTaps.register(tab)) {
-        _openSourceGate();
-        return;
-      }
-    } else {
-      _recentTaps.reset();
-    }
-    _changeTab(tab);
-  }
-
-  void _openSourceGate() {
-    _pauseCatalog();
-    unawaited(showSourceGateDialog(context, widget.store));
-  }
-
   void _cancelSelection() => setState(() {
     _selectionMode = false;
     _selectedDramas.clear();
@@ -1052,7 +1030,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ? _televisionNavigation(destinations)
                       : NavigationRail(
                           selectedIndex: _tab,
-                          onDestinationSelected: _onNavSelected,
+                          onDestinationSelected: _changeTab,
                           labelType: NavigationRailLabelType.all,
                           groupAlignment: -.8,
                           destinations: destinations,
@@ -1064,7 +1042,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ? widget.store.sources.isEmpty
                             ? const StatusPanel(
                                 title: '暂无可用站源',
-                                message: '请联系管理员为当前用户开放站源。',
+                                message: '请在站源管理中开启站源，或联系管理员开放权限。',
                               )
                             : _catalog(selectionInBody: desktop || television)
                       : _tab == 3
@@ -1097,7 +1075,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ? _selectionBar()
               : AppBottomNavigation(
                   selectedIndex: _tab,
-                  onDestinationSelected: _onNavSelected,
+                  onDestinationSelected: _changeTab,
                   destinations: [
                     NavigationDestination(
                       icon: Icon(Icons.explore_outlined),
@@ -1159,7 +1137,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: RemoteTarget(
                   key: ValueKey('tv-nav-$index'),
                   autofocus: index == 0,
-                  onPressed: () => _onNavSelected(index),
+                  onPressed: () => _changeTab(index),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 6),
                     child: Column(
