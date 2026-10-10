@@ -826,7 +826,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   )
-                : _tab == 0
+                : _tab == 0 && widget.store.sources.isNotEmpty
                 ? PopupMenuButton<SourceGroup>(
                     key: const ValueKey('source-switch'),
                     tooltip: '切换站源',
@@ -892,7 +892,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   if (!_showRecommendations)
                     IconButton(
                       tooltip: '排序与筛选 · ${widget.store.catalogView.sort.label}',
-                      onPressed: _chooseCatalogView,
+                      onPressed: widget.store.sources.isEmpty
+                          ? null
+                          : _chooseCatalogView,
                       color:
                           widget.store.catalogView.sort != CatalogSort.source ||
                               widget.store.catalogView.release.isNotEmpty
@@ -914,7 +916,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     IconButton(
                       key: const ValueKey('select-catalog-dramas'),
                       tooltip: '多选下载',
-                      onPressed: () => setState(() => _selectionMode = true),
+                      onPressed: widget.store.sources.isEmpty
+                          ? null
+                          : () => setState(() => _selectionMode = true),
                       icon: const Icon(Icons.checklist_rounded),
                     ),
                   IconButton(
@@ -925,7 +929,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           ? Icons.search_off_rounded
                           : Icons.search_rounded,
                     ),
-                    onPressed: _toggleSearch,
+                    onPressed: widget.store.sources.isEmpty
+                        ? null
+                        : _toggleSearch,
                   ),
                 ],
                 if (_tab == 0 &&
