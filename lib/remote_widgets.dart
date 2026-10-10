@@ -724,7 +724,6 @@ class _TelevisionSearchDialogState extends State<TelevisionSearchDialog> {
                               child: RemoteButton(
                                 label: '搜索',
                                 icon: Icons.search_rounded,
-                                selected: true,
                                 onPressed: () => _submit(_query),
                               ),
                             ),
