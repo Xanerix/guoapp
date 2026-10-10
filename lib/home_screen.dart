@@ -769,19 +769,20 @@ class _HomeScreenState extends State<HomeScreen> {
 
   List<Drama> get _visible {
     final query = _search.text.trim().toLowerCase();
+    final category = _category;
+    final hideVip = _hideVip;
+    final onlineSearch = _onlineSearch;
     return sortCatalog(
       _items.where((drama) {
         if (!widget.store.allowsSource(drama.source)) return false;
-        if (_category.startsWith('local:') &&
-            categoryName(drama.category) != _category.substring(6)) {
+        if (category.startsWith('local:') &&
+            categoryName(drama.category) != category.substring(6)) {
           return false;
         }
-        if (_hideVip && drama.source == 'huangdou' && drama.vip) {
+        if (hideVip && drama.source == 'huangdou' && drama.vip) {
           return false;
         }
-        return _onlineSearch ||
-            query.isEmpty ||
-            matchesDramaQuery(drama, query);
+        return onlineSearch || query.isEmpty || matchesDramaQuery(drama, query);
       }),
       widget.store.catalogView,
     );

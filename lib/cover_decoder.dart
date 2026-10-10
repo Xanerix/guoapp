@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:path/path.dart' as path;
 
@@ -120,7 +121,7 @@ class CoverDecoder {
       if (!await _isJPEG(intermediate)) throw AppFailure('海报转换未生成有效图片');
       if (await target.exists()) await target.delete();
       await intermediate.rename(target.path);
-      await _prune(target.parent, target.path);
+      await _pruneInBackground(target.parent.path, target.path);
       return target.path;
     } on TimeoutException {
       await executor.cancel();
@@ -139,16 +140,19 @@ class CoverDecoder {
     }
   }
 
-  Future<void> _prune(Directory directory, String keep) async {
+  static Future<void> _pruneInBackground(String directory, String keep) =>
+      Isolate.run(() => _prune(Directory(directory), keep));
+
+  static void _prune(Directory directory, String keep) {
     final entries = <(File, FileStat)>[];
     var size = 0;
-    await for (final entry in directory.list(followLinks: false)) {
+    for (final entry in directory.listSync(followLinks: false)) {
       if (entry is! File) continue;
-      final stat = await entry.stat();
+      final stat = entry.statSync();
       if (entry.path.endsWith('.part')) {
         if (DateTime.now().difference(stat.modified) >
             const Duration(minutes: 1)) {
-          await entry.delete();
+          entry.deleteSync();
         }
       } else if (entry.path.endsWith('.jpg')) {
         entries.add((entry, stat));
@@ -160,7 +164,7 @@ class CoverDecoder {
     for (final entry in entries) {
       if (count <= 128 && size <= 64 * 1024 * 1024) break;
       if (entry.$1.path == keep) continue;
-      await entry.$1.delete();
+      entry.$1.deleteSync();
       count--;
       size -= entry.$2.size;
     }
