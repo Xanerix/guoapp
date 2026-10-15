@@ -462,9 +462,13 @@ class _PlayerScreenState extends State<PlayerScreen>
   }
 
   void _applyLifecycleVisibility({bool pauseWhenHidden = true}) {
-    final visible =
-        _lifecycleState == AppLifecycleState.resumed ||
-        _pictureInPictureVisible;
+    // Windows 上切到别的窗口只触发 inactive，窗口本身仍在屏幕上，
+    // 不应当作"不可见"来暂停增强、弹幕和预加载。
+    final treatAsVisible = Platform.isWindows
+        ? (AppLifecycleState.resumed == _lifecycleState ||
+            AppLifecycleState.inactive == _lifecycleState)
+        : _lifecycleState == AppLifecycleState.resumed;
+    final visible = treatAsVisible || _pictureInPictureVisible;
     _foreground = visible;
     _enhancement.setForeground(_foreground);
     _syncDanmaku();
@@ -474,7 +478,10 @@ class _PlayerScreenState extends State<PlayerScreen>
     if (pauseWhenHidden &&
         !visible &&
         (_lifecycleState == AppLifecycleState.paused ||
-            _lifecycleState == AppLifecycleState.inactive ||
+            // Windows 上切到别的窗口只会触发 inactive（窗口仍可见），
+            // 不应该暂停播放；只有真正 hidden/paused 才暂停。
+            (!Platform.isWindows &&
+                _lifecycleState == AppLifecycleState.inactive) ||
             _lifecycleState == AppLifecycleState.hidden)) {
       _playIntent = false;
       unawaited(_player.pause());
