@@ -17,16 +17,25 @@ func (downloader *Downloader) resolveHongguoAppMedia(ctx context.Context, videoI
 		return providerMedia{}, errors.New("红果视频 ID 无效")
 	}
 	payload := map[string]any{
-		"video_id": videoID, "content_type": 1,
-		"biz_param": map[string]any{"need_all_video_definition": true, "video_platform": 3},
+		"content_type": 1, "dr_scene": "preload",
+		"mixed_video_id_map": map[string]any{"0": []string{videoID}},
+		"biz_param":          map[string]any{"need_all_video_definition": true, "video_platform": 1024},
 	}
-	result, err := downloader.hongguoAppRequest(ctx, http.MethodPost, "/novel/player/video_model/v1/", nil, payload)
+	// 2026-10-19 起单集 video_model/v1 对评论身份签名静默返回空响应，改走
+	// multi_video_model/preload（mixed_video_id_map + video_platform=Mixed），
+	// 并用播放身份签名（hongguoAppRequest 默认路径，不带评论标记）。
+	result, err := downloader.hongguoAppRequest(ctx, http.MethodPost,
+		"/novel/player/multi_video_model/preload/v1/", nil, payload)
 	if err != nil {
 		return providerMedia{}, err
 	}
 	data := nestedMap(result, "data")
-	model, _ := data["video_model"].(map[string]any)
-	if encoded, ok := data["video_model"].(string); ok && encoded != "" {
+	entry := nestedMap(data, videoID)
+	if len(entry) == 0 {
+		return providerMedia{}, errors.New("红果 App 播放信息未包含该集")
+	}
+	model, _ := entry["video_model"].(map[string]any)
+	if encoded, ok := entry["video_model"].(string); ok && encoded != "" {
 		if decoded, err := decodeHongguoBase64(encoded); err == nil && len(decoded) > 0 {
 			encoded = string(decoded)
 		}
