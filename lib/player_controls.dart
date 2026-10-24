@@ -277,9 +277,9 @@ class _PlayerControlsState extends State<PlayerControls> {
                       ),
                       Padding(
                         padding: EdgeInsets.fromLTRB(
-                          8,
+                          _leftChromeInset(),
                           _topChromeInset(),
-                          8,
+                          _rightChromeInset(),
                           _bottomChromeInset(),
                         ),
                         child: Stack(
@@ -495,6 +495,19 @@ class _PlayerControlsState extends State<PlayerControls> {
     }
     return 0;
   }
+
+  /// 全屏时左右两侧的安全边距。
+  ///
+  /// Android 全屏播放会让窗口延伸到摄像头区域，父子级 [SafeArea] 不再让出刘海，
+  /// 于是横屏时刘海会落在左右两边：这里把刘海宽度补进边距，避免返回、选集等按钮被摄像头挡住。
+  /// 其他平台、非全屏时与原来自适应 8 的边距完全一致。
+  double _leftChromeInset() => widget.fullscreen
+      ? (MediaQuery.paddingOf(context).left + 8).clamp(8.0, 96.0)
+      : 8;
+
+  double _rightChromeInset() => widget.fullscreen
+      ? (MediaQuery.paddingOf(context).right + 8).clamp(8.0, 96.0)
+      : 8;
 
   Widget _progressRow({
     required double duration,
