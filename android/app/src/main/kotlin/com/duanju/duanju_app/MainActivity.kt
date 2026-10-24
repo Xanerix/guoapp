@@ -33,6 +33,7 @@ class MainActivity : FlutterActivity() {
     private var thermalHeadroom: Double? = null
     private var deviceChannel: MethodChannel? = null
     private var televisionMode = false
+    private var cutoutModeBeforeFullscreen: Int? = null
 
     @Suppress("DEPRECATION")
     private fun isTelevisionDevice(): Boolean {
@@ -189,6 +190,14 @@ class MainActivity : FlutterActivity() {
                                 "pac" to (proxy != null && proxy.pacFileUrl != Uri.EMPTY)
                             ))
                         }
+                        "setDisplayCutoutFullscreen" -> {
+                            val enabled = call.argument<Boolean>("enabled")
+                            if (enabled == null) {
+                                result.error("invalid_cutout_mode", "缺少全面屏状态", null)
+                            } else {
+                                result.success(applyDisplayCutoutMode(enabled))
+                            }
+                        }
                         "pictureInPictureStatus" -> result.success(pictureInPictureStatus())
                         "enterPictureInPicture" -> {
                             val width = call.argument<Int>("width") ?: 16
@@ -260,6 +269,35 @@ class MainActivity : FlutterActivity() {
                     }
                 }
             }
+    }
+
+    /**
+     * 全屏播放时让窗口延伸到摄像头（刘海 / 挖孔）区域，退出全屏时恢复原值。
+     *
+     * 只在全屏期间生效，非全屏保持系统默认行为。Android 9（API 28）以下没有该属性，直接忽略；
+     * Android 15（API 35）起非浮动窗口恒为 ALWAYS，这里的写入不再改变结果，也不会报错。
+     */
+    private fun applyDisplayCutoutMode(enabled: Boolean): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return false
+        val attributes = window.attributes
+        if (enabled) {
+            if (cutoutModeBeforeFullscreen == null) {
+                cutoutModeBeforeFullscreen = attributes.layoutInDisplayCutoutMode
+            }
+            attributes.layoutInDisplayCutoutMode =
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+                } else {
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                }
+        } else {
+            // 没有进入过全屏、也没有修改过窗口属性时直接返回，保证非全屏路径完全不触碰窗口。
+            val previous = cutoutModeBeforeFullscreen ?: return false
+            attributes.layoutInDisplayCutoutMode = previous
+            cutoutModeBeforeFullscreen = null
+        }
+        window.attributes = attributes
+        return true
     }
 
     @ChecksSdkIntAtLeast(api = Build.VERSION_CODES.O)

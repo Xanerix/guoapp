@@ -768,6 +768,10 @@ class _PlayerScreenState extends State<PlayerScreen>
           fullscreen ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge,
         ),
       );
+      if (Platform.isAndroid && !_television) {
+        // 全屏播放时把窗口延伸到摄像头（刘海 / 挖孔）区域，退出全屏恢复原状。
+        unawaited(AppDevice.setDisplayCutoutFullscreen(fullscreen));
+      }
     });
   }
 
@@ -1628,6 +1632,9 @@ class _PlayerScreenState extends State<PlayerScreen>
             .catchError((Object _) {}),
       );
       unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
+      if (Platform.isAndroid && !_television) {
+        unawaited(AppDevice.setDisplayCutoutFullscreen(false));
+      }
     }
     super.dispose();
   }
@@ -1650,6 +1657,24 @@ class _PlayerScreenState extends State<PlayerScreen>
           );
         },
       ),
+    );
+  }
+
+  /// 全屏播放时的安全区处理。
+  ///
+  /// Android 全屏时窗口已经延伸到摄像头（刘海 / 挖孔）区域，若仍按 [SafeArea] 让出刘海高度，
+  /// 画面会在摄像头一侧留出黑边，因此这里只在非全屏或非 Android 平台保留原有安全区行为，
+  /// 保证非全屏播放和其他平台的显示与之前完全一致。
+  Widget _playerSafeArea({required bool fullscreen, required Widget child}) {
+    final edgeToEdge =
+        fullscreen &&
+        !_television &&
+        defaultTargetPlatform == TargetPlatform.android;
+    if (edgeToEdge) return child;
+    return SafeArea(
+      top: !_television && (fullscreen || _mobile),
+      bottom: !fullscreen,
+      child: child,
     );
   }
 
@@ -1706,9 +1731,8 @@ class _PlayerScreenState extends State<PlayerScreen>
                   ),
             body: pictureInPicture
                 ? _videoPane(context)
-                : SafeArea(
-                    top: !_television && (fullscreen || _mobile),
-                    bottom: !fullscreen,
+                : _playerSafeArea(
+                    fullscreen: fullscreen,
                     child: LayoutBuilder(
                       builder: (context, constraints) {
                         final desktop = constraints.maxWidth >= 840;

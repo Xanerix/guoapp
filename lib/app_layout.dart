@@ -129,6 +129,22 @@ class AppDevice {
       return false;
     }
   }
+
+  /// 全屏播放时把窗口延伸到摄像头（刘海 / 挖孔）区域，退出全屏时恢复原状。
+  ///
+  /// 仅 Android 生效：其他平台（iOS 本就由系统处理刘海，桌面端没有该概念）不会调用通道，
+  /// 也就不存在兼容性变化。返回 `true` 表示原生端确实调整了窗口。
+  static Future<bool> setDisplayCutoutFullscreen(bool enabled) async {
+    if (defaultTargetPlatform != TargetPlatform.android) return false;
+    try {
+      return await channel.invokeMethod<bool>('setDisplayCutoutFullscreen', {
+            'enabled': enabled,
+          }) ??
+          false;
+    } catch (_) {
+      return false;
+    }
+  }
 }
 
 class AppLayout extends InheritedWidget {
