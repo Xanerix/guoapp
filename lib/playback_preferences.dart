@@ -1,5 +1,3 @@
-import 'video_enhancement_preferences.dart';
-
 const playbackSpeeds = [.5, .75, 1.0, 1.25, 1.5, 2.0, 3.0];
 
 enum TelevisionDecoder { optimized, hardware, software }
@@ -11,7 +9,6 @@ class PlaybackPreferences {
     this.autoAdvance = true,
     this.danmaku = true,
     this.preload = true,
-    this.enhancement = const VideoEnhancementPreferences(),
     this.televisionDecoder = TelevisionDecoder.optimized,
     this.preopen,
     this.doubleTapSeek = true,
@@ -24,7 +21,6 @@ class PlaybackPreferences {
   final bool autoAdvance;
   final bool danmaku;
   final bool preload;
-  final VideoEnhancementPreferences enhancement;
   final TelevisionDecoder televisionDecoder;
   final bool? preopen;
   final bool doubleTapSeek;
@@ -39,7 +35,6 @@ class PlaybackPreferences {
     bool? autoAdvance,
     bool? danmaku,
     bool? preload,
-    VideoEnhancementPreferences? enhancement,
     TelevisionDecoder? televisionDecoder,
     bool? preopen,
     bool? doubleTapSeek,
@@ -51,7 +46,6 @@ class PlaybackPreferences {
     autoAdvance: autoAdvance ?? this.autoAdvance,
     danmaku: danmaku ?? this.danmaku,
     preload: preload ?? this.preload,
-    enhancement: enhancement ?? this.enhancement,
     televisionDecoder: televisionDecoder ?? this.televisionDecoder,
     preopen: preopen ?? this.preopen,
     doubleTapSeek: doubleTapSeek ?? this.doubleTapSeek,
@@ -65,7 +59,6 @@ class PlaybackPreferences {
     'autoAdvance': autoAdvance,
     'danmaku': danmaku,
     'preload': preload,
-    'enhancement': enhancement.toJson(),
     'televisionDecoder': televisionDecoder.name,
     if (preopen != null) 'preopen': preopen,
     'doubleTapSeek': doubleTapSeek,
@@ -88,7 +81,6 @@ class PlaybackPreferences {
       autoAdvance: autoAdvance,
       danmaku: danmaku,
       preload: preload,
-      enhancement: VideoEnhancementPreferences.fromJson(value['enhancement']),
       televisionDecoder:
           TelevisionDecoder.values.asNameMap()[value['televisionDecoder']] ??
           TelevisionDecoder.optimized,
