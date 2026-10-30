@@ -32,6 +32,8 @@ class FlutterWindow : public Win32Window {
   void EnterMiniWindow(double aspect, const flutter::EncodableMap& args);
   flutter::EncodableValue ExitMiniWindow();
   void KeepMiniAspect(WPARAM edge, RECT* frame);
+  flutter::EncodableValue WindowFrame();
+  bool SetWindowFrame(const flutter::EncodableMap& args);
 
   // The project to run.
   flutter::DartProject project_;

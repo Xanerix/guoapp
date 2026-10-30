@@ -17,6 +17,7 @@ import 'local_store.dart';
 import 'picture_in_picture.dart';
 import 'ui/app.dart';
 import 'ui/theme/app_theme.dart';
+import 'window_frame.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -26,6 +27,7 @@ Future<void> main() async {
   }
   if (Platform.isWindows) {
     await windowManager.ensureInitialized();
+    await rememberWindowFrame();
   }
   if (Platform.isMacOS) {
     await windowManager.ensureInitialized();
@@ -36,7 +38,10 @@ Future<void> main() async {
           minimumSize: desktopMinimumSize,
           center: true,
         ),
-        () async => windowManager.show(),
+        () async {
+          await rememberWindowFrame();
+          await windowManager.show();
+        },
       );
     } catch (_) {}
   }

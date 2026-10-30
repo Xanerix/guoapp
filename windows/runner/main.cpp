@@ -2,6 +2,8 @@
 #include <flutter/flutter_view_controller.h>
 #include <windows.h>
 
+#include <algorithm>
+
 #include "flutter_window.h"
 #include "utils.h"
 #include "app_branding.h"
@@ -26,8 +28,21 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
 
   FlutterWindow window(project);
-  Win32Window::Point origin(10, 10);
   Win32Window::Size size(1280, 720);
+  Win32Window::Point origin(10, 10);
+  HMONITOR primary = MonitorFromPoint({0, 0}, MONITOR_DEFAULTTOPRIMARY);
+  MONITORINFO monitor{};
+  monitor.cbSize = sizeof(monitor);
+  if (GetMonitorInfo(primary, &monitor)) {
+    const double scale = FlutterDesktopGetDpiForMonitor(primary) / 96.0;
+    const RECT& work = monitor.rcWork;
+    const auto center = [scale](LONG start, LONG end, unsigned int extent) {
+      return static_cast<unsigned int>((std::max)(
+          start / scale, (start + end) / 2.0 / scale - extent / 2.0));
+    };
+    origin = Win32Window::Point(center(work.left, work.right, size.width),
+                                center(work.top, work.bottom, size.height));
+  }
   if (!window.Create(APP_WINDOW_TITLE, origin, size)) {
     return EXIT_FAILURE;
   }

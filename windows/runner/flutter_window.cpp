@@ -102,6 +102,19 @@ bool FlutterWindow::OnCreate() {
           result->Success();
           return;
         }
+        if (call.method_name() == "windowFrame") {
+          result->Success(WindowFrame());
+          return;
+        }
+        if (call.method_name() == "setWindowFrame") {
+          const auto* args = std::get_if<flutter::EncodableMap>(call.arguments());
+          if (!args || !SetWindowFrame(*args)) {
+            result->Error("bad_args", "left, top, width and height are required");
+            return;
+          }
+          result->Success();
+          return;
+        }
         if (call.method_name() != "playbackPower") {
           result->NotImplemented();
           return;
@@ -241,6 +254,46 @@ flutter::EncodableValue FlutterWindow::ExitMiniWindow() {
       static_cast<int32_t>(std::max(frame.right - frame.left,
                                     frame.bottom - frame.top)));
   return flutter::EncodableValue(values);
+}
+
+flutter::EncodableValue FlutterWindow::WindowFrame() {
+  HWND window = GetHandle();
+  if (fullscreen_ || mini_ || IsZoomed(window) || IsIconic(window)) {
+    return flutter::EncodableValue();
+  }
+  RECT frame;
+  GetWindowRect(window, &frame);
+  flutter::EncodableMap values;
+  values[flutter::EncodableValue("left")] =
+      flutter::EncodableValue(static_cast<int32_t>(frame.left));
+  values[flutter::EncodableValue("top")] =
+      flutter::EncodableValue(static_cast<int32_t>(frame.top));
+  values[flutter::EncodableValue("width")] =
+      flutter::EncodableValue(static_cast<int32_t>(frame.right - frame.left));
+  values[flutter::EncodableValue("height")] =
+      flutter::EncodableValue(static_cast<int32_t>(frame.bottom - frame.top));
+  return flutter::EncodableValue(values);
+}
+
+bool FlutterWindow::SetWindowFrame(const flutter::EncodableMap& args) {
+  const auto left = IntArgument(args, "left");
+  const auto top = IntArgument(args, "top");
+  const auto width = IntArgument(args, "width");
+  const auto height = IntArgument(args, "height");
+  if (!left || !top || !width || !height || *width <= 0 || *height <= 0) {
+    return false;
+  }
+  HWND window = GetHandle();
+  const int title = static_cast<int>(std::lround(40 * WindowScale(window)));
+  RECT strip{*left, *top, *left + *width, *top + std::min(*height, title)};
+  if (!MonitorFromRect(&strip, MONITOR_DEFAULTTONULL)) {
+    return true;
+  }
+  for (int pass = 0; pass < 2; ++pass) {
+    SetWindowPos(window, nullptr, *left, *top, *width, *height,
+                 SWP_NOZORDER | SWP_NOACTIVATE);
+  }
+  return true;
 }
 
 void FlutterWindow::KeepMiniAspect(WPARAM edge, RECT* frame) {
