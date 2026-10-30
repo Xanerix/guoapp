@@ -1,58 +1,5 @@
 import 'package:lpinyin/lpinyin.dart';
 
-import 'models.dart';
-
-enum CatalogSort {
-  source('默认顺序'),
-  name('名称'),
-  season('自然季号'),
-  date('上线日期'),
-  heat('热度'),
-  views('播放量');
-
-  const CatalogSort(this.label);
-  final String label;
-}
-
-class CatalogView {
-  const CatalogView({
-    this.sort = CatalogSort.source,
-    this.release = '',
-    this.allSources = false,
-  });
-  final CatalogSort sort;
-  final String release;
-  final bool allSources;
-
-  CatalogView copyWith({
-    CatalogSort? sort,
-    String? release,
-    bool? allSources,
-  }) => CatalogView(
-    sort: sort ?? this.sort,
-    release: release ?? this.release,
-    allSources: allSources ?? this.allSources,
-  );
-
-  Map<String, dynamic> toJson() => {
-    'sort': sort.name,
-    'release': release,
-    'allSources': allSources,
-  };
-
-  factory CatalogView.fromJson(Map<String, dynamic> value) => CatalogView(
-    sort:
-        CatalogSort.values
-            .where((sort) => sort.name == value['sort'])
-            .firstOrNull ??
-        CatalogSort.source,
-    release: {'', 'finished', 'ongoing', 'unknown'}.contains(value['release'])
-        ? value['release'] as String
-        : '',
-    allSources: value['allSources'] == true,
-  );
-}
-
 String normalizedSearchText(String text) {
   final value = String.fromCharCodes(
     text.runes.map(
@@ -75,37 +22,6 @@ bool matchesTitle(String title, String query) {
   } on PinyinException {
     return false;
   }
-}
-
-bool matchesDramaQuery(Drama drama, String query) {
-  final fields = normalizedSearchText(
-    '${drama.title} ${drama.description} ${drama.tags.join(' ')}',
-  );
-  final terms = query
-      .trim()
-      .split(RegExp(r'\s+'))
-      .map(normalizedSearchText)
-      .where((word) => word.isNotEmpty);
-  return terms.every(fields.contains);
-}
-
-double? catalogMetric(String text) {
-  final cleaned = text.toLowerCase().replaceAll(RegExp(r'[,，\s]'), '');
-  final match = RegExp(
-    r'^(\d+(?:\.\d+)?)([亿万千wkmb]?)(?:\+)?(?:次播放|次观看|人看过|热度|播放|观看|次)?\+?$',
-  ).firstMatch(cleaned);
-  if (match == null) return null;
-  final number = double.tryParse(match[1]!);
-  if (number == null || !number.isFinite) return null;
-  return number *
-      switch (match[2]) {
-        '亿' => 100000000,
-        '万' || 'w' => 10000,
-        '千' || 'k' => 1000,
-        'm' => 1000000,
-        'b' => 1000000000,
-        _ => 1,
-      };
 }
 
 int _seasonNumber(String label) {
@@ -166,49 +82,4 @@ int naturalTitleCompare(String left, String right) {
     if (comparison != 0) return comparison;
   }
   return a.length.compareTo(b.length);
-}
-
-int _descending(num? a, num? b) => a == null
-    ? (b == null ? 0 : 1)
-    : b == null
-    ? -1
-    : b.compareTo(a);
-
-List<Drama> sortCatalog(Iterable<Drama> rows, CatalogView view) {
-  final items = rows.where((drama) {
-    if (view.release.isEmpty) return true;
-    final release = drama.releaseStatus == 'completed'
-        ? 'finished'
-        : drama.releaseStatus;
-    return view.release == 'unknown'
-        ? release.isEmpty || release == 'unknown'
-        : release == view.release;
-  }).toList();
-  if (view.sort == CatalogSort.source) return items;
-  final positions = {for (final entry in items.indexed) entry.$2.id: entry.$1};
-  final metrics = <String, num?>{
-    for (final drama in items)
-      drama.id: switch (view.sort) {
-        CatalogSort.heat => catalogMetric(drama.heat),
-        CatalogSort.views => catalogMetric(drama.views),
-        CatalogSort.date => DateTime.tryParse(
-          drama.onlineDate,
-        )?.millisecondsSinceEpoch,
-        _ => null,
-      },
-  };
-  items.sort((a, b) {
-    final comparison = switch (view.sort) {
-      CatalogSort.source => 0,
-      CatalogSort.name => normalizedSearchText(
-        a.title,
-      ).compareTo(normalizedSearchText(b.title)),
-      CatalogSort.season => naturalTitleCompare(a.title, b.title),
-      _ => _descending(metrics[a.id], metrics[b.id]),
-    };
-    return comparison != 0
-        ? comparison
-        : positions[a.id]!.compareTo(positions[b.id]!);
-  });
-  return items;
 }
