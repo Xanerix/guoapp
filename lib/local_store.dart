@@ -3,68 +3,241 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'catalog_sort.dart';
+import 'diary_service.dart';
+import 'download_preferences.dart';
+import 'follow_state.dart';
+import 'hongguo_series.dart';
+import 'local_files.dart';
 import 'local_profiles.dart';
 import 'local_snapshot.dart';
 import 'models.dart';
 import 'playback_preferences.dart';
-import 'download_preferences.dart';
-import 'catalog_sort.dart';
-import 'follow_state.dart';
-import 'hongguo_series.dart';
 import 'theme_color.dart';
 
+const _usersFile = LocalFiles.marker;
+const _settingsFile = 'settings.json';
+const _displayModes = {'auto', 'television', 'phone', 'pad', 'window'};
+const _themeModes = {'light', 'dark', 'system'};
+const _movedFlags = {
+  'followSystemColor': 'followSystemColor',
+  'checkUpdates': 'checkUpdates',
+  'shareUsage': 'shareUsage',
+  'autoExport': 'exportAfterDownload',
+  'deleteAfterAutoExport': 'deleteAfterAutoExport',
+  'deleteAfterManualExport': 'deleteAfterManualExport',
+  'televisionKeyboard': 'televisionKeyboard',
+};
+const _movedTexts = {'themeColor', 'ignoredUpdate'};
+const _backupFlags = {
+  'checkUpdates',
+  'shareUsage',
+  'exportAfterDownload',
+  'deleteAfterAutoExport',
+  'deleteAfterManualExport',
+  'televisionKeyboard',
+};
+const _blocked = '本地用户配置损坏，已锁定访问。原始记录已保留，请重新读取或从备份恢复。';
+
+String _userFile(String id, String name) => 'users/$id/$name.json';
+
+List<Object?> _list(Object? value) => value is List ? value : const [];
+Map<String, Object?> _map(Object? value) =>
+    value is Map ? Map<String, Object?>.from(value) : {};
+Iterable<Map<String, dynamic>> _rows(Object? value) =>
+    _list(value).whereType<Map>().map(Map<String, dynamic>.from);
+
 class LocalStore extends ChangeNotifier {
-  LocalStore(
-    this.preferences, {
+  LocalStore._(this.preferences, this.files, this._pinHasher);
+
+  static Future<LocalStore> open(
+    SharedPreferences preferences,
+    LocalFiles files, {
     Future<String> Function(String, String)? pinHasher,
-  }) : _pinHasher = pinHasher ?? hashProfilePin {
-    _initialize();
+  }) async {
+    final store = LocalStore._(preferences, files, pinHasher ?? hashProfilePin);
+    await store._initialize();
+    return store;
   }
 
   final SharedPreferences preferences;
+  final LocalFiles files;
   final Future<String> Function(String pin, String salt) _pinHasher;
-  LocalSnapshot? _snapshot;
   final Map<String, WatchEntry> _history = {};
   final Map<String, Drama> _favorites = {};
   final Map<String, FollowState> _followStates = {};
-  final Map<String, Drama> _seriesCandidates = {};
+  Map<String, FollowCheck> _followChecks = {};
+  Map<String, Object?> _settings = {};
+  Map<String, Object?> _userSettings = {};
   Future<void> _writes = Future<void>.value();
   List<LocalProfile> _profiles = [];
   String _current = 'default';
+  bool? _forceLogin;
   bool _locked = false;
   bool _disposed = false;
   String? _configurationError;
   int _epoch = 0;
   int _failures = 0;
-  Map<String, bool> _sourceSwitches = {};
   DateTime _retryAfter = DateTime(2000);
 
-  void _initialize() {
+  Future<void> _initialize() async {
     try {
-      _snapshot = LocalSnapshot(preferences);
-      final raw = _snapshot!.getString('profiles');
-      if (raw == null &&
-          (_snapshot!.getString('activeProfile') != null ||
-              _snapshot!.values.keys.any(
-                (key) => key.startsWith('profile.'),
-              ))) {
-        throw const FormatException('已有用户配置缺失');
-      }
-      _profiles = raw == null
-          ? [const LocalProfile(id: 'default', name: '管理员', admin: true)]
-          : _readProfiles(jsonDecode(raw));
-      _current = _snapshot!.getString('activeProfile') ?? 'default';
-      if (!_profiles.any((profile) => profile.id == _current)) {
-        _current = _profiles.firstWhere((profile) => profile.admin).id;
-      }
-      _configurationError = null;
-      _locked = forceLogin && profile.protected;
-      _loadSourceSwitches();
-      _loadLibrary();
-      _loadSeriesCandidates();
-      _queue(() => _moveSeriesCandidates().catchError((Object _) {}));
+      if (!await files.exists()) await _migrate();
     } catch (_) {
-      _block('本地用户配置损坏，已锁定访问。原始记录已保留，请重新读取或从备份恢复。');
+      _block(_blocked);
+      return;
+    }
+    _settings = await _readMap(_settingsFile);
+    try {
+      final users = await files.read(_usersFile);
+      if (users is! Map) throw const FormatException('用户配置无效');
+      _profiles = _readProfiles(users['profiles']);
+      _current = users['active'] is String
+          ? users['active'] as String
+          : 'default';
+      _forceLogin = users['forceLogin'] is bool
+          ? users['forceLogin'] as bool
+          : null;
+    } catch (_) {
+      _block(_blocked);
+      return;
+    }
+    if (!_profiles.any((profile) => profile.id == _current)) {
+      _current = _profiles.firstWhere((profile) => profile.admin).id;
+    }
+    _configurationError = null;
+    _locked = forceLogin && profile.protected;
+    await _loadUser();
+  }
+
+  Future<void> _migrate() async {
+    final snapshot = LocalSnapshot(preferences);
+    String? text(String key) => snapshot.getString(key);
+    T decoded<T>(String? raw, T fallback) {
+      try {
+        final value = raw == null ? null : jsonDecode(raw);
+        return value is T ? value : fallback;
+      } catch (_) {
+        return fallback;
+      }
+    }
+
+    String key(String name, String id) =>
+        id == 'default' ? name : 'profile.$id.$name';
+    final rawProfiles = text('profiles');
+    if (rawProfiles == null &&
+        (text('activeProfile') != null ||
+            snapshot.values.keys.any((key) => key.startsWith('profile.')))) {
+      throw const FormatException('已有用户配置缺失');
+    }
+    final profiles = rawProfiles == null
+        ? [const LocalProfile(id: 'default', name: '管理员', admin: true)]
+        : _readProfiles(jsonDecode(rawProfiles));
+    final contents = <String, Object?>{
+      _settingsFile: {
+        'displayMode': ?text('displayMode'),
+        'themeMode': ?text('themeMode'),
+        'sourceSwitches': decoded<Map>(text('sourceSwitches'), {}),
+        for (final entry in _movedFlags.entries)
+          if (preferences.get(entry.key) case final bool value)
+            entry.value: value,
+        for (final name in _movedTexts)
+          if (preferences.get(name) case final String value) name: value,
+      },
+      _usersFile: {
+        'profiles': [for (final profile in profiles) profile.toJson()],
+        'active': text('activeProfile') ?? 'default',
+        'forceLogin': ?snapshot.getBool('forceLogin'),
+      },
+    };
+    for (final profile in profiles) {
+      final id = profile.id;
+      final checks = preferences.get('followChecks.$id');
+      contents.addAll({
+        _userFile(id, 'history'): readJsonList(text(key('history', id))),
+        _userFile(id, 'favorites'): readJsonList(text(key('favorites', id))),
+        _userFile(id, 'followStates'): decoded<Map>(
+          text(key('followStates', id)),
+          {},
+        ),
+        _userFile(id, 'followChecks'): decoded<Map>(
+          checks is String ? checks : null,
+          {},
+        ),
+        _userFile(id, 'settings'): {
+          'source': ?text(key('source', id)),
+          'playback': decoded<Map>(text(key('playback', id)), {}),
+          'downloadPreferences': decoded<Map>(
+            text(key('downloadPreferences', id)),
+            {},
+          ),
+          'recentSearches': decoded<List>(text(key('recentSearches', id)), []),
+        },
+      });
+    }
+    await files.replaceAll(contents);
+    await _removeLegacy();
+  }
+
+  Future<void> _removeLegacy() async {
+    for (final key in preferences.getKeys().toList()) {
+      if (LocalSnapshot.legacy(key) ||
+          _movedFlags.containsKey(key) ||
+          _movedTexts.contains(key)) {
+        await preferences.remove(key);
+      }
+    }
+  }
+
+  Future<Object?> _readFile(String name) async {
+    try {
+      return await files.read(name);
+    } on FormatException {
+      DiaryService.add('[存储] $name 无法读取，已改名保留，按空记录继续');
+      await files.quarantine(name).catchError((Object _) {});
+      return null;
+    }
+  }
+
+  Future<Map<String, Object?>> _readMap(String name) async =>
+      _map(await _readFile(name));
+
+  Future<void> _loadUser() async {
+    _history.clear();
+    _favorites.clear();
+    _followStates.clear();
+    _followChecks = {};
+    _userSettings = {};
+    if (_configurationError != null) return;
+    final id = _current;
+    _userSettings = await _readMap(_userFile(id, 'settings'));
+    for (final row in _rows(await _readFile(_userFile(id, 'history')))) {
+      try {
+        final entry = WatchEntry.fromJson(row);
+        _history[entry.drama.id] = entry;
+      } catch (_) {}
+    }
+    for (final row in _rows(await _readFile(_userFile(id, 'favorites')))) {
+      try {
+        final drama = Drama.fromJson(row);
+        _favorites[drama.id] = drama;
+      } catch (_) {}
+    }
+    final states = _map(await _readFile(_userFile(id, 'followStates')));
+    for (final drama in _favorites.values) {
+      try {
+        _followStates[drama.id] = FollowState.fromJson(
+          Map<String, dynamic>.from(states[drama.id] as Map),
+        );
+      } catch (_) {
+        _followStates[drama.id] = FollowState.initial(drama);
+      }
+    }
+    final checks = _map(await _readFile(_userFile(id, 'followChecks')));
+    for (final entry in checks.entries) {
+      try {
+        _followChecks[entry.key] = FollowCheck.fromJson(entry.value);
+      } catch (_) {}
     }
   }
 
@@ -93,10 +266,12 @@ class LocalStore extends ChangeNotifier {
       const LocalProfile(id: 'default', name: '配置待恢复', download: false),
     ];
     _current = 'default';
+    _forceLogin = null;
     _history.clear();
     _favorites.clear();
     _followStates.clear();
-    _seriesCandidates.clear();
+    _followChecks = {};
+    _userSettings = {};
     _epoch++;
   }
 
@@ -104,10 +279,14 @@ class LocalStore extends ChangeNotifier {
     if (!_disposed) notifyListeners();
   }
 
-  String? _string(String key) => _snapshot?.getString(key);
-  bool? _bool(String key) => _snapshot?.getBool(key);
-  String _key(String key, [String? id]) =>
-      (id ?? _current) == 'default' ? key : 'profile.${id ?? _current}.$key';
+  Future<void> _write(String name, Object? value) async {
+    try {
+      await files.write(name, value);
+    } catch (_) {
+      throw StateError('未能保存，原有记录已保留；请检查存储空间和权限后重试');
+    }
+  }
+
   String? get configurationError => _configurationError;
   List<LocalProfile> get profiles => List.unmodifiable(_profiles);
   LocalProfile get profile =>
@@ -117,7 +296,7 @@ class LocalStore extends ChangeNotifier {
   bool get forceLogin {
     if (_configurationError != null) return true;
     final admin = _profiles.firstWhere((profile) => profile.admin);
-    return _bool('forceLogin') ?? admin.protected;
+    return _forceLogin ?? admin.protected;
   }
 
   bool get canDownload => !locked && (profile.admin || profile.download);
@@ -133,19 +312,11 @@ class LocalStore extends ChangeNotifier {
       if (!locked && profile.allows(site.id)) site,
   ];
 
-  bool sourceEnabled(String source) =>
-      _sourceSwitches[source] ?? !SourceSite.isRestricted(source);
-
-  void _loadSourceSwitches() {
-    try {
-      final raw = _string('sourceSwitches');
-      _sourceSwitches = raw == null
-          ? {}
-          : Map<String, bool>.from(jsonDecode(raw) as Map);
-    } catch (_) {
-      _sourceSwitches = {};
-    }
-  }
+  bool sourceEnabled(String source) => switch (_settings['sourceSwitches']) {
+    final Map switches when switches[source] is bool =>
+      switches[source] as bool,
+    _ => !SourceSite.isRestricted(source),
+  };
 
   Future<void> setSourceEnabled(String source, bool enabled) {
     if (!SourceSite.isAvailable(source)) {
@@ -155,110 +326,27 @@ class LocalStore extends ChangeNotifier {
     return _queue(() async {
       _requireAdmin();
       if (epoch != _epoch) throw StateError('当前用户已变更，请重试');
-      final switches = {..._sourceSwitches, source: enabled};
-      await _commit({'sourceSwitches': jsonEncode(switches)});
-      _sourceSwitches = switches;
-      _notify();
+      final switches = {..._map(_settings['sourceSwitches']), source: enabled};
+      await _saveSettings({..._settings, 'sourceSwitches': switches});
     });
   }
 
-  void _loadLibrary() {
-    _history.clear();
-    _favorites.clear();
-    _followStates.clear();
-    if (_configurationError != null) return;
-    for (final row in readJsonList(_string(_key('history')))) {
-      try {
-        final entry = WatchEntry.fromJson(row);
-        _history[entry.drama.id] = entry;
-      } catch (_) {}
-    }
-    for (final row in readJsonList(_string(_key('favorites')))) {
-      try {
-        final drama = Drama.fromJson(row);
-        _favorites[drama.id] = drama;
-      } catch (_) {}
-    }
-    Map<String, dynamic> states = {};
-    try {
-      states = Map<String, dynamic>.from(
-        jsonDecode(_string(_key('followStates')) ?? '{}') as Map,
-      );
-    } catch (_) {}
-    for (final drama in _favorites.values) {
-      try {
-        _followStates[drama.id] = FollowState.fromJson(
-          Map<String, dynamic>.from(states[drama.id] as Map),
-        );
-      } catch (_) {
-        _followStates[drama.id] = FollowState.initial(drama);
-      }
-    }
-  }
-
-  String _seriesKey([String? id]) => 'seriesCandidates.${id ?? _current}';
-  String _followChecksKey([String? id]) => 'followChecks.${id ?? _current}';
-
-  Map<String, FollowCheck> get followChecks {
-    try {
-      final data =
-          jsonDecode(preferences.getString(_followChecksKey()) ?? '{}') as Map;
-      return {
-        for (final entry in data.entries)
-          entry.key as String: FollowCheck.fromJson(entry.value),
-      };
-    } catch (_) {
-      return {};
-    }
-  }
+  Map<String, FollowCheck> get followChecks => Map.of(_followChecks);
 
   Future<void> saveFollowChecks(
     Map<String, FollowCheck> checks, {
     required int epoch,
   }) => _queue(() async {
     if (locked || epoch != _epoch) return;
-    await preferences.setString(
-      _followChecksKey(),
-      jsonEncode({
-        for (final entry in checks.entries)
-          if (_favorites.containsKey(entry.key))
-            entry.key: entry.value.toJson(),
-      }),
-    );
-  });
-
-  void _loadSeriesCandidates() {
-    _seriesCandidates.clear();
-    if (_configurationError != null) return;
-    for (final row in readJsonList(
-      preferences.getString(_seriesKey()) ?? _string(_key('seriesCandidates')),
-    )) {
-      try {
-        final drama = Drama.fromJson(row);
-        if (drama.source == SourceSite.hongguo.id) {
-          _seriesCandidates[drama.id] = drama;
-        }
-      } catch (_) {}
-    }
-  }
-
-  Future<void> _moveSeriesCandidates() async {
-    if (_configurationError != null) return;
-    final legacy = {
-      for (final profile in _profiles)
-        profile.id: ?_string(_key('seriesCandidates', profile.id)),
+    final kept = {
+      for (final entry in checks.entries)
+        if (_favorites.containsKey(entry.key)) entry.key: entry.value,
     };
-    if (legacy.isEmpty) return;
-    for (final entry in legacy.entries) {
-      if (preferences.getString(_seriesKey(entry.key)) == null) {
-        await preferences.setString(_seriesKey(entry.key), entry.value);
-      }
-    }
-    await _commit(
-      {},
-      remove: legacy.keys.map((id) => _key('seriesCandidates', id)),
-    );
-  }
+    await _write(_userFile(_current, 'followChecks'), {
+      for (final entry in kept.entries) entry.key: entry.value.toJson(),
+    });
+    _followChecks = kept;
+  });
 
   List<WatchEntry> get history =>
       _history.values
@@ -279,63 +367,25 @@ class LocalStore extends ChangeNotifier {
       _favorites[id] != null && allowsSource(_favorites[id]!.source);
   FollowState? following(String id) =>
       isFavorite(id) ? _followStates[id] : null;
-  List<Drama> seriesDramasFor(Drama anchor) {
-    if (!allowsSource(SourceSite.hongguo.id) ||
-        anchor.source != SourceSite.hongguo.id) {
-      return const [];
-    }
-    final items = <String, Drama>{};
-    for (final drama in _seriesCandidates.values) {
-      if (allowsSource(drama.source)) items[drama.id] = drama;
-    }
-    for (final drama in _favorites.values) {
-      if (allowsSource(drama.source)) items[drama.id] = drama;
-    }
-    for (final entry in _history.values) {
-      if (allowsSource(entry.drama.source)) items[entry.drama.id] = entry.drama;
-    }
-    final notices = <SeriesSeasonNotice>[
-      ...?_followStates[anchor.id]?.seriesSeasons.values,
-      for (final state in _followStates.values)
-        if (state.seriesSeasons.containsKey(anchor.id))
-          state.seriesSeasons[anchor.id]!,
-    ];
-    for (final notice in notices) {
-      items.putIfAbsent(
-        notice.id,
-        () => Drama(
-          id: notice.id,
-          source: SourceSite.hongguo.id,
-          sourceId: notice.id.substring(SourceSite.hongguo.id.length + 1),
-          title: notice.title,
-        ),
-      );
-    }
-    final current = items.remove(anchor.id) ?? anchor;
-    final rest = items.values.toList()
-      ..sort((a, b) => naturalTitleCompare(a.title, b.title));
-    return [current, ...rest];
-  }
 
-  bool get hideVip =>
-      _configurationError == null ? _bool(_key('hideVip')) ?? true : true;
+  bool _flag(String key, bool fallback) => switch (_settings[key]) {
+    final bool value => value,
+    _ => fallback,
+  };
+
   String get displayMode {
-    final value = _configurationError == null ? _string('displayMode') : null;
-    return {'auto', 'television', 'phone', 'pad', 'window'}.contains(value)
-        ? value!
-        : 'auto';
+    final value = _settings['displayMode'];
+    return _displayModes.contains(value) ? value as String : 'auto';
   }
 
   String get themeMode {
-    final value = _configurationError == null ? _string('themeMode') : null;
-    return {'light', 'dark', 'system'}.contains(value) ? value! : 'system';
+    final value = _settings['themeMode'];
+    return _themeModes.contains(value) ? value as String : 'system';
   }
 
-  bool get followSystemColor =>
-      preferences.getBool('followSystemColor') ?? true;
+  bool get followSystemColor => _flag('followSystemColor', true);
   ThemeColor get themeColor =>
-      ThemeColor.byName(preferences.getString('themeColor')) ??
-      ThemeColor.orange;
+      ThemeColor.byName(_settings['themeColor']) ?? ThemeColor.orange;
   bool get sideBarExpanded => preferences.getBool('sideBarExpanded') ?? true;
   bool get playerWide => preferences.getBool('playerWide') ?? false;
   ({double left, double top, double extent})? get miniWindow {
@@ -350,22 +400,22 @@ class LocalStore extends ChangeNotifier {
     return (left: values[0]!, top: values[1]!, extent: values[2]!);
   }
 
-  bool get televisionKeyboard =>
-      preferences.getBool('televisionKeyboard') ?? false;
-  bool get checkUpdates => preferences.getBool('checkUpdates') ?? true;
-  bool get autoExport => preferences.getBool('autoExport') ?? false;
-  bool get deleteAfterAutoExport =>
-      preferences.getBool('deleteAfterAutoExport') ?? false;
-  bool get deleteAfterManualExport =>
-      preferences.getBool('deleteAfterManualExport') ?? false;
-  bool get shareUsage => preferences.getBool('shareUsage') ?? true;
-  String get ignoredUpdate => preferences.getString('ignoredUpdate') ?? '';
+  bool get televisionKeyboard => _flag('televisionKeyboard', false);
+  bool get checkUpdates => _flag('checkUpdates', true);
+  bool get autoExport => _flag('exportAfterDownload', false);
+  bool get deleteAfterAutoExport => _flag('deleteAfterAutoExport', false);
+  bool get deleteAfterManualExport => _flag('deleteAfterManualExport', false);
+  bool get shareUsage => _flag('shareUsage', true);
+  String get ignoredUpdate => switch (_settings['ignoredUpdate']) {
+    final String version => version,
+    _ => '',
+  };
 
   String get source {
     if (locked) return '';
-    final value = _string(_key('source')) ?? '';
+    final value = _userSettings['source'];
     return sources.any((site) => site.id == value)
-        ? value
+        ? value as String
         : sources.firstOrNull?.id ?? '';
   }
 
@@ -373,8 +423,7 @@ class LocalStore extends ChangeNotifier {
     if (locked) return const DownloadPreferences();
     try {
       return DownloadPreferences.fromJson(
-        jsonDecode(_string(_key('downloadPreferences')) ?? '{}')
-            as Map<String, dynamic>,
+        Map<String, dynamic>.from(_userSettings['downloadPreferences'] as Map),
       );
     } catch (_) {
       return const DownloadPreferences();
@@ -385,53 +434,36 @@ class LocalStore extends ChangeNotifier {
     if (locked) return const PlaybackPreferences();
     try {
       return PlaybackPreferences.fromJson(
-        jsonDecode(_string(_key('playback')) ?? '{}') as Map<String, dynamic>,
+        Map<String, dynamic>.from(_userSettings['playback'] as Map),
       );
     } catch (_) {
       return const PlaybackPreferences();
     }
   }
 
-  CatalogView get catalogView {
-    if (locked) return const CatalogView();
-    try {
-      return CatalogView.fromJson(
-        Map<String, dynamic>.from(
-          jsonDecode(_string(_key('catalogView')) ?? '{}') as Map,
-        ),
-      );
-    } catch (_) {
-      return const CatalogView();
-    }
-  }
-
   List<String> get recentSearches {
     if (locked) return const [];
-    try {
-      return (jsonDecode(_string(_key('recentSearches')) ?? '[]') as List)
-          .whereType<String>()
-          .take(20)
-          .toList();
-    } catch (_) {
-      return const [];
-    }
+    return _list(
+      _userSettings['recentSearches'],
+    ).whereType<String>().take(20).toList();
   }
 
-  Future<void> setCatalogView(CatalogView value) =>
-      _setting(_key('catalogView'), jsonEncode(value.toJson()));
+  Future<void> _saveSettings(Map<String, Object?> settings) async {
+    await _write(_settingsFile, settings);
+    _settings = settings;
+    _notify();
+  }
 
-  Future<void> setCatalogSource(String source, {required bool allSources}) {
+  Future<void> _setting(String key, Object value) =>
+      _queue(() => _saveSettings({..._settings, key: value}));
+
+  Future<void> _userSetting(String key, Object value) {
     final epoch = _epoch;
     return _queue(() async {
-      if (!allowsSource(source) || epoch != _epoch) {
-        throw StateError('当前用户没有此站源权限');
-      }
-      await _commit({
-        _key('source'): source,
-        _key('catalogView'): jsonEncode(
-          catalogView.copyWith(allSources: allSources).toJson(),
-        ),
-      });
+      if (locked || epoch != _epoch) throw StateError('当前用户已变更，请重试');
+      final settings = {..._userSettings, key: value};
+      await _write(_userFile(_current, 'settings'), settings);
+      _userSettings = settings;
       _notify();
     });
   }
@@ -448,73 +480,38 @@ class LocalStore extends ChangeNotifier {
           (entry) => normalizedSearchText(entry) != normalizedSearchText(query),
         ),
       ].take(20).toList();
-      await _commit({_key('recentSearches'): jsonEncode(entries)});
+      final settings = {..._userSettings, 'recentSearches': entries};
+      await _write(_userFile(_current, 'settings'), settings);
+      _userSettings = settings;
       _notify();
     });
   }
 
-  Future<void> clearRecentSearches() => _setting(_key('recentSearches'), '[]');
+  Future<void> clearRecentSearches() =>
+      _userSetting('recentSearches', const <String>[]);
 
-  Future<void> _commit(
-    Map<String, Object> changes, {
-    Iterable<String> remove = const [],
-    bool replace = false,
-  }) async {
-    final snapshot = _snapshot;
-    if (snapshot == null) throw StateError('请先恢复本地配置');
-    final values = replace ? <String, Object>{} : snapshot.values;
-    for (final key in remove) {
-      values.remove(key);
-    }
-    values.addAll(changes);
-    values.putIfAbsent(
-      'profiles',
-      () => jsonEncode(_profiles.map((profile) => profile.toJson()).toList()),
-    );
-    values.putIfAbsent('activeProfile', () => _current);
-    try {
-      await snapshot.commit(values);
-    } on SnapshotRecoveryRequired catch (error) {
-      _block(error.toString());
-      _notify();
-      rethrow;
-    }
-  }
+  Future<void> setForceLogin(bool value) => _queue(() async {
+    _requireAdmin();
+    await _saveUsers(_profiles, _current, value);
+    _forceLogin = value;
+    _notify();
+  });
 
-  Future<void> _setting(String key, Object value, {bool admin = false}) {
-    final epoch = _epoch;
-    return _queue(() async {
-      if (admin) _requireAdmin();
-      if (locked || epoch != _epoch) throw StateError('当前用户已变更，请重试');
-      await _commit({key: value});
-      _notify();
-    });
-  }
-
-  Future<void> setForceLogin(bool value) =>
-      _setting('forceLogin', value, admin: true);
-  Future<void> setHideVip(bool value) => _setting(_key('hideVip'), value);
   Future<void> setSource(String value) {
     if (!allowsSource(value)) return Future.error(StateError('当前用户没有此站源权限'));
-    return _setting(_key('source'), value);
+    return _userSetting('source', value);
   }
 
-  Future<void> setDisplayMode(String value) =>
-      {'auto', 'television', 'phone', 'pad', 'window'}.contains(value)
+  Future<void> setDisplayMode(String value) => _displayModes.contains(value)
       ? _setting('displayMode', value)
       : Future.value();
-  Future<void> setThemeMode(String value) =>
-      {'light', 'dark', 'system'}.contains(value)
+  Future<void> setThemeMode(String value) => _themeModes.contains(value)
       ? _setting('themeMode', value)
       : Future.value();
-  Future<void> setFollowSystemColor(bool value) => _queue(() async {
-    await preferences.setBool('followSystemColor', value);
-    _notify();
-  });
-  Future<void> setThemeColor(ThemeColor value) => _queue(() async {
-    await preferences.setString('themeColor', value.name);
-    _notify();
-  });
+  Future<void> setFollowSystemColor(bool value) =>
+      _setting('followSystemColor', value);
+  Future<void> setThemeColor(ThemeColor value) =>
+      _setting('themeColor', value.name);
   Future<void> setSideBarExpanded(bool value) => _queue(() async {
     await preferences.setBool('sideBarExpanded', value);
     _notify();
@@ -531,40 +528,54 @@ class LocalStore extends ChangeNotifier {
       '${value.left},${value.top},${value.extent}',
     ),
   );
-  Future<void> setTelevisionKeyboard(bool value) => _queue(() async {
-    await preferences.setBool('televisionKeyboard', value);
-    _notify();
-  });
-  Future<void> setCheckUpdates(bool value) => _queue(() async {
-    await preferences.setBool('checkUpdates', value);
-    _notify();
-  });
-  Future<void> setAutoExport(bool value) => _queue(() async {
-    await preferences.setBool('autoExport', value);
-    _notify();
-  });
-  Future<void> setDeleteAfterAutoExport(bool value) => _queue(() async {
-    await preferences.setBool('deleteAfterAutoExport', value);
-    _notify();
-  });
-  Future<void> setDeleteAfterManualExport(bool value) => _queue(() async {
-    await preferences.setBool('deleteAfterManualExport', value);
-    _notify();
-  });
-  Future<void> setShareUsage(bool value) => _queue(() async {
-    await preferences.setBool('shareUsage', value);
-    _notify();
-  });
+  Future<void> setTelevisionKeyboard(bool value) =>
+      _setting('televisionKeyboard', value);
+  Future<void> setCheckUpdates(bool value) => _setting('checkUpdates', value);
+  Future<void> setAutoExport(bool value) =>
+      _setting('exportAfterDownload', value);
+  Future<void> setDeleteAfterAutoExport(bool value) =>
+      _setting('deleteAfterAutoExport', value);
+  Future<void> setDeleteAfterManualExport(bool value) =>
+      _setting('deleteAfterManualExport', value);
+  Future<void> setShareUsage(bool value) => _setting('shareUsage', value);
   Future<void> setIgnoredUpdate(String version) =>
-      _queue(() => preferences.setString('ignoredUpdate', version));
+      _setting('ignoredUpdate', version);
   Future<void> setPlaybackPreferences(PlaybackPreferences value) {
     PlaybackPreferences.fromJson(value.toJson());
-    return _setting(_key('playback'), jsonEncode(value.toJson()));
+    return _userSetting('playback', value.toJson());
   }
 
   Future<void> setDownloadPreferences(DownloadPreferences value) {
     DownloadPreferences.fromJson(value.toJson());
-    return _setting(_key('downloadPreferences'), jsonEncode(value.toJson()));
+    return _userSetting('downloadPreferences', value.toJson());
+  }
+
+  Future<void> _saveStates(Map<String, FollowState> states) async {
+    await _write(_userFile(_current, 'followStates'), {
+      for (final entry in states.entries) entry.key: entry.value.toJson(),
+    });
+    _followStates
+      ..clear()
+      ..addAll(states);
+  }
+
+  Future<void> _saveFavorites(Map<String, Drama> favorites) async {
+    await _write(_userFile(_current, 'favorites'), [
+      for (final drama in favorites.values) drama.toJson(),
+    ]);
+    _favorites
+      ..clear()
+      ..addAll(favorites);
+  }
+
+  Future<void> _saveHistory(Iterable<WatchEntry> entries) async {
+    final rows = entries.toList();
+    await _write(_userFile(_current, 'history'), [
+      for (final entry in rows) entry.toJson(),
+    ]);
+    _history
+      ..clear()
+      ..addEntries(rows.map((entry) => MapEntry(entry.drama.id, entry)));
   }
 
   Future<void> toggleFavorite(Drama drama) {
@@ -581,20 +592,11 @@ class LocalStore extends ChangeNotifier {
         entries[drama.id] = drama;
         states[drama.id] = FollowState.initial(drama);
       }
-      await _commit({
-        _key('favorites'): jsonEncode(
-          entries.values.map((entry) => entry.toJson()).toList(),
-        ),
-        _key('followStates'): _encodeFollowStates(states),
-      });
-      _loadLibrary();
+      await _saveStates(states);
+      await _saveFavorites(entries);
       _notify();
     });
   }
-
-  String _encodeFollowStates(Map<String, FollowState> states) => jsonEncode({
-    for (final entry in states.entries) entry.key: entry.value.toJson(),
-  });
 
   Future<void> removeFavorites(Set<String> ids) {
     final epoch = _epoch;
@@ -606,17 +608,12 @@ class LocalStore extends ChangeNotifier {
             id,
       };
       if (removed.isEmpty) return;
-      final entries = Map.of(_favorites)
-        ..removeWhere((id, _) => removed.contains(id));
-      final states = Map.of(_followStates)
-        ..removeWhere((id, _) => removed.contains(id));
-      await _commit({
-        _key('favorites'): jsonEncode(
-          entries.values.map((entry) => entry.toJson()).toList(),
-        ),
-        _key('followStates'): _encodeFollowStates(states),
-      });
-      _loadLibrary();
+      await _saveStates(
+        Map.of(_followStates)..removeWhere((id, _) => removed.contains(id)),
+      );
+      await _saveFavorites(
+        Map.of(_favorites)..removeWhere((id, _) => removed.contains(id)),
+      );
       _notify();
     });
   }
@@ -625,10 +622,9 @@ class LocalStore extends ChangeNotifier {
     final epoch = _epoch;
     return _queue(() async {
       if (!isFavorite(id) || epoch != _epoch) return;
-      final states = Map.of(_followStates)
-        ..[id] = _followStates[id]!.markRead();
-      await _commit({_key('followStates'): _encodeFollowStates(states)});
-      _loadLibrary();
+      await _saveStates(
+        Map.of(_followStates)..[id] = _followStates[id]!.markRead(),
+      );
       _notify();
     });
   }
@@ -640,9 +636,7 @@ class LocalStore extends ChangeNotifier {
       final current = _followStates[id]!;
       final updated = current.markSeriesSeasonRead(seasonId);
       if (identical(current, updated)) return;
-      final states = Map.of(_followStates)..[id] = updated;
-      await _commit({_key('followStates'): _encodeFollowStates(states)});
-      _loadLibrary();
+      await _saveStates(Map.of(_followStates)..[id] = updated);
       _notify();
     });
   }
@@ -651,7 +645,8 @@ class LocalStore extends ChangeNotifier {
     final epoch = _epoch;
     return _queue(() async {
       if (!allowsSource(entry.drama.source) || epoch != _epoch) return;
-      final previous = _history[entry.drama.id]?.drama;
+      final id = entry.drama.id;
+      final previous = _history[id]?.drama;
       final current = previous == null
           ? entry
           : WatchEntry(
@@ -661,62 +656,24 @@ class LocalStore extends ChangeNotifier {
               duration: entry.duration,
               updatedAt: entry.updatedAt,
             );
-      final entries = Map.of(_history)..[entry.drama.id] = current;
-      final sorted = entries.values.toList()
-        ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-      final following = _followStates[entry.drama.id];
-      final states = Map.of(_followStates);
-      final favorites = Map.of(_favorites);
-      if (following != null) {
-        states[entry.drama.id] = following.observe(current.drama);
-        favorites[entry.drama.id] = favorites[entry.drama.id]!.merge(
-          current.drama,
-        );
+      final sorted = [
+        for (final other in _history.values)
+          if (other.drama.id != id) other,
+        current,
+      ]..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      await _saveHistory(sorted.take(300));
+      if (_followStates[id] case final following?) {
+        final state = following.observe(current.drama);
+        if (jsonEncode(state) != jsonEncode(following)) {
+          await _saveStates(Map.of(_followStates)..[id] = state);
+        }
+        final favorite = _favorites[id]!;
+        final merged = favorite.merge(current.drama);
+        if (jsonEncode(merged) != jsonEncode(favorite)) {
+          await _saveFavorites(Map.of(_favorites)..[id] = merged);
+        }
       }
-      await _commit({
-        _key('history'): jsonEncode(
-          sorted.take(300).map((entry) => entry.toJson()).toList(),
-        ),
-        if (following != null) ...{
-          _key('followStates'): _encodeFollowStates(states),
-          _key('favorites'): jsonEncode(
-            favorites.values.map((entry) => entry.toJson()).toList(),
-          ),
-        },
-      });
-      _loadLibrary();
       _notify();
-    });
-  }
-
-  WatchEntry? mediaWatched(String id) {
-    if (!canDownload) return null;
-    try {
-      final data = jsonDecode(_string(_key('mediaHistory')) ?? '{}') as Map;
-      final entry = data[id] == null
-          ? null
-          : WatchEntry.fromJson(Map<String, dynamic>.from(data[id] as Map));
-      return entry != null && allowsSource(entry.drama.source) ? entry : null;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  Future<void> saveMediaWatch(String id, WatchEntry entry) {
-    final epoch = _epoch;
-    return _queue(() async {
-      if (!canDownload ||
-          !allowsSource(entry.drama.source) ||
-          epoch != _epoch) {
-        return;
-      }
-      final data = jsonDecode(_string(_key('mediaHistory')) ?? '{}') as Map;
-      data.remove(id);
-      data[id] = entry.toJson();
-      while (data.length > 300) {
-        data.remove(data.keys.first);
-      }
-      await _commit({_key('mediaHistory'): jsonEncode(data)});
     });
   }
 
@@ -724,8 +681,7 @@ class LocalStore extends ChangeNotifier {
     final epoch = _epoch;
     return _queue(() async {
       if (locked || epoch != _epoch) return;
-      await _commit({}, remove: [_key('history')]);
-      _loadLibrary();
+      await _saveHistory(const []);
       _notify();
     });
   }
@@ -741,57 +697,46 @@ class LocalStore extends ChangeNotifier {
             id,
       };
       if (removed.isEmpty) return;
-      final entries = Map.of(_history)
-        ..removeWhere((id, _) => removed.contains(id));
-      await _commit({
-        _key('history'): jsonEncode(
-          entries.values.map((entry) => entry.toJson()).toList(),
-        ),
-      });
-      _loadLibrary();
+      await _saveHistory(
+        _history.values.where((entry) => !removed.contains(entry.drama.id)),
+      );
       _notify();
     });
   }
 
-  Future<void> refreshDrama(Drama drama) =>
-      _refreshDramas([drama], cacheSeriesCandidates: false);
+  Future<void> refreshDrama(Drama drama) => refreshDramas([drama]);
 
-  Future<void> refreshDramas(Iterable<Drama> dramas) =>
-      _refreshDramas(dramas, cacheSeriesCandidates: true);
-
-  Future<void> _refreshDramas(
-    Iterable<Drama> dramas, {
-    required bool cacheSeriesCandidates,
-  }) {
+  Future<void> refreshDramas(Iterable<Drama> dramas) {
     final epoch = _epoch;
     final updates = dramas.toList();
     return _queue(() async {
       if (locked || epoch != _epoch) return;
-      final changes = <String, Object>{};
       final favorites = Map.of(_favorites);
       final history = Map.of(_history);
       final states = Map.of(_followStates);
-      final seriesCandidates = Map.of(_seriesCandidates);
+      var favoritesChanged = false, historyChanged = false;
       for (final drama in updates) {
         if (!allowsSource(drama.source)) continue;
-        if (cacheSeriesCandidates && drama.source == SourceSite.hongguo.id) {
-          seriesCandidates[drama.id] = (seriesCandidates[drama.id] ?? drama)
-              .merge(drama);
+        if (favorites[drama.id] case final favorite?) {
+          final merged = favorite.merge(drama);
+          if (jsonEncode(merged) != jsonEncode(favorite)) {
+            favorites[drama.id] = merged;
+            favoritesChanged = true;
+          }
+          states[drama.id] = states[drama.id]!.observe(merged);
         }
-        final favorite = favorites[drama.id];
-        if (favorite != null) {
-          favorites[drama.id] = favorite.merge(drama);
-          states[drama.id] = states[drama.id]!.observe(favorites[drama.id]!);
-        }
-        final watched = history[drama.id];
-        if (watched != null) {
-          history[drama.id] = WatchEntry(
-            drama: watched.drama.merge(drama),
-            episode: watched.episode,
-            position: watched.position,
-            duration: watched.duration,
-            updatedAt: watched.updatedAt,
-          );
+        if (history[drama.id] case final watched?) {
+          final merged = watched.drama.merge(drama);
+          if (jsonEncode(merged) != jsonEncode(watched.drama)) {
+            history[drama.id] = WatchEntry(
+              drama: merged,
+              episode: watched.episode,
+              position: watched.position,
+              duration: watched.duration,
+              updatedAt: watched.updatedAt,
+            );
+            historyChanged = true;
+          }
         }
       }
       final candidates = <String, Drama>{
@@ -826,54 +771,11 @@ class LocalStore extends ChangeNotifier {
           favoriteIds: favoriteIds,
         );
       }
-      final favoriteJson = jsonEncode(
-        favorites.values.map((entry) => entry.toJson()).toList(),
-      );
-      final historyJson = jsonEncode(
-        history.values.map((entry) => entry.toJson()).toList(),
-      );
-      final statesJson = _encodeFollowStates(states);
-      final cachedCandidates = cacheSeriesCandidates
-          ? (seriesCandidates.values.toList()
-                  ..sort((a, b) => a.id.compareTo(b.id)))
-                .take(2000)
-                .toList()
-          : null;
-      final seriesCandidateJson = cachedCandidates == null
-          ? null
-          : jsonEncode(
-              cachedCandidates.map((entry) => entry.toJson()).toList(),
-            );
-      if (favoriteJson !=
-          jsonEncode(
-            _favorites.values.map((entry) => entry.toJson()).toList(),
-          )) {
-        changes[_key('favorites')] = favoriteJson;
-      }
-      if (historyJson !=
-          jsonEncode(_history.values.map((entry) => entry.toJson()).toList())) {
-        changes[_key('history')] = historyJson;
-      }
-      if (statesJson != _encodeFollowStates(_followStates)) {
-        changes[_key('followStates')] = statesJson;
-      }
-      final seriesChanged =
-          seriesCandidateJson != null &&
-          seriesCandidateJson != preferences.getString(_seriesKey());
-      if (seriesChanged) {
-        await preferences.setString(_seriesKey(), seriesCandidateJson);
-        _seriesCandidates
-          ..clear()
-          ..addEntries(
-            cachedCandidates!.map((drama) => MapEntry(drama.id, drama)),
-          );
-      }
-      if (changes.isEmpty) {
-        if (seriesChanged) _notify();
-        return;
-      }
-      await _commit(changes);
-      _loadLibrary();
+      final statesChanged = jsonEncode(states) != jsonEncode(_followStates);
+      if (!favoritesChanged && !historyChanged && !statesChanged) return;
+      if (statesChanged) await _saveStates(states);
+      if (favoritesChanged) await _saveFavorites(favorites);
+      if (historyChanged) await _saveHistory(history.values);
       _notify();
     });
   }
@@ -898,15 +800,24 @@ class LocalStore extends ChangeNotifier {
     _failures = 0;
   }
 
+  Future<void> _saveUsers(
+    List<LocalProfile> profiles,
+    String active,
+    bool? forceLogin,
+  ) => _write(_usersFile, {
+    'profiles': [for (final profile in profiles) profile.toJson()],
+    'active': active,
+    'forceLogin': ?forceLogin,
+  });
+
   Future<void> switchProfile(String id, {String pin = ''}) => _queue(() async {
     if (_configurationError != null) throw StateError('本地用户配置损坏，请先恢复');
     final target = _profiles.firstWhere((profile) => profile.id == id);
     await _checkPin(target, pin);
-    await _commit({'activeProfile': id});
+    await _saveUsers(_profiles, id, _forceLogin);
     _current = id;
     _locked = false;
-    _loadLibrary();
-    _loadSeriesCandidates();
+    await _loadUser();
     _epoch++;
     _notify();
   });
@@ -979,11 +890,7 @@ class LocalStore extends ChangeNotifier {
               ? 1
               : a.name.compareTo(b.name),
         );
-    await _commit({
-      'profiles': jsonEncode(
-        profiles.map((profile) => profile.toJson()).toList(),
-      ),
-    });
+    await _saveUsers(profiles, _current, _forceLogin);
     _profiles = profiles;
     _notify();
   });
@@ -991,20 +898,36 @@ class LocalStore extends ChangeNotifier {
     _requireAdmin();
     if (id == 'default') throw StateError('不能删除管理员');
     final profiles = _profiles.where((profile) => profile.id != id).toList();
-    await _commit({
-      'profiles': jsonEncode(
-        profiles.map((profile) => profile.toJson()).toList(),
-      ),
-    }, remove: LocalSnapshot.libraryKeys.map((key) => _key(key, id)));
-    await preferences.remove(_seriesKey(id));
-    await preferences.remove(_followChecksKey(id));
+    await _saveUsers(profiles, _current, _forceLogin);
     _profiles = profiles;
+    await files.remove('users/$id').catchError((Object _) {});
     _notify();
   });
 
   Future<String> exportBackup() async {
     await _writes.catchError((Object _) {});
     _requireAdmin();
+    final libraries = <String, Object?>{};
+    for (final profile in _profiles) {
+      Future<Object?> read(String name) =>
+          _readFile(_userFile(profile.id, name));
+      final settings = _map(await read('settings'));
+      final favorites = _list(await read('favorites'));
+      final ids = {
+        for (final row in favorites)
+          if (row is Map) row['id'],
+      };
+      libraries[profile.id] = {
+        'history': _list(await read('history')),
+        'favorites': favorites,
+        'followStates': _map(await read('followStates'))
+          ..removeWhere((id, _) => !ids.contains(id)),
+        'source': settings['source'] is String ? settings['source'] : '',
+        'playback': _map(settings['playback']),
+        'downloadPreferences': _map(settings['downloadPreferences']),
+        'recentSearches': _list(settings['recentSearches']),
+      };
+    }
     final content = jsonEncode({
       'schema': 1,
       'app': 'zhenguojian',
@@ -1013,40 +936,14 @@ class LocalStore extends ChangeNotifier {
       'themeMode': themeMode,
       'followSystemColor': followSystemColor,
       'themeColor': themeColor.name,
-      'autoExport': _bool('autoExport') ?? false,
-      'exportPosters': _bool('exportPosters') ?? false,
       'forceLogin': forceLogin,
-      'libraries': {
-        for (final profile in _profiles)
-          profile.id: {
-            'history': readJsonList(_string(_key('history', profile.id))),
-            'favorites': readJsonList(_string(_key('favorites', profile.id))),
-            'followStates': jsonDecode(
-              _string(_key('followStates', profile.id)) ?? '{}',
-            ),
-            'seriesCandidates': readJsonList(
-              preferences.getString(_seriesKey(profile.id)) ??
-                  _string(_key('seriesCandidates', profile.id)),
-            ),
-            'mediaHistory': jsonDecode(
-              _string(_key('mediaHistory', profile.id)) ?? '{}',
-            ),
-            'source': _string(_key('source', profile.id)) ?? '',
-            'hideVip': _bool(_key('hideVip', profile.id)) ?? true,
-            'playback': jsonDecode(
-              _string(_key('playback', profile.id)) ?? '{}',
-            ),
-            'downloadPreferences': jsonDecode(
-              _string(_key('downloadPreferences', profile.id)) ?? '{}',
-            ),
-            'catalogView': jsonDecode(
-              _string(_key('catalogView', profile.id)) ?? '{}',
-            ),
-            'recentSearches': jsonDecode(
-              _string(_key('recentSearches', profile.id)) ?? '[]',
-            ),
-          },
-      },
+      'checkUpdates': checkUpdates,
+      'shareUsage': shareUsage,
+      'exportAfterDownload': autoExport,
+      'deleteAfterAutoExport': deleteAfterAutoExport,
+      'deleteAfterManualExport': deleteAfterManualExport,
+      'televisionKeyboard': televisionKeyboard,
+      'libraries': libraries,
     });
     if (utf8.encode(content).length > 8 * 1024 * 1024) {
       throw StateError('备份超过 8 MiB 保存上限，请先整理记录；尚未写出备份文件');
@@ -1065,7 +962,7 @@ class LocalStore extends ChangeNotifier {
     }
     final profiles = _readProfiles(data['profiles']);
     if (data.containsKey('themeMode') &&
-        !{'light', 'dark', 'system'}.contains(data['themeMode'])) {
+        !_themeModes.contains(data['themeMode'])) {
       throw const FormatException('备份主题设置无效');
     }
     if (data.containsKey('followSystemColor') &&
@@ -1077,25 +974,26 @@ class LocalStore extends ChangeNotifier {
     if (data.containsKey('forceLogin') && data['forceLogin'] is! bool) {
       throw const FormatException('备份登录设置无效');
     }
+    if (_backupFlags.any(
+      (key) => data.containsKey(key) && data[key] is! bool,
+    )) {
+      throw const FormatException('备份设置无效');
+    }
     final libraries = data['libraries'] as Map;
     for (final profile in profiles) {
       final library = libraries[profile.id] as Map;
       final history = library['history'] as List,
           favorites = library['favorites'] as List;
-      final media = library['mediaHistory'] as Map? ?? {};
-      if (media.length > 300 ||
-          history.length > 300 ||
-          favorites.length > 20000) {
+      if (history.length > 300 || favorites.length > 20000) {
         throw const FormatException('备份记录过多');
       }
-      for (final row in [...history, ...media.values]) {
+      for (final row in history) {
         WatchEntry.fromJson(Map<String, dynamic>.from(row as Map));
       }
       for (final row in favorites) {
         Drama.fromJson(Map<String, dynamic>.from(row as Map));
       }
       final states = library['followStates'] as Map? ?? {};
-      final seriesCandidates = library['seriesCandidates'] as List? ?? [];
       final favoriteIds = favorites.map((row) => (row as Map)['id']).toSet();
       if (states.length > 20000 ||
           states.keys.any((id) => id is! String || !favoriteIds.contains(id))) {
@@ -1104,13 +1002,7 @@ class LocalStore extends ChangeNotifier {
       for (final row in states.values) {
         FollowState.fromJson(Map<String, dynamic>.from(row as Map));
       }
-      if (seriesCandidates.length > 2000) {
-        throw const FormatException('备份系列候选过多');
-      }
-      for (final row in seriesCandidates) {
-        Drama.fromJson(Map<String, dynamic>.from(row as Map));
-      }
-      if (library['hideVip'] is! bool || library['source'] is! String) {
+      if (library['source'] is! String) {
         throw const FormatException('备份设置无效');
       }
       PlaybackPreferences.fromJson(
@@ -1118,9 +1010,6 @@ class LocalStore extends ChangeNotifier {
       );
       DownloadPreferences.fromJson(
         Map<String, dynamic>.from(library['downloadPreferences'] as Map? ?? {}),
-      );
-      CatalogView.fromJson(
-        Map<String, dynamic>.from(library['catalogView'] as Map? ?? {}),
       );
       final searches = library['recentSearches'] as List? ?? [];
       if (searches.length > 20 ||
@@ -1135,77 +1024,49 @@ class LocalStore extends ChangeNotifier {
 
   Future<void> _installBackup(Map<String, dynamic> data) async {
     final profiles = _readProfiles(data['profiles']);
-    final values = <String, Object>{
-      'profiles': jsonEncode(
-        profiles.map((profile) => profile.toJson()).toList(),
-      ),
-      'activeProfile': profiles.firstWhere((profile) => profile.admin).id,
-      'displayMode':
-          {
-            'auto',
-            'television',
-            'phone',
-            'pad',
-            'window',
-          }.contains(data['displayMode'])
-          ? data['displayMode'] as String
-          : 'auto',
-      'themeMode': data['themeMode'] as String? ?? themeMode,
-      'autoExport': data['autoExport'] == true,
-      'exportPosters': data['exportPosters'] == true,
-      'forceLogin': data['forceLogin'] is bool
-          ? data['forceLogin'] as bool
-          : profiles.firstWhere((profile) => profile.admin).protected,
-    };
     final libraries = data['libraries'] as Map;
+    final contents = <String, Object?>{
+      _settingsFile: {
+        ..._settings,
+        'displayMode': _displayModes.contains(data['displayMode'])
+            ? data['displayMode']
+            : 'auto',
+        if (data['themeMode'] case final String mode) 'themeMode': mode,
+        if (data['followSystemColor'] case final bool follow)
+          'followSystemColor': follow,
+        if (ThemeColor.byName(data['themeColor']) case final color?)
+          'themeColor': color.name,
+        for (final key in _backupFlags)
+          if (data[key] case final bool value) key: value,
+      },
+      _usersFile: {
+        'profiles': [for (final profile in profiles) profile.toJson()],
+        'active': profiles.firstWhere((profile) => profile.admin).id,
+        if (data['forceLogin'] case final bool force) 'forceLogin': force,
+      },
+    };
     for (final profile in profiles) {
       final library = libraries[profile.id] as Map;
-      values.addAll({
-        _key('history', profile.id): jsonEncode(library['history']),
-        _key('favorites', profile.id): jsonEncode(library['favorites']),
-        _key('followStates', profile.id): jsonEncode(
-          library['followStates'] ?? {},
-        ),
-        _key('mediaHistory', profile.id): jsonEncode(
-          library['mediaHistory'] ?? {},
-        ),
-        _key('source', profile.id): library['source'] as String,
-        _key('hideVip', profile.id): library['hideVip'] as bool,
-        _key('playback', profile.id): jsonEncode(library['playback'] ?? {}),
-        _key('downloadPreferences', profile.id): jsonEncode(
-          library['downloadPreferences'] ?? {},
-        ),
-        _key('catalogView', profile.id): jsonEncode(
-          library['catalogView'] ?? {},
-        ),
-        _key('recentSearches', profile.id): jsonEncode(
-          library['recentSearches'] ?? [],
-        ),
+      contents.addAll({
+        _userFile(profile.id, 'history'): library['history'],
+        _userFile(profile.id, 'favorites'): library['favorites'],
+        _userFile(profile.id, 'followStates'): library['followStates'] ?? {},
+        _userFile(profile.id, 'followChecks'): const {},
+        _userFile(profile.id, 'settings'): {
+          'source': library['source'],
+          'playback': library['playback'] ?? {},
+          'downloadPreferences': library['downloadPreferences'] ?? {},
+          'recentSearches': library['recentSearches'] ?? [],
+        },
       });
     }
-    await _commit(values, replace: true);
-    if (data['followSystemColor'] case final bool follow) {
-      await preferences.setBool('followSystemColor', follow);
+    try {
+      await files.replaceAll(contents);
+    } catch (_) {
+      throw StateError('未能保存，原有记录已保留；请检查存储空间和权限后重试');
     }
-    if (ThemeColor.byName(data['themeColor']) case final color?) {
-      await preferences.setString('themeColor', color.name);
-    }
-    for (final key in preferences.getKeys().toList()) {
-      if (key.startsWith('seriesCandidates.')) await preferences.remove(key);
-    }
-    for (final profile in profiles) {
-      await preferences.setString(
-        _seriesKey(profile.id),
-        jsonEncode((libraries[profile.id] as Map)['seriesCandidates'] ?? []),
-      );
-    }
-    _profiles = profiles;
-    _current = profiles.firstWhere((profile) => profile.admin).id;
-    _configurationError = null;
-    _locked = forceLogin && profile.protected;
-    _loadSourceSwitches();
-    _loadLibrary();
-    _loadSeriesCandidates();
+    await _removeLegacy();
+    await _initialize();
     _epoch++;
     _notify();
   }
@@ -1215,31 +1076,40 @@ class LocalStore extends ChangeNotifier {
     await _installBackup(validateBackup(content));
   });
 
+  Future<LocalProfile?> _originalAdmin() async {
+    Object? records;
+    try {
+      final users = await files.read(_usersFile);
+      if (users is Map) records = users['profiles'];
+    } catch (_) {}
+    if (records == null) {
+      try {
+        final raw = preferences.getString(LocalSnapshot.storageKey);
+        final values = raw == null
+            ? null
+            : (jsonDecode(raw) as Map)['values'] as Map;
+        records = jsonDecode(
+          (values?['profiles'] as String?) ??
+              preferences.getString('profiles') ??
+              '[]',
+        );
+      } catch (_) {}
+    }
+    for (final row in _list(records)) {
+      if (row is Map && row['admin'] == true) {
+        try {
+          return LocalProfile.fromJson(Map<String, dynamic>.from(row));
+        } catch (_) {}
+      }
+    }
+    return null;
+  }
+
   Future<void> recoverBackup(String content, {required String pin}) =>
       _queue(() async {
         if (_configurationError == null) throw StateError('请从设置中恢复备份');
         final data = validateBackup(content);
-        LocalProfile? originalAdmin;
-        try {
-          final raw = preferences.getString(LocalSnapshot.storageKey);
-          final values = raw == null
-              ? null
-              : (jsonDecode(raw) as Map)['values'] as Map;
-          final records =
-              jsonDecode(
-                    (values?['profiles'] as String?) ??
-                        preferences.getString('profiles') ??
-                        '[]',
-                  )
-                  as List;
-          for (final row in records) {
-            if (row is Map && row['admin'] == true) {
-              originalAdmin = LocalProfile.fromJson(
-                Map<String, dynamic>.from(row),
-              );
-            }
-          }
-        } catch (_) {}
+        final originalAdmin = await _originalAdmin();
         final backupAdmin = _readProfiles(
           data['profiles'],
         ).firstWhere((profile) => profile.admin);
@@ -1248,33 +1118,32 @@ class LocalStore extends ChangeNotifier {
             : backupAdmin;
         if (!verifier.protected) throw StateError('无法验证管理员身份，请使用包含管理员密码的备份恢复');
         await _checkPin(verifier, pin);
-        _snapshot ??= LocalSnapshot.empty(preferences);
         await _installBackup(data);
       });
 
-  String exportRecoveryData() {
+  Future<String> exportRecoveryData() async {
     if (_configurationError == null) throw StateError('请从设置中导出备份');
     return jsonEncode({
       'app': 'zhenguojian',
       'recovery': true,
       'values': {
         for (final key in preferences.getKeys())
-          if (LocalSnapshot.owns(key) || key == LocalSnapshot.storageKey)
-            key: preferences.get(key),
+          if (LocalSnapshot.legacy(key)) key: preferences.get(key),
       },
+      'files': await files.dump(),
     });
   }
 
   Future<void> reload() => _queue(() async {
     final previousProfiles = _configurationError == null
-        ? _string('profiles')
+        ? jsonEncode(_profiles)
         : null;
     final previousId = _current;
     final previousLocked = locked;
     await preferences.reload();
-    _initialize();
+    await _initialize();
     if (_configurationError == null &&
-        previousProfiles == _string('profiles') &&
+        previousProfiles == jsonEncode(_profiles) &&
         previousId == _current) {
       _locked = previousLocked;
     } else {

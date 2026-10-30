@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import 'package:duanju_app/app_build.dart';
 import 'package:duanju_app/local_profiles.dart';
-import 'package:duanju_app/local_snapshot.dart';
 import 'package:duanju_app/local_store.dart';
 import 'package:duanju_app/models.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -61,10 +60,7 @@ void main() {
       );
       await store.saveProfile(name: '访客', sources: [], download: false);
       expect(store.profiles, hasLength(2));
-      expect(
-        store.preferences.getString(LocalSnapshot.storageKey),
-        isNot(contains('abcdef12')),
-      );
+      expect(jsonEncode(await store.files.dump()), isNot(contains('abcdef12')));
     });
 
     test('each user sees only their own records and sources', () async {
@@ -96,7 +92,7 @@ void main() {
       final store = await _withVisitor();
       expect(store.forceLogin, isTrue);
 
-      final restarted = restartStore(store);
+      final restarted = await restartStore(store);
       expect(restarted.locked, isTrue);
       expect(restarted.sources, isEmpty);
       expect(restarted.canDownload, isFalse);
@@ -104,7 +100,7 @@ void main() {
       expect(restarted.canDownload, isTrue);
       await restarted.setForceLogin(false);
 
-      final unlocked = restartStore(restarted);
+      final unlocked = await restartStore(restarted);
       expect(unlocked.locked, isFalse);
       unlocked.lock();
       expect(unlocked.locked, isTrue);
@@ -158,7 +154,7 @@ void main() {
         );
       }
 
-      final restarted = restartStore(store);
+      final restarted = await restartStore(store);
       expect(restarted.allowsSource('hongguo'), isFalse);
       expect(restarted.allowsSource('dsd'), allSourcesEnabled);
       expect(restarted.source, allSourcesEnabled ? 'hanxiaoquan' : '');

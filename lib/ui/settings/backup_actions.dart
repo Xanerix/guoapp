@@ -79,9 +79,10 @@ Future<String?> recoverBackupFile(
 }
 
 Future<String?> exportRecoveryFile(LocalStore store) async {
+  final content = await store.exportRecoveryData();
   final saved = await FilePicker.saveFile(
     fileName: '$appSlug-recovery.json',
-    bytes: Uint8List.fromList(utf8.encode(store.exportRecoveryData())),
+    bytes: Uint8List.fromList(utf8.encode(content)),
     mimeType: 'application/json',
   );
   return saved == null ? null : '原始配置已保存';

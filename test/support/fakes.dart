@@ -1,12 +1,15 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:duanju_app/core_bridge.dart';
+import 'package:duanju_app/local_files.dart';
 import 'package:duanju_app/local_profiles.dart';
 import 'package:duanju_app/local_store.dart';
 import 'package:duanju_app/models.dart';
 import 'package:duanju_app/ranking_models.dart';
 import 'package:duanju_app/resource_settings.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as path;
 import 'package:shared_preferences/shared_preferences.dart';
 
 Drama drama(
@@ -51,13 +54,56 @@ final viewerPreferences = <String, Object>{
   'activeProfile': 'viewer',
 };
 
+LocalFiles temporaryFiles() {
+  final directory = Directory.systemTemp.createTempSync('local-store-');
+  addTearDown(
+    () => directory.delete(recursive: true).catchError((Object _) => directory),
+  );
+  return LocalFiles(Directory(path.join(directory.path, 'store')));
+}
+
+class MemoryFiles extends LocalFiles {
+  MemoryFiles() : super(Directory('memory'));
+  final contents = <String, String>{};
+
+  @override
+  Future<bool> exists() async => contents.containsKey(LocalFiles.marker);
+
+  @override
+  Future<Object?> read(String name) async =>
+      contents[name] == null ? null : jsonDecode(contents[name]!);
+
+  @override
+  Future<void> write(String name, Object? value) async =>
+      contents[name] = jsonEncode(value);
+
+  @override
+  Future<void> replaceAll(Map<String, Object?> files) async => contents
+    ..clear()
+    ..addAll({
+      for (final entry in files.entries) entry.key: jsonEncode(entry.value),
+    });
+
+  @override
+  Future<void> remove(String directory) async =>
+      contents.removeWhere((name, _) => name.startsWith('$directory/'));
+
+  @override
+  Future<void> quarantine(String name) async => contents.remove(name);
+
+  @override
+  Future<Map<String, String>> dump() async => Map.of(contents);
+}
+
 Future<LocalStore> openStore([
   Map<String, Object> initial = const {},
   Future<String> Function(String pin, String salt)? pinHasher,
+  LocalFiles? files,
 ]) async {
   SharedPreferences.setMockInitialValues(Map.of(initial));
-  final store = LocalStore(
+  final store = await LocalStore.open(
     await SharedPreferences.getInstance(),
+    files ?? MemoryFiles(),
     pinHasher: pinHasher,
   );
   addTearDown(store.dispose);
@@ -91,8 +137,8 @@ DramaDetail dramaDetail(
     Episode({'currentEpisode': number, 'vip': vip.contains(number)}, number),
 ], warning: warning);
 
-LocalStore restartStore(LocalStore store) {
-  final restarted = LocalStore(store.preferences);
+Future<LocalStore> restartStore(LocalStore store) async {
+  final restarted = await LocalStore.open(store.preferences, store.files);
   addTearDown(restarted.dispose);
   return restarted;
 }

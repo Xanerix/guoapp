@@ -33,7 +33,7 @@ Future<void> pickSource(BuildContext anchor, LocalStore store) async {
   );
   if (value == null || value == store.source) return;
   try {
-    await store.setCatalogSource(value, allSources: false);
+    await store.setSource(value);
   } catch (_) {
     if (!anchor.mounted) return;
     ScaffoldMessenger.maybeOf(

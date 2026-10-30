@@ -4,12 +4,15 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
+import 'package:path/path.dart' as path;
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'app_device.dart';
 import 'core_bridge.dart';
 import 'diary_service.dart';
+import 'local_files.dart';
 import 'local_store.dart';
 import 'picture_in_picture.dart';
 import 'ui/app.dart';
@@ -109,9 +112,14 @@ class _AppBootstrapState extends State<AppBootstrap>
       final preferences = await SharedPreferences.getInstance();
       await _refreshDevice();
       await repository.initialize();
+      final support = await getApplicationSupportDirectory();
+      final local = await LocalStore.open(
+        preferences,
+        LocalFiles(Directory(path.join(support.path, 'store'))),
+      );
       if (!mounted) return;
       setState(() {
-        final local = store = LocalStore(preferences);
+        store = local;
         repository.access = local;
       });
     } catch (failure) {
