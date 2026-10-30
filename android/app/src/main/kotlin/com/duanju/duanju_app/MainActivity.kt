@@ -43,6 +43,7 @@ import android.view.WindowManager
 import android.provider.Settings
 import androidx.annotation.ChecksSdkIntAtLeast
 import androidx.annotation.RequiresApi
+import androidx.core.content.FileProvider
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.FlutterShellArgs
 import io.flutter.plugin.common.MethodChannel
@@ -54,6 +55,7 @@ private const val SURFACE_RESIZE_REDRAW_WAIT_MS = 100L
 private const val ORIENTATION_SETTLE_MS = 800L
 private const val CREATE_DOCUMENT_REQUEST = 7301
 private const val STORAGE_PERMISSION_REQUEST = 7302
+private const val INSTALL_PERMISSION_REQUEST = 7303
 private const val PICTURE_IN_PICTURE_ACTION = "com.duanju.duanju_app.PICTURE_IN_PICTURE_ACTION"
 
 private data class PlayerPictureInPicture(
@@ -70,6 +72,8 @@ class MainActivity : FlutterActivity() {
     private var pictureInPictureReceiver: BroadcastReceiver? = null
     private var documentResult: MethodChannel.Result? = null
     private var permissionResult: MethodChannel.Result? = null
+    private var installResult: MethodChannel.Result? = null
+    private var installPath: String? = null
     private var textInput: TextInputBridge? = null
     private var headroomReadAt = 0L
     private var thermalHeadroom: Double? = null
@@ -474,6 +478,28 @@ class MainActivity : FlutterActivity() {
                                 }
                             }
                         }
+                        "installPackage" -> {
+                            val path = call.argument<String>("path")
+                            if (path.isNullOrEmpty() || installResult != null) {
+                                result.success(false)
+                            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                                !packageManager.canRequestPackageInstalls()) {
+                                val intent = Intent(
+                                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                                    Uri.parse("package:$packageName")
+                                )
+                                try {
+                                    installResult = result
+                                    installPath = path
+                                    startActivityForResult(intent, INSTALL_PERMISSION_REQUEST)
+                                } catch (e: Exception) {
+                                    installResult = null
+                                    result.success(false)
+                                }
+                            } else {
+                                result.success(installPackage(File(path)))
+                            }
+                        }
                         "deleteDocument" -> {
                             val uri = call.argument<String>("uri")
                             result.success(uri != null && runCatching {
@@ -665,8 +691,27 @@ class MainActivity : FlutterActivity() {
         )
     }
 
+    private fun installPackage(file: File): Boolean = runCatching {
+        val uri = FileProvider.getUriForFile(this, "$packageName.update", file)
+        startActivity(Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/vnd.android.package-archive")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        })
+    }.isSuccess
+
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == INSTALL_PERMISSION_REQUEST) {
+            val result = installResult ?: return
+            val path = installPath
+            installResult = null
+            installPath = null
+            result.success(
+                path != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                    packageManager.canRequestPackageInstalls() && installPackage(File(path))
+            )
+            return
+        }
         if (requestCode != CREATE_DOCUMENT_REQUEST) {
             return super.onActivityResult(requestCode, resultCode, data)
         }

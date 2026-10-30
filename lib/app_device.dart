@@ -56,6 +56,18 @@ class AppDevice {
     }
   }
 
+  static Future<bool> installPackage(String path) async {
+    if (defaultTargetPlatform != TargetPlatform.android) return false;
+    try {
+      return await channel.invokeMethod<bool>('installPackage', {
+            'path': path,
+          }) ??
+          false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   static Future<bool> setCompatibleRendering(bool enabled) async {
     if (defaultTargetPlatform != TargetPlatform.android) return false;
     try {

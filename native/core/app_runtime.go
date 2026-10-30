@@ -173,6 +173,8 @@ type nativeEngine struct {
 	playbackCancel   context.CancelFunc
 	sourceCatalogMu  sync.Mutex
 	sourceCatalogs   map[string]chan struct{}
+	updateMu         sync.Mutex
+	updateJob        *nativeUpdateJob
 }
 
 var nativeState struct {
@@ -456,6 +458,8 @@ func nativeDispatch(input nativeInput) (any, error) {
 		return engine.checkUpdate(ctx, input.Version)
 	case "reportUsage":
 		return true, engine.reportUsage(ctx, input.Version)
+	case "updateDownload":
+		return engine.updateDownload(input)
 	default:
 		return nil, errors.New("不支持的应用操作")
 	}

@@ -6,6 +6,19 @@ class AppUpdate {
   final String url;
 }
 
+class UpdateDownload {
+  const UpdateDownload({
+    this.received = 0,
+    this.total = 0,
+    this.path = '',
+    this.error = '',
+  });
+  final int received;
+  final int total;
+  final String path;
+  final String error;
+}
+
 int baseBuildNumber(String buildNumber) =>
     (int.tryParse(buildNumber) ?? 0) % 1000;
 

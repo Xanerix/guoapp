@@ -105,7 +105,7 @@ Android 签名只用仓库 Secrets：`ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTO
 
 ## 检查更新与使用统计
 
-接收端是 Cloudflare Worker `guoapp-update`（`worker/`，D1 数据库 `guoapp-stats`），地址在编译期由环境变量 `UPDATE_SERVER_URL` 经 `scripts/app_build.py` 注入 Go（CI 取仓库变量 `UPDATE_SERVER_URL`），没设时检查更新和使用统计都不发请求，fork 和本地构建默认不会连到这里。Go 核心（`native/core/app_update.go`）的 `checkUpdate` 请求 `GET /v1/latest`，只读不写；`reportUsage` 请求 `POST /v1/ping`，按北京时间日期和随机编号在 `pings` 表里每天记一行。两者分别由设置里的「启动时检查更新」和「匿名使用统计」控制。Worker 每小时从 GitHub 读取最新 Release 写入 `meta` 表。改 Worker 后在 `worker/` 下运行 `npx wrangler deploy`。
+接收端是 Cloudflare Worker `guoapp-update`（`worker/`，D1 数据库 `guoapp-stats`），地址在编译期由环境变量 `UPDATE_SERVER_URL` 经 `scripts/app_build.py` 注入 Go（CI 取仓库变量 `UPDATE_SERVER_URL`），没设时检查更新和使用统计都不发请求，fork 和本地构建默认不会连到这里。变量可填逗号分隔的多个地址，Go 按顺序尝试，前一个连不上或返回错误时换下一个；CI 里先填国内可直连的中转服务器，再填 Worker。Go 核心（`native/core/app_update.go`）的 `checkUpdate` 请求 `GET /v1/latest`，只读不写；`reportUsage` 请求 `POST /v1/ping`，按北京时间日期和随机编号在 `pings` 表里每天记一行。两者分别由设置里的「启动时检查更新」和「匿名使用统计」控制。Android 点「更新」后由 Go 的 `updateDownload` action 按顺序从各地址的 `/apk/<Release 里的 APK 文件名>` 下载到缓存目录 `update/`，按 `buildAllSources` 和 `runtime.GOARCH` 选包，下完经 `duanju/device` 的 `installPackage`（FileProvider）调起系统安装，失败时打开发布页；Worker 没有 `/apk/`，只有中转服务器提供，它每小时从最新 Release 镜像 6 个 APK 并校验 sha256。Worker 每小时从 GitHub 读取最新 Release 写入 `meta` 表。改 Worker 后在 `worker/` 下运行 `npx wrangler deploy`。
 
 在 `worker/` 下查询（`--remote` 查线上库）：
 
