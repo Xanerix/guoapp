@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../models.dart';
 import '../app_scope.dart';
 import 'cover_image.dart';
+import 'motion/motion_widgets.dart';
 
 class CoverBackdrop extends StatelessWidget {
   const CoverBackdrop({
@@ -36,15 +37,20 @@ class CoverBackdrop extends StatelessWidget {
                 sigmaY: sigma,
                 tileMode: TileMode.clamp,
               ),
-              child: DramaCover.imagesDisabled || drama.id.isEmpty
-                  ? fallback
-                  : CoverImage(
-                      key: ValueKey('${drama.id}\u0000${drama.cover}'),
-                      drama: drama,
-                      repository: AppScope.of(context).repository,
-                      placeholder: fallback,
-                      retryable: false,
-                    ),
+              child: FadeSwitcher(
+                child: SizedBox.expand(
+                  key: ValueKey(drama.id),
+                  child: DramaCover.imagesDisabled || drama.id.isEmpty
+                      ? fallback
+                      : CoverImage(
+                          key: ValueKey('${drama.id}\u0000${drama.cover}'),
+                          drama: drama,
+                          repository: AppScope.of(context).repository,
+                          placeholder: fallback,
+                          retryable: false,
+                        ),
+                ),
+              ),
             ),
           ),
         ),

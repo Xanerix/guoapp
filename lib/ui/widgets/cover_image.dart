@@ -6,6 +6,7 @@ import '../../core_bridge.dart';
 import '../../cover_loader.dart';
 import '../../models.dart';
 import '../app_scope.dart';
+import 'motion/motion_widgets.dart';
 
 const vipGold = Color(0xFFF6C86B);
 const onVipGold = Color(0xFF40300D);
@@ -39,11 +40,13 @@ class DramaCover extends StatelessWidget {
     this.radius = 12,
     this.details = true,
     this.rank,
+    this.heroScope,
   });
   final Drama drama;
   final double radius;
   final bool details;
   final int? rank;
+  final String? heroScope;
   static const imagesDisabled = bool.fromEnvironment('DISABLE_REMOTE_IMAGES');
 
   @override
@@ -59,19 +62,34 @@ class DramaCover extends StatelessWidget {
         ),
       ),
     );
+    Widget image = Stack(
+      fit: StackFit.expand,
+      children: [
+        placeholder,
+        if (!imagesDisabled && drama.id.isNotEmpty)
+          CoverImage(
+            key: ValueKey('${drama.id}\u0000${drama.cover}'),
+            drama: drama,
+            repository: AppScope.of(context).repository,
+            placeholder: placeholder,
+          ),
+      ],
+    );
+    if (heroScope case final scope? when drama.id.isNotEmpty) {
+      image = Hero(
+        tag: coverHeroTag(drama.id, scope),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(radius),
+          child: image,
+        ),
+      );
+    }
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
       child: Stack(
         fit: StackFit.expand,
         children: [
-          placeholder,
-          if (!imagesDisabled && drama.id.isNotEmpty)
-            CoverImage(
-              key: ValueKey('${drama.id}\u0000${drama.cover}'),
-              drama: drama,
-              repository: AppScope.of(context).repository,
-              placeholder: placeholder,
-            ),
+          image,
           if (details)
             const IgnorePointer(
               child: DecoratedBox(
@@ -287,6 +305,7 @@ class _CoverImageState extends State<CoverImage> {
         fit: BoxFit.cover,
         cacheWidth: _decodeWidth,
         excludeFromSemantics: true,
+        frameBuilder: fadeInFrameBuilder,
         errorBuilder: (_, _, _) => _failure(snapshot.data),
       );
     },

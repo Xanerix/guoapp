@@ -127,9 +127,11 @@ class DramaTile extends StatelessWidget {
     this.onMore,
     this.focusNode,
     this.autofocus = false,
+    this.heroScope,
   });
   final Drama drama;
   final VoidCallback onTap;
+  final String? heroScope;
   final String? subtitle;
   final int? rank;
   final VoidCallback? onMore;
@@ -157,7 +159,14 @@ class DramaTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => _PosterButton(
-    cover: DramaCover(drama: drama, radius: _coverRadius, rank: rank),
+    cover: DramaCover(
+      drama: drama,
+      radius: _coverRadius,
+      rank: rank,
+      heroScope: AppScope.of(context).television || !Visibility.of(context)
+          ? null
+          : heroScope,
+    ),
     label:
         '${rank == null ? '' : '第$rank名，'}'
         '${drama.title}，${drama.episodes}集${drama.vip ? '，VIP' : ''}',
@@ -187,8 +196,10 @@ class ProgressPoster extends StatelessWidget {
     this.width = 100,
     this.selected,
     this.badge,
+    this.heroScope,
   });
   final Drama drama;
+  final String? heroScope;
   final double? progress;
   final String caption;
   final String? tag;
@@ -217,7 +228,15 @@ class ProgressPoster extends StatelessWidget {
         cover: Stack(
           fit: StackFit.expand,
           children: [
-            DramaCover(drama: drama, radius: _coverRadius, details: false),
+            DramaCover(
+              drama: drama,
+              radius: _coverRadius,
+              details: false,
+              heroScope:
+                  television || selected != null || !Visibility.of(context)
+                  ? null
+                  : heroScope,
+            ),
             if (tag case final tag?)
               Positioned(
                 left: 8,

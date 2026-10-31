@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../theme/motion.dart';
+
 import '../../local_store.dart';
 import '../../models.dart';
 import 'focus_ring.dart';
+import 'motion/motion_widgets.dart';
 
 Future<void> _toggle(BuildContext context, LocalStore store, Drama drama) =>
     store.toggleFavorite(drama).catchError((Object failure) {
@@ -57,8 +60,11 @@ class FollowPill extends StatelessWidget {
               fontWeight: FontWeight.w600,
             ),
           ),
-          icon: Icon(
-            followed ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+          icon: ToggleIconSwitcher(
+            child: Icon(
+              followed ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+              key: ValueKey(followed),
+            ),
           ),
           label: Stack(
             alignment: Alignment.center,
@@ -70,7 +76,10 @@ class FollowPill extends StatelessWidget {
                 maintainState: true,
                 child: Text('已追剧'),
               ),
-              Text(followed ? '已追剧' : '追剧'),
+              FadeSwitcher(
+                duration: Motion.short,
+                child: Text(followed ? '已追剧' : '追剧', key: ValueKey(followed)),
+              ),
             ],
           ),
         ),
@@ -109,10 +118,13 @@ class FollowIcon extends StatelessWidget {
           key: const ValueKey('follow-toggle'),
           onPressed: () => _toggle(context, store, drama),
           style: IconButton.styleFrom(fixedSize: Size.square(extent)),
-          icon: Icon(
-            followed ? Icons.bookmark_rounded : Icons.bookmark_add_outlined,
-            size: size,
-            color: followed ? activeColor : color,
+          icon: ToggleIconSwitcher(
+            child: Icon(
+              followed ? Icons.bookmark_rounded : Icons.bookmark_add_outlined,
+              key: ValueKey(followed),
+              size: size,
+              color: followed ? activeColor : color,
+            ),
           ),
         ),
       );

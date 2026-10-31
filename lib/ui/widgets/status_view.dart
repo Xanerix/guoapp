@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'focus_ring.dart';
+import 'motion/motion_widgets.dart';
 
 class StatusView extends StatelessWidget {
   const StatusView({
@@ -38,10 +39,21 @@ class StatusView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (loading)
-              const CircularProgressIndicator()
-            else
-              Icon(icon, size: 56, color: theme.colorScheme.primary),
+            FadeSwitcher(
+              scale: true,
+              child: loading
+                  ? const SizedBox.square(
+                      key: ValueKey(true),
+                      dimension: 56,
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  : Icon(
+                      icon,
+                      key: const ValueKey(false),
+                      size: 56,
+                      color: theme.colorScheme.primary,
+                    ),
+            ),
             const SizedBox(height: 20),
             Text(
               title,
