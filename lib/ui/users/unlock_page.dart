@@ -5,6 +5,7 @@ import '../app_scope.dart';
 import '../settings/backup_actions.dart';
 import '../settings/settings_rows.dart';
 import '../widgets/focus_ring.dart';
+import '../widgets/motion/motion_widgets.dart';
 import 'users_view.dart';
 
 class UnlockPage extends StatefulWidget {
@@ -16,6 +17,7 @@ class UnlockPage extends StatefulWidget {
 }
 
 class _UnlockPageState extends State<UnlockPage> {
+  final _entered = <Object>{};
   var _busy = false;
 
   Future<void> _run(Future<String?> Function() task) async {
@@ -56,28 +58,42 @@ class _UnlockPageState extends State<UnlockPage> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 spacing: 24,
                 children: [
-                  Icon(
-                    Icons.play_circle_fill_rounded,
-                    color: theme.colorScheme.primary,
-                    size: 72,
+                  EnterOnce(
+                    id: 'logo',
+                    played: _entered,
+                    child: Icon(
+                      Icons.play_circle_fill_rounded,
+                      color: theme.colorScheme.primary,
+                      size: 72,
+                    ),
                   ),
-                  _Heading(
-                    title: error == null ? '选择用户' : '需要恢复本地配置',
-                    message: error,
+                  EnterOnce(
+                    id: 'heading',
+                    played: _entered,
+                    index: 1,
+                    child: _Heading(
+                      title: error == null ? '选择用户' : '需要恢复本地配置',
+                      message: error,
+                    ),
                   ),
                   if (error == null)
-                    SettingsCard(
-                      children: [
-                        for (final (index, profile) in store.profiles.indexed)
-                          ProfileTile(
-                            key: ValueKey('profile-${profile.id}'),
-                            profile: profile,
-                            subtitle: profile.admin ? '管理员' : '普通用户',
-                            autofocus: index == 0,
-                            onTap: () =>
-                                switchToProfile(context, store, profile),
-                          ),
-                      ],
+                    EnterOnce(
+                      id: 'profiles',
+                      played: _entered,
+                      index: 2,
+                      child: SettingsCard(
+                        children: [
+                          for (final (index, profile) in store.profiles.indexed)
+                            ProfileTile(
+                              key: ValueKey('profile-${profile.id}'),
+                              profile: profile,
+                              subtitle: profile.admin ? '管理员' : '普通用户',
+                              autofocus: index == 0,
+                              onTap: () =>
+                                  switchToProfile(context, store, profile),
+                            ),
+                        ],
+                      ),
                     )
                   else ...[
                     FocusRing(

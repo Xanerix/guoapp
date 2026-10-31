@@ -1,6 +1,10 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
+import '../theme/motion.dart';
 import '../widgets/focus_ring.dart';
+import '../widgets/motion/motion_widgets.dart';
 
 Future<bool> showPasswordDialog(
   BuildContext context, {
@@ -29,13 +33,19 @@ class _PasswordDialog extends StatefulWidget {
   State<_PasswordDialog> createState() => _PasswordDialogState();
 }
 
-class _PasswordDialogState extends State<_PasswordDialog> {
+class _PasswordDialogState extends State<_PasswordDialog>
+    with SingleTickerProviderStateMixin {
+  late final _shake = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 350),
+  );
   final _pin = TextEditingController();
   var _busy = false;
   String? _error;
 
   @override
   void dispose() {
+    _shake.dispose();
     _pin.dispose();
     super.dispose();
   }
@@ -55,6 +65,7 @@ class _PasswordDialogState extends State<_PasswordDialog> {
           _busy = false;
           _error = failure is StateError ? failure.message : '$failure';
         });
+        if (!Motion.reduced(context)) _shake.forward(from: 0);
       }
     }
   }
@@ -64,18 +75,28 @@ class _PasswordDialogState extends State<_PasswordDialog> {
     title: Text(widget.title),
     content: SizedBox(
       width: 352,
-      child: TextField(
-        controller: _pin,
-        autofocus: true,
-        obscureText: true,
-        enableSuggestions: false,
-        autocorrect: false,
-        enabled: !_busy,
-        onSubmitted: (_) => _submit(),
-        decoration: InputDecoration(
-          labelText: '密码',
-          helperText: widget.helper,
-          errorText: _error,
+      child: AnimatedBuilder(
+        animation: _shake,
+        builder: (context, child) => Transform.translate(
+          offset: Offset(
+            math.sin(_shake.value * math.pi * 4) * 8 * (1 - _shake.value),
+            0,
+          ),
+          child: child,
+        ),
+        child: TextField(
+          controller: _pin,
+          autofocus: true,
+          obscureText: true,
+          enableSuggestions: false,
+          autocorrect: false,
+          enabled: !_busy,
+          onSubmitted: (_) => _submit(),
+          decoration: InputDecoration(
+            labelText: '密码',
+            helperText: widget.helper,
+            errorText: _error,
+          ),
         ),
       ),
     ),
@@ -91,7 +112,10 @@ class _PasswordDialogState extends State<_PasswordDialog> {
         radius: 20,
         child: FilledButton(
           onPressed: _busy ? null : _submit,
-          child: Text(_busy ? '正在验证…' : '登录'),
+          child: FadeSwitcher(
+            duration: Motion.short,
+            child: Text(_busy ? '正在验证…' : '登录', key: ValueKey(_busy)),
+          ),
         ),
       ),
     ],

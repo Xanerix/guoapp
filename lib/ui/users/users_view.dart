@@ -5,6 +5,7 @@ import '../../local_store.dart';
 import '../../models.dart';
 import '../settings/settings_rows.dart';
 import '../settings/settings_sections.dart';
+import '../theme/motion.dart';
 import '../widgets/focus_ring.dart';
 import '../widgets/group_card.dart';
 import 'password_dialog.dart';
@@ -169,7 +170,9 @@ class ProfileTile extends StatelessWidget {
         ),
         horizontalTitleGap: 16,
         autofocus: autofocus,
-        leading: Container(
+        leading: AnimatedContainer(
+          duration: Motion.of(context, Motion.short),
+          curve: Motion.standard,
           width: 40,
           height: 40,
           decoration: BoxDecoration(
@@ -178,12 +181,16 @@ class ProfileTile extends StatelessWidget {
                 : colors.surfaceContainerHighest,
             shape: BoxShape.circle,
           ),
-          child: Icon(
-            Icons.person_outline_rounded,
-            size: 22,
-            color: current
-                ? colors.onPrimaryContainer
-                : colors.onSurfaceVariant,
+          child: TweenAnimationBuilder<Color?>(
+            tween: ColorTween(
+              end: current
+                  ? colors.onPrimaryContainer
+                  : colors.onSurfaceVariant,
+            ),
+            duration: Motion.of(context, Motion.short),
+            curve: Motion.standard,
+            builder: (context, color, _) =>
+                Icon(Icons.person_outline_rounded, size: 22, color: color),
           ),
         ),
         title: Row(

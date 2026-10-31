@@ -11,6 +11,7 @@ import '../../local_store.dart';
 import '../app_scope.dart';
 import '../widgets/focus_ring.dart';
 import '../widgets/group_card.dart';
+import '../widgets/motion/motion_widgets.dart';
 import '../widgets/status_view.dart';
 import 'settings_rows.dart';
 
@@ -148,7 +149,15 @@ class _StorageViewState extends State<StorageView> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => FadeSwitcher(
+    alignment: Alignment.topCenter,
+    child: KeyedSubtree(
+      key: ValueKey(_info != null ? 'content' : _error ?? 'loading'),
+      child: _body(context),
+    ),
+  );
+
+  Widget _body(BuildContext context) {
     final info = _info;
     if (info == null) {
       return _error == null
