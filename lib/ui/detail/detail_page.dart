@@ -198,6 +198,7 @@ class _DetailPageState extends State<DetailPage> {
   bool _expanded = false;
   final _playFocus = FocusNode();
   final _followFocus = FocusNode();
+  final _played = <Object>{};
   final _descriptionFocus = FocusNode();
   final _groupFocus = <FocusNode>[];
   final _episodeFocus = List.generate(episodeGroupSize, (_) => FocusNode());
@@ -432,6 +433,13 @@ class _DetailPageState extends State<DetailPage> {
     );
   }
 
+  Widget _enter(int index, Widget child) => EnterOnce(
+    id: 'section-$index',
+    played: _played,
+    index: index,
+    child: child,
+  );
+
   Widget _phonePage(DramaDetails details) {
     const m = _phone;
     final top = MediaQuery.paddingOf(context).top + kToolbarHeight;
@@ -458,7 +466,7 @@ class _DetailPageState extends State<DetailPage> {
                         Expanded(
                           child: Padding(
                             padding: const EdgeInsets.only(top: 6),
-                            child: _followingHeadline(details, m, 6),
+                            child: _enter(0, _followingHeadline(details, m, 6)),
                           ),
                         ),
                       ],
@@ -466,17 +474,17 @@ class _DetailPageState extends State<DetailPage> {
                     if (_stats(drama, m) case final stats?)
                       Padding(
                         padding: const EdgeInsets.only(top: 14),
-                        child: stats,
+                        child: _enter(1, stats),
                       ),
                     if (_tags(drama, m) case final tags?)
                       Padding(
                         padding: const EdgeInsets.only(top: 10),
-                        child: tags,
+                        child: _enter(2, tags),
                       ),
                     if (drama.description.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(top: 12),
-                        child: _description(drama, m),
+                        child: _enter(3, _description(drama, m)),
                       ),
                     if (details.warning.isNotEmpty)
                       Padding(
@@ -569,7 +577,7 @@ class _DetailPageState extends State<DetailPage> {
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.only(top: 4),
-                child: _followingHeadline(details, m, 4),
+                child: _enter(0, _followingHeadline(details, m, 4)),
               ),
             ),
           ],
@@ -577,10 +585,13 @@ class _DetailPageState extends State<DetailPage> {
         if (_stats(drama, m) case final stats?)
           Padding(
             padding: EdgeInsets.only(top: desktop ? 18 : 16),
-            child: stats,
+            child: _enter(1, stats),
           ),
         if (_tags(drama, m) case final tags?)
-          Padding(padding: const EdgeInsets.only(top: 10), child: tags),
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: _enter(2, tags),
+          ),
         Padding(
           padding: EdgeInsets.only(top: desktop ? 22 : 20),
           child: Row(
@@ -594,7 +605,7 @@ class _DetailPageState extends State<DetailPage> {
         if (drama.description.isNotEmpty)
           Padding(
             padding: EdgeInsets.only(top: desktop ? 22 : 20),
-            child: _description(drama, m),
+            child: _enter(3, _description(drama, m)),
           ),
         if (details.warning.isNotEmpty)
           Padding(
@@ -847,73 +858,76 @@ class _DetailPageState extends State<DetailPage> {
           children: [
             _cover(drama, m),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                spacing: 6,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 2),
-                    child: Text(
-                      drama.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: m.title,
-                        fontWeight: FontWeight.w800,
-                        height: 1.25,
-                      ),
-                    ),
-                  ),
-                  Text(
-                    meta.join(' · '),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: sub.copyWith(fontSize: m.meta),
-                  ),
-                  if (drama.category.isNotEmpty)
-                    Text(
-                      drama.category,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: sub,
-                    ),
-                  if (drama.onlineDate.isNotEmpty)
-                    Text('${drama.onlineDate} 上线', style: sub),
-                  if (drama.tags.isNotEmpty)
+              child: _enter(
+                0,
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  spacing: 6,
+                  children: [
                     Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: SizedBox(
-                        height: 28,
-                        child: Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          clipBehavior: Clip.hardEdge,
-                          children: [
-                            for (final tag in drama.tags.take(12))
-                              Container(
-                                height: 28,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: colors.surfaceContainerHighest,
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Center(
-                                  widthFactor: 1,
-                                  child: Text(
-                                    tag,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(fontSize: m.tag),
-                                  ),
-                                ),
-                              ),
-                          ],
+                      padding: const EdgeInsets.only(bottom: 2),
+                      child: Text(
+                        drama.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: m.title,
+                          fontWeight: FontWeight.w800,
+                          height: 1.25,
                         ),
                       ),
                     ),
-                ],
+                    Text(
+                      meta.join(' · '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: sub.copyWith(fontSize: m.meta),
+                    ),
+                    if (drama.category.isNotEmpty)
+                      Text(
+                        drama.category,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: sub,
+                      ),
+                    if (drama.onlineDate.isNotEmpty)
+                      Text('${drama.onlineDate} 上线', style: sub),
+                    if (drama.tags.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: SizedBox(
+                          height: 28,
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            clipBehavior: Clip.hardEdge,
+                            children: [
+                              for (final tag in drama.tags.take(12))
+                                Container(
+                                  height: 28,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: colors.surfaceContainerHighest,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Center(
+                                    widthFactor: 1,
+                                    child: Text(
+                                      tag,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(fontSize: m.tag),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -936,7 +950,7 @@ class _DetailPageState extends State<DetailPage> {
         if (drama.description.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 18),
-            child: _televisionDescription(drama, m),
+            child: _enter(3, _televisionDescription(drama, m)),
           ),
       ],
     );
@@ -1468,34 +1482,39 @@ class _GroupChip extends StatelessWidget {
     final size = Size(0, m.chip);
     return FocusRing(
       radius: m.chipRadius,
-      child: selected
-          ? FilledButton.tonal(
-              focusNode: focusNode,
-              onPressed: onPressed,
-              style: FilledButton.styleFrom(
-                shape: shape,
-                padding: padding,
-                minimumSize: size,
-                textStyle: TextStyle(
-                  fontSize: m.chipText,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              child: Text(label),
-            )
-          : OutlinedButton(
-              focusNode: focusNode,
-              onPressed: onPressed,
-              style: OutlinedButton.styleFrom(
-                shape: shape,
-                padding: padding,
-                minimumSize: size,
-                foregroundColor: colors.onSurfaceVariant,
-                side: BorderSide(color: colors.outlineVariant),
-                textStyle: TextStyle(fontSize: m.chipText),
-              ),
-              child: Text(label),
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(end: selected ? 1 : 0),
+        duration: Motion.of(context, Motion.short),
+        curve: Motion.standard,
+        builder: (context, t, child) => OutlinedButton(
+          focusNode: focusNode,
+          onPressed: onPressed,
+          style: OutlinedButton.styleFrom(
+            shape: shape,
+            padding: padding,
+            minimumSize: size,
+            backgroundColor: colors.secondaryContainer.withValues(alpha: t),
+            foregroundColor: Color.lerp(
+              colors.onSurfaceVariant,
+              colors.onSecondaryContainer,
+              t,
             ),
+            side: BorderSide(
+              color: Color.lerp(
+                colors.outlineVariant,
+                colors.secondaryContainer,
+                t,
+              )!,
+            ),
+            textStyle: TextStyle(
+              fontSize: m.chipText,
+              fontWeight: selected ? FontWeight.w600 : null,
+            ),
+          ),
+          child: child,
+        ),
+        child: Text(label),
+      ),
     );
   }
 }
