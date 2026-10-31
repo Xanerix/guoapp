@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'motion.dart';
+
 abstract final class AppTheme {
   static ThemeMode mode(String preference) => switch (preference) {
     'light' => ThemeMode.light,
@@ -37,6 +39,7 @@ abstract final class AppTheme {
       useMaterial3: true,
       colorScheme: scheme,
       scaffoldBackgroundColor: scheme.surface,
+      pageTransitionsTheme: pageTransitions(television: television),
       appBarTheme: AppBarTheme(
         backgroundColor: scheme.surface,
         foregroundColor: scheme.onSurface,
