@@ -11,11 +11,13 @@ import '../downloads/downloads_page.dart';
 import '../history/history_page.dart';
 import '../shell/app_shell.dart';
 import '../settings/settings_page.dart';
+import '../theme/motion.dart';
 import '../widgets/cover_image.dart';
 import '../widgets/drama_tile.dart';
 import '../widgets/focus_ring.dart';
 import '../widgets/page_header.dart';
 import '../widgets/group_card.dart';
+import '../widgets/motion/motion_widgets.dart';
 
 String _size(int bytes) => bytes >= 1 << 30
     ? '${(bytes / (1 << 30)).toStringAsFixed(1)} GB'
@@ -459,10 +461,87 @@ class _DownloadCard extends StatelessWidget {
         color: colors.surfaceContainer,
         borderRadius: BorderRadius.circular(20),
         clipBehavior: Clip.antiAlias,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (current != null) ...[
+        child: AnimatedSize(
+          duration: Motion.of(context, Motion.long),
+          curve: Motion.enter,
+          alignment: Alignment.topCenter,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (current != null) ...[
+                FadeSwitcher(
+                  duration: Motion.short,
+                  child: Padding(
+                    key: ValueKey((current.drama.id, current.episode.number)),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
+                    child: Row(
+                      spacing: 12,
+                      children: [
+                        SizedBox(
+                          width: 40,
+                          height: 60,
+                          child: DramaCover(
+                            drama: current.drama,
+                            radius: 8,
+                            details: false,
+                          ),
+                        ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            spacing: 6,
+                            children: [
+                              Row(
+                                spacing: 8,
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      '${current.drama.title} · 第 ${current.episode.number} 集',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                  Text(
+                                    '${(current.progress * 100).round()}%',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: colors.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              TweenAnimationBuilder<double>(
+                                tween: Tween(end: current.progress),
+                                duration: Motion.of(context, Motion.medium),
+                                builder: (context, value, _) =>
+                                    LinearProgressIndicator(
+                                      value: value,
+                                      minHeight: 4,
+                                      borderRadius: BorderRadius.circular(2),
+                                    ),
+                              ),
+                              Text(
+                                active > 1
+                                    ? '另有 ${active - 1} 个任务排队中'
+                                    : current.stateLabel,
+                                style: secondary,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const Divider(height: 1, indent: 16, endIndent: 16),
+              ],
               Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,
@@ -471,84 +550,31 @@ class _DownloadCard extends StatelessWidget {
                 child: Row(
                   spacing: 12,
                   children: [
-                    SizedBox(
-                      width: 40,
-                      height: 60,
-                      child: DramaCover(
-                        drama: current.drama,
-                        radius: 8,
-                        details: false,
-                      ),
+                    Icon(
+                      Icons.download_rounded,
+                      size: 20,
+                      color: colors.onSurfaceVariant,
                     ),
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        spacing: 6,
-                        children: [
-                          Row(
-                            spacing: 8,
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  '${current.drama.title} · 第 ${current.episode.number} 集',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                              Text(
-                                '${(current.progress * 100).round()}%',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: colors.onSurfaceVariant,
-                                ),
-                              ),
-                            ],
+                      child: FadeSwitcher(
+                        duration: Motion.short,
+                        alignment: AlignmentDirectional.centerStart,
+                        child: Text(
+                          key: ValueKey(
+                            downloads.completed == 0 && active == 0,
                           ),
-                          LinearProgressIndicator(
-                            value: current.progress,
-                            minHeight: 4,
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                          Text(
-                            active > 1
-                                ? '另有 ${active - 1} 个任务排队中'
-                                : current.stateLabel,
-                            style: secondary,
-                          ),
-                        ],
+                          downloads.completed == 0 && active == 0
+                              ? '还没有下载任务'
+                              : '已完成 ${downloads.completed} 集 · 占用 ${_size(downloads.completedBytes)}',
+                          style: secondary.copyWith(fontSize: 14),
+                        ),
                       ),
                     ),
                   ],
                 ),
               ),
-              const Divider(height: 1, indent: 16, endIndent: 16),
             ],
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              child: Row(
-                spacing: 12,
-                children: [
-                  Icon(
-                    Icons.download_rounded,
-                    size: 20,
-                    color: colors.onSurfaceVariant,
-                  ),
-                  Expanded(
-                    child: Text(
-                      downloads.completed == 0 && active == 0
-                          ? '还没有下载任务'
-                          : '已完成 ${downloads.completed} 集 · 占用 ${_size(downloads.completedBytes)}',
-                      style: secondary.copyWith(fontSize: 14),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
