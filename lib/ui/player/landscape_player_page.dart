@@ -1365,12 +1365,15 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
                 style: TextStyle(fontSize: 13, color: colors.onSurfaceVariant),
               ),
             ),
-            if (_canDownload && !_selecting)
-              IconButton(
-                onPressed: () => _select(true),
-                icon: const Icon(Icons.download_rounded),
-                tooltip: '下载选集',
-              ),
+            FadePresence(
+              child: _canDownload && !_selecting
+                  ? IconButton(
+                      onPressed: () => _select(true),
+                      icon: const Icon(Icons.download_rounded),
+                      tooltip: '下载选集',
+                    )
+                  : null,
+            ),
           ],
         ),
       ),
@@ -1391,35 +1394,38 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
             },
           ),
         ),
-        if (_selecting)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-            child: Row(
-              spacing: 8,
-              children: [
-                TextButton(
-                  onPressed: () => _select(false),
-                  child: const Text('取消'),
-                ),
-                TextButton(
-                  onPressed: () => setState(() {
-                    all
-                        ? _selected.clear()
-                        : _selected.addAll(
-                            List.generate(episodes.length, (i) => i),
-                          );
-                  }),
-                  child: Text(all ? '取消全选' : '全选'),
-                ),
-                const Spacer(),
-                FilledButton.icon(
-                  onPressed: _selected.isEmpty ? null : _download,
-                  icon: const Icon(Icons.download_rounded, size: 18),
-                  label: const Text('下载'),
-                ),
-              ],
-            ),
-          ),
+        FadePresence(
+          child: _selecting
+              ? Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                  child: Row(
+                    spacing: 8,
+                    children: [
+                      TextButton(
+                        onPressed: () => _select(false),
+                        child: const Text('取消'),
+                      ),
+                      TextButton(
+                        onPressed: () => setState(() {
+                          all
+                              ? _selected.clear()
+                              : _selected.addAll(
+                                  List.generate(episodes.length, (i) => i),
+                                );
+                        }),
+                        child: Text(all ? '取消全选' : '全选'),
+                      ),
+                      const Spacer(),
+                      FilledButton.icon(
+                        onPressed: _selected.isEmpty ? null : _download,
+                        icon: const Icon(Icons.download_rounded, size: 18),
+                        label: const Text('下载'),
+                      ),
+                    ],
+                  ),
+                )
+              : null,
+        ),
       ],
     );
   }
