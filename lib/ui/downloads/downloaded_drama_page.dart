@@ -16,8 +16,10 @@ import '../../models.dart';
 import '../app_scope.dart';
 import '../player/playback_handle.dart';
 import '../player/playback_page.dart';
+import '../theme/motion.dart';
 import '../widgets/cover_image.dart';
 import '../widgets/focus_ring.dart';
+import '../widgets/motion/motion_widgets.dart';
 import '../widgets/status_view.dart';
 import 'download_actions.dart';
 import 'merge_dialog.dart';
@@ -378,41 +380,63 @@ class _DownloadedDramaPageState extends State<DownloadedDramaPage> {
                 child: Row(
                   spacing: 8,
                   children: [
-                    if (editing)
-                      IconButton(
-                        tooltip: '退出编辑',
-                        onPressed: () => setState(() => _selection = null),
-                        icon: const Icon(Icons.close_rounded),
-                      )
-                    else
-                      const BackButton(),
+                    ToggleIconSwitcher(
+                      child: editing
+                          ? IconButton(
+                              key: const ValueKey('close'),
+                              tooltip: '退出编辑',
+                              onPressed: () =>
+                                  setState(() => _selection = null),
+                              icon: const Icon(Icons.close_rounded),
+                            )
+                          : const BackButton(key: ValueKey('back')),
+                    ),
                     Expanded(
                       child: Semantics(
                         header: true,
-                        child: Text(
-                          editing ? '已选择 ${selection.length} 集' : drama.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w800,
+                        child: FadeSwitcher(
+                          duration: Motion.short,
+                          alignment: AlignmentDirectional.centerStart,
+                          child: Text(
+                            editing ? '已选择 ${selection.length} 集' : drama.title,
+                            key: ValueKey(editing),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
                         ),
                       ),
                     ),
-                    if (editing) ...[
-                      _selectAll(item, selection),
-                      _mergeButton(item, selection),
-                      if (Platform.isAndroid) _exportButton(item, selection),
-                      _deleteButton(item, selection),
-                      _textButton(
-                        '完成',
-                        () => setState(() => _selection = null),
-                      ),
-                    ] else ...[
-                      _fillButton(drama),
-                      _editButton(item),
-                    ],
+                    FadeSwitcher(
+                      duration: Motion.short,
+                      alignment: AlignmentDirectional.centerEnd,
+                      child: editing
+                          ? Row(
+                              key: const ValueKey('editing'),
+                              mainAxisSize: MainAxisSize.min,
+                              spacing: 8,
+                              children: [
+                                _selectAll(item, selection),
+                                _mergeButton(item, selection),
+                                if (Platform.isAndroid)
+                                  _exportButton(item, selection),
+                                _deleteButton(item, selection),
+                                _textButton(
+                                  '完成',
+                                  () => setState(() => _selection = null),
+                                ),
+                              ],
+                            )
+                          : Row(
+                              key: const ValueKey('normal'),
+                              mainAxisSize: MainAxisSize.min,
+                              spacing: 8,
+                              children: [_fillButton(drama), _editButton(item)],
+                            ),
+                    ),
                   ],
                 ),
               ),
@@ -482,6 +506,22 @@ class _DownloadedDramaPageState extends State<DownloadedDramaPage> {
           ),
         ),
     ];
+    return FadeSwitcher(
+      scale: true,
+      child: KeyedSubtree(
+        key: ValueKey(item == null),
+        child: _contentBody(context, item, selection, header, inset),
+      ),
+    );
+  }
+
+  Widget _contentBody(
+    BuildContext context,
+    DownloadedDrama? item,
+    Set<String>? selection,
+    List<Widget> header,
+    double inset,
+  ) {
     if (item == null) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -837,9 +877,19 @@ class _FillDialog extends StatelessWidget {
                 ),
               ];
       }
+      final state = snapshot.hasError ? 2 : (plan == null ? 0 : 1);
       return AlertDialog(
         title: const Text('补齐缺集'),
-        content: content,
+        content: AnimatedSize(
+          duration: Motion.of(context, Motion.medium),
+          curve: Motion.standard,
+          alignment: Alignment.topLeft,
+          child: FadeSwitcher(
+            duration: Motion.short,
+            alignment: AlignmentDirectional.topStart,
+            child: KeyedSubtree(key: ValueKey(state), child: content),
+          ),
+        ),
         actions: actions,
       );
     },

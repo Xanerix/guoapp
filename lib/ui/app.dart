@@ -12,6 +12,7 @@ import '../theme_color.dart';
 import 'app_scope.dart';
 import 'shell/app_shell.dart';
 import 'theme/app_theme.dart';
+import 'theme/motion.dart';
 import 'theme/system_color.dart';
 import 'users/unlock_page.dart';
 import 'widgets/focus_ring.dart';
@@ -250,6 +251,8 @@ class _DuanjuAppState extends State<DuanjuApp> with WidgetsBindingObserver {
           ),
         ),
       ),
+      themeAnimationDuration: Motion.long,
+      themeAnimationCurve: Motion.standard,
       home: switch (store) {
         null => _BootScreen(
           error: widget.bootstrapError,

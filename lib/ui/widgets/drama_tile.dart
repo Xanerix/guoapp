@@ -3,8 +3,10 @@ import 'package:flutter/services.dart';
 
 import '../../models.dart';
 import '../app_scope.dart';
+import '../theme/motion.dart';
 import 'cover_image.dart';
 import 'focus_ring.dart';
+import 'motion/motion_widgets.dart';
 
 const _coverRadius = 12.0;
 
@@ -127,9 +129,11 @@ class DramaTile extends StatelessWidget {
     this.onMore,
     this.focusNode,
     this.autofocus = false,
+    this.heroScope,
   });
   final Drama drama;
   final VoidCallback onTap;
+  final String? heroScope;
   final String? subtitle;
   final int? rank;
   final VoidCallback? onMore;
@@ -157,7 +161,14 @@ class DramaTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => _PosterButton(
-    cover: DramaCover(drama: drama, radius: _coverRadius, rank: rank),
+    cover: DramaCover(
+      drama: drama,
+      radius: _coverRadius,
+      rank: rank,
+      heroScope: AppScope.of(context).television || !Visibility.of(context)
+          ? null
+          : heroScope,
+    ),
     label:
         '${rank == null ? '' : '第$rank名，'}'
         '${drama.title}，${drama.episodes}集${drama.vip ? '，VIP' : ''}',
@@ -187,8 +198,10 @@ class ProgressPoster extends StatelessWidget {
     this.width = 100,
     this.selected,
     this.badge,
+    this.heroScope,
   });
   final Drama drama;
+  final String? heroScope;
   final double? progress;
   final String caption;
   final String? tag;
@@ -217,7 +230,15 @@ class ProgressPoster extends StatelessWidget {
         cover: Stack(
           fit: StackFit.expand,
           children: [
-            DramaCover(drama: drama, radius: _coverRadius, details: false),
+            DramaCover(
+              drama: drama,
+              radius: _coverRadius,
+              details: false,
+              heroScope:
+                  television || selected != null || !Visibility.of(context)
+                  ? null
+                  : heroScope,
+            ),
             if (tag case final tag?)
               Positioned(
                 left: 8,
@@ -300,8 +321,11 @@ class ProgressPoster extends StatelessWidget {
                 ),
               ),
             if (selected case final selected?) ...[
-              if (selected)
-                IgnorePointer(
+              IgnorePointer(
+                child: AnimatedOpacity(
+                  opacity: selected ? 1 : 0,
+                  duration: Motion.of(context, Motion.short),
+                  curve: Motion.standard,
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(_coverRadius),
@@ -309,10 +333,13 @@ class ProgressPoster extends StatelessWidget {
                     ),
                   ),
                 ),
+              ),
               Positioned(
                 right: 8,
                 top: 8,
-                child: Container(
+                child: AnimatedContainer(
+                  duration: Motion.of(context, Motion.short),
+                  curve: Motion.standard,
                   width: 26,
                   height: 26,
                   decoration: BoxDecoration(
@@ -324,13 +351,16 @@ class ProgressPoster extends StatelessWidget {
                         ? null
                         : Border.all(color: Colors.white, width: 2),
                   ),
-                  child: selected
-                      ? Icon(
-                          Icons.check_rounded,
-                          size: 18,
-                          color: colors.onPrimary,
-                        )
-                      : null,
+                  child: ToggleIconSwitcher(
+                    child: selected
+                        ? Icon(
+                            Icons.check_rounded,
+                            key: const ValueKey(true),
+                            size: 18,
+                            color: colors.onPrimary,
+                          )
+                        : const SizedBox.shrink(key: ValueKey(false)),
+                  ),
                 ),
               ),
             ],

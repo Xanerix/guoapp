@@ -5,8 +5,10 @@ import '../../local_store.dart';
 import '../../models.dart';
 import '../settings/settings_rows.dart';
 import '../settings/settings_sections.dart';
+import '../theme/motion.dart';
 import '../widgets/focus_ring.dart';
 import '../widgets/group_card.dart';
+import '../widgets/motion/motion_widgets.dart';
 import 'password_dialog.dart';
 import 'user_editor.dart';
 
@@ -169,7 +171,9 @@ class ProfileTile extends StatelessWidget {
         ),
         horizontalTitleGap: 16,
         autofocus: autofocus,
-        leading: Container(
+        leading: AnimatedContainer(
+          duration: Motion.of(context, Motion.short),
+          curve: Motion.standard,
           width: 40,
           height: 40,
           decoration: BoxDecoration(
@@ -178,16 +182,19 @@ class ProfileTile extends StatelessWidget {
                 : colors.surfaceContainerHighest,
             shape: BoxShape.circle,
           ),
-          child: Icon(
-            Icons.person_outline_rounded,
-            size: 22,
-            color: current
-                ? colors.onPrimaryContainer
-                : colors.onSurfaceVariant,
+          child: TweenAnimationBuilder<Color?>(
+            tween: ColorTween(
+              end: current
+                  ? colors.onPrimaryContainer
+                  : colors.onSurfaceVariant,
+            ),
+            duration: Motion.of(context, Motion.short),
+            curve: Motion.standard,
+            builder: (context, color, _) =>
+                Icon(Icons.person_outline_rounded, size: 22, color: color),
           ),
         ),
         title: Row(
-          spacing: 8,
           children: [
             Flexible(
               child: Text(
@@ -196,8 +203,9 @@ class ProfileTile extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            if (current)
-              Container(
+            _Badge(
+              visible: current,
+              child: Container(
                 height: 22,
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 alignment: Alignment.center,
@@ -212,13 +220,16 @@ class ProfileTile extends StatelessWidget {
                   ),
                 ),
               ),
-            if (profile.protected)
-              Icon(
+            ),
+            _Badge(
+              visible: profile.protected,
+              child: Icon(
                 Icons.lock_outline_rounded,
                 size: 16,
                 color: colors.onSurfaceVariant,
                 semanticLabel: '有密码',
               ),
+            ),
           ],
         ),
         subtitle: Text(subtitle),
@@ -227,4 +238,29 @@ class ProfileTile extends StatelessWidget {
       ),
     );
   }
+}
+
+class _Badge extends StatelessWidget {
+  const _Badge({required this.visible, required this.child});
+
+  final bool visible;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => ExcludeSemantics(
+    excluding: !visible,
+    child: AnimatedSize(
+      duration: Motion.of(context, Motion.short),
+      curve: Motion.standard,
+      child: ToggleIconSwitcher(
+        child: visible
+            ? Padding(
+                key: const ValueKey(true),
+                padding: const EdgeInsetsDirectional.only(start: 8),
+                child: child,
+              )
+            : const SizedBox.shrink(key: ValueKey(false)),
+      ),
+    ),
+  );
 }

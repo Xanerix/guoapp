@@ -11,6 +11,7 @@ import '../shell/app_shell.dart';
 import '../widgets/drama_grid.dart';
 import '../widgets/drama_tile.dart';
 import '../widgets/focus_ring.dart';
+import '../widgets/motion/motion_widgets.dart';
 import '../widgets/page_header.dart';
 import '../widgets/search_field.dart';
 import '../widgets/status_view.dart';
@@ -41,6 +42,7 @@ class FollowPage extends StatefulWidget {
 class _FollowPageState extends State<FollowPage> {
   final _query = TextEditingController();
   final _editButton = FocusNode();
+  final _entered = <Object>{};
   var _source = '';
   Set<String>? _selection;
 
@@ -287,16 +289,22 @@ class _FollowPageState extends State<FollowPage> {
           view,
           inset: 16,
           header: [
-            if (selection == null)
-              PageHeader(
-                title: '追剧',
-                actions: [_editButtonFor(view, icon: false)],
-              )
-            else
-              PageHeader(
-                title: '已选择 ${selection.length} 部',
-                actions: [_selectAll(view), _textButton('完成', _finishEditing)],
-              ),
+            FadeSwitcher(
+              child: selection == null
+                  ? PageHeader(
+                      key: const ValueKey(false),
+                      title: '追剧',
+                      actions: [_editButtonFor(view, icon: false)],
+                    )
+                  : PageHeader(
+                      key: const ValueKey(true),
+                      title: '已选择 ${selection.length} 部',
+                      actions: [
+                        _selectAll(view),
+                        _textButton('完成', _finishEditing),
+                      ],
+                    ),
+            ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: _search(),
@@ -324,36 +332,47 @@ class _FollowPageState extends State<FollowPage> {
         header: [
           LayoutBuilder(
             builder: (context, constraints) => Padding(
-              padding: EdgeInsets.fromLTRB(
-                view.selection == null ? 24 : 12,
-                8,
-                24,
-                8,
-              ),
+              padding: const EdgeInsets.fromLTRB(12, 8, 24, 8),
               child: SizedBox(
                 height: 48,
-                child: Row(
-                  spacing: 8,
-                  children: [
-                    if (view.selection == null) ...[
-                      Expanded(child: _title('追剧', 28)),
-                      SizedBox(
-                        width: (constraints.maxWidth - 400).clamp(160.0, 280.0),
-                        child: _search(),
-                      ),
-                      _editButtonFor(view),
-                    ] else ...[
-                      IconButton(
-                        tooltip: '退出编辑',
-                        onPressed: _finishEditing,
-                        icon: const Icon(Icons.close_rounded),
-                      ),
-                      Expanded(
-                        child: _title('已选择 ${view.selection!.length} 部', 28),
-                      ),
-                      ..._editActions(view),
-                    ],
-                  ],
+                child: FadeSwitcher(
+                  child: view.selection == null
+                      ? Padding(
+                          key: const ValueKey(false),
+                          padding: const EdgeInsets.only(left: 12),
+                          child: Row(
+                            spacing: 8,
+                            children: [
+                              Expanded(child: _title('追剧', 28)),
+                              SizedBox(
+                                width: (constraints.maxWidth - 400).clamp(
+                                  160.0,
+                                  280.0,
+                                ),
+                                child: _search(),
+                              ),
+                              _editButtonFor(view),
+                            ],
+                          ),
+                        )
+                      : Row(
+                          key: const ValueKey(true),
+                          spacing: 8,
+                          children: [
+                            IconButton(
+                              tooltip: '退出编辑',
+                              onPressed: _finishEditing,
+                              icon: const Icon(Icons.close_rounded),
+                            ),
+                            Expanded(
+                              child: _title(
+                                '已选择 ${view.selection!.length} 部',
+                                28,
+                              ),
+                            ),
+                            ..._editActions(view),
+                          ],
+                        ),
                 ),
               ),
             ),
@@ -397,30 +416,33 @@ class _FollowPageState extends State<FollowPage> {
                 ),
                 child: SizedBox(
                   height: 48,
-                  child: Row(
-                    spacing: 12,
-                    children: view.selection == null
-                        ? [
-                            SizedBox(
-                              width: 260,
-                              child: _search(
-                                focusNode: view.shown.isEmpty
-                                    ? widget.entryFocus
-                                    : null,
+                  child: FadeSwitcher(
+                    child: Row(
+                      key: ValueKey(view.selection == null),
+                      spacing: 12,
+                      children: view.selection == null
+                          ? [
+                              SizedBox(
+                                width: 260,
+                                child: _search(
+                                  focusNode: view.shown.isEmpty
+                                      ? widget.entryFocus
+                                      : null,
+                                ),
                               ),
-                            ),
-                            const Spacer(),
-                            _editButtonFor(view),
-                          ]
-                        : [
-                            Expanded(
-                              child: _title(
-                                '已选择 ${view.selection!.length} 部',
-                                24,
+                              const Spacer(),
+                              _editButtonFor(view),
+                            ]
+                          : [
+                              Expanded(
+                                child: _title(
+                                  '已选择 ${view.selection!.length} 部',
+                                  24,
+                                ),
                               ),
-                            ),
-                            ..._editActions(view),
-                          ],
+                              ..._editActions(view),
+                            ],
+                    ),
                   ),
                 ),
               ),
@@ -469,6 +491,13 @@ class _FollowPageState extends State<FollowPage> {
         if (updated.isNotEmpty) ('有更新', updated),
         if (rest.isNotEmpty) (updated.isEmpty ? null : '其他追剧', rest),
       ];
+      final heroOwner = {
+        for (final MapEntry(key: id, value: index) in firstIndexById(
+          view.shown,
+          (drama) => drama.id,
+        ).entries)
+          id: view.shown[index],
+      };
       final first = view.shown.isEmpty
           ? null
           : (updated.firstOrNull ?? rest.first);
@@ -481,11 +510,15 @@ class _FollowPageState extends State<FollowPage> {
           if (view.shown.isEmpty)
             SliverFillRemaining(
               hasScrollBody: false,
-              child: StatusView(
-                title: view.follows.isEmpty ? '还没有追剧' : '没有匹配的追剧',
-                icon: view.follows.isEmpty
-                    ? Icons.bookmark_border_rounded
-                    : Icons.search_off_rounded,
+              child: FadeSwitcher(
+                scale: true,
+                child: StatusView(
+                  key: ValueKey(view.follows.isEmpty),
+                  title: view.follows.isEmpty ? '还没有追剧' : '没有匹配的追剧',
+                  icon: view.follows.isEmpty
+                      ? Icons.bookmark_border_rounded
+                      : Icons.search_off_rounded,
+                ),
               ),
             )
           else
@@ -543,12 +576,18 @@ class _FollowPageState extends State<FollowPage> {
                       skipTraversal: true,
                       onKeyEvent: (_, event) =>
                           wrapGridRow(index, columns, dramas.length, event),
-                      child: _poster(
-                        context,
-                        drama,
-                        tile,
-                        view.selection,
-                        focusNode: drama == first ? widget.entryFocus : null,
+                      child: EnterOnce(
+                        id: drama.id,
+                        played: _entered,
+                        index: index,
+                        child: _poster(
+                          context,
+                          drama,
+                          tile,
+                          view.selection,
+                          focusNode: drama == first ? widget.entryFocus : null,
+                          hero: identical(heroOwner[drama.id], drama),
+                        ),
                       ),
                     );
                   },
@@ -571,6 +610,7 @@ class _FollowPageState extends State<FollowPage> {
     double width,
     Set<String>? selection, {
     FocusNode? focusNode,
+    bool hero = false,
   }) {
     final watch = widget.store.watched(drama.id);
     final state = widget.store.following(drama.id);
@@ -593,6 +633,7 @@ class _FollowPageState extends State<FollowPage> {
       progress: watch != null && total > 0 ? watch.episode / total : 0,
       caption: caption,
       tag: SourceSite.byId(drama.source).name,
+      heroScope: hero ? 'drama' : null,
       badge: state != null && state.hasUpdates
           ? '${state.newEpisodes} 集更新'
           : null,

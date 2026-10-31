@@ -5,6 +5,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../../models.dart';
+import '../theme/motion.dart';
 import '../widgets/cover_image.dart';
 
 const _cellHeight = 48.0;
@@ -359,76 +360,97 @@ class _EpisodeCell extends StatelessWidget {
               ? '，已下载'
               : '，下载中'}',
       excludeSemantics: true,
-      child: Material(
-        color: current
-            ? colors.primaryContainer
-            : marker != null
-            ? colors.surfaceContainer
-            : theme.brightness == Brightness.dark
-            ? colors.surfaceContainerHigh
-            : colors.surfaceContainerLowest,
-        shape: RoundedRectangleBorder(
-          borderRadius: radius,
-          side: selected == true
-              ? BorderSide(color: colors.primary, width: 2)
-              : BorderSide.none,
+      child: AnimatedContainer(
+        duration: Motion.of(context, Motion.short),
+        curve: Motion.standard,
+        decoration: ShapeDecoration(
+          color: current
+              ? colors.primaryContainer
+              : marker != null
+              ? colors.surfaceContainer
+              : theme.brightness == Brightness.dark
+              ? colors.surfaceContainerHigh
+              : colors.surfaceContainerLowest,
+          shape: RoundedRectangleBorder(borderRadius: radius),
         ),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onPressed,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                spacing: 4,
-                children: [
-                  if (current)
-                    Icon(Icons.equalizer_rounded, size: 14, color: foreground),
-                  Text(
-                    '${episode.number}',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: current ? FontWeight.w700 : FontWeight.w500,
-                      color: foreground,
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                    ),
-                  ),
-                ],
-              ),
-              if (marker case final marker?)
-                Positioned(
-                  left: 6,
-                  top: 6,
-                  child: Icon(marker, size: 13, color: foreground),
-                ),
-              if (episode.vip)
-                const Positioned(
-                  right: 0,
-                  top: 0,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: vipGold,
-                      borderRadius: BorderRadius.only(
-                        topRight: Radius.circular(12),
-                        bottomLeft: Radius.circular(6),
+        foregroundDecoration: ShapeDecoration(
+          shape: RoundedRectangleBorder(
+            borderRadius: radius,
+            side: BorderSide(
+              color: selected == true
+                  ? colors.primary
+                  : colors.primary.withValues(alpha: 0),
+              width: 2,
+            ),
+          ),
+        ),
+        child: Material(
+          type: MaterialType.transparency,
+          shape: RoundedRectangleBorder(borderRadius: radius),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onPressed,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  spacing: 4,
+                  children: [
+                    if (current)
+                      Icon(
+                        Icons.equalizer_rounded,
+                        size: 14,
+                        color: foreground,
+                      ),
+                    Text(
+                      '${episode.number}',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: current ? FontWeight.w700 : FontWeight.w500,
+                        color: foreground,
+                        fontFeatures: const [FontFeature.tabularFigures()],
                       ),
                     ),
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                      child: Text(
-                        'VIP',
-                        style: TextStyle(
-                          fontSize: 9,
-                          height: 12 / 9,
-                          fontWeight: FontWeight.w800,
-                          color: onVipGold,
+                  ],
+                ),
+                if (marker case final marker?)
+                  Positioned(
+                    left: 6,
+                    top: 6,
+                    child: Icon(marker, size: 13, color: foreground),
+                  ),
+                if (episode.vip)
+                  const Positioned(
+                    right: 0,
+                    top: 0,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: vipGold,
+                        borderRadius: BorderRadius.only(
+                          topRight: Radius.circular(12),
+                          bottomLeft: Radius.circular(6),
+                        ),
+                      ),
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 4,
+                          vertical: 1,
+                        ),
+                        child: Text(
+                          'VIP',
+                          style: TextStyle(
+                            fontSize: 9,
+                            height: 12 / 9,
+                            fontWeight: FontWeight.w800,
+                            color: onVipGold,
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

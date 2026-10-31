@@ -6,6 +6,7 @@ import '../../local_store.dart';
 import '../../resource_settings_editor.dart';
 import '../app_scope.dart';
 import '../shell/app_shell.dart';
+import '../theme/motion.dart';
 import '../users/users_view.dart';
 import '../widgets/bar_button.dart';
 import '../widgets/focus_ring.dart';
@@ -363,13 +364,17 @@ class _SettingsPageState extends State<SettingsPage> {
           offstage: subpage != null,
           child: ExcludeFocus(
             excluding: subpage != null,
-            child: Column(
-              key: ValueKey(_group),
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _DetailHeader(title: _group.label, top: top, right: right),
-                Expanded(child: content),
-              ],
+            child: _PaneSwitcher(
+              duration: television ? Duration.zero : Motion.medium,
+              offset: const Offset(0, 0.02),
+              child: Column(
+                key: ValueKey(_group),
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _DetailHeader(title: _group.label, top: top, right: right),
+                  Expanded(child: content),
+                ],
+              ),
             ),
           ),
         ),
@@ -401,6 +406,51 @@ class _SettingsPageState extends State<SettingsPage> {
       ],
     );
   }
+}
+
+class _PaneSwitcher extends StatelessWidget {
+  const _PaneSwitcher({
+    required this.duration,
+    required this.offset,
+    required this.child,
+  });
+
+  final Duration duration;
+  final Offset offset;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => AnimatedSwitcher(
+    duration: Motion.of(context, duration),
+    reverseDuration: Motion.of(context, Motion.short),
+    switchInCurve: Motion.enter,
+    switchOutCurve: Motion.exit,
+    layoutBuilder: (current, previous) => Stack(
+      fit: StackFit.expand,
+      children: [
+        for (final child in previous) _inert(child, true),
+        if (current != null) _inert(current, false),
+      ],
+    ),
+    transitionBuilder: (child, animation) => FadeTransition(
+      opacity: animation,
+      child: SlideTransition(
+        position: Tween(begin: offset, end: Offset.zero).animate(animation),
+        child: child,
+      ),
+    ),
+    child: child,
+  );
+
+  // 新旧内容保持同一层级和同一 key，切换时不会重建内部状态
+  static Widget _inert(Widget child, bool inert) => ExcludeFocus(
+    key: child.key,
+    excluding: inert,
+    child: IgnorePointer(
+      ignoring: inert,
+      child: ExcludeSemantics(excluding: inert, child: child),
+    ),
+  );
 }
 
 class _DetailHeader extends StatelessWidget {

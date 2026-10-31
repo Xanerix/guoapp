@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../../app_device.dart';
 import '../../playback_session.dart';
+import 'fade_presence.dart';
 import 'player_surface.dart';
 
 const _seekSpan = 120000;
@@ -137,10 +138,13 @@ class _SwipeControlsState extends State<SwipeControls> {
           onVerticalDragCancel: levels ? _levelEnd : null,
           child: widget.child,
         ),
-        if (_seekFrom != null)
-          _badge(_seekLabel())
-        else if (level != null && value != null)
-          _badge(_levelBar(level, value)),
+        FadePresence(
+          child: _seekFrom != null
+              ? _badge(_seekLabel())
+              : level != null && value != null
+              ? _badge(_levelBar(level, value))
+              : null,
+        ),
       ],
     );
   }

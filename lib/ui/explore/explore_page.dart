@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
 
+import '../../drama_feed.dart';
 import '../../explore_feed.dart';
 import '../../local_store.dart';
 import '../../models.dart';
 import '../app_scope.dart';
 import '../shell/app_shell.dart';
+import '../theme/motion.dart';
 import '../detail/detail_page.dart';
 import '../widgets/bar_button.dart';
 import '../widgets/category_tabs.dart';
 import '../widgets/choice_panel.dart';
 import '../widgets/drama_grid.dart';
+import '../widgets/motion/motion_widgets.dart';
 import '../widgets/page_header.dart';
 import '../widgets/source_bar.dart';
 import '../widgets/status_view.dart';
@@ -170,26 +173,65 @@ class ExplorePageState extends State<ExplorePage> {
     final hero = _hero(explore);
     final items = explore.items;
     if (feed.items.isEmpty) {
-      if (feed.loading) return const StatusView.loading();
-      if (feed.error.isNotEmpty) {
-        return StatusView(
-          title: '暂时无法加载',
-          message: feed.error,
-          icon: Icons.cloud_off_rounded,
-          action: '重试',
-          onAction: () => feed.reload(force: true),
-        );
-      }
-      return StatusView(
-        title: '这里还没有剧',
-        message: '换一个分类看看',
-        icon: Icons.inbox_outlined,
-        action: '刷新',
-        onAction: () => feed.reload(force: true),
-      );
+      return FadeSwitcher(child: _status(feed));
     }
     final phone = AppScope.formFactorOf(context) == FormFactor.phone;
     final desktop = AppScope.formFactorOf(context) == FormFactor.window;
+    return _grid(
+      explore,
+      feed,
+      hero,
+      items,
+      inset,
+      television,
+      tabs,
+      phone,
+      desktop,
+    );
+  }
+
+  Widget _status(DramaFeed feed) {
+    if (feed.loading) {
+      return const StatusView.loading(key: ValueKey('loading'));
+    }
+    if (feed.error.isNotEmpty) {
+      return StatusView(
+        key: const ValueKey('error'),
+        title: '暂时无法加载',
+        message: feed.error,
+        icon: Icons.cloud_off_rounded,
+        action: '重试',
+        onAction: () => feed.reload(force: true),
+      );
+    }
+    return StatusView(
+      key: const ValueKey('empty'),
+      title: '这里还没有剧',
+      message: '换一个分类看看',
+      icon: Icons.inbox_outlined,
+      action: '刷新',
+      onAction: () => feed.reload(force: true),
+    );
+  }
+
+  Widget _grid(
+    ExploreFeed explore,
+    DramaFeed feed,
+    Widget? hero,
+    List<Drama> items,
+    double inset,
+    bool television,
+    Widget tabs,
+    bool phone,
+    bool desktop,
+  ) {
+    final heroSection = hero == null
+        ? const SizedBox(key: ValueKey('none'), width: double.infinity)
+        : Padding(
+            key: hero.key,
+            padding: EdgeInsets.fromLTRB(inset, phone ? 12 : 16, inset, 0),
+            child: hero,
+          );
     return LayoutBuilder(
       builder: (context, constraints) {
         final scroll = CustomScrollView(
@@ -201,11 +243,20 @@ class ExplorePageState extends State<ExplorePage> {
                 padding: const EdgeInsets.only(top: 8),
                 sliver: SliverToBoxAdapter(child: tabs),
               ),
-            if (hero != null)
-              SliverPadding(
-                padding: EdgeInsets.fromLTRB(inset, phone ? 12 : 16, inset, 0),
-                sliver: SliverToBoxAdapter(child: hero),
-              ),
+            SliverToBoxAdapter(
+              child: television
+                  ? heroSection
+                  : AnimatedSize(
+                      duration: Motion.of(context, Motion.long),
+                      curve: Motion.enter,
+                      alignment: Alignment.topCenter,
+                      clipBehavior: Clip.none,
+                      child: FadeSwitcher(
+                        alignment: Alignment.topCenter,
+                        child: heroSection,
+                      ),
+                    ),
+            ),
             SliverPadding(
               padding: EdgeInsets.fromLTRB(inset, desktop ? 20 : 16, inset, 0),
               sliver: DramaSliverGrid(
@@ -213,6 +264,7 @@ class ExplorePageState extends State<ExplorePage> {
                 items: items,
                 rankOf: explore.rankOf,
                 autofocus: television && hero == null,
+                heroScope: 'drama',
                 onOpen: _open,
               ),
             ),
@@ -235,13 +287,25 @@ class ExplorePageState extends State<ExplorePage> {
                   ? scroll
                   : RefreshIndicator(onRefresh: explore.refresh, child: scroll),
             ),
-            if (feed.loading)
-              const Positioned(
-                left: 0,
-                right: 0,
-                top: 0,
-                child: LinearProgressIndicator(minHeight: 2),
+            Positioned(
+              left: 0,
+              right: 0,
+              top: 0,
+              child: IgnorePointer(
+                child: ExcludeSemantics(
+                  excluding: !feed.loading,
+                  child: AnimatedOpacity(
+                    opacity: feed.loading ? 1 : 0,
+                    duration: Motion.of(context, Motion.medium),
+                    curve: Motion.standard,
+                    child: TickerMode(
+                      enabled: feed.loading,
+                      child: const LinearProgressIndicator(minHeight: 2),
+                    ),
+                  ),
+                ),
               ),
+            ),
           ],
         );
       },
@@ -256,6 +320,7 @@ class ExplorePageState extends State<ExplorePage> {
           ? entry.episode + 1
           : entry.episode;
       return ExploreHero(
+        key: ValueKey(('resume', drama.id)),
         drama: drama,
         kicker: '继续观看',
         meta: total > 0
@@ -269,6 +334,7 @@ class ExplorePageState extends State<ExplorePage> {
     }
     if (explore.featured case final drama?) {
       return ExploreHero(
+        key: ValueKey(('featured', drama.id)),
         drama: drama,
         kicker: '今日推荐',
         meta: [

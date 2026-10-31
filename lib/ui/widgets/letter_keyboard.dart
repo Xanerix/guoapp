@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'focus_ring.dart';
+import 'motion/motion_widgets.dart';
 
 typedef TitleMatches = Future<List<String>> Function(String query);
 
@@ -172,7 +173,14 @@ class _LetterKeyboardState extends State<_LetterKeyboard> {
     ],
   );
 
-  Widget _results(ThemeData theme) {
+  Widget _results(ThemeData theme) => FadeSwitcher(
+    child: SizedBox.expand(
+      key: ValueKey(_matches.isEmpty),
+      child: _resultList(theme),
+    ),
+  );
+
+  Widget _resultList(ThemeData theme) {
     if (_matches.isEmpty) {
       return Center(
         child: Text(

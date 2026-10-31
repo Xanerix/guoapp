@@ -6,8 +6,10 @@ import 'package:flutter/services.dart';
 import '../../drama_feed.dart';
 import '../../models.dart';
 import '../app_scope.dart';
+import '../theme/motion.dart';
 import 'drama_tile.dart';
 import 'focus_ring.dart';
+import 'motion/motion_widgets.dart';
 
 (int, double, double) _gridLayout(BuildContext context, double width) =>
     switch (AppScope.formFactorOf(context)) {
@@ -58,6 +60,14 @@ KeyEventResult wrapGridRow(int index, int columns, int count, KeyEvent event) {
   }
 }
 
+Map<String, int> firstIndexById<T>(List<T> items, String Function(T) idOf) {
+  final first = <String, int>{};
+  for (final (index, item) in items.indexed) {
+    first.putIfAbsent(idOf(item), () => index);
+  }
+  return first;
+}
+
 class DramaSliverGrid extends StatelessWidget {
   const DramaSliverGrid({
     super.key,
@@ -66,22 +76,29 @@ class DramaSliverGrid extends StatelessWidget {
     required this.onOpen,
     this.rankOf,
     this.autofocus = false,
+    this.entered,
+    this.heroScope,
   });
   final double width;
   final List<Drama> items;
   final ValueChanged<Drama> onOpen;
   final int? Function(Drama drama)? rankOf;
   final bool autofocus;
+  final Set<Object>? entered;
+  final String? heroScope;
 
   @override
   Widget build(BuildContext context) {
     final (columns, _, _) = _gridLayout(context, width);
+    final heroIndex = heroScope == null
+        ? const <String, int>{}
+        : firstIndexById(items, (drama) => drama.id);
     return SliverGrid.builder(
       gridDelegate: dramaGridDelegate(context, width),
       itemCount: items.length,
       itemBuilder: (context, index) {
         final drama = items[index];
-        return Focus(
+        final tile = Focus(
           key: ValueKey(drama.id),
           canRequestFocus: false,
           skipTraversal: true,
@@ -91,8 +108,18 @@ class DramaSliverGrid extends StatelessWidget {
             drama: drama,
             rank: rankOf?.call(drama),
             autofocus: autofocus && index == 0,
+            heroScope: heroIndex[drama.id] == index ? heroScope : null,
             onTap: () => onOpen(drama),
           ),
+        );
+        final played = entered;
+        if (played == null) return tile;
+        return EnterOnce(
+          key: ValueKey(drama.id),
+          id: drama.id,
+          played: played,
+          index: index,
+          child: tile,
         );
       },
     );
@@ -185,39 +212,53 @@ class FeedFooter extends StatelessWidget {
     );
     return SizedBox(
       height: 72,
-      child: Center(
-        child: feed.loadingMore
-            ? const SizedBox.square(
-                dimension: 24,
-                child: CircularProgressIndicator(strokeWidth: 3),
-              )
-            : feed.error.isNotEmpty
-            ? Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Flexible(
-                    child: Text(
-                      feed.error,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: caption,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  FocusRing(
-                    radius: 999,
-                    child: TextButton(
-                      onPressed: feed.hasMore
-                          ? feed.loadMore
-                          : () => feed.reload(force: true),
-                      child: const Text('重试'),
-                    ),
-                  ),
-                ],
-              )
-            : feed.hasMore
-            ? null
-            : Text('已经到底了', style: caption),
+      child: FadeSwitcher(
+        duration: Motion.short,
+        child: KeyedSubtree(
+          key: ValueKey(
+            feed.loadingMore
+                ? 0
+                : feed.error.isNotEmpty
+                ? 1
+                : feed.hasMore
+                ? 2
+                : 3,
+          ),
+          child: Center(
+            child: feed.loadingMore
+                ? const SizedBox.square(
+                    dimension: 24,
+                    child: CircularProgressIndicator(strokeWidth: 3),
+                  )
+                : feed.error.isNotEmpty
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          feed.error,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: caption,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      FocusRing(
+                        radius: 999,
+                        child: TextButton(
+                          onPressed: feed.hasMore
+                              ? feed.loadMore
+                              : () => feed.reload(force: true),
+                          child: const Text('重试'),
+                        ),
+                      ),
+                    ],
+                  )
+                : feed.hasMore
+                ? null
+                : Text('已经到底了', style: caption),
+          ),
+        ),
       ),
     );
   }

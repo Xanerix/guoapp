@@ -8,7 +8,10 @@ import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../playback_preferences.dart';
 import '../../playback_session.dart';
+import '../theme/motion.dart';
+import '../widgets/motion/motion_widgets.dart';
 import 'danmaku_overlay.dart';
+import 'fade_presence.dart';
 import 'playback_handle.dart';
 import 'swipe_controls.dart';
 
@@ -339,12 +342,19 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
                 },
                 onDoubleTap: widget.onFullscreen,
               ),
-            if (_session.ready && _session.stalled)
-              const IgnorePointer(
-                child: Center(child: CircularProgressIndicator()),
-              ),
-            if (_session.ready && !state.playing) _pausedMark(),
-            if (_streak != 0) _streakBadge(),
+            FadePresence(
+              duration: Motion.medium,
+              child: _session.ready && _session.stalled
+                  ? const IgnorePointer(
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  : null,
+            ),
+            _pausedMark(_session.ready && !state.playing),
+            FadePresence(
+              scaleFrom: .9,
+              child: _streak != 0 ? _streakBadge() : null,
+            ),
             IgnorePointer(
               ignoring: !visible,
               child: ExcludeFocus(
@@ -391,36 +401,62 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
                   child: MouseRegion(
                     onEnter: (_) => _closeTimer?.cancel(),
                     onExit: (_) => _closeLater(),
-                    child: _popupBody(context, popup),
+                    child: _PopupEnter(
+                      key: ValueKey(popup),
+                      child: _popupBody(context, popup),
+                    ),
                   ),
                 ),
               ),
             _hint(),
             if (_session.saveWarning case final warning?) _saveWarning(warning),
-            if (_session.loading) PlaybackLoading(session: _session),
-            if (_session.error case final error?)
-              PlaybackFailure(session: _session, error: error),
+            FadePresence(
+              duration: Motion.medium,
+              child: _session.loading
+                  ? PlaybackLoading(session: _session)
+                  : null,
+            ),
+            FadePresence(
+              duration: Motion.medium,
+              child: switch (_session.error) {
+                final error? => PlaybackFailure(
+                  session: _session,
+                  error: error,
+                ),
+                null => null,
+              },
+            ),
           ],
         ),
       );
     },
   );
 
-  Widget _pausedMark() => Positioned(
+  Widget _pausedMark(bool shown) => Positioned(
     right: 20,
     bottom: 92,
     child: IgnorePointer(
-      child: Container(
-        width: 68,
-        height: 68,
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: .4),
-          shape: BoxShape.circle,
-        ),
-        child: Icon(
-          Icons.play_arrow_rounded,
-          size: 42,
-          color: Colors.white.withValues(alpha: .9),
+      child: AnimatedOpacity(
+        opacity: shown ? 1 : 0,
+        duration: Motion.of(context, Motion.short),
+        curve: shown ? Motion.enter : Motion.exit,
+        child: AnimatedScale(
+          scale: shown ? 1 : .8,
+          duration: Motion.of(context, Motion.short),
+          curve: shown ? Motion.enter : Motion.exit,
+          child: Container(
+            width: 68,
+            height: 68,
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: .4),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.play_arrow_rounded,
+              size: 42,
+              color: Colors.white.withValues(alpha: .9),
+            ),
+          ),
         ),
       ),
     ),
@@ -678,7 +714,7 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
       enabled: onPressed != null,
       child: IconButton(
         onPressed: onPressed,
-        icon: Icon(icon),
+        icon: ToggleIconSwitcher(child: Icon(icon, key: ValueKey(icon))),
         iconSize: iconSize,
         color: color ?? Colors.white,
         disabledColor: Colors.white.withValues(alpha: .36),
@@ -830,28 +866,41 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
     builder: (context, hint, _) {
       final boosting = _session.boosting;
       final text = boosting ? '倍速播放中' : hint;
-      if (text.isEmpty) return const SizedBox.shrink();
-      return IgnorePointer(
-        child: Align(
-          alignment: const Alignment(0, -.5),
-          child: Container(
-            padding: boosting
-                ? const EdgeInsets.symmetric(horizontal: 12, vertical: 6)
-                : const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: boosting ? .6 : .72),
-              borderRadius: BorderRadius.circular(boosting ? 10 : 12),
-            ),
-            child: Text(
-              text,
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: boosting ? 13 : 14,
-                fontWeight: FontWeight.w500,
+      return FadePresence(
+        child: text.isEmpty
+            ? null
+            : IgnorePointer(
+                child: Align(
+                  alignment: const Alignment(0, -.5),
+                  child: AnimatedContainer(
+                    duration: Motion.of(context, Motion.medium),
+                    curve: Motion.standard,
+                    padding: boosting
+                        ? const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          )
+                        : const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 10,
+                          ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(
+                        alpha: boosting ? .6 : .72,
+                      ),
+                      borderRadius: BorderRadius.circular(boosting ? 10 : 12),
+                    ),
+                    child: Text(
+                      text,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: boosting ? 13 : 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ),
               ),
-            ),
-          ),
-        ),
       );
     },
   );
@@ -1066,4 +1115,30 @@ class _HoverScaleState extends State<_HoverScale> {
       child: widget.child,
     ),
   );
+}
+
+class _PopupEnter extends StatelessWidget {
+  const _PopupEnter({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final duration = Motion.of(context, Motion.short);
+    if (duration == Duration.zero) return child;
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: duration,
+      curve: Motion.enter,
+      builder: (context, t, child) => Opacity(
+        opacity: t,
+        child: Transform.scale(
+          scale: .9 + .1 * t,
+          alignment: Alignment.bottomCenter,
+          child: child,
+        ),
+      ),
+      child: child,
+    );
+  }
 }
