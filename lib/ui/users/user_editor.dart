@@ -191,19 +191,26 @@ class _UserEditorState extends State<UserEditor> {
             ),
           ],
         ),
-        if (canClear) ...[
-          const SizedBox(height: 12),
-          GroupCard(
+        RevealSection(
+          key: const ValueKey('clear-pin'),
+          visible: canClear,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              SwitchTile(
-                title: '取消此用户密码',
-                subtitle: '保存后切换到该用户不再需要验证',
-                value: _clearPin,
-                onChanged: (value) => setState(() => _clearPin = value),
+              const SizedBox(height: 12),
+              GroupCard(
+                children: [
+                  SwitchTile(
+                    title: '取消此用户密码',
+                    subtitle: '保存后切换到该用户不再需要验证',
+                    value: _clearPin,
+                    onChanged: (value) => setState(() => _clearPin = value),
+                  ),
+                ],
               ),
             ],
           ),
-        ],
+        ),
         RevealSection(
           visible: !_admin,
           child: Column(
@@ -312,16 +319,25 @@ class _UserEditorState extends State<UserEditor> {
             ],
           ),
         ),
-        if (_error case final error?) ...[
-          const SizedBox(height: 12),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Text(
-              error,
-              style: theme.textTheme.bodyMedium?.copyWith(color: colors.error),
-            ),
+        RevealSection(
+          key: const ValueKey('error'),
+          visible: _error != null,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const SizedBox(height: 12),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  _error ?? '',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: colors.error,
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
         const SizedBox(height: 24),
         Row(
           spacing: 12,
