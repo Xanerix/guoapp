@@ -3,8 +3,10 @@ import 'package:flutter/services.dart';
 
 import '../../models.dart';
 import '../app_scope.dart';
+import '../theme/motion.dart';
 import 'cover_image.dart';
 import 'focus_ring.dart';
+import 'motion/motion_widgets.dart';
 
 const _coverRadius = 12.0;
 
@@ -319,8 +321,11 @@ class ProgressPoster extends StatelessWidget {
                 ),
               ),
             if (selected case final selected?) ...[
-              if (selected)
-                IgnorePointer(
+              IgnorePointer(
+                child: AnimatedOpacity(
+                  opacity: selected ? 1 : 0,
+                  duration: Motion.of(context, Motion.short),
+                  curve: Motion.standard,
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(_coverRadius),
@@ -328,10 +333,13 @@ class ProgressPoster extends StatelessWidget {
                     ),
                   ),
                 ),
+              ),
               Positioned(
                 right: 8,
                 top: 8,
-                child: Container(
+                child: AnimatedContainer(
+                  duration: Motion.of(context, Motion.short),
+                  curve: Motion.standard,
                   width: 26,
                   height: 26,
                   decoration: BoxDecoration(
@@ -343,13 +351,16 @@ class ProgressPoster extends StatelessWidget {
                         ? null
                         : Border.all(color: Colors.white, width: 2),
                   ),
-                  child: selected
-                      ? Icon(
-                          Icons.check_rounded,
-                          size: 18,
-                          color: colors.onPrimary,
-                        )
-                      : null,
+                  child: ToggleIconSwitcher(
+                    child: selected
+                        ? Icon(
+                            Icons.check_rounded,
+                            key: const ValueKey(true),
+                            size: 18,
+                            color: colors.onPrimary,
+                          )
+                        : const SizedBox.shrink(key: ValueKey(false)),
+                  ),
                 ),
               ),
             ],

@@ -61,7 +61,7 @@ class FadeSwitcher extends StatelessWidget {
 }
 
 /// Shows or hides [child] with a size and opacity transition. Hidden content
-/// is excluded from focus.
+/// is excluded from focus, pointer input and semantics.
 class RevealSection extends StatelessWidget {
   const RevealSection({
     super.key,
@@ -81,24 +81,27 @@ class RevealSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final d = Motion.of(context, duration);
-    return ExcludeFocus(
+    return ExcludeSemantics(
       excluding: !visible,
-      child: IgnorePointer(
-        ignoring: !visible,
-        child: ClipRect(
-          child: AnimatedAlign(
-            duration: d,
-            curve: visible ? Motion.enter : Motion.exit,
-            alignment: axis == Axis.vertical
-                ? Alignment(0, axisAlignment)
-                : Alignment(axisAlignment, 0),
-            heightFactor: axis == Axis.vertical ? (visible ? 1 : 0) : null,
-            widthFactor: axis == Axis.horizontal ? (visible ? 1 : 0) : null,
-            child: AnimatedOpacity(
+      child: ExcludeFocus(
+        excluding: !visible,
+        child: IgnorePointer(
+          ignoring: !visible,
+          child: ClipRect(
+            child: AnimatedAlign(
               duration: d,
-              curve: Motion.standard,
-              opacity: visible ? 1 : 0,
-              child: child,
+              curve: visible ? Motion.enter : Motion.exit,
+              alignment: axis == Axis.vertical
+                  ? Alignment(0, axisAlignment)
+                  : Alignment(axisAlignment, 0),
+              heightFactor: axis == Axis.vertical ? (visible ? 1 : 0) : null,
+              widthFactor: axis == Axis.horizontal ? (visible ? 1 : 0) : null,
+              child: AnimatedOpacity(
+                duration: d,
+                curve: Motion.standard,
+                opacity: visible ? 1 : 0,
+                child: child,
+              ),
             ),
           ),
         ),
