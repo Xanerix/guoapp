@@ -496,8 +496,10 @@ class _DownloadedDramaPageState extends State<DownloadedDramaPage> {
             ],
           ),
         ),
-      if (updater.busy)
-        Padding(
+      RevealSection(
+        visible: updater.busy,
+        duration: Motion.short,
+        child: Padding(
           padding: EdgeInsets.fromLTRB(inset, 8, inset, 0),
           child: Material(
             color: colors.secondaryContainer,
@@ -524,6 +526,7 @@ class _DownloadedDramaPageState extends State<DownloadedDramaPage> {
             ),
           ),
         ),
+      ),
     ];
     return FadeSwitcher(
       scale: true,

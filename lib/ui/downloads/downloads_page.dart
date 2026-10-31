@@ -47,6 +47,7 @@ class _DownloadsPageState extends State<DownloadsPage>
   final _sources = ['', ''];
   Set<String>? _selection;
   bool _busy = false;
+  final _enteredJobs = <Object>{};
 
   bool get _pendingTab => _tabs.index == 0;
 
@@ -481,7 +482,7 @@ class _DownloadsPageState extends State<DownloadsPage>
   Widget _pendingList(BuildContext context, _View view) => FadeSwitcher(
     scale: true,
     child: KeyedSubtree(
-      key: ValueKey(view.pending.isEmpty),
+      key: ValueKey((view.source, view.pending.isEmpty)),
       child: _pendingBody(context, view),
     ),
   );
@@ -521,16 +522,22 @@ class _DownloadsPageState extends State<DownloadsPage>
                 ),
               ),
             )
-          : _JobRow(
+          : EnterOnce(
               key: ValueKey(view.pending[index - 1].id),
-              job: view.pending[index - 1],
-              conversion: widget.converter.progressOf(
-                view.pending[index - 1].id,
+              id: view.pending[index - 1].id,
+              played: _enteredJobs,
+              index: index - 1,
+              child: _JobRow(
+                key: ValueKey(view.pending[index - 1].id),
+                job: view.pending[index - 1],
+                conversion: widget.converter.progressOf(
+                  view.pending[index - 1].id,
+                ),
+                selected: view.selection?.contains(view.pending[index - 1].id),
+                busy: _busy,
+                onToggle: () => _toggle(view.pending[index - 1].id),
+                onControl: () => _control(view.pending[index - 1]),
               ),
-              selected: view.selection?.contains(view.pending[index - 1].id),
-              busy: _busy,
-              onToggle: () => _toggle(view.pending[index - 1].id),
-              onControl: () => _control(view.pending[index - 1]),
             ),
     );
   }
@@ -547,7 +554,7 @@ class _DownloadsPageState extends State<DownloadsPage>
   Widget _downloadedGrid(BuildContext context, _View view) => FadeSwitcher(
     scale: true,
     child: KeyedSubtree(
-      key: ValueKey(view.downloaded.isEmpty),
+      key: ValueKey((view.source, view.downloaded.isEmpty)),
       child: _downloadedBody(context, view),
     ),
   );
