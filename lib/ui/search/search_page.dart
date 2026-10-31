@@ -10,8 +10,10 @@ import '../../source_catalog.dart';
 import '../app_scope.dart';
 import '../detail/detail_page.dart';
 import '../shell/app_shell.dart';
+import '../theme/motion.dart';
 import '../widgets/drama_grid.dart';
 import '../widgets/focus_ring.dart';
+import '../widgets/motion/motion_widgets.dart';
 import '../widgets/search_field.dart';
 import '../widgets/status_view.dart';
 
@@ -40,6 +42,7 @@ class _SearchPageState extends State<SearchPage> {
   List<String> _suggestions = const [];
   Timer? _debounce;
   int _suggestion = 0;
+  final _shownSuggestions = <Object>{};
   bool _ready = false;
 
   @override
@@ -130,7 +133,7 @@ class _SearchPageState extends State<SearchPage> {
               ),
               child: field,
             ),
-            Expanded(child: _body(context)),
+            Expanded(child: FadeSwitcher(child: _body(context))),
           ],
         ),
       );
@@ -140,7 +143,11 @@ class _SearchPageState extends State<SearchPage> {
         titleSpacing: 0,
         title: Padding(padding: const EdgeInsets.only(right: 16), child: field),
       ),
-      body: SafeArea(top: false, bottom: false, child: _body(context)),
+      body: SafeArea(
+        top: false,
+        bottom: false,
+        child: FadeSwitcher(child: _body(context)),
+      ),
     );
   }
 
@@ -148,28 +155,46 @@ class _SearchPageState extends State<SearchPage> {
     final television = AppScope.of(context).television;
     if (_suggestions.isNotEmpty && _controller.text.trim() != _submitted) {
       return ListView(
+        key: const ValueKey('suggest'),
         padding: television
             ? const EdgeInsets.fromLTRB(televisionInset, 8, televisionInset, 27)
             : const EdgeInsets.symmetric(vertical: 8),
         children: [
-          for (final item in _suggestions)
-            TileFocus(
-              builder: (focusNode) => ListTile(
-                focusNode: focusNode,
-                leading: const Icon(Icons.search_rounded),
-                title: Text(item),
-                onTap: () => _submit(item),
+          for (final (index, item) in _suggestions.indexed)
+            EnterOnce(
+              key: ValueKey((index, item)),
+              id: item,
+              played: _shownSuggestions,
+              index: index,
+              child: TileFocus(
+                builder: (focusNode) => ListTile(
+                  focusNode: focusNode,
+                  leading: const Icon(Icons.search_rounded),
+                  title: Text(item),
+                  onTap: () => _submit(item),
+                ),
               ),
             ),
         ],
       );
     }
     final results = _results;
-    if (results == null) return _recent(context);
+    if (results == null) {
+      return KeyedSubtree(
+        key: const ValueKey('recent'),
+        child: _recent(context),
+      );
+    }
     if (results.items.isEmpty) {
-      if (results.loading) return const StatusView.loading(title: '正在搜索');
+      if (results.loading) {
+        return const StatusView.loading(
+          key: ValueKey('loading'),
+          title: '正在搜索',
+        );
+      }
       if (results.error.isNotEmpty) {
         return StatusView(
+          key: const ValueKey('error'),
           title: '搜索失败',
           message: results.error,
           icon: Icons.cloud_off_rounded,
@@ -178,6 +203,7 @@ class _SearchPageState extends State<SearchPage> {
         );
       }
       return StatusView(
+        key: const ValueKey('empty'),
         title: '没有找到「$_submitted」',
         message: '换个关键词试试',
         icon: Icons.search_off_rounded,
@@ -189,6 +215,7 @@ class _SearchPageState extends State<SearchPage> {
         ? 16.0
         : 24.0;
     return LayoutBuilder(
+      key: ValueKey(('results', _submitted)),
       builder: (context, constraints) => AutoLoadMore(
         feed: results,
         child: CustomScrollView(
@@ -204,6 +231,7 @@ class _SearchPageState extends State<SearchPage> {
                 width: constraints.maxWidth - inset * 2,
                 items: results.items,
                 autofocus: television,
+                heroScope: 'drama',
                 onOpen: _open,
               ),
             ),
@@ -226,47 +254,59 @@ class _SearchPageState extends State<SearchPage> {
     listenable: widget.store,
     builder: (context, _) {
       final recent = widget.store.recentSearches;
-      if (recent.isEmpty) {
-        return StatusView(
-          title: '在 ${widget.source.name} 中搜索',
-          message: '输入剧名或关键词',
-          icon: Icons.search_rounded,
-        );
-      }
-      final theme = Theme.of(context);
-      return ListView(
-        padding: AppScope.of(context).television
-            ? const EdgeInsets.fromLTRB(televisionInset, 8, televisionInset, 27)
-            : const EdgeInsets.fromLTRB(16, 8, 16, 24),
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '最近搜索',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+      return FadeSwitcher(child: _recentContent(context, recent));
+    },
+  );
+
+  Widget _recentContent(BuildContext context, List<String> recent) {
+    if (recent.isEmpty) {
+      return StatusView(
+        key: const ValueKey('empty'),
+        title: '在 ${widget.source.name} 中搜索',
+        message: '输入剧名或关键词',
+        icon: Icons.search_rounded,
+      );
+    }
+    final theme = Theme.of(context);
+    return ListView(
+      key: const ValueKey('recent'),
+      padding: AppScope.of(context).television
+          ? const EdgeInsets.fromLTRB(televisionInset, 8, televisionInset, 27)
+          : const EdgeInsets.fromLTRB(16, 8, 16, 24),
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                '最近搜索',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
                 ),
               ),
-              FocusRing(
-                radius: 999,
-                child: TextButton(
-                  onPressed: () => widget.store
-                      .clearRecentSearches()
-                      .catchError((Object _) {}),
-                  child: const Text('清空'),
+            ),
+            FocusRing(
+              radius: 999,
+              child: TextButton(
+                onPressed: () => widget.store.clearRecentSearches().catchError(
+                  (Object _) {},
                 ),
+                child: const Text('清空'),
               ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Wrap(
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        AnimatedSize(
+          duration: Motion.of(context, Motion.medium),
+          curve: Motion.enter,
+          alignment: Alignment.topLeft,
+          child: Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
               for (final query in recent)
                 FocusRing(
+                  key: ValueKey(query),
                   radius: 8,
                   child: ActionChip(
                     avatar: const Icon(Icons.history_rounded, size: 16),
@@ -276,8 +316,8 @@ class _SearchPageState extends State<SearchPage> {
                 ),
             ],
           ),
-        ],
-      );
-    },
-  );
+        ),
+      ],
+    );
+  }
 }
