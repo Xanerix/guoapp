@@ -203,7 +203,9 @@ class _DownloadedDramaPageState extends State<DownloadedDramaPage> {
     );
     handle.session.start(index, position: position);
     await Navigator.of(context, rootNavigator: true).push(
-      fadeRoute<void>((_) => PlaybackPage(store: widget.store, handle: handle)),
+      MaterialPageRoute<void>(
+        builder: (_) => PlaybackPage(store: widget.store, handle: handle),
+      ),
     );
     _playing = false;
   }
@@ -314,11 +316,7 @@ class _DownloadedDramaPageState extends State<DownloadedDramaPage> {
     return Scaffold(
       appBar: selection == null || item == null
           ? AppBar(
-              title: FadeSwitcher(
-                duration: Motion.short,
-                alignment: AlignmentDirectional.centerStart,
-                child: Text(drama.title, key: const ValueKey(false)),
-              ),
+              title: Text(drama.title),
               actions: [
                 _fillButton(drama, icon: false),
                 _editButton(item, icon: false),
@@ -331,14 +329,7 @@ class _DownloadedDramaPageState extends State<DownloadedDramaPage> {
                 onPressed: () => setState(() => _selection = null),
                 icon: const Icon(Icons.close_rounded),
               ),
-              title: FadeSwitcher(
-                duration: Motion.short,
-                alignment: AlignmentDirectional.centerStart,
-                child: Text(
-                  '已选择 ${selection.length} 集',
-                  key: const ValueKey(true),
-                ),
-              ),
+              title: Text('已选择 ${selection.length} 集'),
               actions: [_selectAll(item, selection), const SizedBox(width: 8)],
             ),
       body: SafeArea(
@@ -346,36 +337,26 @@ class _DownloadedDramaPageState extends State<DownloadedDramaPage> {
         bottom: false,
         child: _content(context, item, selection, inset: 16),
       ),
-      bottomNavigationBar: RevealSection(
-        visible: selection != null && item != null,
-        axisAlignment: 1,
-        child: item == null
-            ? const SizedBox.shrink()
-            : SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                  child: SizedBox(
-                    height: 48,
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      spacing: 12,
-                      children: [
-                        Expanded(
-                          child: _mergeButton(item, selection ?? const {}),
-                        ),
-                        if (Platform.isAndroid)
-                          Expanded(
-                            child: _exportButton(item, selection ?? const {}),
-                          ),
-                        Expanded(
-                          child: _deleteButton(item, selection ?? const {}),
-                        ),
-                      ],
-                    ),
+      bottomNavigationBar: selection == null || item == null
+          ? null
+          : SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                child: SizedBox(
+                  height: 48,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    spacing: 12,
+                    children: [
+                      Expanded(child: _mergeButton(item, selection)),
+                      if (Platform.isAndroid)
+                        Expanded(child: _exportButton(item, selection)),
+                      Expanded(child: _deleteButton(item, selection)),
+                    ],
                   ),
                 ),
               ),
-      ),
+            ),
     );
   }
 
@@ -496,10 +477,8 @@ class _DownloadedDramaPageState extends State<DownloadedDramaPage> {
             ],
           ),
         ),
-      RevealSection(
-        visible: updater.busy,
-        duration: Motion.short,
-        child: Padding(
+      if (updater.busy)
+        Padding(
           padding: EdgeInsets.fromLTRB(inset, 8, inset, 0),
           child: Material(
             color: colors.secondaryContainer,
@@ -526,7 +505,6 @@ class _DownloadedDramaPageState extends State<DownloadedDramaPage> {
             ),
           ),
         ),
-      ),
     ];
     return FadeSwitcher(
       scale: true,
@@ -959,26 +937,12 @@ class _EpisodeCard extends StatelessWidget {
           child: InkWell(
             onTap: onTap,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(8, 8, 12, 8),
+              padding: EdgeInsets.fromLTRB(selected == null ? 16 : 8, 8, 12, 8),
               child: Row(
+                spacing: 8,
                 children: [
-                  AnimatedContainer(
-                    duration: Motion.of(context, Motion.short),
-                    curve: Motion.standard,
-                    width: selected == null ? 8 : 0,
-                  ),
-                  RevealSection(
-                    visible: selected != null,
-                    duration: Motion.short,
-                    axis: Axis.horizontal,
-                    child: Padding(
-                      padding: const EdgeInsetsDirectional.only(end: 8),
-                      child: Checkbox(
-                        value: selected ?? false,
-                        onChanged: (_) => onTap(),
-                      ),
-                    ),
-                  ),
+                  if (selected case final selected?)
+                    Checkbox(value: selected, onChanged: (_) => onTap()),
                   Expanded(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -1023,28 +987,20 @@ class _EpisodeCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  RevealSection(
-                    visible: selected == null,
-                    duration: Motion.short,
-                    axis: Axis.horizontal,
-                    axisAlignment: 1,
-                    child: Padding(
-                      padding: const EdgeInsetsDirectional.only(start: 8),
-                      child: Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          color: colors.surfaceContainerHighest,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.play_arrow_rounded,
-                          size: 20,
-                          color: colors.onSurface,
-                        ),
+                  if (selected == null)
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: colors.surfaceContainerHighest,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.play_arrow_rounded,
+                        size: 20,
+                        color: colors.onSurface,
                       ),
                     ),
-                  ),
                 ],
               ),
             ),

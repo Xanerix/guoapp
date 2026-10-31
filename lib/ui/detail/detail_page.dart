@@ -328,7 +328,9 @@ class _DetailPageState extends State<DetailPage> {
     handle.session.start(index, position: position);
     _watching = true;
     await Navigator.of(context, rootNavigator: true).push(
-      fadeRoute<void>((_) => PlaybackPage(store: widget.store, handle: handle)),
+      MaterialPageRoute<void>(
+        builder: (_) => PlaybackPage(store: widget.store, handle: handle),
+      ),
     );
     _watching = false;
     if (mounted && AppScope.of(context).television) _focusWatched(details);
@@ -1424,7 +1426,6 @@ class _DetailPageState extends State<DetailPage> {
         final columns = m.columnsFor(constraints.maxWidth);
         final fade = Motion.of(context, Motion.medium);
         return TweenAnimationBuilder<double>(
-          key: ValueKey(details.group),
           tween: Tween(begin: fade == Duration.zero ? 1 : 0, end: 1),
           duration: fade,
           curve: Motion.standard,
@@ -1482,39 +1483,34 @@ class _GroupChip extends StatelessWidget {
     final size = Size(0, m.chip);
     return FocusRing(
       radius: m.chipRadius,
-      child: TweenAnimationBuilder<double>(
-        tween: Tween(end: selected ? 1 : 0),
-        duration: Motion.of(context, Motion.short),
-        curve: Motion.standard,
-        builder: (context, t, child) => OutlinedButton(
-          focusNode: focusNode,
-          onPressed: onPressed,
-          style: OutlinedButton.styleFrom(
-            shape: shape,
-            padding: padding,
-            minimumSize: size,
-            backgroundColor: colors.secondaryContainer.withValues(alpha: t),
-            foregroundColor: Color.lerp(
-              colors.onSurfaceVariant,
-              colors.onSecondaryContainer,
-              t,
+      child: selected
+          ? FilledButton.tonal(
+              focusNode: focusNode,
+              onPressed: onPressed,
+              style: FilledButton.styleFrom(
+                shape: shape,
+                padding: padding,
+                minimumSize: size,
+                textStyle: TextStyle(
+                  fontSize: m.chipText,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              child: Text(label),
+            )
+          : OutlinedButton(
+              focusNode: focusNode,
+              onPressed: onPressed,
+              style: OutlinedButton.styleFrom(
+                shape: shape,
+                padding: padding,
+                minimumSize: size,
+                foregroundColor: colors.onSurfaceVariant,
+                side: BorderSide(color: colors.outlineVariant),
+                textStyle: TextStyle(fontSize: m.chipText),
+              ),
+              child: Text(label),
             ),
-            side: BorderSide(
-              color: Color.lerp(
-                colors.outlineVariant,
-                colors.secondaryContainer,
-                t,
-              )!,
-            ),
-            textStyle: TextStyle(
-              fontSize: m.chipText,
-              fontWeight: selected ? FontWeight.w600 : null,
-            ),
-          ),
-          child: child,
-        ),
-        child: Text(label),
-      ),
     );
   }
 }

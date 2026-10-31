@@ -13,7 +13,6 @@ import 'app_scope.dart';
 import 'shell/app_shell.dart';
 import 'theme/app_theme.dart';
 import 'theme/motion.dart';
-import 'widgets/motion/motion_widgets.dart';
 import 'theme/system_color.dart';
 import 'users/unlock_page.dart';
 import 'widgets/focus_ring.dart';
@@ -254,27 +253,20 @@ class _DuanjuAppState extends State<DuanjuApp> with WidgetsBindingObserver {
       ),
       themeAnimationDuration: Motion.long,
       themeAnimationCurve: Motion.standard,
-      home: FadeSwitcher(
-        duration: Motion.long,
-        child: switch (store) {
-          null => _BootScreen(
-            key: const ValueKey('boot'),
-            error: widget.bootstrapError,
-            onRetry: widget.onRetry,
-          ),
-          LocalStore(locked: true) => UnlockPage(
-            key: const ValueKey('unlock'),
-            store: store,
-          ),
-          _ => AppShell(key: ValueKey(store.profileEpoch), store: store),
-        },
-      ),
+      home: switch (store) {
+        null => _BootScreen(
+          error: widget.bootstrapError,
+          onRetry: widget.onRetry,
+        ),
+        LocalStore(locked: true) => UnlockPage(store: store),
+        _ => AppShell(key: ValueKey(store.profileEpoch), store: store),
+      },
     );
   }
 }
 
 class _BootScreen extends StatelessWidget {
-  const _BootScreen({super.key, this.error, this.onRetry});
+  const _BootScreen({this.error, this.onRetry});
   final String? error;
   final VoidCallback? onRetry;
 

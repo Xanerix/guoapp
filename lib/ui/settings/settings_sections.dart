@@ -16,7 +16,6 @@ import '../update_prompt.dart';
 import '../users/users_view.dart';
 import '../widgets/focus_ring.dart';
 import '../widgets/group_card.dart';
-import '../widgets/motion/motion_widgets.dart';
 import 'appearance_settings.dart';
 import 'backup_actions.dart';
 import 'diary_view.dart';
@@ -342,16 +341,13 @@ class SettingsSection extends StatelessWidget {
                         )
                 : null,
           ),
-          if (settings != null)
-            RevealSection(
-              visible: mode == 'manual',
-              child: SettingsTile(
-                title: '代理地址',
-                subtitle: '支持 HTTP、HTTPS、SOCKS5；仅保存在本机，不进入配置备份',
-                value: settings.proxyUrl.isEmpty ? '未设置' : '已设置',
-                enabled: editable,
-                onTap: () => _editProxy(context, settings),
-              ),
+          if (mode == 'manual')
+            SettingsTile(
+              title: '代理地址',
+              subtitle: '支持 HTTP、HTTPS、SOCKS5；仅保存在本机，不进入配置备份',
+              value: settings!.proxyUrl.isEmpty ? '未设置' : '已设置',
+              enabled: editable,
+              onTap: () => _editProxy(context, settings),
             ),
         ],
       ),

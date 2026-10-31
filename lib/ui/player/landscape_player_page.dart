@@ -69,6 +69,8 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
   int _streakTaps = 0;
   int _tab = 1;
   _Panel? _panel;
+  int _sidePanelMount = 0;
+  bool _sidePanelShown = false;
   DateTime _now = DateTime.now();
   ({int level, bool charging})? _battery;
 
@@ -416,6 +418,12 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
   Widget _video(BuildContext context, bool full) {
     final session = _session;
     final visible = _visible || _pinned;
+    final sidePanel = switch (_panel) {
+      final panel? when full && _sidePanel(panel) => _panelBody(context, panel),
+      _ => null,
+    };
+    if (sidePanel != null && !_sidePanelShown) _sidePanelMount++;
+    _sidePanelShown = sidePanel != null;
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -524,15 +532,12 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
           bottom: 0,
           width: 360,
           child: FadePresence(
+            // A fresh key on every show keeps reopen-during-fade from reusing
+            // the closing panel's state, matching the old unmount behavior.
+            key: ValueKey(_sidePanelMount),
             duration: Motion.long,
             slideFrom: const Offset(1, 0),
-            child: switch (_panel) {
-              final panel? when full && _sidePanel(panel) => _panelBody(
-                context,
-                panel,
-              ),
-              _ => null,
-            },
+            child: sidePanel,
           ),
         ),
         if (_panel case final panel? when full)
@@ -1365,15 +1370,12 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
                 style: TextStyle(fontSize: 13, color: colors.onSurfaceVariant),
               ),
             ),
-            FadePresence(
-              child: _canDownload && !_selecting
-                  ? IconButton(
-                      onPressed: () => _select(true),
-                      icon: const Icon(Icons.download_rounded),
-                      tooltip: '下载选集',
-                    )
-                  : null,
-            ),
+            if (_canDownload && !_selecting)
+              IconButton(
+                onPressed: () => _select(true),
+                icon: const Icon(Icons.download_rounded),
+                tooltip: '下载选集',
+              ),
           ],
         ),
       ),
@@ -1394,38 +1396,35 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
             },
           ),
         ),
-        FadePresence(
-          child: _selecting
-              ? Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-                  child: Row(
-                    spacing: 8,
-                    children: [
-                      TextButton(
-                        onPressed: () => _select(false),
-                        child: const Text('取消'),
-                      ),
-                      TextButton(
-                        onPressed: () => setState(() {
-                          all
-                              ? _selected.clear()
-                              : _selected.addAll(
-                                  List.generate(episodes.length, (i) => i),
-                                );
-                        }),
-                        child: Text(all ? '取消全选' : '全选'),
-                      ),
-                      const Spacer(),
-                      FilledButton.icon(
-                        onPressed: _selected.isEmpty ? null : _download,
-                        icon: const Icon(Icons.download_rounded, size: 18),
-                        label: const Text('下载'),
-                      ),
-                    ],
-                  ),
-                )
-              : null,
-        ),
+        if (_selecting)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: Row(
+              spacing: 8,
+              children: [
+                TextButton(
+                  onPressed: () => _select(false),
+                  child: const Text('取消'),
+                ),
+                TextButton(
+                  onPressed: () => setState(() {
+                    all
+                        ? _selected.clear()
+                        : _selected.addAll(
+                            List.generate(episodes.length, (i) => i),
+                          );
+                  }),
+                  child: Text(all ? '取消全选' : '全选'),
+                ),
+                const Spacer(),
+                FilledButton.icon(
+                  onPressed: _selected.isEmpty ? null : _download,
+                  icon: const Icon(Icons.download_rounded, size: 18),
+                  label: const Text('下载'),
+                ),
+              ],
+            ),
+          ),
       ],
     );
   }

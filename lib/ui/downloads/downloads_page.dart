@@ -233,7 +233,7 @@ class _DownloadsPageState extends State<DownloadsPage>
 
   Widget _cancelButton(_View view) {
     final colors = Theme.of(context).colorScheme;
-    final selection = view.selection ?? const <String>{};
+    final selection = view.selection!;
     return FocusRing(
       radius: 20,
       child: FilledButton.icon(
@@ -275,11 +275,7 @@ class _DownloadsPageState extends State<DownloadsPage>
     return Scaffold(
       appBar: selection == null
           ? AppBar(
-              title: const FadeSwitcher(
-                duration: Motion.short,
-                alignment: AlignmentDirectional.centerStart,
-                child: Text('下载', key: ValueKey(false)),
-              ),
+              title: const Text('下载'),
               actions: [
                 if (_pendingTab && view.pending.isNotEmpty) ...[
                   IconButton(
@@ -318,14 +314,7 @@ class _DownloadsPageState extends State<DownloadsPage>
                 onPressed: () => setState(() => _selection = null),
                 icon: const Icon(Icons.close_rounded),
               ),
-              title: FadeSwitcher(
-                duration: Motion.short,
-                alignment: AlignmentDirectional.centerStart,
-                child: Text(
-                  '已选择 ${selection.length} 集',
-                  key: const ValueKey(true),
-                ),
-              ),
+              title: Text('已选择 ${selection.length} 集'),
               actions: [_selectAll(view), const SizedBox(width: 8)],
             ),
       body: SafeArea(
@@ -339,16 +328,14 @@ class _DownloadsPageState extends State<DownloadsPage>
           ],
         ),
       ),
-      bottomNavigationBar: RevealSection(
-        visible: selection != null,
-        axisAlignment: 1,
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-            child: SizedBox(height: 48, child: _cancelButton(view)),
-          ),
-        ),
-      ),
+      bottomNavigationBar: selection == null
+          ? null
+          : SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                child: SizedBox(height: 48, child: _cancelButton(view)),
+              ),
+            ),
     );
   }
 
@@ -396,36 +383,38 @@ class _DownloadsPageState extends State<DownloadsPage>
                       ),
                     ),
                   ),
-                  FadeSwitcher(
-                    duration: Motion.short,
-                    alignment: AlignmentDirectional.centerEnd,
-                    child: view.selection != null
-                        ? Row(
-                            key: const ValueKey('editing'),
-                            mainAxisSize: MainAxisSize.min,
-                            spacing: 8,
-                            children: [
-                              _selectAll(view),
-                              _cancelButton(view),
-                              _textButton(
-                                '完成',
-                                () => setState(() => _selection = null),
-                              ),
-                            ],
-                          )
-                        : _pendingTab && view.pending.isNotEmpty
-                        ? Row(
-                            key: const ValueKey('normal'),
-                            mainAxisSize: MainAxisSize.min,
-                            spacing: 8,
-                            children: [
-                              _pauseAll(view),
-                              _resumeAll(view),
-                              _editButton(view),
-                            ],
-                          )
-                        : const SizedBox.shrink(key: ValueKey('none')),
-                  ),
+                  if (view.selection != null ||
+                      (_pendingTab && view.pending.isNotEmpty))
+                    FadeSwitcher(
+                      duration: Motion.short,
+                      alignment: AlignmentDirectional.centerEnd,
+                      child: view.selection != null
+                          ? Row(
+                              key: const ValueKey('editing'),
+                              mainAxisSize: MainAxisSize.min,
+                              spacing: 8,
+                              children: [
+                                _selectAll(view),
+                                _cancelButton(view),
+                                _textButton(
+                                  '完成',
+                                  () => setState(() => _selection = null),
+                                ),
+                              ],
+                            )
+                          : _pendingTab && view.pending.isNotEmpty
+                          ? Row(
+                              key: const ValueKey('normal'),
+                              mainAxisSize: MainAxisSize.min,
+                              spacing: 8,
+                              children: [
+                                _pauseAll(view),
+                                _resumeAll(view),
+                                _editButton(view),
+                              ],
+                            )
+                          : const SizedBox.shrink(key: ValueKey('none')),
+                    ),
                 ],
               ),
             ),
@@ -482,7 +471,7 @@ class _DownloadsPageState extends State<DownloadsPage>
   Widget _pendingList(BuildContext context, _View view) => FadeSwitcher(
     scale: true,
     child: KeyedSubtree(
-      key: ValueKey((view.source, view.pending.isEmpty)),
+      key: ValueKey(view.pending.isEmpty),
       child: _pendingBody(context, view),
     ),
   );
@@ -554,7 +543,7 @@ class _DownloadsPageState extends State<DownloadsPage>
   Widget _downloadedGrid(BuildContext context, _View view) => FadeSwitcher(
     scale: true,
     child: KeyedSubtree(
-      key: ValueKey((view.source, view.downloaded.isEmpty)),
+      key: ValueKey(view.downloaded.isEmpty),
       child: _downloadedBody(context, view),
     ),
   );
@@ -673,19 +662,10 @@ class _JobRow extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.all(12),
               child: Row(
+                spacing: 16,
                 children: [
-                  RevealSection(
-                    visible: selected != null,
-                    duration: Motion.short,
-                    axis: Axis.horizontal,
-                    child: Padding(
-                      padding: const EdgeInsetsDirectional.only(end: 16),
-                      child: Checkbox(
-                        value: selected ?? false,
-                        onChanged: (_) => onToggle(),
-                      ),
-                    ),
-                  ),
+                  if (selected case final selected?)
+                    Checkbox(value: selected, onChanged: (_) => onToggle()),
                   SizedBox(
                     width: 48,
                     height: 72,
@@ -695,7 +675,6 @@ class _JobRow extends StatelessWidget {
                       details: false,
                     ),
                   ),
-                  const SizedBox(width: 16),
                   Expanded(
                     child: ExcludeSemantics(
                       child: Column(
@@ -762,36 +741,28 @@ class _JobRow extends StatelessWidget {
                       ),
                     ),
                   ),
-                  RevealSection(
-                    visible: selected == null && !job.converting,
-                    duration: Motion.short,
-                    axis: Axis.horizontal,
-                    axisAlignment: 1,
-                    child: Padding(
-                      padding: const EdgeInsetsDirectional.only(start: 16),
-                      child: FocusRing(
-                        radius: 20,
-                        child: IconButton.filledTonal(
-                          tooltip: failed
-                              ? '重试'
-                              : job.active
-                              ? '暂停'
-                              : '继续',
-                          onPressed: busy ? null : onControl,
-                          icon: ToggleIconSwitcher(
-                            child: Icon(
-                              key: ValueKey((failed, job.active)),
-                              failed
-                                  ? Icons.refresh_rounded
-                                  : job.active
-                                  ? Icons.pause_rounded
-                                  : Icons.play_arrow_rounded,
-                            ),
+                  if (selected == null && !job.converting)
+                    FocusRing(
+                      radius: 20,
+                      child: IconButton.filledTonal(
+                        tooltip: failed
+                            ? '重试'
+                            : job.active
+                            ? '暂停'
+                            : '继续',
+                        onPressed: busy ? null : onControl,
+                        icon: ToggleIconSwitcher(
+                          child: Icon(
+                            key: ValueKey((failed, job.active)),
+                            failed
+                                ? Icons.refresh_rounded
+                                : job.active
+                                ? Icons.pause_rounded
+                                : Icons.play_arrow_rounded,
                           ),
                         ),
                       ),
                     ),
-                  ),
                 ],
               ),
             ),

@@ -8,7 +8,6 @@ import '../app_scope.dart';
 import '../settings/settings_rows.dart';
 import '../widgets/focus_ring.dart';
 import '../widgets/group_card.dart';
-import '../widgets/motion/motion_widgets.dart';
 
 class UserEditor extends StatefulWidget {
   const UserEditor({super.key, required this.store, this.profile});
@@ -191,153 +190,118 @@ class _UserEditorState extends State<UserEditor> {
             ),
           ],
         ),
-        RevealSection(
-          key: const ValueKey('clear-pin'),
-          visible: canClear,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+        if (canClear) ...[
+          const SizedBox(height: 12),
+          GroupCard(
             children: [
-              const SizedBox(height: 12),
-              GroupCard(
-                children: [
-                  SwitchTile(
-                    title: '取消此用户密码',
-                    subtitle: '保存后切换到该用户不再需要验证',
-                    value: _clearPin,
-                    onChanged: (value) => setState(() => _clearPin = value),
-                  ),
-                ],
+              SwitchTile(
+                title: '取消此用户密码',
+                subtitle: '保存后切换到该用户不再需要验证',
+                value: _clearPin,
+                onChanged: (value) => setState(() => _clearPin = value),
               ),
             ],
           ),
-        ),
-        RevealSection(
-          visible: !_admin,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+        ],
+        if (!_admin) ...[
+          const SizedBox(height: 12),
+          GroupCard(
             children: [
-              const SizedBox(height: 12),
-              GroupCard(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
-                    child: Row(
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '允许访问的站源',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '已选 ${SourceSite.values.where((site) => _sources.contains(site.id)).length} 个',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontSize: 13,
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 4, 8, 12),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final columns = (constraints.maxWidth / 200).floor().clamp(
+                      1,
+                      4,
+                    );
+                    const sites = SourceSite.values;
+                    return Column(
                       children: [
-                        Expanded(
-                          child: Text(
-                            '允许访问的站源',
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                            ),
+                        for (var row = 0; row < sites.length; row += columns)
+                          Row(
+                            children: [
+                              for (var i = row; i < row + columns; i++)
+                                Expanded(
+                                  child: i < sites.length
+                                      ? _SourceCheck(
+                                          name: sites[i].name,
+                                          value: _sources.contains(sites[i].id),
+                                          onChanged: (value) => setState(
+                                            () => value
+                                                ? _sources.add(sites[i].id)
+                                                : _sources.remove(sites[i].id),
+                                          ),
+                                        )
+                                      : const SizedBox.shrink(),
+                                ),
+                            ],
                           ),
-                        ),
-                        Text(
-                          '已选 ${SourceSite.values.where((site) => _sources.contains(site.id)).length} 个',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            fontSize: 13,
-                            color: colors.onSurfaceVariant,
-                          ),
-                        ),
                       ],
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(8, 4, 8, 12),
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        final columns = (constraints.maxWidth / 200)
-                            .floor()
-                            .clamp(1, 4);
-                        const sites = SourceSite.values;
-                        return Column(
-                          children: [
-                            for (
-                              var row = 0;
-                              row < sites.length;
-                              row += columns
-                            )
-                              Row(
-                                children: [
-                                  for (var i = row; i < row + columns; i++)
-                                    Expanded(
-                                      child: i < sites.length
-                                          ? _SourceCheck(
-                                              name: sites[i].name,
-                                              value: _sources.contains(
-                                                sites[i].id,
-                                              ),
-                                              onChanged: (value) => setState(
-                                                () => value
-                                                    ? _sources.add(sites[i].id)
-                                                    : _sources.remove(
-                                                        sites[i].id,
-                                                      ),
-                                              ),
-                                            )
-                                          : const SizedBox.shrink(),
-                                    ),
-                                ],
-                              ),
-                          ],
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              GroupCard(
-                children: [
-                  SwitchTile(
-                    title: '允许下载',
-                    subtitle: '可下载和管理本机视频；关闭后仅在线观看，下载入口置灰',
-                    value: _download,
-                    onChanged: (value) => setState(() => _download = value),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        RevealSection(
-          visible: _admin,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SizedBox(height: 12),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Text(
-                  '管理员可以访问全部站源和功能。存在其他用户时不能取消管理员密码。',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: colors.onSurfaceVariant,
-                    height: 1.6,
-                  ),
+                    );
+                  },
                 ),
               ),
             ],
           ),
-        ),
-        RevealSection(
-          key: const ValueKey('error'),
-          visible: _error != null,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+          const SizedBox(height: 12),
+          GroupCard(
             children: [
-              const SizedBox(height: 12),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Text(
-                  _error ?? '',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: colors.error,
-                  ),
-                ),
+              SwitchTile(
+                title: '允许下载',
+                subtitle: '可下载和管理本机视频；关闭后仅在线观看，下载入口置灰',
+                value: _download,
+                onChanged: (value) => setState(() => _download = value),
               ),
             ],
           ),
-        ),
+        ],
+        if (_admin) ...[
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              '管理员可以访问全部站源和功能。存在其他用户时不能取消管理员密码。',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colors.onSurfaceVariant,
+                height: 1.6,
+              ),
+            ),
+          ),
+        ],
+        if (_error case final error?) ...[
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              error,
+              style: theme.textTheme.bodyMedium?.copyWith(color: colors.error),
+            ),
+          ),
+        ],
         const SizedBox(height: 24),
         Row(
           spacing: 12,

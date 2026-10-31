@@ -247,17 +247,20 @@ class _Badge extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => AnimatedSize(
-    duration: Motion.of(context, Motion.short),
-    curve: Motion.standard,
-    child: ToggleIconSwitcher(
-      child: visible
-          ? Padding(
-              key: const ValueKey(true),
-              padding: const EdgeInsetsDirectional.only(start: 8),
-              child: child,
-            )
-          : const SizedBox.shrink(key: ValueKey(false)),
+  Widget build(BuildContext context) => ExcludeSemantics(
+    excluding: !visible,
+    child: AnimatedSize(
+      duration: Motion.of(context, Motion.short),
+      curve: Motion.standard,
+      child: ToggleIconSwitcher(
+        child: visible
+            ? Padding(
+                key: const ValueKey(true),
+                padding: const EdgeInsetsDirectional.only(start: 8),
+                child: child,
+              )
+            : const SizedBox.shrink(key: ValueKey(false)),
+      ),
     ),
   );
 }

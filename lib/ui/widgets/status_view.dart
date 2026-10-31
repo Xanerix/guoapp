@@ -42,11 +42,7 @@ class StatusView extends StatelessWidget {
             FadeSwitcher(
               scale: true,
               child: loading
-                  ? const SizedBox.square(
-                      key: ValueKey(true),
-                      dimension: 56,
-                      child: Center(child: CircularProgressIndicator()),
-                    )
+                  ? const CircularProgressIndicator(key: ValueKey(true))
                   : Icon(
                       icon,
                       key: const ValueKey(false),

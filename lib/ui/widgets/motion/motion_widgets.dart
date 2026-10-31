@@ -20,13 +20,16 @@ Widget _presence(Widget child, {required bool leaving}) => KeyedSubtree(
     enabled: !leaving,
     child: ExcludeFocus(
       excluding: leaving,
-      child: IgnorePointer(ignoring: leaving, child: child),
+      child: IgnorePointer(
+        ignoring: leaving,
+        child: ExcludeSemantics(excluding: leaving, child: child),
+      ),
     ),
   ),
 );
 
 /// Cross-fades between children keyed by identity. Outgoing children are
-/// excluded from focus and pointer input.
+/// excluded from focus, pointer input and semantics.
 class FadeSwitcher extends StatelessWidget {
   const FadeSwitcher({
     super.key,
@@ -58,56 +61,6 @@ class FadeSwitcher extends StatelessWidget {
     },
     child: child,
   );
-}
-
-/// Shows or hides [child] with a size and opacity transition. Hidden content
-/// is excluded from focus, pointer input and semantics.
-class RevealSection extends StatelessWidget {
-  const RevealSection({
-    super.key,
-    required this.visible,
-    required this.child,
-    this.duration = Motion.medium,
-    this.axis = Axis.vertical,
-    this.axisAlignment = -1,
-  });
-
-  final bool visible;
-  final Widget child;
-  final Duration duration;
-  final Axis axis;
-  final double axisAlignment;
-
-  @override
-  Widget build(BuildContext context) {
-    final d = Motion.of(context, duration);
-    return ExcludeSemantics(
-      excluding: !visible,
-      child: ExcludeFocus(
-        excluding: !visible,
-        child: IgnorePointer(
-          ignoring: !visible,
-          child: ClipRect(
-            child: AnimatedAlign(
-              duration: d,
-              curve: visible ? Motion.enter : Motion.exit,
-              alignment: axis == Axis.vertical
-                  ? Alignment(0, axisAlignment)
-                  : Alignment(axisAlignment, 0),
-              heightFactor: axis == Axis.vertical ? (visible ? 1 : 0) : null,
-              widthFactor: axis == Axis.horizontal ? (visible ? 1 : 0) : null,
-              child: AnimatedOpacity(
-                duration: d,
-                curve: Motion.standard,
-                opacity: visible ? 1 : 0,
-                child: child,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 /// Swaps an icon or small widget with a scale and fade. [child] must carry a

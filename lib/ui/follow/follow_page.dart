@@ -218,7 +218,7 @@ class _FollowPageState extends State<FollowPage> {
 
   Widget _unfollowButton(_View view) {
     final colors = Theme.of(context).colorScheme;
-    final selection = view.selection ?? const <String>{};
+    final selection = view.selection!;
     return FocusRing(
       radius: 20,
       child: FilledButton.icon(
@@ -313,13 +313,12 @@ class _FollowPageState extends State<FollowPage> {
           ],
         ),
       ),
-      bottomNavigationBar: RevealSection(
-        visible: selection != null,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-          child: SizedBox(height: 48, child: _unfollowButton(view)),
-        ),
-      ),
+      bottomNavigationBar: selection == null
+          ? null
+          : Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              child: SizedBox(height: 48, child: _unfollowButton(view)),
+            ),
     );
   }
 

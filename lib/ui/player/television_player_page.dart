@@ -458,14 +458,10 @@ class _TelevisionPlayerPageState extends State<TelevisionPlayerPage>
                       _progress(bottom: 27, focusable: false),
                     ExcludeFocus(
                       excluding: !_visible || failed,
-                      child: IgnorePointer(
-                        ignoring: !_visible,
-                        child: AnimatedOpacity(
-                          opacity: _visible ? 1 : 0,
-                          duration: Motion.of(context, Motion.medium),
-                          curve: _visible ? Motion.enter : Motion.exit,
-                          child: _controls(context),
-                        ),
+                      child: Visibility(
+                        visible: _visible,
+                        maintainState: true,
+                        child: _controls(context),
                       ),
                     ),
                     if (_session.saveWarning case final warning?)

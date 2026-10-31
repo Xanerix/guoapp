@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../theme/motion.dart';
-
 import '../../local_store.dart';
 import '../../models.dart';
+import '../theme/motion.dart';
 import 'focus_ring.dart';
 import 'motion/motion_widgets.dart';
 

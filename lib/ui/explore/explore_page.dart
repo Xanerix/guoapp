@@ -250,6 +250,7 @@ class ExplorePageState extends State<ExplorePage> {
                       duration: Motion.of(context, Motion.long),
                       curve: Motion.enter,
                       alignment: Alignment.topCenter,
+                      clipBehavior: Clip.none,
                       child: FadeSwitcher(
                         alignment: Alignment.topCenter,
                         child: heroSection,
@@ -258,21 +259,13 @@ class ExplorePageState extends State<ExplorePage> {
             ),
             SliverPadding(
               padding: EdgeInsets.fromLTRB(inset, desktop ? 20 : 16, inset, 0),
-              sliver: TweenAnimationBuilder<double>(
-                key: ValueKey(_shown),
-                tween: Tween(begin: 0, end: 1),
-                duration: Motion.of(context, Motion.medium),
-                curve: Motion.enter,
-                builder: (context, value, child) =>
-                    SliverOpacity(opacity: value, sliver: child),
-                child: DramaSliverGrid(
-                  width: constraints.maxWidth - inset * 2,
-                  items: items,
-                  rankOf: explore.rankOf,
-                  autofocus: television && hero == null,
-                  heroScope: 'drama',
-                  onOpen: _open,
-                ),
+              sliver: DramaSliverGrid(
+                width: constraints.maxWidth - inset * 2,
+                items: items,
+                rankOf: explore.rankOf,
+                autofocus: television && hero == null,
+                heroScope: 'drama',
+                onOpen: _open,
               ),
             ),
             SliverPadding(
@@ -299,13 +292,16 @@ class ExplorePageState extends State<ExplorePage> {
               right: 0,
               top: 0,
               child: IgnorePointer(
-                child: AnimatedOpacity(
-                  opacity: feed.loading ? 1 : 0,
-                  duration: Motion.of(context, Motion.medium),
-                  curve: Motion.standard,
-                  child: TickerMode(
-                    enabled: feed.loading,
-                    child: const LinearProgressIndicator(minHeight: 2),
+                child: ExcludeSemantics(
+                  excluding: !feed.loading,
+                  child: AnimatedOpacity(
+                    opacity: feed.loading ? 1 : 0,
+                    duration: Motion.of(context, Motion.medium),
+                    curve: Motion.standard,
+                    child: TickerMode(
+                      enabled: feed.loading,
+                      child: const LinearProgressIndicator(minHeight: 2),
+                    ),
                   ),
                 ),
               ),

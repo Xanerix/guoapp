@@ -223,7 +223,7 @@ class _HistoryPageState extends State<HistoryPage> {
 
   Widget _deleteButton(_View view) {
     final colors = Theme.of(context).colorScheme;
-    final selection = view.selection ?? const <String>{};
+    final selection = view.selection!;
     return FocusRing(
       radius: 20,
       child: FilledButton.icon(
@@ -309,16 +309,13 @@ class _HistoryPageState extends State<HistoryPage> {
     final selection = view.selection;
     return Scaffold(
       appBar: AppBar(
-        leading: ToggleIconSwitcher(
-          child: selection == null
-              ? const BackButton(key: ValueKey(false))
-              : IconButton(
-                  key: const ValueKey(true),
-                  tooltip: '退出编辑',
-                  onPressed: _finishEditing,
-                  icon: const Icon(Icons.close_rounded),
-                ),
-        ),
+        leading: selection == null
+            ? null
+            : IconButton(
+                tooltip: '退出编辑',
+                onPressed: _finishEditing,
+                icon: const Icon(Icons.close_rounded),
+              ),
         title: FadeSwitcher(
           duration: Motion.short,
           alignment: AlignmentDirectional.centerStart,
@@ -358,15 +355,14 @@ class _HistoryPageState extends State<HistoryPage> {
           ],
         ),
       ),
-      bottomNavigationBar: RevealSection(
-        visible: selection != null,
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-            child: SizedBox(height: 48, child: _deleteButton(view)),
-          ),
-        ),
-      ),
+      bottomNavigationBar: selection == null
+          ? null
+          : SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                child: SizedBox(height: 48, child: _deleteButton(view)),
+              ),
+            ),
     );
   }
 

@@ -104,7 +104,10 @@ class _FadePresenceState extends State<FadePresence>
     }
     return IgnorePointer(
       ignoring: !visible,
-      child: ExcludeFocus(excluding: !visible, child: body),
+      child: ExcludeFocus(
+        excluding: !visible,
+        child: ExcludeSemantics(excluding: !visible, child: body),
+      ),
     );
   }
 }

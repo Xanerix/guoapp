@@ -162,7 +162,7 @@ class _SearchPageState extends State<SearchPage> {
         children: [
           for (final (index, item) in _suggestions.indexed)
             EnterOnce(
-              key: ValueKey((index, item)),
+              key: ValueKey(index),
               id: item,
               played: _shownSuggestions,
               index: index,
@@ -306,7 +306,6 @@ class _SearchPageState extends State<SearchPage> {
             children: [
               for (final query in recent)
                 FocusRing(
-                  key: ValueKey(query),
                   radius: 8,
                   child: ActionChip(
                     avatar: const Icon(Icons.history_rounded, size: 16),

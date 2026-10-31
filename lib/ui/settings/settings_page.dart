@@ -378,36 +378,31 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
         ),
-        _PaneSwitcher(
-          duration: Motion.long,
-          offset: const Offset(0.06, 0),
-          child: subpage == null
-              ? const SizedBox.shrink()
-              : Column(
-                  key: ValueKey(subpage.title),
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _DetailHeader(
-                      title: subpage.title,
-                      top: top,
-                      right: right,
-                      onBack: television ? null : _closeSubpage,
+        if (subpage != null)
+          Column(
+            key: ValueKey(subpage.title),
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _DetailHeader(
+                title: subpage.title,
+                top: top,
+                right: right,
+                onBack: television ? null : _closeSubpage,
+              ),
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(left: 8, right: right - 16),
+                  child: Align(
+                    alignment: Alignment.topLeft,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 776),
+                      child: subpage.body(context),
                     ),
-                    Expanded(
-                      child: Padding(
-                        padding: EdgeInsets.only(left: 8, right: right - 16),
-                        child: Align(
-                          alignment: Alignment.topLeft,
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 776),
-                            child: subpage.body(context),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-        ),
+              ),
+            ],
+          ),
       ],
     );
   }
@@ -451,7 +446,10 @@ class _PaneSwitcher extends StatelessWidget {
   static Widget _inert(Widget child, bool inert) => ExcludeFocus(
     key: child.key,
     excluding: inert,
-    child: IgnorePointer(ignoring: inert, child: child),
+    child: IgnorePointer(
+      ignoring: inert,
+      child: ExcludeSemantics(excluding: inert, child: child),
+    ),
   );
 }
 

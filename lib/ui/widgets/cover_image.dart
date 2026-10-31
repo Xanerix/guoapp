@@ -75,15 +75,19 @@ class DramaCover extends StatelessWidget {
           ),
       ],
     );
-    if (heroScope case final scope? when drama.id.isNotEmpty) {
-      image = Hero(
-        tag: coverHeroTag(drama.id, scope),
+    // Always build the same wrapper so the CoverImage state is kept when the
+    // hero condition flips; HeroMode just turns the flight on or off.
+    final heroEnabled = heroScope != null && drama.id.isNotEmpty;
+    image = HeroMode(
+      enabled: heroEnabled,
+      child: Hero(
+        tag: coverHeroTag(drama.id, heroScope ?? ''),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(radius),
           child: image,
         ),
-      );
-    }
+      ),
+    );
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
       child: Stack(
