@@ -16,8 +16,10 @@ import '../../models.dart';
 import '../app_scope.dart';
 import '../player/playback_handle.dart';
 import '../player/playback_page.dart';
+import '../theme/motion.dart';
 import '../widgets/cover_image.dart';
 import '../widgets/focus_ring.dart';
+import '../widgets/motion/motion_widgets.dart';
 import '../widgets/status_view.dart';
 import 'download_actions.dart';
 import 'merge_dialog.dart';
@@ -201,9 +203,7 @@ class _DownloadedDramaPageState extends State<DownloadedDramaPage> {
     );
     handle.session.start(index, position: position);
     await Navigator.of(context, rootNavigator: true).push(
-      MaterialPageRoute<void>(
-        builder: (_) => PlaybackPage(store: widget.store, handle: handle),
-      ),
+      fadeRoute<void>((_) => PlaybackPage(store: widget.store, handle: handle)),
     );
     _playing = false;
   }
@@ -314,7 +314,11 @@ class _DownloadedDramaPageState extends State<DownloadedDramaPage> {
     return Scaffold(
       appBar: selection == null || item == null
           ? AppBar(
-              title: Text(drama.title),
+              title: FadeSwitcher(
+                duration: Motion.short,
+                alignment: AlignmentDirectional.centerStart,
+                child: Text(drama.title, key: const ValueKey(false)),
+              ),
               actions: [
                 _fillButton(drama, icon: false),
                 _editButton(item, icon: false),
@@ -327,7 +331,14 @@ class _DownloadedDramaPageState extends State<DownloadedDramaPage> {
                 onPressed: () => setState(() => _selection = null),
                 icon: const Icon(Icons.close_rounded),
               ),
-              title: Text('已选择 ${selection.length} 集'),
+              title: FadeSwitcher(
+                duration: Motion.short,
+                alignment: AlignmentDirectional.centerStart,
+                child: Text(
+                  '已选择 ${selection.length} 集',
+                  key: const ValueKey(true),
+                ),
+              ),
               actions: [_selectAll(item, selection), const SizedBox(width: 8)],
             ),
       body: SafeArea(
@@ -335,26 +346,36 @@ class _DownloadedDramaPageState extends State<DownloadedDramaPage> {
         bottom: false,
         child: _content(context, item, selection, inset: 16),
       ),
-      bottomNavigationBar: selection == null || item == null
-          ? null
-          : SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                child: SizedBox(
-                  height: 48,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    spacing: 12,
-                    children: [
-                      Expanded(child: _mergeButton(item, selection)),
-                      if (Platform.isAndroid)
-                        Expanded(child: _exportButton(item, selection)),
-                      Expanded(child: _deleteButton(item, selection)),
-                    ],
+      bottomNavigationBar: RevealSection(
+        visible: selection != null && item != null,
+        axisAlignment: 1,
+        child: item == null
+            ? const SizedBox.shrink()
+            : SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                  child: SizedBox(
+                    height: 48,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      spacing: 12,
+                      children: [
+                        Expanded(
+                          child: _mergeButton(item, selection ?? const {}),
+                        ),
+                        if (Platform.isAndroid)
+                          Expanded(
+                            child: _exportButton(item, selection ?? const {}),
+                          ),
+                        Expanded(
+                          child: _deleteButton(item, selection ?? const {}),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
+      ),
     );
   }
 
@@ -378,41 +399,63 @@ class _DownloadedDramaPageState extends State<DownloadedDramaPage> {
                 child: Row(
                   spacing: 8,
                   children: [
-                    if (editing)
-                      IconButton(
-                        tooltip: '退出编辑',
-                        onPressed: () => setState(() => _selection = null),
-                        icon: const Icon(Icons.close_rounded),
-                      )
-                    else
-                      const BackButton(),
+                    ToggleIconSwitcher(
+                      child: editing
+                          ? IconButton(
+                              key: const ValueKey('close'),
+                              tooltip: '退出编辑',
+                              onPressed: () =>
+                                  setState(() => _selection = null),
+                              icon: const Icon(Icons.close_rounded),
+                            )
+                          : const BackButton(key: ValueKey('back')),
+                    ),
                     Expanded(
                       child: Semantics(
                         header: true,
-                        child: Text(
-                          editing ? '已选择 ${selection.length} 集' : drama.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w800,
+                        child: FadeSwitcher(
+                          duration: Motion.short,
+                          alignment: AlignmentDirectional.centerStart,
+                          child: Text(
+                            editing ? '已选择 ${selection.length} 集' : drama.title,
+                            key: ValueKey(editing),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
                         ),
                       ),
                     ),
-                    if (editing) ...[
-                      _selectAll(item, selection),
-                      _mergeButton(item, selection),
-                      if (Platform.isAndroid) _exportButton(item, selection),
-                      _deleteButton(item, selection),
-                      _textButton(
-                        '完成',
-                        () => setState(() => _selection = null),
-                      ),
-                    ] else ...[
-                      _fillButton(drama),
-                      _editButton(item),
-                    ],
+                    FadeSwitcher(
+                      duration: Motion.short,
+                      alignment: AlignmentDirectional.centerEnd,
+                      child: editing
+                          ? Row(
+                              key: const ValueKey('editing'),
+                              mainAxisSize: MainAxisSize.min,
+                              spacing: 8,
+                              children: [
+                                _selectAll(item, selection),
+                                _mergeButton(item, selection),
+                                if (Platform.isAndroid)
+                                  _exportButton(item, selection),
+                                _deleteButton(item, selection),
+                                _textButton(
+                                  '完成',
+                                  () => setState(() => _selection = null),
+                                ),
+                              ],
+                            )
+                          : Row(
+                              key: const ValueKey('normal'),
+                              mainAxisSize: MainAxisSize.min,
+                              spacing: 8,
+                              children: [_fillButton(drama), _editButton(item)],
+                            ),
+                    ),
                   ],
                 ),
               ),
@@ -482,6 +525,22 @@ class _DownloadedDramaPageState extends State<DownloadedDramaPage> {
           ),
         ),
     ];
+    return FadeSwitcher(
+      scale: true,
+      child: KeyedSubtree(
+        key: ValueKey(item == null),
+        child: _contentBody(context, item, selection, header, inset),
+      ),
+    );
+  }
+
+  Widget _contentBody(
+    BuildContext context,
+    DownloadedDrama? item,
+    Set<String>? selection,
+    List<Widget> header,
+    double inset,
+  ) {
     if (item == null) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -837,9 +896,19 @@ class _FillDialog extends StatelessWidget {
                 ),
               ];
       }
+      final state = snapshot.hasError ? 2 : (plan == null ? 0 : 1);
       return AlertDialog(
         title: const Text('补齐缺集'),
-        content: content,
+        content: AnimatedSize(
+          duration: Motion.of(context, Motion.medium),
+          curve: Motion.standard,
+          alignment: Alignment.topLeft,
+          child: FadeSwitcher(
+            duration: Motion.short,
+            alignment: AlignmentDirectional.topStart,
+            child: KeyedSubtree(key: ValueKey(state), child: content),
+          ),
+        ),
         actions: actions,
       );
     },
@@ -887,12 +956,26 @@ class _EpisodeCard extends StatelessWidget {
           child: InkWell(
             onTap: onTap,
             child: Padding(
-              padding: EdgeInsets.fromLTRB(selected == null ? 16 : 8, 8, 12, 8),
+              padding: const EdgeInsets.fromLTRB(8, 8, 12, 8),
               child: Row(
-                spacing: 8,
                 children: [
-                  if (selected case final selected?)
-                    Checkbox(value: selected, onChanged: (_) => onTap()),
+                  AnimatedContainer(
+                    duration: Motion.of(context, Motion.short),
+                    curve: Motion.standard,
+                    width: selected == null ? 8 : 0,
+                  ),
+                  RevealSection(
+                    visible: selected != null,
+                    duration: Motion.short,
+                    axis: Axis.horizontal,
+                    child: Padding(
+                      padding: const EdgeInsetsDirectional.only(end: 8),
+                      child: Checkbox(
+                        value: selected ?? false,
+                        onChanged: (_) => onTap(),
+                      ),
+                    ),
+                  ),
                   Expanded(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -937,20 +1020,28 @@ class _EpisodeCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  if (selected == null)
-                    Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        color: colors.surfaceContainerHighest,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        Icons.play_arrow_rounded,
-                        size: 20,
-                        color: colors.onSurface,
+                  RevealSection(
+                    visible: selected == null,
+                    duration: Motion.short,
+                    axis: Axis.horizontal,
+                    axisAlignment: 1,
+                    child: Padding(
+                      padding: const EdgeInsetsDirectional.only(start: 8),
+                      child: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: colors.surfaceContainerHighest,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.play_arrow_rounded,
+                          size: 20,
+                          color: colors.onSurface,
+                        ),
                       ),
                     ),
+                  ),
                 ],
               ),
             ),

@@ -7,10 +7,12 @@ import '../../local_store.dart';
 import '../../models.dart';
 import '../app_scope.dart';
 import '../shell/app_shell.dart';
+import '../theme/motion.dart';
 import '../widgets/cover_image.dart';
 import '../widgets/drama_grid.dart';
 import '../widgets/drama_tile.dart';
 import '../widgets/focus_ring.dart';
+import '../widgets/motion/motion_widgets.dart';
 import '../widgets/status_view.dart';
 import 'download_actions.dart';
 import 'downloaded_drama_page.dart';
@@ -230,7 +232,7 @@ class _DownloadsPageState extends State<DownloadsPage>
 
   Widget _cancelButton(_View view) {
     final colors = Theme.of(context).colorScheme;
-    final selection = view.selection!;
+    final selection = view.selection ?? const <String>{};
     return FocusRing(
       radius: 20,
       child: FilledButton.icon(
@@ -272,7 +274,11 @@ class _DownloadsPageState extends State<DownloadsPage>
     return Scaffold(
       appBar: selection == null
           ? AppBar(
-              title: const Text('下载'),
+              title: const FadeSwitcher(
+                duration: Motion.short,
+                alignment: AlignmentDirectional.centerStart,
+                child: Text('下载', key: ValueKey(false)),
+              ),
               actions: [
                 if (_pendingTab && view.pending.isNotEmpty) ...[
                   IconButton(
@@ -311,7 +317,14 @@ class _DownloadsPageState extends State<DownloadsPage>
                 onPressed: () => setState(() => _selection = null),
                 icon: const Icon(Icons.close_rounded),
               ),
-              title: Text('已选择 ${selection.length} 集'),
+              title: FadeSwitcher(
+                duration: Motion.short,
+                alignment: AlignmentDirectional.centerStart,
+                child: Text(
+                  '已选择 ${selection.length} 集',
+                  key: const ValueKey(true),
+                ),
+              ),
               actions: [_selectAll(view), const SizedBox(width: 8)],
             ),
       body: SafeArea(
@@ -320,19 +333,21 @@ class _DownloadsPageState extends State<DownloadsPage>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            ?_sourceChips(view, inset: 16, scroll: true),
+            _chipsSlot(context, _sourceChips(view, inset: 16, scroll: true)),
             Expanded(child: body),
           ],
         ),
       ),
-      bottomNavigationBar: selection == null
-          ? null
-          : SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                child: SizedBox(height: 48, child: _cancelButton(view)),
-              ),
-            ),
+      bottomNavigationBar: RevealSection(
+        visible: selection != null,
+        axisAlignment: 1,
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+            child: SizedBox(height: 48, child: _cancelButton(view)),
+          ),
+        ),
+      ),
     );
   }
 
@@ -349,50 +364,85 @@ class _DownloadsPageState extends State<DownloadsPage>
               child: Row(
                 spacing: 8,
                 children: [
-                  if (view.selection == null)
-                    const BackButton()
-                  else
-                    IconButton(
-                      tooltip: '退出编辑',
-                      onPressed: () => setState(() => _selection = null),
-                      icon: const Icon(Icons.close_rounded),
-                    ),
+                  ToggleIconSwitcher(
+                    child: view.selection == null
+                        ? const BackButton(key: ValueKey('back'))
+                        : IconButton(
+                            key: const ValueKey('close'),
+                            tooltip: '退出编辑',
+                            onPressed: () => setState(() => _selection = null),
+                            icon: const Icon(Icons.close_rounded),
+                          ),
+                  ),
                   Expanded(
                     child: Semantics(
                       header: true,
-                      child: Text(
-                        view.selection == null
-                            ? '下载'
-                            : '已选择 ${view.selection!.length} 集',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w800,
+                      child: FadeSwitcher(
+                        duration: Motion.short,
+                        alignment: AlignmentDirectional.centerStart,
+                        child: Text(
+                          view.selection == null
+                              ? '下载'
+                              : '已选择 ${view.selection!.length} 集',
+                          key: ValueKey(view.selection == null),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
                       ),
                     ),
                   ),
-                  if (view.selection != null) ...[
-                    _selectAll(view),
-                    _cancelButton(view),
-                    _textButton('完成', () => setState(() => _selection = null)),
-                  ] else if (_pendingTab && view.pending.isNotEmpty) ...[
-                    _pauseAll(view),
-                    _resumeAll(view),
-                    _editButton(view),
-                  ],
+                  FadeSwitcher(
+                    duration: Motion.short,
+                    alignment: AlignmentDirectional.centerEnd,
+                    child: view.selection != null
+                        ? Row(
+                            key: const ValueKey('editing'),
+                            mainAxisSize: MainAxisSize.min,
+                            spacing: 8,
+                            children: [
+                              _selectAll(view),
+                              _cancelButton(view),
+                              _textButton(
+                                '完成',
+                                () => setState(() => _selection = null),
+                              ),
+                            ],
+                          )
+                        : _pendingTab && view.pending.isNotEmpty
+                        ? Row(
+                            key: const ValueKey('normal'),
+                            mainAxisSize: MainAxisSize.min,
+                            spacing: 8,
+                            children: [
+                              _pauseAll(view),
+                              _resumeAll(view),
+                              _editButton(view),
+                            ],
+                          )
+                        : const SizedBox.shrink(key: ValueKey('none')),
+                  ),
                 ],
               ),
             ),
           ),
           _tabBar(24),
           const SizedBox(height: 8),
-          ?_sourceChips(view, inset: 24),
+          _chipsSlot(context, _sourceChips(view, inset: 24)),
           Expanded(child: body),
         ],
       ),
     ),
+  );
+
+  Widget _chipsSlot(BuildContext context, Widget? chips) => AnimatedSize(
+    duration: Motion.of(context, Motion.short),
+    curve: Motion.standard,
+    alignment: Alignment.topCenter,
+    child: chips ?? const SizedBox(width: double.infinity),
   );
 
   Widget? _sourceChips(
@@ -428,7 +478,15 @@ class _DownloadsPageState extends State<DownloadsPage>
     );
   }
 
-  Widget _pendingList(BuildContext context, _View view) {
+  Widget _pendingList(BuildContext context, _View view) => FadeSwitcher(
+    scale: true,
+    child: KeyedSubtree(
+      key: ValueKey(view.pending.isEmpty),
+      child: _pendingBody(context, view),
+    ),
+  );
+
+  Widget _pendingBody(BuildContext context, _View view) {
     if (view.pending.isEmpty) {
       return const StatusView(title: '没有正在下载的剧集', icon: Icons.download_rounded);
     }
@@ -486,7 +544,15 @@ class _DownloadsPageState extends State<DownloadsPage>
     return (columns, gap, desktop ? 22 : 20);
   }
 
-  Widget _downloadedGrid(BuildContext context, _View view) {
+  Widget _downloadedGrid(BuildContext context, _View view) => FadeSwitcher(
+    scale: true,
+    child: KeyedSubtree(
+      key: ValueKey(view.downloaded.isEmpty),
+      child: _downloadedBody(context, view),
+    ),
+  );
+
+  Widget _downloadedBody(BuildContext context, _View view) {
     if (view.downloaded.isEmpty) {
       return const StatusView(
         title: '没有下载完成的剧集',
@@ -600,10 +666,19 @@ class _JobRow extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.all(12),
               child: Row(
-                spacing: 16,
                 children: [
-                  if (selected case final selected?)
-                    Checkbox(value: selected, onChanged: (_) => onToggle()),
+                  RevealSection(
+                    visible: selected != null,
+                    duration: Motion.short,
+                    axis: Axis.horizontal,
+                    child: Padding(
+                      padding: const EdgeInsetsDirectional.only(end: 16),
+                      child: Checkbox(
+                        value: selected ?? false,
+                        onChanged: (_) => onToggle(),
+                      ),
+                    ),
+                  ),
                   SizedBox(
                     width: 48,
                     height: 72,
@@ -613,6 +688,7 @@ class _JobRow extends StatelessWidget {
                       details: false,
                     ),
                   ),
+                  const SizedBox(width: 16),
                   Expanded(
                     child: ExcludeSemantics(
                       child: Column(
@@ -679,25 +755,36 @@ class _JobRow extends StatelessWidget {
                       ),
                     ),
                   ),
-                  if (selected == null && !job.converting)
-                    FocusRing(
-                      radius: 20,
-                      child: IconButton.filledTonal(
-                        tooltip: failed
-                            ? '重试'
-                            : job.active
-                            ? '暂停'
-                            : '继续',
-                        onPressed: busy ? null : onControl,
-                        icon: Icon(
-                          failed
-                              ? Icons.refresh_rounded
+                  RevealSection(
+                    visible: selected == null && !job.converting,
+                    duration: Motion.short,
+                    axis: Axis.horizontal,
+                    axisAlignment: 1,
+                    child: Padding(
+                      padding: const EdgeInsetsDirectional.only(start: 16),
+                      child: FocusRing(
+                        radius: 20,
+                        child: IconButton.filledTonal(
+                          tooltip: failed
+                              ? '重试'
                               : job.active
-                              ? Icons.pause_rounded
-                              : Icons.play_arrow_rounded,
+                              ? '暂停'
+                              : '继续',
+                          onPressed: busy ? null : onControl,
+                          icon: ToggleIconSwitcher(
+                            child: Icon(
+                              key: ValueKey((failed, job.active)),
+                              failed
+                                  ? Icons.refresh_rounded
+                                  : job.active
+                                  ? Icons.pause_rounded
+                                  : Icons.play_arrow_rounded,
+                            ),
+                          ),
                         ),
                       ),
                     ),
+                  ),
                 ],
               ),
             ),

@@ -5,7 +5,9 @@ import '../../local_store.dart';
 import '../../models.dart';
 import '../app_scope.dart';
 import '../player/episode_grid.dart';
+import '../theme/motion.dart';
 import '../widgets/focus_ring.dart';
+import '../widgets/motion/motion_widgets.dart';
 import 'download_actions.dart';
 
 class DownloadPickerPage extends StatefulWidget {
@@ -101,7 +103,10 @@ class _DownloadPickerPageState extends State<DownloadPickerPage> {
     radius: 20,
     child: TextButton(
       onPressed: _submitting ? null : _toggleAll,
-      child: Text(_all ? '取消全选' : '全选'),
+      child: FadeSwitcher(
+        duration: Motion.short,
+        child: Text(_all ? '取消全选' : '全选', key: ValueKey(_all)),
+      ),
     ),
   );
 
@@ -109,13 +114,24 @@ class _DownloadPickerPageState extends State<DownloadPickerPage> {
     radius: 20,
     child: FilledButton.icon(
       onPressed: _selected.isEmpty || _submitting ? null : _submit,
-      icon: _submitting
-          ? const SizedBox.square(
-              dimension: 16,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : const Icon(Icons.download_rounded, size: 18),
-      label: Text(_selected.isEmpty ? '下载' : '下载 ${_selected.length} 集'),
+      icon: ToggleIconSwitcher(
+        child: _submitting
+            ? const SizedBox.square(
+                key: ValueKey(true),
+                dimension: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(
+                Icons.download_rounded,
+                key: ValueKey(false),
+                size: 18,
+              ),
+      ),
+      label: AnimatedSize(
+        duration: Motion.of(context, Motion.short),
+        curve: Motion.standard,
+        child: Text(_selected.isEmpty ? '下载' : '下载 ${_selected.length} 集'),
+      ),
     ),
   );
 
