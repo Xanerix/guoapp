@@ -14,6 +14,8 @@ import '../../playback_session.dart';
 import '../app_scope.dart';
 import '../downloads/download_actions.dart';
 import '../theme/app_theme.dart';
+import '../theme/motion.dart';
+import '../widgets/motion/motion_widgets.dart';
 import 'danmaku_overlay.dart';
 import '../widgets/status_view.dart';
 import '../widgets/follow_button.dart';
@@ -21,6 +23,7 @@ import 'episode_grid.dart';
 import 'mini_player.dart';
 import 'playback_handle.dart';
 import 'playback_sheets.dart';
+import 'fade_presence.dart';
 import 'player_surface.dart';
 import 'swipe_controls.dart';
 import 'window_fullscreen.dart';
@@ -441,14 +444,29 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
             ),
           ),
         ),
-        if (session.ready && session.stalled)
-          const IgnorePointer(
-            child: Center(child: CircularProgressIndicator()),
-          ),
-        if (session.loading) PlaybackLoading(session: session),
-        if (session.error case final error?)
-          PlaybackFailure(session: session, error: error),
-        if (_streak != 0) _streakBadge(full),
+        FadePresence(
+          duration: Motion.medium,
+          child: session.ready && session.stalled
+              ? const IgnorePointer(
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              : null,
+        ),
+        FadePresence(
+          duration: Motion.medium,
+          child: session.loading ? PlaybackLoading(session: session) : null,
+        ),
+        FadePresence(
+          duration: Motion.medium,
+          child: switch (session.error) {
+            final error? => PlaybackFailure(session: session, error: error),
+            null => null,
+          },
+        ),
+        FadePresence(
+          scaleFrom: .9,
+          child: _streak != 0 ? _streakBadge(full) : null,
+        ),
         IgnorePointer(
           ignoring: !visible,
           child: AnimatedOpacity(
@@ -468,13 +486,16 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
             height: 2,
             child: IgnorePointer(child: _thinProgress(context)),
           ),
-        if (session.boosting)
-          Positioned(
-            left: 0,
-            right: 0,
-            top: full ? 24 : 12,
-            child: IgnorePointer(child: Center(child: _boostBadge())),
+        Positioned(
+          left: 0,
+          right: 0,
+          top: full ? 24 : 12,
+          child: FadePresence(
+            child: session.boosting
+                ? IgnorePointer(child: Center(child: _boostBadge()))
+                : null,
           ),
+        ),
         if (session.saveWarning case final warning?)
           Positioned(
             left: 12,
@@ -482,24 +503,40 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
             bottom: full ? 120 : 64,
             child: _saveWarning(warning),
           ),
-        if (_panel case final panel? when full) ...[
-          GestureDetector(
-            onTap: _closePanel,
-            child: ColoredBox(
-              color: panel == _Panel.episodes || panel == _Panel.settings
-                  ? const Color(0x4D000000)
-                  : Colors.transparent,
-            ),
+        Positioned.fill(
+          child: FadePresence(
+            child: switch (_panel) {
+              final panel? when full => GestureDetector(
+                onTap: _closePanel,
+                child: ColoredBox(
+                  color: _sidePanel(panel)
+                      ? const Color(0x4D000000)
+                      : Colors.transparent,
+                ),
+              ),
+              _ => null,
+            },
           ),
-          if (panel == _Panel.episodes || panel == _Panel.settings)
-            Positioned(
-              top: 0,
-              right: 0,
-              bottom: 0,
-              width: 360,
-              child: _panelBody(context, panel),
-            )
-          else
+        ),
+        Positioned(
+          top: 0,
+          right: 0,
+          bottom: 0,
+          width: 360,
+          child: FadePresence(
+            duration: Motion.long,
+            slideFrom: const Offset(1, 0),
+            child: switch (_panel) {
+              final panel? when full && _sidePanel(panel) => _panelBody(
+                context,
+                panel,
+              ),
+              _ => null,
+            },
+          ),
+        ),
+        if (_panel case final panel? when full)
+          if (!_sidePanel(panel))
             Positioned(
               left: 0,
               top: 0,
@@ -512,10 +549,12 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
                 child: _popup(context, panel),
               ),
             ),
-        ],
       ],
     );
   }
+
+  bool _sidePanel(_Panel panel) =>
+      panel == _Panel.episodes || panel == _Panel.settings;
 
   Widget _miniControls(BuildContext context) {
     final session = _session;
@@ -803,7 +842,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
     Color? color,
   }) => IconButton(
     onPressed: onPressed,
-    icon: Icon(icon),
+    icon: ToggleIconSwitcher(child: Icon(icon, key: ValueKey(icon))),
     iconSize: iconSize,
     tooltip: label,
     color: color ?? Colors.white,

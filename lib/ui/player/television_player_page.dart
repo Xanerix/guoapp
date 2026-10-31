@@ -9,7 +9,10 @@ import '../../playback_preferences.dart';
 import '../../playback_session.dart';
 import '../app_scope.dart';
 import '../theme/app_theme.dart';
+import '../theme/motion.dart';
+import '../widgets/motion/motion_widgets.dart';
 import 'danmaku_overlay.dart';
+import 'fade_presence.dart';
 import 'playback_handle.dart';
 import 'player_surface.dart';
 
@@ -431,20 +434,38 @@ class _TelevisionPlayerPageState extends State<TelevisionPlayerPage>
                       controller: _session.danmaku,
                       aspectRatio: _session.aspectRatio,
                     ),
-                    if (_session.loading) PlaybackLoading(session: _session),
-                    if (_session.ready && _session.stalled)
-                      const Center(child: CircularProgressIndicator()),
-                    if (!_visible && _seekShown) ...[
-                      const _Shade(top: false),
-                      _bubble(),
+                    FadePresence(
+                      duration: Motion.medium,
+                      child: _session.loading
+                          ? PlaybackLoading(session: _session)
+                          : null,
+                    ),
+                    FadePresence(
+                      duration: Motion.medium,
+                      child: _session.ready && _session.stalled
+                          ? const Center(child: CircularProgressIndicator())
+                          : null,
+                    ),
+                    FadePresence(
+                      child: !_visible && _seekShown
+                          ? const _Shade(top: false)
+                          : null,
+                    ),
+                    FadePresence(
+                      child: !_visible && _seekShown ? _bubble() : null,
+                    ),
+                    if (!_visible && _seekShown)
                       _progress(bottom: 27, focusable: false),
-                    ],
                     ExcludeFocus(
                       excluding: !_visible || failed,
-                      child: Visibility(
-                        visible: _visible,
-                        maintainState: true,
-                        child: _controls(context),
+                      child: IgnorePointer(
+                        ignoring: !_visible,
+                        child: AnimatedOpacity(
+                          opacity: _visible ? 1 : 0,
+                          duration: Motion.of(context, Motion.medium),
+                          curve: _visible ? Motion.enter : Motion.exit,
+                          child: _controls(context),
+                        ),
                       ),
                     ),
                     if (_session.saveWarning case final warning?)
@@ -554,7 +575,7 @@ class _TelevisionPlayerPageState extends State<TelevisionPlayerPage>
               targetAnchor: Alignment.topRight,
               followerAnchor: Alignment.bottomRight,
               offset: const Offset(0, -20),
-              child: _menuBody(menu),
+              child: _MenuEnter(key: ValueKey(menu), child: _menuBody(menu)),
             ),
           ),
       ],
@@ -776,7 +797,8 @@ class _TelevisionPlayerPageState extends State<TelevisionPlayerPage>
           final focused = enabled && node.hasPrimaryFocus;
           return AnimatedScale(
             scale: focused ? 1.08 : 1,
-            duration: const Duration(milliseconds: 120),
+            duration: Motion.of(context, const Duration(milliseconds: 120)),
+            curve: Motion.enter,
             child: InkWell(
               focusNode: node,
               canRequestFocus: enabled,
@@ -833,14 +855,17 @@ class _TelevisionPlayerPageState extends State<TelevisionPlayerPage>
       onPressed,
       shape: shape,
       builder: (focused, enabled) => AnimatedContainer(
-        duration: const Duration(milliseconds: 120),
+        duration: Motion.of(context, const Duration(milliseconds: 120)),
         width: 52,
         height: 52,
         decoration: _look(focused, enabled, shape, strong ? .22 : .14),
-        child: Icon(
-          icon,
-          size: strong ? 24 : 22,
-          color: _ink(focused, enabled),
+        child: ToggleIconSwitcher(
+          child: Icon(
+            icon,
+            key: ValueKey(icon),
+            size: strong ? 24 : 22,
+            color: _ink(focused, enabled),
+          ),
         ),
       ),
     );
@@ -860,7 +885,7 @@ class _TelevisionPlayerPageState extends State<TelevisionPlayerPage>
       onPressed,
       shape: shape,
       builder: (focused, enabled) => AnimatedContainer(
-        duration: const Duration(milliseconds: 120),
+        duration: Motion.of(context, const Duration(milliseconds: 120)),
         height: 44,
         padding: const EdgeInsets.symmetric(horizontal: 18),
         alignment: Alignment.center,
@@ -1021,4 +1046,29 @@ class _Shade extends StatelessWidget {
       ),
     ),
   );
+}
+
+class _MenuEnter extends StatelessWidget {
+  const _MenuEnter({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final duration = Motion.of(context, Motion.medium);
+    if (duration == Duration.zero) return child;
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: duration,
+      curve: Motion.enter,
+      builder: (context, t, child) => Opacity(
+        opacity: t,
+        child: Transform.translate(
+          offset: Offset(24 * (1 - t), 0),
+          child: child,
+        ),
+      ),
+      child: child,
+    );
+  }
 }

@@ -12,9 +12,11 @@ import '../../playback_session.dart';
 import '../app_scope.dart';
 import '../downloads/download_actions.dart';
 import '../theme/app_theme.dart';
+import '../theme/motion.dart';
 import '../widgets/follow_button.dart';
 import 'danmaku_overlay.dart';
 import 'episode_grid.dart';
+import 'fade_presence.dart';
 import 'mini_player.dart';
 import 'playback_sheets.dart';
 import 'playback_handle.dart';
@@ -307,24 +309,28 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
               fill: Colors.black,
               pauseUponEnteringBackgroundMode: false,
             ),
-          if (waiting)
-            Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                spacing: 16,
-                children: [
-                  Text(
-                    '第 ${session.detail.episodes[index].number} 集',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
+          FadePresence(
+            duration: Motion.medium,
+            child: waiting
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      spacing: 16,
+                      children: [
+                        Text(
+                          '第 ${session.detail.episodes[index].number} 集',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        if (current) const CircularProgressIndicator(),
+                      ],
                     ),
-                  ),
-                  if (current) const CircularProgressIndicator(),
-                ],
-              ),
-            ),
+                  )
+                : null,
+          ),
           if (current) ...[
             DanmakuOverlay(
               key: const ValueKey('danmaku'),
@@ -372,30 +378,48 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
             child: _Shade(height: 220, top: false),
           ),
         ),
-        if (session.ready && session.paused)
-          Center(
-            child: IgnorePointer(
-              child: Container(
-                width: 72,
-                height: 72,
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: .35),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.play_arrow_rounded,
-                  size: 44,
-                  color: Colors.white.withValues(alpha: .9),
+        Center(
+          child: IgnorePointer(
+            child: AnimatedOpacity(
+              opacity: session.ready && session.paused ? 1 : 0,
+              duration: Motion.of(context, Motion.short),
+              curve: Motion.standard,
+              child: AnimatedScale(
+                scale: session.ready && session.paused ? 1 : .8,
+                duration: Motion.of(context, Motion.short),
+                curve: Motion.enter,
+                child: Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: .35),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.play_arrow_rounded,
+                    size: 44,
+                    color: Colors.white.withValues(alpha: .9),
+                  ),
                 ),
               ),
             ),
           ),
-        if (session.ready && session.stalled)
-          const IgnorePointer(
-            child: Center(child: CircularProgressIndicator()),
-          ),
-        if (session.error case final error?)
-          PlaybackFailure(session: session, error: error),
+        ),
+        FadePresence(
+          duration: Motion.medium,
+          child: session.ready && session.stalled
+              ? const IgnorePointer(
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              : null,
+        ),
+        FadePresence(
+          duration: Motion.medium,
+          child: switch (session.error) {
+            final error? => PlaybackFailure(session: session, error: error),
+            null => null,
+          },
+        ),
         Positioned(
           key: const ValueKey('header'),
           left: 4,
@@ -404,15 +428,19 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
           height: 56,
           child: _header(),
         ),
-        if (_dragging)
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: bottom + 140,
-            child: IgnorePointer(
-              child: Center(child: _seekBubble(_seekValue ?? 0)),
-            ),
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: bottom + 140,
+          child: FadePresence(
+            scaleFrom: .9,
+            child: _dragging
+                ? IgnorePointer(
+                    child: Center(child: _seekBubble(_seekValue ?? 0)),
+                  )
+                : null,
           ),
+        ),
         Positioned(
           key: const ValueKey('progress'),
           left: 16,
@@ -429,13 +457,17 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
           height: 44,
           child: _episodeStrip(),
         ),
-        if (_holding) ...[
-          Positioned(
-            left: 0,
-            right: 0,
-            top: padding.top + 76,
-            child: IgnorePointer(child: Center(child: _boostBadge())),
+        Positioned(
+          left: 0,
+          right: 0,
+          top: padding.top + 76,
+          child: FadePresence(
+            child: _holding
+                ? IgnorePointer(child: Center(child: _boostBadge()))
+                : null,
           ),
+        ),
+        if (_holding) ...[
           Positioned(
             left: 0,
             right: 0,
@@ -474,26 +506,32 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
             ),
           ),
         ],
-        if (_hint.isNotEmpty)
-          IgnorePointer(
-            child: Align(
-              alignment: const Alignment(0, -.5),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 10,
+        FadePresence(
+          child: _hint.isEmpty
+              ? null
+              : IgnorePointer(
+                  child: Align(
+                    alignment: const Alignment(0, -.5),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: .72),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        _hint,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: .72),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  _hint,
-                  style: const TextStyle(color: Colors.white, fontSize: 14),
-                ),
-              ),
-            ),
-          ),
+        ),
         if (session.saveWarning case final warning?)
           Positioned(
             top: padding.top + 64,
