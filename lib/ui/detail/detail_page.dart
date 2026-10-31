@@ -15,6 +15,8 @@ import '../widgets/cover_backdrop.dart';
 import '../widgets/cover_image.dart';
 import '../widgets/focus_ring.dart';
 import '../widgets/follow_button.dart';
+import '../theme/motion.dart';
+import '../widgets/motion/motion_widgets.dart';
 import '../widgets/status_view.dart';
 
 class _Metrics {
@@ -325,9 +327,7 @@ class _DetailPageState extends State<DetailPage> {
     handle.session.start(index, position: position);
     _watching = true;
     await Navigator.of(context, rootNavigator: true).push(
-      MaterialPageRoute<void>(
-        builder: (_) => PlaybackPage(store: widget.store, handle: handle),
-      ),
+      fadeRoute<void>((_) => PlaybackPage(store: widget.store, handle: handle)),
     );
     _watching = false;
     if (mounted && AppScope.of(context).television) _focusWatched(details);
@@ -604,8 +604,13 @@ class _DetailPageState extends State<DetailPage> {
       ],
     );
     final episodes = details.episodes.isEmpty
-        ? SizedBox(height: 320, child: _episodeStatus(details))
+        ? SizedBox(
+            key: const ValueKey('status'),
+            height: 320,
+            child: _episodeStatus(details),
+          )
         : Column(
+            key: const ValueKey('episodes'),
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               SizedBox(
@@ -647,13 +652,24 @@ class _DetailPageState extends State<DetailPage> {
                       spacing: gap,
                       children: [
                         SizedBox(width: side, child: info),
-                        Expanded(child: episodes),
+                        Expanded(
+                          child: FadeSwitcher(
+                            alignment: Alignment.topCenter,
+                            child: episodes,
+                          ),
+                        ),
                       ],
                     )
                   : Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       spacing: gap,
-                      children: [info, episodes],
+                      children: [
+                        info,
+                        FadeSwitcher(
+                          alignment: Alignment.topCenter,
+                          child: episodes,
+                        ),
+                      ],
                     ),
             ),
           ),
@@ -693,7 +709,12 @@ class _DetailPageState extends State<DetailPage> {
               spacing: 40,
               children: [
                 SizedBox(width: 380, child: _televisionInfo(details, m)),
-                Expanded(child: _televisionEpisodes(details, m)),
+                Expanded(
+                  child: FadeSwitcher(
+                    alignment: Alignment.topCenter,
+                    child: _televisionEpisodes(details, m),
+                  ),
+                ),
               ],
             ),
           ),
@@ -970,10 +991,14 @@ class _DetailPageState extends State<DetailPage> {
 
   Widget _televisionEpisodes(DramaDetails details, _Metrics m) {
     if (details.episodes.isEmpty) {
-      return _episodeStatus(details, autofocus: true);
+      return KeyedSubtree(
+        key: const ValueKey('status'),
+        child: _episodeStatus(details, autofocus: true),
+      );
     }
     final grouped = details.groupCount > 1;
     return Column(
+      key: const ValueKey('episodes'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SizedBox(
@@ -1030,7 +1055,11 @@ class _DetailPageState extends State<DetailPage> {
     ),
     child: SizedBox.fromSize(
       size: m.cover,
-      child: DramaCover(drama: drama, radius: m.coverRadius),
+      child: DramaCover(
+        drama: drama,
+        radius: m.coverRadius,
+        heroScope: 'drama',
+      ),
     ),
   );
 
@@ -1161,16 +1190,27 @@ class _DetailPageState extends State<DetailPage> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              drama.description,
-              maxLines: _expanded ? null : 3,
-              overflow: _expanded ? null : TextOverflow.ellipsis,
-              style: style,
+            AnimatedSize(
+              duration: Motion.of(context, Motion.long),
+              curve: Motion.standard,
+              alignment: Alignment.topCenter,
+              child: Text(
+                drama.description,
+                maxLines: _expanded ? null : 3,
+                overflow: _expanded ? null : TextOverflow.ellipsis,
+                style: style,
+              ),
             ),
             if (overflows)
               Align(
                 alignment: Alignment.centerRight,
-                child: TextButton(onPressed: toggle, child: label),
+                child: TextButton(
+                  onPressed: toggle,
+                  child: FadeSwitcher(
+                    duration: Motion.short,
+                    child: KeyedSubtree(key: ValueKey(_expanded), child: label),
+                  ),
+                ),
               ),
           ],
         );
@@ -1235,7 +1275,14 @@ class _DetailPageState extends State<DetailPage> {
           ),
         ),
         icon: const Icon(Icons.play_arrow_rounded),
-        label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+        label: FadeSwitcher(
+          child: Text(
+            label,
+            key: ValueKey(label),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
       ),
     );
   }
@@ -1257,9 +1304,16 @@ class _DetailPageState extends State<DetailPage> {
     ),
   );
 
-  Widget _episodeStatus(DramaDetails details, {bool autofocus = false}) {
-    if (details.loading) return const StatusView.loading();
+  Widget _episodeStatus(DramaDetails details, {bool autofocus = false}) =>
+      FadeSwitcher(
+        child: details.loading
+            ? const StatusView.loading(key: ValueKey('loading'))
+            : _episodeError(details, autofocus),
+      );
+
+  Widget _episodeError(DramaDetails details, bool autofocus) {
     return StatusView(
+      key: const ValueKey('error'),
       title: details.error != null ? '剧集信息暂时不可用' : '暂时没有可播放的集数',
       message: details.error ?? '可以更新剧集信息后重试。',
       icon: Icons.error_outline_rounded,
@@ -1354,26 +1408,35 @@ class _DetailPageState extends State<DetailPage> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final columns = m.columnsFor(constraints.maxWidth);
-        return Column(
-          spacing: m.cellGap,
-          children: [
-            for (var row = 0; row < episodes.length; row += columns)
-              SizedBox(
-                height: extent,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  spacing: m.cellGap,
-                  children: [
-                    for (var offset = row; offset < row + columns; offset++)
-                      Expanded(
-                        child: offset < episodes.length
-                            ? cell(offset)
-                            : const SizedBox.shrink(),
-                      ),
-                  ],
+        final fade = Motion.of(context, Motion.medium);
+        return TweenAnimationBuilder<double>(
+          key: ValueKey(details.group),
+          tween: Tween(begin: fade == Duration.zero ? 1 : 0, end: 1),
+          duration: fade,
+          curve: Motion.standard,
+          builder: (context, value, child) =>
+              Opacity(opacity: value, child: child),
+          child: Column(
+            spacing: m.cellGap,
+            children: [
+              for (var row = 0; row < episodes.length; row += columns)
+                SizedBox(
+                  height: extent,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    spacing: m.cellGap,
+                    children: [
+                      for (var offset = row; offset < row + columns; offset++)
+                        Expanded(
+                          child: offset < episodes.length
+                              ? cell(offset)
+                              : const SizedBox.shrink(),
+                        ),
+                    ],
+                  ),
                 ),
-              ),
-          ],
+            ],
+          ),
         );
       },
     );
