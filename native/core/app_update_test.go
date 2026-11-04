@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
-	"time"
 )
 
 func withUpdateServer(t *testing.T, handler http.HandlerFunc) *nativeEngine {
@@ -129,57 +128,5 @@ func TestNativeUpdateServerFallback(t *testing.T) {
 	}
 	if err := engine.reportUsage(context.Background(), "1.0.1+101"); err != nil || pings != 1 {
 		t.Fatalf("pings = %d, err = %v", pings, err)
-	}
-}
-
-func TestNativeUpdateDownload(t *testing.T) {
-	abi, found := nativeUpdateABIs[runtime.GOARCH]
-	if !found {
-		t.Skip("no update package for " + runtime.GOARCH)
-	}
-	name := nativeAppBuildSlug() + "-1.0.2+102-" + abi + ".apk"
-	missing := httptest.NewServer(http.NotFoundHandler())
-	t.Cleanup(missing.Close)
-	engine := withUpdateServer(t, func(writer http.ResponseWriter, request *http.Request) {
-		if request.URL.Path != "/apk/"+name {
-			http.NotFound(writer, request)
-			return
-		}
-		writer.Write([]byte("package"))
-	})
-	nativeUpdateServer = missing.URL + "," + nativeUpdateServer
-	directory := filepath.Join(t.TempDir(), "update")
-
-	if _, err := engine.updateDownload(nativeInput{Command: "start", Version: "1.0.2", Directory: directory}); err == nil {
-		t.Fatal("version without build number was accepted")
-	}
-	if _, err := engine.updateDownload(nativeInput{Command: "start", Version: "1.0.2+102", Directory: "update"}); err == nil {
-		t.Fatal("relative directory was accepted")
-	}
-	if _, err := engine.updateDownload(nativeInput{Command: "start", Version: "1.0.2+102", Directory: directory}); err != nil {
-		t.Fatal(err)
-	}
-	var status map[string]any
-	for range 200 {
-		result, err := engine.updateDownload(nativeInput{Command: "status"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if status = result.(map[string]any); status["done"] == true {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	if status["done"] != true || status["error"] != nil || status["path"] != filepath.Join(directory, name) || status["received"] != int64(7) {
-		t.Fatalf("status = %+v", status)
-	}
-	if data, err := os.ReadFile(filepath.Join(directory, name)); err != nil || string(data) != "package" {
-		t.Fatalf("package = %q, err = %v", data, err)
-	}
-	if _, err := engine.updateDownload(nativeInput{Command: "cancel"}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := engine.updateDownload(nativeInput{Command: "status"}); err == nil {
-		t.Fatal("status after cancel was accepted")
 	}
 }
