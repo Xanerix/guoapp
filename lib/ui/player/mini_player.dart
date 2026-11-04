@@ -8,15 +8,14 @@ import 'package:window_manager/window_manager.dart';
 
 import '../../picture_in_picture.dart';
 import '../../playback_session.dart';
-import '../app_scope.dart';
 import '../widgets/focus_ring.dart';
 import 'playback_handle.dart';
 import 'player_surface.dart';
 
 bool playerVisible(AppLifecycleState? state) =>
     state == AppLifecycleState.resumed ||
-    desktopPlatform && state == AppLifecycleState.inactive ||
-    PictureInPicture.instance.keepsPlaying(state);
+    state == AppLifecycleState.inactive ||
+    PictureInPicture.instance.active;
 
 Widget _video(PlaybackHandle handle) => Video(
   key: ValueKey(handle.session.player),
