@@ -20,6 +20,8 @@ const (
 
 type hongguoHelperDeviceKey struct{}
 
+type hongguoRegisterRejection struct{ error }
+
 func (client *hongguoAppClient) deviceLocked(helper bool) (string, string, bool) {
 	if helper {
 		return client.state.HelperDeviceID, client.state.HelperInstallID, client.state.HelperDeviceID != ""
@@ -48,12 +50,13 @@ func (downloader *Downloader) ensureHongguoDevice(ctx context.Context, helper bo
 		return nil
 	}
 	if time.Now().Before(client.registerPausedUntil) {
-		return errors.New("红果设备注册暂不可用")
+		return fmt.Errorf("红果设备注册暂不可用：%v", client.registerPauseErr)
 	}
 	deviceID, installID, err := downloader.registerHongguoDevice(ctx)
 	if err != nil {
-		if ctx.Err() == nil {
-			client.registerPausedUntil = time.Now().Add(hongguoDeviceRegisterPause)
+		var rejection hongguoRegisterRejection
+		if errors.As(err, &rejection) {
+			client.registerPausedUntil, client.registerPauseErr = time.Now().Add(hongguoDeviceRegisterPause), err
 		}
 		return err
 	}
@@ -106,17 +109,17 @@ func (downloader *Downloader) registerHongguoDevice(ctx context.Context) (string
 		return "", "", err
 	}
 	if response.StatusCode != http.StatusOK {
-		return "", "", fmt.Errorf("红果设备注册 HTTP %d", response.StatusCode)
+		return "", "", hongguoRegisterRejection{fmt.Errorf("红果设备注册 HTTP %d", response.StatusCode)}
 	}
 	var result map[string]any
 	decoder := json.NewDecoder(bytes.NewReader(content))
 	decoder.UseNumber()
 	if err := decoder.Decode(&result); err != nil {
-		return "", "", errors.New("红果设备注册返回格式异常")
+		return "", "", hongguoRegisterRejection{errors.New("红果设备注册返回格式异常")}
 	}
 	deviceID, installID := mapString(result, "device_id_str", "device_id"), mapString(result, "install_id_str", "install_id")
 	if !hongguoNumericID.MatchString(deviceID) || !hongguoNumericID.MatchString(installID) || deviceID == "0" || installID == "0" {
-		return "", "", errors.New("红果设备注册未返回设备号")
+		return "", "", hongguoRegisterRejection{errors.New("红果设备注册未返回设备号")}
 	}
 	return deviceID, installID, nil
 }

@@ -2,8 +2,10 @@ package core
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -99,5 +101,33 @@ func TestHongguoRegisterFailurePausesAndKeepsOldDevice(t *testing.T) {
 	}
 	if got := *requests; len(got) != 3 || got[0] != "register" || got[1] != "detail@7" || got[2] != "detail@7" {
 		t.Fatal("registration was not paused after failure", got)
+	}
+	if err := d.ensureHongguoDevice(context.Background(), false, ""); err == nil || !strings.Contains(err.Error(), "未返回设备号") {
+		t.Fatal("paused registration hid the rejection reason", err)
+	}
+}
+
+func TestHongguoRegisterNetworkFailureRetriesNextRequest(t *testing.T) {
+	registers := 0
+	d := sourceFixtureDownloader(t, func(request *http.Request) (*http.Response, error) {
+		if request.URL.Path == "/service/2/device_register/" {
+			registers++
+			if registers == 1 {
+				return nil, errors.New("connection reset")
+			}
+			return sourceFixtureResponse(request, http.StatusOK, `{"device_id_str":"1001","install_id_str":"10019"}`), nil
+		}
+		return sourceFixtureResponse(request, http.StatusOK, `{"code":0,"data":{}}`), nil
+	})
+	client := d.hongguoClient()
+	client.state.DeviceID, client.state.InstallID, client.state.Registered = "7", "8", false
+	if err := d.ensureHongguoDevice(context.Background(), false, ""); err == nil {
+		t.Fatal("network failure registered a device")
+	}
+	if err := d.ensureHongguoDevice(context.Background(), false, ""); err != nil {
+		t.Fatal("network failure paused registration", err)
+	}
+	if state := d.hongguoCatalogSnapshot(); registers != 2 || state.DeviceID != "1001" || !state.Registered {
+		t.Fatal("registration was not retried", registers, state)
 	}
 }
