@@ -388,6 +388,7 @@ class LocalStore extends ChangeNotifier {
       ThemeColor.byName(_settings['themeColor']) ?? ThemeColor.orange;
   bool get sideBarExpanded => preferences.getBool('sideBarExpanded') ?? true;
   bool get playerWide => preferences.getBool('playerWide') ?? false;
+  double get playerVolume => preferences.getDouble('playerVolume') ?? 100;
   ({double left, double top, double extent})? get miniWindow {
     final values = preferences
         .getString('miniWindow')
@@ -520,6 +521,8 @@ class LocalStore extends ChangeNotifier {
     await preferences.setBool('playerWide', value);
     _notify();
   });
+  Future<void> setPlayerVolume(double value) =>
+      _queue(() => preferences.setDouble('playerVolume', value));
   Future<void> setMiniWindow(
     ({double left, double top, double extent}) value,
   ) => _queue(

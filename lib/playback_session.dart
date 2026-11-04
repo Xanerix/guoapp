@@ -50,6 +50,8 @@ class PlaybackSession extends ChangeNotifier {
     _speed = preferences.speed;
     _quality = preferences.quality;
     _danmakuEnabled = preferences.danmaku;
+    _unmutedVolume = store.playerVolume.clamp(1.0, 100.0);
+    unawaited(_player.setVolume(_unmutedVolume));
     _loader = PlaybackLoader(repository);
     _preloader = PlaybackPreloader(repository)..addListener(_prime);
     danmaku = DanmakuController(repository)..setEnabled(_danmakuEnabled);
@@ -131,6 +133,7 @@ class PlaybackSession extends ChangeNotifier {
   Timer? _errorTimer;
   Timer? _boostTimer;
   Timer? _stallTimer;
+  Timer? _volumeTimer;
   Future<void> _operations = Future<void>.value();
   Future<void> _rates = Future<void>.value();
   int _index;
@@ -848,8 +851,17 @@ class PlaybackSession extends ChangeNotifier {
 
   void setVolume(double value) {
     final volume = value.clamp(0.0, 100.0);
-    if (volume > 0) _unmutedVolume = volume;
+    if (volume > 0) {
+      _unmutedVolume = volume;
+      _volumeTimer?.cancel();
+      _volumeTimer = Timer(const Duration(milliseconds: 500), _saveVolume);
+    }
     _applyVolume(volume);
+  }
+
+  void _saveVolume() {
+    _volumeTimer = null;
+    unawaited(store.setPlayerVolume(_unmutedVolume).catchError((Object _) {}));
   }
 
   void _applyVolume(double volume) {
@@ -964,6 +976,8 @@ class PlaybackSession extends ChangeNotifier {
     _errorTimer?.cancel();
     _boostTimer?.cancel();
     _stallTimer?.cancel();
+    _volumeTimer?.cancel();
+    if (_volumeTimer != null) _saveVolume();
     for (final subscription in _subscriptions) {
       unawaited(subscription.cancel());
     }
