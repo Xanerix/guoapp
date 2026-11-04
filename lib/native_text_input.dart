@@ -5,6 +5,10 @@ class NativeTextInput {
 
   static void start(
     String text, {
+    bool search = true,
+    bool password = false,
+    bool url = false,
+    int? maxLength,
     required void Function(String text) onChanged,
     required void Function(String text, bool submit) onDone,
   }) {
@@ -19,10 +23,18 @@ class NativeTextInput {
           onDone(text is String ? text : '', arguments['submit'] == true);
       }
     });
-    _channel.invokeMethod<void>('start', {'text': text}).catchError((_) {
-      _channel.setMethodCallHandler(null);
-      onDone(text, false);
-    });
+    _channel
+        .invokeMethod<void>('start', {
+          'text': text,
+          'search': search,
+          'password': password,
+          'url': url,
+          'maxLength': maxLength,
+        })
+        .catchError((_) {
+          _channel.setMethodCallHandler(null);
+          onDone(text, false);
+        });
   }
 
   static void stop() {

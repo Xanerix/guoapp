@@ -3,6 +3,8 @@ package com.duanju.duanju_app
 import android.app.Activity
 import android.content.Context
 import android.text.Editable
+import android.text.InputFilter
+import android.text.InputType
 import android.text.TextWatcher
 import android.view.KeyEvent
 import android.view.View
@@ -25,7 +27,13 @@ class TextInputBridge(private val activity: Activity, messenger: BinaryMessenger
         channel.setMethodCallHandler { call, result ->
             when (call.method) {
                 "start" -> {
-                    start(call.argument<String>("text").orEmpty())
+                    start(
+                        call.argument<String>("text").orEmpty(),
+                        call.argument<Boolean>("search") != false,
+                        call.argument<Boolean>("password") == true,
+                        call.argument<Boolean>("url") == true,
+                        call.argument<Int>("maxLength"),
+                    )
                     result.success(null)
                 }
                 "stop" -> {
@@ -42,9 +50,6 @@ class TextInputBridge(private val activity: Activity, messenger: BinaryMessenger
         view.background = null
         view.isCursorVisible = false
         view.isSingleLine = true
-        view.imeOptions = EditorInfo.IME_ACTION_SEARCH or
-            EditorInfo.IME_FLAG_NO_EXTRACT_UI or
-            EditorInfo.IME_FLAG_NO_FULLSCREEN
         view.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
@@ -65,9 +70,18 @@ class TextInputBridge(private val activity: Activity, messenger: BinaryMessenger
         input = view
     }
 
-    private fun start(text: String) {
+    private fun start(text: String, search: Boolean, password: Boolean, url: Boolean, maxLength: Int?) {
         val view = view()
         editing = false
+        view.inputType = InputType.TYPE_CLASS_TEXT or when {
+            password -> InputType.TYPE_TEXT_VARIATION_PASSWORD
+            url -> InputType.TYPE_TEXT_VARIATION_URI
+            else -> 0
+        }
+        view.imeOptions = (if (search) EditorInfo.IME_ACTION_SEARCH else EditorInfo.IME_ACTION_DONE) or
+            EditorInfo.IME_FLAG_NO_EXTRACT_UI or
+            EditorInfo.IME_FLAG_NO_FULLSCREEN
+        view.filters = maxLength?.let { arrayOf(InputFilter.LengthFilter(it)) } ?: emptyArray()
         view.setText(text)
         view.setSelection(text.length)
         editing = true

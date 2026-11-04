@@ -15,6 +15,7 @@ import '../app_scope.dart';
 import '../update_prompt.dart';
 import '../users/users_view.dart';
 import '../widgets/focus_ring.dart';
+import '../widgets/form_text_field.dart';
 import '../widgets/group_card.dart';
 import 'appearance_settings.dart';
 import 'backup_actions.dart';
@@ -601,7 +602,6 @@ class _ProxyDialog extends StatefulWidget {
 
 class _ProxyDialogState extends State<_ProxyDialog> {
   late final _address = TextEditingController(text: widget.initial);
-  var _visible = false;
 
   @override
   void dispose() {
@@ -619,26 +619,14 @@ class _ProxyDialogState extends State<_ProxyDialog> {
     title: const Text('代理地址'),
     content: SizedBox(
       width: 420,
-      child: TextField(
+      child: FormTextField(
         controller: _address,
         autofocus: true,
-        obscureText: !_visible,
-        enableSuggestions: false,
-        autocorrect: false,
-        keyboardType: TextInputType.url,
+        url: true,
         onSubmitted: (_) => _submit(),
-        decoration: InputDecoration(
+        decoration: const InputDecoration(
           hintText: 'http://127.0.0.1:7890',
           helperText: '支持 HTTP、HTTPS、SOCKS5',
-          suffixIcon: IconButton(
-            tooltip: _visible ? '隐藏代理地址' : '显示代理地址',
-            onPressed: () => setState(() => _visible = !_visible),
-            icon: Icon(
-              _visible
-                  ? Icons.visibility_off_outlined
-                  : Icons.visibility_outlined,
-            ),
-          ),
         ),
       ),
     ),

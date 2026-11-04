@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/motion.dart';
 import '../widgets/focus_ring.dart';
+import '../widgets/form_text_field.dart';
 import '../widgets/motion/motion_widgets.dart';
 
 Future<bool> showPasswordDialog(
@@ -84,12 +85,10 @@ class _PasswordDialogState extends State<_PasswordDialog>
           ),
           child: child,
         ),
-        child: TextField(
+        child: FormTextField(
           controller: _pin,
           autofocus: true,
-          obscureText: true,
-          enableSuggestions: false,
-          autocorrect: false,
+          obscure: true,
           enabled: !_busy,
           onSubmitted: (_) => _submit(),
           decoration: InputDecoration(
