@@ -35,6 +35,52 @@ void openUsers(BuildContext context, LocalStore store) => openPage<void>(
         ),
 );
 
+Future<void> openProxySettings(BuildContext context, LocalStore store) =>
+    openPage<void>(context, (_) => _ProxySettingsPage(store: store));
+
+class _ProxySettingsPage extends StatefulWidget {
+  const _ProxySettingsPage({required this.store});
+  final LocalStore store;
+
+  @override
+  State<_ProxySettingsPage> createState() => _ProxySettingsPageState();
+}
+
+class _ProxySettingsPageState extends State<_ProxySettingsPage> {
+  ResourceSettingsEditor? _editor;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _editor ??= ResourceSettingsEditor(
+      AppScope.of(context).repository,
+      widget.store,
+    )..load();
+  }
+
+  @override
+  void dispose() {
+    _editor?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: Text(SettingsGroup.proxy.label)),
+    body: ListView(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+      children: [
+        SettingsSection(
+          group: SettingsGroup.proxy,
+          store: widget.store,
+          editor: _editor!,
+          open: (title, body) => _openFullPage(context, title, body),
+        ),
+      ],
+    ),
+  );
+}
+
 void _openFullPage(BuildContext context, String title, WidgetBuilder body) =>
     openPage<void>(
       context,

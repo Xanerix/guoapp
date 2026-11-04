@@ -376,6 +376,8 @@ func nativeDispatch(input nativeInput) (any, error) {
 		return engine.nativeRecommendations(ctx, input)
 	case "cachedRecommendations":
 		return engine.cachedRecommendations(input.Category)
+	case "hongguoDevices":
+		return engine.hongguoDevices(ctx, input.Command == "register")
 	case "rankingBoards":
 		boards := []rankingBoard{}
 		for _, board := range rankingBoards {

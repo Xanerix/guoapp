@@ -24,7 +24,7 @@ type hongguoRegisterRejection struct{ error }
 
 func (client *hongguoAppClient) deviceLocked(helper bool) (string, string, bool) {
 	if helper {
-		return client.state.HelperDeviceID, client.state.HelperInstallID, client.state.HelperDeviceID != ""
+		return client.state.HelperDeviceID, client.state.HelperInstallID, client.state.HelperRegistered
 	}
 	return client.state.DeviceID, client.state.InstallID, client.state.Registered
 }
@@ -62,7 +62,7 @@ func (downloader *Downloader) ensureHongguoDevice(ctx context.Context, helper bo
 	}
 	client.mu.Lock()
 	if helper {
-		client.state.HelperDeviceID, client.state.HelperInstallID = deviceID, installID
+		client.state.HelperDeviceID, client.state.HelperInstallID, client.state.HelperRegistered = deviceID, installID, true
 	} else {
 		client.state.DeviceID, client.state.InstallID, client.state.Registered = deviceID, installID, true
 	}

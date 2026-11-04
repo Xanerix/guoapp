@@ -155,6 +155,7 @@ abstract class AppRepository {
   }) => resolve(drama, episode, quality: quality);
   Future<AppUpdate?> checkUpdate(String version) async => null;
   Future<void> reportUsage(String version) async {}
+  Future<bool> hongguoDevices({bool register = false}) async => true;
   Future<void> initialize();
   Future<CatalogPage> catalog(
     String source, {
@@ -452,6 +453,14 @@ class NativeRepository extends AppRepository {
   Future<void> reportUsage(String version) async {
     await _call({'action': 'reportUsage', 'version': version});
   }
+
+  @override
+  Future<bool> hongguoDevices({bool register = false}) async =>
+      (await _call({
+        'action': 'hongguoDevices',
+        if (register) 'command': 'register',
+      }))['ready'] ==
+      true;
 
   Future<Map<String, dynamic>> _call(Map<String, dynamic> input) async {
     try {
