@@ -37,6 +37,8 @@ func (d *Downloader) providerBaseURL(source string) string {
 		configured, fallback = d.cfg.HuangjuURL, huangjuBaseURL
 	case sourceYeguo:
 		configured, fallback = d.cfg.YeguoURL, yeguoBaseURL
+	case sourceJinguo:
+		configured, fallback = jinguoContentSite(d.cfg.JinguoURL), jinguoBaseURL
 	case sourceDSD:
 		configured, fallback = d.cfg.DSDURL, dsdBaseURL
 	case sourceSorani:
@@ -73,6 +75,10 @@ func providerSourceForURL(raw string) string {
 		strings.HasSuffix(host, ".fzchosdi.cc") || strings.HasSuffix(host, ".lwblvxvy.cc") ||
 		host == "delta.ygrwdsgt.cc" || host == "yeguodj.com" || host == "www.yeguodj.com":
 		return sourceYeguo
+	case host == "9fu8e.com" || host == "www.9fu8e.com" || host == "jinguo1.net" || host == "www.jinguo1.net" ||
+		host == "jinguoduanju.app" || host == "www.jinguoduanju.app" || host == "play.jinguoduanju.app" ||
+		host == "jgdj.app" || host == "www.jgdj.app":
+		return sourceJinguo
 	case host == "dsd.com.se" || host == "www.dsd.com.se":
 		return sourceDSD
 	case host == "sorani.net" || host == "www.sorani.net" || host == "api.sorani.cc" || host == "sorani.cc":
@@ -138,6 +144,9 @@ func (d *Downloader) resolveProviderMedia(ctx context.Context, task Task) (provi
 	}
 	if chapter.Source == sourceYeguo {
 		return d.resolveYeguoMedia(ctx, task)
+	}
+	if chapter.Source == sourceJinguo {
+		return d.resolveJinguoMedia(ctx, task)
 	}
 	if chapter.Source == sourceDSD {
 		return d.resolveDSDMedia(ctx, task)
