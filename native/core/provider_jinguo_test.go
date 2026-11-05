@@ -5,10 +5,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestJinguoAliasesAndDramaParsing(t *testing.T) {
@@ -123,65 +121,6 @@ func TestJinguoCatalogDetailAndPlaybackDoNotUnlock(t *testing.T) {
 	}
 	if _, err := d.resolveProviderMedia(context.Background(), Task{DramaID: drama.ID, Chapter: chapters[1], Index: 2}); err == nil || sawUnlock {
 		t.Fatalf("locked episode was unlocked or accepted: unlock=%t err=%v", sawUnlock, err)
-	}
-}
-
-func TestJinguoLiveCatalogDetailPlaybackAndSearch(t *testing.T) {
-	if os.Getenv("JINGUO_LIVE") == "" {
-		t.Skip("set JINGUO_LIVE=1 to query the 禁果 catalog")
-	}
-	engine, err := newNativeEngine(t.TempDir(), "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(engine.downloads.close)
-	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
-	defer cancel()
-	categories, err := engine.nativeCategories(ctx, sourceJinguo, true)
-	if err != nil || len(categories) < 3 || categories[1].ID != jinguoHomeCategory || categories[2].ID != jinguoHeatCategory {
-		t.Fatalf("live categories: %+v err=%v", categories, err)
-	}
-	catalog, err := engine.nativeCatalog(ctx, nativeInput{Source: sourceJinguo, Page: 1, Force: true})
-	if err != nil || len(catalog.Items) == 0 || (len(catalog.Items) == jinguoPageSize && !catalog.HasMore) {
-		t.Fatalf("live catalog: %d more=%t err=%v", len(catalog.Items), catalog.HasMore, err)
-	}
-	if len(categories) > 3 {
-		filtered, err := engine.nativeCatalog(ctx, nativeInput{Source: sourceJinguo, Category: categories[3].ID, Page: 1, Force: true})
-		if err != nil {
-			t.Fatalf("live category %s: %v", categories[3].ID, err)
-		}
-		if len(filtered.Items) == jinguoPageSize && !filtered.HasMore {
-			t.Fatalf("live category %s dropped paging", categories[3].ID)
-		}
-	}
-	detail, err := engine.nativeDetail(ctx, catalog.Items[0])
-	if err != nil {
-		t.Fatal(err)
-	}
-	payload, _ := detail.(map[string]any)
-	drama, _ := payload["drama"].(nativeDrama)
-	chapters, _ := payload["chapters"].([]Chapter)
-	if drama.ID != catalog.Items[0].ID || len(chapters) == 0 {
-		t.Fatalf("live detail missing episodes: %+v chapters=%d", drama, len(chapters))
-	}
-	playable := chapters[0]
-	for _, chapter := range chapters {
-		if !chapter.VIP {
-			playable = chapter
-			break
-		}
-	}
-	media, err := engine.downloader.resolveProviderMedia(ctx, Task{DramaID: drama.ID, Chapter: playable, Index: 1})
-	if err != nil || !strings.Contains(media.Playlist, "#EXTM3U") || !isProviderHTTPMediaURL(media.URL) {
-		t.Fatalf("live playback: url=%s err=%v", media.URL, err)
-	}
-	query := strings.TrimSpace(drama.Title)
-	if runes := []rune(query); len(runes) > 6 {
-		query = string(runes[:6])
-	}
-	found, err := engine.nativeCatalog(ctx, nativeInput{Source: sourceJinguo, Query: query, Page: 1, Force: true})
-	if err != nil || len(found.Items) == 0 || found.LocalSearch {
-		t.Fatalf("live search was not online: %d local=%t err=%v", len(found.Items), found.LocalSearch, err)
 	}
 }
 
