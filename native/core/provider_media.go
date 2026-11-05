@@ -58,7 +58,7 @@ func providerSourceForURL(raw string) string {
 	}
 	host := strings.ToLower(parsed.Hostname())
 	switch {
-	case host == "huangguoai.com" || strings.HasSuffix(host, ".ediayikma.cc") || strings.HasSuffix(host, ".agdkczeyx.cc"):
+	case host == "huangguoai.com" || isHuangguoAIMirrorHost(host):
 		return sourceHuangguoAI
 	case host == "huangguo.video":
 		return sourceHuangguoVideo
@@ -84,6 +84,15 @@ func providerSourceForURL(raw string) string {
 	default:
 		return ""
 	}
+}
+
+func isHuangguoAIMirrorHost(host string) bool {
+	for _, domain := range huangguoAIMirrorDomains {
+		if strings.HasSuffix(host, "."+domain) {
+			return true
+		}
+	}
+	return false
 }
 
 func (d *Downloader) providerURLCandidates(raw string) []string {

@@ -29,6 +29,34 @@ func huangguoEdgeTarget(t *testing.T, request *http.Request) *url.URL {
 	return target
 }
 
+func TestHuangguoAILinesCoverEveryMirrorDomain(t *testing.T) {
+	const address = "https://huangguoai.com/api/edge/request"
+	candidates := providerURLCandidates(address)
+	if len(candidates) == 0 || candidates[0] != address {
+		t.Fatal("the primary line is no longer tried first")
+	}
+	for _, candidate := range candidates {
+		parsed, err := url.Parse(candidate)
+		if err != nil || parsed.Path != "/api/edge/request" || providerSourceForURL(candidate) != sourceHuangguoAI {
+			t.Fatal("a line was not recognized as huangguoai")
+		}
+	}
+	generated := map[string]bool{}
+	for _, mirror := range generatedHuangguoAIMirrors(address, 8) {
+		for _, domain := range huangguoAIMirrorDomains {
+			if strings.HasSuffix(mirror, "."+domain) {
+				generated[domain] = true
+			}
+		}
+	}
+	if len(generated) != len(huangguoAIMirrorDomains) {
+		t.Fatal("generated lines skipped a mirror domain")
+	}
+	if providerSourceForURL("https://evil-lbvrhyir.cc/") != "" || providerSourceForURL("https://lbvrhyir.cc.example.test/") != "" {
+		t.Fatal("an unrelated host was treated as a huangguoai line")
+	}
+}
+
 func huangguoEdgeReply(data any) string {
 	body, _ := json.Marshal(map[string]any{"status": 1, "msg": "", "data": data})
 	return string(body)
