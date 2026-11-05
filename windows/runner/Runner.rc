@@ -94,7 +94,7 @@ BEGIN
             VALUE "FileDescription", APP_DISPLAY_NAME "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", APP_DISPLAY_NAME "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.duanju. All rights reserved." "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 com.guoapp. All rights reserved." "\0"
             VALUE "OriginalFilename", APP_EXECUTABLE_NAME "\0"
             VALUE "ProductName", "真果鉴" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"

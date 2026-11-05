@@ -41,6 +41,13 @@ def validate_package(package, prefix):
             raise SystemExit('iOS 压缩包损坏：' + corrupt)
 
 
+def write_variant_config(variant):
+    display = '真果鉴' if variant.all_sources else '红果鉴'
+    config = root / 'ios' / 'Flutter' / 'AppVariant.xcconfig'
+    config.write_text(f'PRODUCT_BUNDLE_IDENTIFIER = {variant.bundle_identifier}\n'
+                      f'APP_DISPLAY_NAME = {display}\n', encoding='utf-8')
+
+
 def build_core(simulator=False, variant=BuildVariant()):
     if platform.system() != 'Darwin':
         raise SystemExit('iOS 构建需要 macOS 和完整 Xcode。')
@@ -98,6 +105,7 @@ def main():
     add_variant_argument(parser)
     options = parser.parse_args()
     variant = BuildVariant(options.all_sources)
+    write_variant_config(variant)
     build_core(options.simulator, variant)
     if options.core_only:
         return

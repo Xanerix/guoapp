@@ -1,4 +1,4 @@
-package com.duanju.duanju_app
+package com.guoapp
 
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.android.FlutterSurfaceView
@@ -54,7 +54,7 @@ private const val SURFACE_RESIZE_REDRAW_WAIT_MS = 100L
 private const val ORIENTATION_SETTLE_MS = 800L
 private const val CREATE_DOCUMENT_REQUEST = 7301
 private const val STORAGE_PERMISSION_REQUEST = 7302
-private const val PICTURE_IN_PICTURE_ACTION = "com.duanju.duanju_app.PICTURE_IN_PICTURE_ACTION"
+private const val PICTURE_IN_PICTURE_ACTION = "com.guoapp.PICTURE_IN_PICTURE_ACTION"
 
 private data class PlayerPictureInPicture(
     val width: Int,

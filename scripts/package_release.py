@@ -142,7 +142,7 @@ def package_macos(application):
     info = plistlib.loads(plist_path.read_bytes())
     info['CFBundleDisplayName'] = display
     info['CFBundleName'] = display
-    info['CFBundleIdentifier'] = f'com.duanju.{variant.slug}'
+    info['CFBundleIdentifier'] = variant.bundle_identifier
     plist_path.write_bytes(plistlib.dumps(info))
     sign_macos_application(staged, options.identity)
     verify_macos_application(staged)

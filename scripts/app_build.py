@@ -11,6 +11,10 @@ class BuildVariant:
         return 'zhenguojian' if self.all_sources else 'hongguojian'
 
     @property
+    def bundle_identifier(self):
+        return 'com.guoapp.all' if self.all_sources else 'com.guoapp.phoenix'
+
+    @property
     def arguments(self):
         return ['--all-sources'] if self.all_sources else []
 

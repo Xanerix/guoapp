@@ -8,7 +8,7 @@
 PRODUCT_NAME = duanju_app
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.duanju.duanjuApp
+PRODUCT_BUNDLE_IDENTIFIER = com.guoapp.phoenix
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2026 com.duanju. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © 2026 com.guoapp. All rights reserved.
