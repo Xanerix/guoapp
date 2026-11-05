@@ -9,6 +9,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import '../../playback_preferences.dart';
 import '../../playback_session.dart';
 import '../theme/motion.dart';
+import '../widgets/contained_slider.dart';
 import '../widgets/motion/motion_widgets.dart';
 import 'danmaku_overlay.dart';
 import 'fade_presence.dart';
@@ -545,40 +546,41 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
               thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
               overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
             ),
-            child: Slider(
-              value: position,
-              max: max,
-              secondaryTrackValue: state.buffer.inMilliseconds.toDouble().clamp(
-                0.0,
-                max,
+            child: ContainedSlider(
+              slider: Slider(
+                value: position,
+                max: max,
+                secondaryTrackValue: state.buffer.inMilliseconds
+                    .toDouble()
+                    .clamp(0.0, max),
+                semanticFormatterCallback: (value) =>
+                    formatClock(Duration(milliseconds: value.round())),
+                onChangeStart: _session.ready && duration > Duration.zero
+                    ? (_) {
+                        _hideTimer?.cancel();
+                        _seekTimer?.cancel();
+                        _seekTarget = null;
+                      }
+                    : null,
+                onChanged: _session.ready && duration > Duration.zero
+                    ? (value) => setState(() => _seekValue = value)
+                    : null,
+                onChangeEnd: (value) {
+                  if (_session.ready && duration > Duration.zero) {
+                    _seekTarget = value;
+                    _seekTimer?.cancel();
+                    _seekTimer = Timer(const Duration(seconds: 2), () {
+                      if (mounted) setState(_endSeek);
+                    });
+                    unawaited(
+                      _session.seekTo(Duration(milliseconds: value.round())),
+                    );
+                  } else {
+                    setState(_endSeek);
+                  }
+                  _scheduleHide();
+                },
               ),
-              semanticFormatterCallback: (value) =>
-                  formatClock(Duration(milliseconds: value.round())),
-              onChangeStart: _session.ready && duration > Duration.zero
-                  ? (_) {
-                      _hideTimer?.cancel();
-                      _seekTimer?.cancel();
-                      _seekTarget = null;
-                    }
-                  : null,
-              onChanged: _session.ready && duration > Duration.zero
-                  ? (value) => setState(() => _seekValue = value)
-                  : null,
-              onChangeEnd: (value) {
-                if (_session.ready && duration > Duration.zero) {
-                  _seekTarget = value;
-                  _seekTimer?.cancel();
-                  _seekTimer = Timer(const Duration(seconds: 2), () {
-                    if (mounted) setState(_endSeek);
-                  });
-                  unawaited(
-                    _session.seekTo(Duration(milliseconds: value.round())),
-                  );
-                } else {
-                  setState(_endSeek);
-                }
-                _scheduleHide();
-              },
             ),
           ),
         ),
@@ -847,11 +849,14 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
                     overlayRadius: 12,
                   ),
                 ),
-                child: Slider(
-                  value: volume,
-                  max: 100,
-                  semanticFormatterCallback: (value) => '音量 ${value.round()}%',
-                  onChanged: _session.setVolume,
+                child: ContainedSlider(
+                  slider: Slider(
+                    value: volume,
+                    max: 100,
+                    semanticFormatterCallback: (value) =>
+                        '音量 ${value.round()}%',
+                    onChanged: _session.setVolume,
+                  ),
                 ),
               ),
             ),

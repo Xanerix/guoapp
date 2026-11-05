@@ -1,5 +1,7 @@
 #include "flutter_window.h"
 
+#include <commctrl.h>
+
 #include <algorithm>
 #include <cmath>
 #include <optional>
@@ -33,6 +35,18 @@ SIZE MiniSize(double aspect, double extent) {
 
 double WindowScale(HWND window) {
   return FlutterDesktopGetDpiForHWND(window) / 96.0;
+}
+
+LRESULT CALLBACK DeclineAccessibilityQueries(HWND window, UINT message,
+                                             WPARAM wparam, LPARAM lparam,
+                                             UINT_PTR, DWORD_PTR) {
+  if (message == WM_GETOBJECT) {
+    return DefWindowProc(window, message, wparam, lparam);
+  }
+  if (message == WM_NCDESTROY) {
+    RemoveWindowSubclass(window, DeclineAccessibilityQueries, 0);
+  }
+  return DefSubclassProc(window, message, wparam, lparam);
 }
 
 }  // namespace
@@ -139,6 +153,8 @@ bool FlutterWindow::OnCreate() {
     taskbar_.Reset();
   }
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
+  SetWindowSubclass(flutter_controller_->view()->GetNativeWindow(),
+                    DeclineAccessibilityQueries, 0, 0);
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
     this->Show();

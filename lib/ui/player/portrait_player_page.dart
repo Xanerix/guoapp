@@ -13,6 +13,7 @@ import '../app_scope.dart';
 import '../downloads/download_actions.dart';
 import '../theme/app_theme.dart';
 import '../theme/motion.dart';
+import '../widgets/contained_slider.dart';
 import '../widgets/follow_button.dart';
 import 'danmaku_overlay.dart';
 import 'episode_grid.dart';
@@ -670,42 +671,44 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
         overlayShape: SliderComponentShape.noOverlay,
         trackShape: const RoundedRectSliderTrackShape(),
       ),
-      child: Slider(
-        value: position,
-        max: max,
-        secondaryTrackValue: state.buffer.inMilliseconds.toDouble().clamp(
-          0.0,
-          max,
+      child: ContainedSlider(
+        slider: Slider(
+          value: position,
+          max: max,
+          secondaryTrackValue: state.buffer.inMilliseconds.toDouble().clamp(
+            0.0,
+            max,
+          ),
+          semanticFormatterCallback: (value) =>
+              formatClock(Duration(milliseconds: value.round())),
+          onChangeStart: seekable
+              ? (value) {
+                  _seekTimer?.cancel();
+                  _seekTarget = null;
+                  setState(() {
+                    _dragging = true;
+                    _seekValue = value;
+                  });
+                }
+              : null,
+          onChanged: seekable
+              ? (value) => setState(() => _seekValue = value)
+              : null,
+          onChangeEnd: (value) {
+            _dragging = false;
+            if (seekable) {
+              _seekTarget = value;
+              _seekTimer?.cancel();
+              _seekTimer = Timer(const Duration(seconds: 2), () {
+                if (mounted) setState(_endSeek);
+              });
+              unawaited(session.seekTo(Duration(milliseconds: value.round())));
+              setState(() {});
+            } else {
+              setState(_endSeek);
+            }
+          },
         ),
-        semanticFormatterCallback: (value) =>
-            formatClock(Duration(milliseconds: value.round())),
-        onChangeStart: seekable
-            ? (value) {
-                _seekTimer?.cancel();
-                _seekTarget = null;
-                setState(() {
-                  _dragging = true;
-                  _seekValue = value;
-                });
-              }
-            : null,
-        onChanged: seekable
-            ? (value) => setState(() => _seekValue = value)
-            : null,
-        onChangeEnd: (value) {
-          _dragging = false;
-          if (seekable) {
-            _seekTarget = value;
-            _seekTimer?.cancel();
-            _seekTimer = Timer(const Duration(seconds: 2), () {
-              if (mounted) setState(_endSeek);
-            });
-            unawaited(session.seekTo(Duration(milliseconds: value.round())));
-            setState(() {});
-          } else {
-            setState(_endSeek);
-          }
-        },
       ),
     );
   }

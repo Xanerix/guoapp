@@ -8,6 +8,7 @@ import 'package:window_manager/window_manager.dart';
 
 import '../../picture_in_picture.dart';
 import '../../playback_session.dart';
+import '../widgets/contained_slider.dart';
 import '../widgets/focus_ring.dart';
 import 'playback_handle.dart';
 import 'player_surface.dart';
@@ -237,23 +238,25 @@ class _MiniWindowViewState extends State<MiniWindowView> {
         thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
         overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
       ),
-      child: Slider(
-        value: (_seekValue ?? state.position.inMilliseconds.toDouble()).clamp(
-          0.0,
-          max,
+      child: ContainedSlider(
+        slider: Slider(
+          value: (_seekValue ?? state.position.inMilliseconds.toDouble()).clamp(
+            0.0,
+            max,
+          ),
+          max: max,
+          semanticFormatterCallback: (value) =>
+              formatClock(Duration(milliseconds: value.round())),
+          onChanged: enabled
+              ? (value) => setState(() => _seekValue = value)
+              : null,
+          onChangeEnd: (value) {
+            setState(() => _seekValue = null);
+            if (enabled) {
+              unawaited(session.seekTo(Duration(milliseconds: value.round())));
+            }
+          },
         ),
-        max: max,
-        semanticFormatterCallback: (value) =>
-            formatClock(Duration(milliseconds: value.round())),
-        onChanged: enabled
-            ? (value) => setState(() => _seekValue = value)
-            : null,
-        onChangeEnd: (value) {
-          setState(() => _seekValue = null);
-          if (enabled) {
-            unawaited(session.seekTo(Duration(milliseconds: value.round())));
-          }
-        },
       ),
     );
   }
