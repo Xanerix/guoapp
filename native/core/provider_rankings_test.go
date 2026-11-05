@@ -92,18 +92,27 @@ func TestHuangdouRankingPreservesOrderAndMetrics(t *testing.T) {
 }
 
 func TestHuangguoRankingStructuredData(t *testing.T) {
-	board, _ := findRankingBoard("huangguo-potential")
-	body := `<script type="application/ld+json">{"@graph":[{"@type":"BreadcrumbList","itemListElement":[]},{"@type":"ItemList","@id":"https://huangguoai.com/ranks/potential/#itemlist","itemListElement":[{"position":1,"name":"A & B","url":"https://huangguoai.com/detail/12/"},{"position":3,"name":"第二条","url":"https://huangguoai.com/detail/34/"}]}]}</script>`
-	result, err := parseHuangguoRanking(body, board)
-	if err != nil || len(result.Items) != 2 || result.Items[1].Rank != 3 || result.Items[0].Drama.ID != "huangguoai:12" || result.HasMore {
-		t.Fatalf("could not preserve structured site ranks: %+v %v", result, err)
+	rows := func() []map[string]any {
+		return []map[string]any{
+			{"rank": 1, "id": 999, "video_id": 12, "title": "A & B", "cover": "/c/12.jpg", "cate_name": "AI短剧", "episode_count": 8, "is_finished": true, "metric_label": "播放", "metric_value": 123456},
+			{"rank": 3, "video_id": 34, "title": "第二条", "metric_label": "热度", "metric_value": 88},
+		}
 	}
-	other, _ := findRankingBoard("huangguo-hot")
-	if _, err := parseHuangguoRanking(body, other); err == nil {
-		t.Fatal("accepted a different chart's structured data")
+	result, err := parseHuangguoRanking(rows(), "https://huangguoai.com/")
+	if err != nil || len(result.Items) != 2 || result.Items[1].Rank != 3 || result.HasMore {
+		t.Fatal("could not preserve site ranks")
 	}
-	if _, err := parseHuangguoRanking(strings.ReplaceAll(body, "/detail/34/", "/detail/12/"), board); err == nil {
+	first := result.Items[0]
+	if first.Drama.ID != "huangguoai:12" || first.Drama.CategoryName != "AI短剧" || first.Drama.ReleaseStatus != "finished" || first.Drama.Cover != "https://huangguoai.com/c/12.jpg" || first.Metric != "播放 12.3万" || result.Items[1].Metric != "热度 88" {
+		t.Fatal("ranking row lost metadata")
+	}
+	duplicate := rows()
+	duplicate[1]["video_id"] = 12
+	if _, err := parseHuangguoRanking(duplicate, "https://huangguoai.com/"); err == nil {
 		t.Fatal("accepted duplicate IDs")
+	}
+	if _, err := parseHuangguoRanking(nil, "https://huangguoai.com/"); err == nil {
+		t.Fatal("accepted an empty board")
 	}
 }
 

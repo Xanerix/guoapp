@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -183,17 +184,18 @@ func TestNativeCoverRedirectAndBoundedDiskCache(t *testing.T) {
 func TestNativeCatalogCacheFreshnessPagingAndRefresh(t *testing.T) {
 	var calls atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, "/api/videos/category/ai-") {
-			t.Error("test must only request synthetic catalog metadata", r.URL.Path)
+		target := huangguoEdgeTarget(t, r)
+		if !strings.HasPrefix(target.Path, "/api/videos/category/ai-") {
+			t.Error("test must only request synthetic catalog metadata", target.Path)
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		if r.URL.Path != "/api/videos/category/ai-duanju" {
-			json.NewEncoder(w).Encode(map[string]any{"data": []any{}})
+		if target.Path != "/api/videos/category/ai-duanju" {
+			io.WriteString(w, huangguoEdgeReply([]any{}))
 			return
 		}
 		calls.Add(1)
-		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+		page, _ := strconv.Atoi(target.Query().Get("page"))
 		count := 24
 		if page > 1 {
 			count = 1
@@ -202,7 +204,7 @@ func TestNativeCatalogCacheFreshnessPagingAndRefresh(t *testing.T) {
 		for index := range count {
 			rows = append(rows, map[string]any{"id": strconv.Itoa(page*100 + index), "title": fmt.Sprintf("合成剧集%d", page*100+index), "cover": "https://example.test/synthetic-cover"})
 		}
-		json.NewEncoder(w).Encode(map[string]any{"data": rows})
+		io.WriteString(w, huangguoEdgeReply(rows))
 	}))
 	defer upstream.Close()
 	directory := t.TempDir()

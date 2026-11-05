@@ -158,12 +158,17 @@ func (d *Downloader) fetchRankingPage(ctx context.Context, board rankingBoard, p
 		if page != 1 {
 			return rankingPage{}, errors.New("该榜单只有一页")
 		}
-		pageURL := d.providerBaseURL(sourceHuangguoAI) + "/ranks/" + board.path + "/"
-		body, err := d.fetchProviderText(ctx, pageURL, d.providerBaseURL(sourceHuangguoAI)+"/")
-		if err != nil {
+		var ranking struct {
+			Items []map[string]any `json:"items"`
+		}
+		if err := d.huangguoAIAPI(ctx, "/api/ranks/"+board.path, &ranking); err != nil {
 			return rankingPage{}, err
 		}
-		return parseHuangguoRanking(body, board)
+		page, err := parseHuangguoRanking(ranking.Items, d.providerBaseURL(sourceHuangguoAI)+"/")
+		if err != nil {
+			return rankingPage{}, fmt.Errorf("%s: %w", board.Name, err)
+		}
+		return page, nil
 	default:
 		return rankingPage{}, fmt.Errorf("不支持的榜单站源 %s", board.Source)
 	}

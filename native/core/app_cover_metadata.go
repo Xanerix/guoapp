@@ -75,22 +75,18 @@ func (d *Downloader) nativeCoverAddress(ctx context.Context, drama nativeDrama) 
 			}
 		}
 		return "", errors.New("详情暂未返回海报地址")
-	case sourceHuangguoAI, sourceHuangguoVideo:
-		route := "/detail/" + url.PathEscape(id) + "/"
-		if source == sourceHuangguoAI && !rankingSourceID.MatchString(id) {
+	case sourceHuangguoAI:
+		fresh, _, err := d.fetchHuangguoAIDetail(ctx, id)
+		return nativeNormalize(fresh).Cover, err
+	case sourceHuangguoVideo:
+		parts := strings.Split(id, "/")
+		if len(parts) == 1 {
+			parts = []string{"series", id}
+		}
+		if len(parts) != 2 || (parts[0] != "series" && parts[0] != "video") || !rankingSourceID.MatchString(parts[1]) {
 			return "", errors.New("无效的黄果剧集 ID")
 		}
-		if source == sourceHuangguoVideo {
-			parts := strings.Split(id, "/")
-			if len(parts) == 1 {
-				parts = []string{"series", id}
-			}
-			if len(parts) != 2 || (parts[0] != "series" && parts[0] != "video") || !rankingSourceID.MatchString(parts[1]) {
-				return "", errors.New("无效的黄果剧集 ID")
-			}
-			route = "/" + parts[0] + "/" + url.PathEscape(parts[1])
-		}
-		pageURL := d.providerBaseURL(source) + route
+		pageURL := d.providerBaseURL(source) + "/" + parts[0] + "/" + url.PathEscape(parts[1])
 		body, err := d.fetchProviderText(ctx, pageURL, d.providerBaseURL(source)+"/")
 		if err != nil {
 			return "", err

@@ -44,10 +44,6 @@ func huangguoClassBlock(raw, className string) string {
 	return ""
 }
 
-func huangguoClassText(raw, className string) string {
-	return cleanText(huangguoClassBlock(raw, className))
-}
-
 func huangguoTitleNeedsRepair(title, sourceID string) bool {
 	title = strings.TrimSpace(title)
 	return title == "" || title == sourceID || title == "短剧" || title == "搜索" ||
@@ -61,13 +57,6 @@ func firstHuangguoTitle(sourceID string, values ...string) string {
 		}
 	}
 	return ""
-}
-
-func huangguoCardTitle(block, sourceID string) string {
-	return firstHuangguoTitle(sourceID,
-		extractAttr(block, "data-track-title"), huangguoClassText(block, "hg-drama-card__title"),
-		extractAttr(block, "data-search-hot"), huangguoClassText(block, "hg-search-suggest__hot-title"),
-		extractAttr(block, "title"), extractAttr(block, "alt"), extractAttr(block, "aria-label"))
 }
 
 func huangguoMapEpisodes(row map[string]any) string {

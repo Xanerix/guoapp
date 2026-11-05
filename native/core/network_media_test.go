@@ -218,13 +218,3 @@ func TestVideoEpisodeParsingPrefersNumberedLinksOverStartButton(t *testing.T) {
 		t.Fatal("start button replaced an episode", episodes)
 	}
 }
-
-func TestAIEpisodeParsingIgnoresOtherDramaLinks(t *testing.T) {
-	body := `<a class="hot" href="/video/900/">热门</a><a class="card" href="/video/901/ep-2/">推荐</a>` +
-		`<a class="hg-play__ep-item" href="/video/12/" data-ep-id="1">01</a><a class="hg-play__ep-item" href="/video/12/ep-2/" data-ep-id="2">02</a>` +
-		`<a class="card" href="/video/902/">推荐</a>`
-	episodes := parseHuangguoAIEpisodes(body, "https://huangguoai.com/detail/12/", "12")
-	if len(episodes) != 2 || episodes[0].URL != "https://huangguoai.com/video/12/" || episodes[1].URL != "https://huangguoai.com/video/12/ep-2/" || episodes[1].Index != 2 {
-		t.Fatal("episodes included links from other dramas", episodes)
-	}
-}

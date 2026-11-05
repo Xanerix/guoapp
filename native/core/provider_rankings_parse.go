@@ -3,8 +3,6 @@ package core
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
-	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -132,55 +130,4 @@ func parseHuangdouRanking(decoded any, page int) (rankingPage, error) {
 		result.Items = append(result.Items, rankingItem{Rank: (page-1)*20 + index + 1, Drama: drama, Metric: metric})
 	}
 	return result, nil
-}
-
-func parseHuangguoRanking(body string, board rankingBoard) (rankingPage, error) {
-	failure := errors.New("黄果未返回有效榜单，可能是页面结构变化")
-	for _, match := range rankingJSONLD.FindAllStringSubmatch(body, -1) {
-		var schema struct {
-			Graph []struct {
-				Type  string `json:"@type"`
-				ID    string `json:"@id"`
-				Items []struct {
-					Position int    `json:"position"`
-					Name     string `json:"name"`
-					URL      string `json:"url"`
-				} `json:"itemListElement"`
-			} `json:"@graph"`
-		}
-		if json.Unmarshal([]byte(match[1]), &schema) != nil {
-			continue
-		}
-		for _, graph := range schema.Graph {
-			if graph.Type != "ItemList" || !strings.HasSuffix(graph.ID, "/ranks/"+board.path+"/#itemlist") {
-				continue
-			}
-			if len(graph.Items) == 0 || len(graph.Items) > 100 {
-				return rankingPage{}, failure
-			}
-			result := rankingPage{Items: make([]rankingItem, 0, len(graph.Items)), TotalPages: 1}
-			seen, previous := map[string]bool{}, 0
-			for _, item := range graph.Items {
-				parsed, err := url.Parse(item.URL)
-				if err != nil || !strings.HasPrefix(parsed.Path, "/detail/") {
-					return rankingPage{}, failure
-				}
-				id := strings.TrimSuffix(strings.TrimPrefix(parsed.Path, "/detail/"), "/")
-				if !rankingSourceID.MatchString(id) || strings.TrimSpace(item.Name) == "" || item.Position <= previous || seen[id] {
-					return rankingPage{}, failure
-				}
-				seen[id], previous = true, item.Position
-				drama := Drama{ID: providerDramaID(sourceHuangguoAI, id), Source: sourceHuangguoAI, SourceID: id, Title: item.Name, Name: item.Name}
-				for _, card := range parseHuangguoAIDramaCards(body, item.URL, "") {
-					if card.ID == drama.ID {
-						drama = card
-						break
-					}
-				}
-				result.Items = append(result.Items, rankingItem{Rank: item.Position, Drama: drama})
-			}
-			return result, nil
-		}
-	}
-	return rankingPage{}, fmt.Errorf("%s: %w", board.Name, failure)
 }

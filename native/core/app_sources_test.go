@@ -50,14 +50,15 @@ func sourceFixtureEngine(t *testing.T, transport sourceFixtureTransport) *native
 
 func TestSourceUpdatesPreservePagesOtherSourcesAndMetadata(t *testing.T) {
 	engine := sourceFixtureEngine(t, func(request *http.Request) (*http.Response, error) {
-		if !strings.Contains(request.URL.Path, "/api/videos/category/") {
+		target := huangguoEdgeTarget(t, request)
+		if !strings.Contains(target.Path, "/api/videos/category/") {
 			return nil, errors.New("only catalog text is allowed")
 		}
 		id := "new"
-		if request.URL.Query().Get("page") == "3" {
+		if target.Query().Get("page") == "3" {
 			id = "continued"
 		}
-		return sourceFixtureResponse(request, 200, fmt.Sprintf(`{"data":[{"id":%q,"title":"合成短剧","desc":"完整资料","totalEpisode":2}]}`, id)), nil
+		return sourceFixtureResponse(request, 200, fmt.Sprintf(`{"status":1,"data":[{"id":%q,"title":"合成短剧","desc":"完整资料","totalEpisode":2}]}`, id)), nil
 	})
 	engine.catalogs[sourceHuangguoAI] = []nativeDrama{{ID: "huangguoai:old", Source: sourceHuangguoAI, Title: "原有短剧", Description: "保留资料", Episodes: 2}}
 	engine.catalogStates[sourceHuangguoAI] = nativeCatalogState{Page: 2, HasMore: true}
