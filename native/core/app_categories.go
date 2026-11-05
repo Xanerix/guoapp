@@ -63,6 +63,8 @@ func validNativeCategory(source, category string) bool {
 		return category == huangjuNewestCategory || validHuangjuID(category) && !strings.HasPrefix(category, "@")
 	case sourceYeguo:
 		return validYeguoCategory(category)
+	case sourceJinguo:
+		return validJinguoCategory(category)
 	case sourceDSD:
 		return webProviderNumericID.MatchString(category)
 	case sourceSorani:
@@ -122,6 +124,12 @@ func (engine *nativeEngine) nativeCategories(ctx context.Context, source string,
 	case sourceYeguo:
 		var categories []nativeCategory
 		categories, err = d.fetchYeguoCategories(ctx)
+		if err == nil {
+			all = append(all, categories...)
+		}
+	case sourceJinguo:
+		var categories []nativeCategory
+		categories, err = d.fetchJinguoCategories(ctx)
 		if err == nil {
 			all = append(all, categories...)
 		}
