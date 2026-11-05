@@ -2,7 +2,7 @@
 
 ## 环境
 
-Flutter `3.47.4`、Dart `3.12+`、Go `1.24.1+`、Python `3.10+`。
+Flutter `3.47.9`、Dart `3.12+`、Go `1.24.1+`、Python `3.10+`。
 
 - Android：JDK 17、SDK 36、NDK `28.2.13676358`
 - Windows：Visual Studio C++ 桌面组件、MinGW-w64 x64
