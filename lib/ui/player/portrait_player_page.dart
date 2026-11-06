@@ -337,6 +337,8 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
               key: const ValueKey('danmaku'),
               controller: session.danmaku,
               aspectRatio: session.aspectRatio,
+              scale: session.store.playbackPreferences.danmakuScale,
+              color: Color(session.store.playbackPreferences.danmakuColor),
             ),
             SwipeControls(
               key: const ValueKey('gestures'),

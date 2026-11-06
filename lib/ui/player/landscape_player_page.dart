@@ -438,6 +438,8 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
         DanmakuOverlay(
           controller: session.danmaku,
           aspectRatio: session.aspectRatio,
+          scale: session.store.playbackPreferences.danmakuScale,
+          color: Color(session.store.playbackPreferences.danmakuColor),
         ),
         SwipeControls(
           session: session,

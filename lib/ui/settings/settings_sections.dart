@@ -51,6 +51,8 @@ const _decoders = {
   TelevisionDecoder.hardware: '硬解（兼容）',
   TelevisionDecoder.software: '软解（兼容）',
 };
+const _danmakuScaleLabels = ['小', '标准', '大', '特大'];
+const _danmakuColorLabels = ['白色', '黄色', '青色', '粉色', '绿色'];
 const _links = [
   [
     ('GitHub · 重建版', 'https://github.com/Xanerix/guoapp'),
@@ -159,6 +161,31 @@ class SettingsSection extends StatelessWidget {
             value: preferences.preopens(television: television),
             onChanged: (value) =>
                 savePreferences(preferences.copyWith(preopen: value)),
+          ),
+        ],
+      ),
+      SettingsCard(
+        children: [
+          ValueTile<double>(
+            title: '弹幕字号',
+            subtitle: '目前仅红果提供弹幕',
+            options: {
+              for (final (index, scale) in danmakuScales.indexed)
+                scale: _danmakuScaleLabels[index],
+            },
+            value: preferences.danmakuScale,
+            onChanged: (scale) =>
+                savePreferences(preferences.copyWith(danmakuScale: scale)),
+          ),
+          ValueTile<int>(
+            title: '弹幕颜色',
+            options: {
+              for (final (index, color) in danmakuColors.indexed)
+                color: _danmakuColorLabels[index],
+            },
+            value: preferences.danmakuColor,
+            onChanged: (color) =>
+                savePreferences(preferences.copyWith(danmakuColor: color)),
           ),
         ],
       ),

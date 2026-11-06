@@ -319,6 +319,8 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
             DanmakuOverlay(
               controller: _session.danmaku,
               aspectRatio: _session.aspectRatio,
+              scale: _session.store.playbackPreferences.danmakuScale,
+              color: Color(_session.store.playbackPreferences.danmakuColor),
             ),
             if (widget.touch)
               SwipeControls(

@@ -433,6 +433,10 @@ class _TelevisionPlayerPageState extends State<TelevisionPlayerPage>
                     DanmakuOverlay(
                       controller: _session.danmaku,
                       aspectRatio: _session.aspectRatio,
+                      scale: _session.store.playbackPreferences.danmakuScale,
+                      color: Color(
+                        _session.store.playbackPreferences.danmakuColor,
+                      ),
                     ),
                     FadePresence(
                       duration: Motion.medium,
