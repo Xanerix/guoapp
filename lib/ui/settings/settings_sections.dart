@@ -206,6 +206,26 @@ class SettingsSection extends StatelessWidget {
               onChanged: (value) =>
                   savePreferences(preferences.copyWith(swipeLevels: value)),
             ),
+            SwitchTile(
+              title: '竖屏自动隐藏播控',
+              subtitle: '竖屏播放几秒后隐藏标题、进度条和选集，单击暂停时重新显示',
+              value: preferences.autoHideControls,
+              onChanged: (value) => savePreferences(
+                preferences.copyWith(autoHideControls: value),
+              ),
+            ),
+            SwitchTile(
+              title: '状态栏跟随播控隐藏',
+              subtitle: preferences.autoHideControls
+                  ? '播控隐藏时一起收起系统状态栏和导航栏'
+                  : '需先打开竖屏自动隐藏播控',
+              value: preferences.hideSystemBars,
+              onChanged: preferences.autoHideControls
+                  ? (value) => savePreferences(
+                      preferences.copyWith(hideSystemBars: value),
+                    )
+                  : null,
+            ),
           ],
         ),
       if (Platform.isAndroid && !television)

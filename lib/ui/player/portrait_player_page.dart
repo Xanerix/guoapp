@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -60,6 +61,12 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
   double? _seekValue;
   double? _seekTarget;
   Timer? _seekTimer;
+  Timer? _idleTimer;
+  bool _idle = false;
+  late bool _lastPaused = _session.paused;
+  late int _lastIndex = _session.index;
+  bool _immersive = false;
+  EdgeInsets _bars = EdgeInsets.zero;
 
   PlaybackSession get _session => widget.handle.session;
 
@@ -69,6 +76,7 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
     WidgetsBinding.instance.addObserver(this);
     _session.addListener(_changed);
     _bind();
+    _wake();
   }
 
   @override
@@ -80,6 +88,14 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
     }
     _hintTimer?.cancel();
     _seekTimer?.cancel();
+    _idleTimer?.cancel();
+    if (_immersive) {
+      unawaited(
+        SystemChrome.setEnabledSystemUIMode(
+          SystemUiMode.edgeToEdge,
+        ).catchError((Object _) {}),
+      );
+    }
     _pages.dispose();
     super.dispose();
   }
@@ -121,7 +137,54 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
     _refresh();
   }
 
+  void _wake() {
+    _idleTimer?.cancel();
+    _idle = false;
+    _idleTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _idle = true);
+    });
+  }
+
+  bool get _chromeShown =>
+      !_session.store.playbackPreferences.autoHideControls ||
+      !_idle ||
+      _dragging ||
+      _session.paused ||
+      !_session.ready;
+
+  void _syncSystemBars() {
+    final immersive =
+        !desktopPlatform &&
+        _session.store.playbackPreferences.hideSystemBars &&
+        !_chromeShown;
+    if (immersive == _immersive) return;
+    _immersive = immersive;
+    unawaited(
+      SystemChrome.setEnabledSystemUIMode(
+        immersive ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge,
+      ).catchError((Object _) {}),
+    );
+  }
+
+  Widget _chrome(Widget child) {
+    final shown = _chromeShown;
+    return IgnorePointer(
+      ignoring: !shown,
+      child: AnimatedOpacity(
+        opacity: shown ? 1 : 0,
+        duration: Motion.of(context, Motion.medium),
+        curve: Motion.standard,
+        child: child,
+      ),
+    );
+  }
+
   void _refresh() {
+    if (_session.paused != _lastPaused || _session.index != _lastIndex) {
+      _lastPaused = _session.paused;
+      _lastIndex = _session.index;
+      _wake();
+    }
     if (mounted) setState(() {});
   }
 
@@ -204,10 +267,9 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
 
   void _pressMove(LongPressMoveUpdateDetails details) {
     if (!_holding) return;
-    final media = MediaQuery.of(context);
     final over =
         details.globalPosition.dy >=
-        media.size.height - media.padding.bottom - _maskHeight;
+        MediaQuery.sizeOf(context).height - _bars.bottom - _maskHeight;
     if (over != _overMask) {
       unawaited(HapticFeedback.selectionClick());
       setState(() => _overMask = over);
@@ -363,22 +425,31 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
 
   Widget _controls(BuildContext context) {
     final session = _session;
-    final padding = MediaQuery.paddingOf(context);
+    final live = MediaQuery.paddingOf(context);
+    final padding = _bars = EdgeInsets.only(
+      top: math.max(_bars.top, live.top),
+      bottom: math.max(_bars.bottom, live.bottom),
+    );
     final bottom = padding.bottom;
     final locked = session.boostLocked;
+    _syncSystemBars();
     return Stack(
       fit: StackFit.expand,
       children: [
-        const IgnorePointer(
-          child: Align(
-            alignment: Alignment.topCenter,
-            child: _Shade(height: 130, top: true),
+        _chrome(
+          const IgnorePointer(
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: _Shade(height: 130, top: true),
+            ),
           ),
         ),
-        const IgnorePointer(
-          child: Align(
-            alignment: Alignment.bottomCenter,
-            child: _Shade(height: 220, top: false),
+        _chrome(
+          const IgnorePointer(
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              child: _Shade(height: 220, top: false),
+            ),
           ),
         ),
         Center(
@@ -429,7 +500,7 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
           right: 12,
           top: padding.top,
           height: 56,
-          child: _header(),
+          child: _chrome(_header()),
         ),
         Positioned(
           left: 0,
@@ -450,7 +521,7 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
           right: 16,
           bottom: bottom + 60,
           height: 32,
-          child: _progress(context),
+          child: _chrome(_progress(context)),
         ),
         Positioned(
           key: const ValueKey('episodes'),
@@ -458,7 +529,7 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
           right: 16,
           bottom: bottom + 16,
           height: 44,
-          child: _episodeStrip(),
+          child: _chrome(_episodeStrip()),
         ),
         Positioned(
           left: 0,
@@ -698,6 +769,7 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
               : null,
           onChangeEnd: (value) {
             _dragging = false;
+            _wake();
             if (seekable) {
               _seekTarget = value;
               _seekTimer?.cancel();
