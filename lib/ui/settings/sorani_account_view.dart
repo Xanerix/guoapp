@@ -69,6 +69,12 @@ class _SoraniAccountTileState extends State<SoraniAccountTile> {
     }
   }
 
+  void _toggle() {
+    final account = _account;
+    if (account == null || _busy) return;
+    account.loggedIn ? _logout() : _login();
+  }
+
   @override
   Widget build(BuildContext context) {
     final account = _account;
@@ -81,8 +87,8 @@ class _SoraniAccountTileState extends State<SoraniAccountTile> {
           : loggedIn
           ? '已登录：${account.name}'
           : '未登录。青空目前需要登录后才能播放',
-      enabled: enabled,
-      onTap: enabled ? (loggedIn ? _logout : _login) : null,
+      enabled: widget.admin,
+      onTap: widget.admin ? _toggle : null,
       trailing: ExcludeFocus(
         child: TextButton(
           onPressed: enabled ? (loggedIn ? _logout : _login) : null,
@@ -104,6 +110,7 @@ class _SoraniLoginDialog extends StatefulWidget {
 class _SoraniLoginDialogState extends State<_SoraniLoginDialog> {
   final _identifier = TextEditingController();
   final _password = TextEditingController();
+  final _passwordFocus = FocusNode();
   var _verifying = false;
   var _busy = false;
   SoraniCaptcha? _captcha;
@@ -113,6 +120,7 @@ class _SoraniLoginDialogState extends State<_SoraniLoginDialog> {
   void dispose() {
     _identifier.dispose();
     _password.dispose();
+    _passwordFocus.dispose();
     super.dispose();
   }
 
@@ -189,10 +197,12 @@ class _SoraniLoginDialogState extends State<_SoraniLoginDialog> {
         controller: _identifier,
         autofocus: true,
         maxLength: 128,
+        onSubmitted: (_) => _passwordFocus.requestFocus(),
         decoration: const InputDecoration(labelText: '用户名或邮箱'),
       ),
       FormTextField(
         controller: _password,
+        focusNode: _passwordFocus,
         obscure: true,
         maxLength: 128,
         onSubmitted: (_) => _next(),
@@ -214,11 +224,12 @@ class _SoraniLoginDialogState extends State<_SoraniLoginDialog> {
   Widget _verification() {
     final captcha = _captcha;
     final error = _error;
+    final television = AppScope.of(context).television;
     return Column(
       mainAxisSize: MainAxisSize.min,
       spacing: 12,
       children: [
-        const Text('拖动下方滑块，让拼图块与缺口重合'),
+        Text(television ? '按左右方向键移动拼图块，对齐后按确定键' : '拖动下方滑块，让拼图块与缺口重合'),
         if (captcha == null && error == null)
           const SizedBox(
             height: 180,
@@ -298,10 +309,72 @@ class _SliderCaptcha extends StatefulWidget {
 
 class _SliderCaptchaState extends State<_SliderCaptcha> {
   static const _maxPoints = 4000;
+  static const _keyStep = 4.0;
   final _points = <SoraniCaptchaPoint>[];
+  final _focus = FocusNode();
   Offset? _origin;
   DateTime? _started;
   double _offset = 0;
+  bool _keyboard = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && AppScope.of(context).television) _focus.requestFocus();
+    });
+  }
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    super.dispose();
+  }
+
+  void _keyMove(double delta, double limit) {
+    if (_origin == null) {
+      _keyboard = true;
+      _points.clear();
+      _origin = Offset.zero;
+      _started = DateTime.now();
+      _record(Offset.zero, 'down', limit);
+    } else if (!_keyboard) {
+      return;
+    }
+    final x = (_offset + delta).clamp(0.0, limit);
+    setState(() => _record(Offset(x, 0), 'move', limit));
+  }
+
+  KeyEventResult _keyEvent(
+    KeyEvent event,
+    Size background,
+    Size template,
+    double limit,
+  ) {
+    if (!widget.enabled || event is KeyUpEvent) {
+      return KeyEventResult.ignored;
+    }
+    final key = event.logicalKey;
+    if (key == LogicalKeyboardKey.arrowLeft ||
+        key == LogicalKeyboardKey.arrowRight) {
+      _keyMove(
+        key == LogicalKeyboardKey.arrowRight ? _keyStep : -_keyStep,
+        limit,
+      );
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.enter ||
+        key == LogicalKeyboardKey.numpadEnter ||
+        key == LogicalKeyboardKey.select ||
+        key == LogicalKeyboardKey.space ||
+        key == LogicalKeyboardKey.gameButtonA) {
+      if (_origin != null && _keyboard) {
+        _up(Offset(_offset, 0), background, template, limit);
+      }
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
 
   void _record(Offset position, String type, double limit) {
     final origin = _origin!;
@@ -322,6 +395,7 @@ class _SliderCaptchaState extends State<_SliderCaptcha> {
 
   void _down(PointerDownEvent event, double limit) {
     if (!widget.enabled || _origin != null) return;
+    _keyboard = false;
     _points.clear();
     _origin = event.position;
     _started = DateTime.now();
@@ -329,8 +403,26 @@ class _SliderCaptchaState extends State<_SliderCaptcha> {
   }
 
   void _move(PointerMoveEvent event, double limit) {
-    if (_origin == null) return;
+    if (_origin == null || _keyboard) return;
     setState(() => _record(event.position, 'move', limit));
+  }
+
+  void _pointerUp(
+    PointerUpEvent event,
+    Size background,
+    Size template,
+    double limit,
+  ) {
+    if (_keyboard) return;
+    _up(event.position, background, template, limit);
+  }
+
+  void _pointerCancel() {
+    if (_origin == null || _keyboard) return;
+    setState(() {
+      _origin = null;
+      _offset = 0;
+    });
   }
 
   void _up(Offset position, Size background, Size template, double limit) {
@@ -369,103 +461,109 @@ class _SliderCaptchaState extends State<_SliderCaptcha> {
       );
       final limit = width - template.width;
       final colors = Theme.of(context).colorScheme;
-      return Column(
-        mainAxisSize: MainAxisSize.min,
-        spacing: 12,
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: SizedBox.fromSize(
-              size: background,
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    child: Image.memory(
-                      captcha.background,
-                      fit: BoxFit.fill,
-                      gaplessPlayback: true,
-                    ),
-                  ),
-                  Positioned(
-                    left: _offset,
-                    top: 0,
-                    width: template.width,
-                    height: template.height,
-                    child: Image.memory(
-                      captcha.template,
-                      fit: BoxFit.fill,
-                      gaplessPlayback: true,
-                    ),
-                  ),
-                  if (!widget.enabled)
-                    const Positioned.fill(
-                      child: ColoredBox(
-                        color: Color(0x66000000),
-                        child: Center(child: CircularProgressIndicator()),
+      return FocusRing(
+        radius: 12,
+        scale: 1,
+        child: Focus(
+          focusNode: _focus,
+          onKeyEvent: (_, event) =>
+              _keyEvent(event, background, template, limit),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            spacing: 12,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: SizedBox.fromSize(
+                  size: background,
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: Image.memory(
+                          captcha.background,
+                          fit: BoxFit.fill,
+                          gaplessPlayback: true,
+                        ),
                       ),
-                    ),
-                ],
+                      Positioned(
+                        left: _offset,
+                        top: 0,
+                        width: template.width,
+                        height: template.height,
+                        child: Image.memory(
+                          captcha.template,
+                          fit: BoxFit.fill,
+                          gaplessPlayback: true,
+                        ),
+                      ),
+                      if (!widget.enabled)
+                        const Positioned.fill(
+                          child: ColoredBox(
+                            color: Color(0x66000000),
+                            child: Center(child: CircularProgressIndicator()),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
               ),
-            ),
-          ),
-          SizedBox(
-            width: width,
-            height: 44,
-            child: Stack(
-              children: [
-                Positioned.fill(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: colors.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(22),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  left: 0,
-                  top: 0,
-                  bottom: 0,
-                  width: _offset + template.width,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: colors.primaryContainer,
-                      borderRadius: BorderRadius.circular(22),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  left: _offset,
-                  top: 0,
-                  bottom: 0,
-                  width: template.width,
-                  child: Listener(
-                    behavior: HitTestBehavior.opaque,
-                    onPointerDown: (event) => _down(event, limit),
-                    onPointerMove: (event) => _move(event, limit),
-                    onPointerUp: (event) =>
-                        _up(event.position, background, template, limit),
-                    onPointerCancel: (_) => setState(() {
-                      _origin = null;
-                      _offset = 0;
-                    }),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: widget.enabled
-                            ? colors.primary
-                            : colors.onSurface.withValues(alpha: 0.38),
-                        borderRadius: BorderRadius.circular(22),
-                      ),
-                      child: Icon(
-                        Icons.arrow_forward_rounded,
-                        color: colors.onPrimary,
+              SizedBox(
+                width: width,
+                height: 44,
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: colors.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(22),
+                        ),
                       ),
                     ),
-                  ),
+                    Positioned(
+                      left: 0,
+                      top: 0,
+                      bottom: 0,
+                      width: _offset + template.width,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: colors.primaryContainer,
+                          borderRadius: BorderRadius.circular(22),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      left: _offset,
+                      top: 0,
+                      bottom: 0,
+                      width: template.width,
+                      child: Listener(
+                        behavior: HitTestBehavior.opaque,
+                        onPointerDown: (event) => _down(event, limit),
+                        onPointerMove: (event) => _move(event, limit),
+                        onPointerUp: (event) =>
+                            _pointerUp(event, background, template, limit),
+                        onPointerCancel: (_) => _pointerCancel(),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: widget.enabled
+                                ? colors.primary
+                                : colors.onSurface.withValues(alpha: 0.38),
+                            borderRadius: BorderRadius.circular(22),
+                          ),
+                          child: Icon(
+                            Icons.arrow_forward_rounded,
+                            color: colors.onPrimary,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
+        ),
       );
     },
   );

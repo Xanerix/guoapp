@@ -10,6 +10,7 @@ class FormTextField extends StatelessWidget {
     super.key,
     required this.controller,
     required this.decoration,
+    this.focusNode,
     this.obscure = false,
     this.url = false,
     this.enabled = true,
@@ -19,6 +20,7 @@ class FormTextField extends StatelessWidget {
   });
   final TextEditingController controller;
   final InputDecoration decoration;
+  final FocusNode? focusNode;
   final bool obscure;
   final bool url;
   final bool enabled;
@@ -33,6 +35,7 @@ class FormTextField extends StatelessWidget {
       ? _TelevisionTextField(field: this)
       : TextField(
           controller: controller,
+          focusNode: focusNode,
           enabled: enabled,
           autofocus: autofocus,
           obscureText: obscure,
@@ -60,6 +63,7 @@ class _TelevisionTextFieldState extends State<_TelevisionTextField> {
   var _editing = false;
 
   FormTextField get _field => widget.field;
+  FocusNode get _focusNode => _field.focusNode ?? _focus;
 
   @override
   void didUpdateWidget(_TelevisionTextField oldWidget) {
@@ -96,11 +100,11 @@ class _TelevisionTextFieldState extends State<_TelevisionTextField> {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: Listenable.merge([_field.controller, _focus]),
+    listenable: Listenable.merge([_field.controller, _focusNode]),
     builder: (context, _) {
       final text = _field.controller.text;
       return InkWell(
-        focusNode: _focus,
+        focusNode: _focusNode,
         autofocus: _field.autofocus,
         canRequestFocus: _field.enabled,
         focusColor: Colors.transparent,
@@ -108,7 +112,7 @@ class _TelevisionTextFieldState extends State<_TelevisionTextField> {
         onTap: _field.enabled ? _edit : null,
         child: InputDecorator(
           decoration: _field.decoration.copyWith(enabled: _field.enabled),
-          isFocused: _focus.hasFocus,
+          isFocused: _focusNode.hasFocus,
           isEmpty: text.isEmpty,
           child: Text.rich(
             TextSpan(
