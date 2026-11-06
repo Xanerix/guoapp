@@ -13,6 +13,7 @@ class SourceSite {
       id == 'huangju' ||
       id == 'yeguo' ||
       id == 'jinguoduanju' ||
+      id == 'jinguo' ||
       id == 'dsd' ||
       id == 'sorani' ||
       id == 'guipian' ||
@@ -49,6 +50,7 @@ class SourceSite {
     SourceSite('yeguo', '野果', '分类短剧 · 在线搜索'),
     dsd,
     SourceSite('jinguoduanju', '禁果短剧', '推荐 · 分类短剧 · 在线搜索'),
+    SourceSite('jinguo', '禁果', '精选 · 最新 · 分类短剧 · 在线搜索'),
     SourceSite('huangguo-video', '黄果视频', '视频剧集'),
     SourceSite('huangguoai', '黄果 AI', 'AI 短剧'),
     SourceSite('cloudfront', '黄果旧版', '旧 API 剧库'),
