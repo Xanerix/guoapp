@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import 'catalog_sort.dart';
 import 'core_bridge.dart';
 import 'danmaku_models.dart';
 import 'models.dart';
@@ -30,6 +31,9 @@ class DanmakuController extends ChangeNotifier {
   int motionRevision = 0;
   int dataRevision = 0;
   List<DanmakuItem> items = const [];
+  List<String> _words = const [];
+  List<String> _normalizedWords = const [];
+  int _blocked = 0;
   DateTime? _anchorTime;
   int _anchorPosition = 0;
   double _anchorRate = 1;
@@ -52,6 +56,13 @@ class DanmakuController extends ChangeNotifier {
   bool get moving => visible && _playing && !_buffering;
   bool get loading => _pendingStart != null;
   bool get canRetry => visible && _failures.isNotEmpty;
+
+  /// 当前生效的屏蔽词。
+  List<String> get blockedWords => _words;
+
+  /// 本段被屏蔽词挡掉的弹幕条数。
+  int get blockedCount => _blocked;
+
   String get status {
     if (!_enabled) return '弹幕已关闭';
     if (_plan?.local == true) return '本地播放不加载弹幕';
@@ -59,7 +70,8 @@ class DanmakuController extends ChangeNotifier {
     if (canRetry) return '弹幕暂不可用，可重试';
     if (loading && _pages.isEmpty) return '正在加载弹幕';
     if (_pages.isNotEmpty) {
-      return items.isEmpty ? '这段暂无弹幕' : '已载入 ${items.length} 条弹幕';
+      if (items.isNotEmpty) return '已载入 ${items.length} 条弹幕';
+      return _blocked > 0 ? '这段弹幕都被屏蔽了' : '这段暂无弹幕';
     }
     return '等待播放';
   }
@@ -88,6 +100,20 @@ class DanmakuController extends ChangeNotifier {
     _resetMotion();
     notifyListeners();
     _ensureWindow();
+  }
+
+  /// 设置屏蔽词，命中的弹幕立刻从画面移除。
+  void setBlockedWords(List<String> words) {
+    if (_closed) return;
+    final next = List<String>.unmodifiable(words);
+    if (listEquals(next, _words)) return;
+    _words = next;
+    _normalizedWords = List.unmodifiable(
+      next.map(normalizedSearchText).where((word) => word.isNotEmpty),
+    );
+    _rebuildItems();
+    _resetMotion();
+    notifyListeners();
   }
 
   void update({
@@ -280,8 +306,28 @@ class DanmakuController extends ChangeNotifier {
     }
     final sorted = unique.values.toList()
       ..sort((a, b) => a.timeMs.compareTo(b.timeMs));
-    items = List.unmodifiable(sorted);
+    var blocked = 0;
+    final kept = <DanmakuItem>[];
+    for (final item in sorted) {
+      if (_isBlocked(item.text)) {
+        blocked++;
+      } else {
+        kept.add(item);
+      }
+    }
+    _blocked = blocked;
+    items = List.unmodifiable(kept);
     dataRevision++;
+  }
+
+  bool _isBlocked(String text) {
+    if (_normalizedWords.isEmpty) return false;
+    final normalized = normalizedSearchText(text);
+    if (normalized.isEmpty) return false;
+    for (final word in _normalizedWords) {
+      if (normalized.contains(word)) return true;
+    }
+    return false;
   }
 
   @override

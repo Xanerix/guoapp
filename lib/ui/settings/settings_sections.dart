@@ -12,6 +12,7 @@ import '../../playback_preferences.dart';
 import '../../resource_settings.dart';
 import '../../resource_settings_editor.dart';
 import '../app_scope.dart';
+import '../player/danmaku_settings.dart';
 import '../update_prompt.dart';
 import '../users/users_view.dart';
 import '../widgets/focus_ring.dart';
@@ -138,6 +139,17 @@ class SettingsSection extends StatelessWidget {
             value: preferences.quality,
             onChanged: (quality) =>
                 savePreferences(preferences.copyWith(quality: quality)),
+          ),
+        ],
+      ),
+      SettingsCard(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+            child: DanmakuSettings(
+              preferences: preferences,
+              save: savePreferences,
+            ),
           ),
         ],
       ),

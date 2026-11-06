@@ -393,10 +393,10 @@ packages:
     dependency: transitive
     description:
       name: material_color_utilities
-      sha256: "9c337007e82b1889149c82ed242ed1cb24a66044e30979c44912381e9be4c48b"
+      sha256: cda64b65529b9737e5c9bf7ef386c907f2a58707039a3033788030da927133d0
       url: "https://pub.dev"
     source: hosted
-    version: "0.13.0"
+    version: "0.13.1"
   material_ui:
     dependency: transitive
     description:
