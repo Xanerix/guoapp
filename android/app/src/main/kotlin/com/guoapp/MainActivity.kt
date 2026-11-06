@@ -56,11 +56,6 @@ private const val CREATE_DOCUMENT_REQUEST = 7301
 private const val STORAGE_PERMISSION_REQUEST = 7302
 private const val PICTURE_IN_PICTURE_ACTION = "com.guoapp.PICTURE_IN_PICTURE_ACTION"
 
-// 超大 dp 画布（车机 / 电视 / 投影等 4K~6K 大屏，按其 density 换算出的逻辑短边往往
-// 有 1300~3000dp，远超手机 360~430dp、平板 600~900dp）会让固定 dp 的字号、按钮、
-// 间距显得极小。这里把逻辑短边归一到一个接近平板的尺度，让 Flutter 侧拿到的
-// devicePixelRatio 变大、逻辑画布变小，从而整体等比放大且布局断点仍然正确。
-// 正常手机 / 平板（短边 < 1000dp）不受影响。
 private const val LARGE_CANVAS_DP = 1000f
 private const val TARGET_CANVAS_DP = 720f
 
@@ -89,22 +84,15 @@ class MainActivity : FlutterActivity() {
         super.attachBaseContext(scaleLargeCanvas(newBase))
     }
 
-    /** 见 LARGE_CANVAS_DP 注释：把超大 dp 画布归一，避免大屏上 UI 过小。 */
     private fun scaleLargeCanvas(base: Context): Context {
         val metrics = base.resources.displayMetrics
-        if (metrics.density <= 0f || metrics.widthPixels <= 0 || metrics.heightPixels <= 0) {
-            return base
-        }
+        if (metrics.density <= 0f) return base
         val shortestDp = minOf(metrics.widthPixels, metrics.heightPixels) / metrics.density
         if (shortestDp <= LARGE_CANVAS_DP) return base
-        val factor = shortestDp / TARGET_CANVAS_DP
-        return try {
-            val config = Configuration(base.resources.configuration)
-            config.densityDpi = (config.densityDpi * factor).roundToInt()
-            base.createConfigurationContext(config)
-        } catch (_: Throwable) {
-            base
+        val densityOnly = Configuration().apply {
+            densityDpi = (base.resources.configuration.densityDpi * shortestDp / TARGET_CANVAS_DP).roundToInt()
         }
+        return runCatching { base.createConfigurationContext(densityOnly) }.getOrDefault(base)
     }
 
     @Suppress("DEPRECATION")
