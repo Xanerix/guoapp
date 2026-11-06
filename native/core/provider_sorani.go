@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"sort"
 	"strconv"
@@ -316,6 +317,21 @@ func (d *Downloader) fetchSoraniDetail(ctx context.Context, sourceID string) (Dr
 	return drama, chapters, nil
 }
 
+func (client *soraniAPIClient) play(ctx context.Context, episodeID, lineCode, token string) (map[string]any, error) {
+	value, err := client.call(ctx, http.MethodGet, "/video/episode/"+url.PathEscape(episodeID)+"/play",
+		url.Values{"lineCode": {lineCode}}, nil, token, 64<<10)
+	if err != nil {
+		return nil, err
+	}
+	row, _ := soraniPayload(value).(map[string]any)
+	return row, nil
+}
+
+func soraniLoginRejected(row map[string]any) bool {
+	canPlay, ok := row["canPlay"].(bool)
+	return ok && !canPlay && strings.Contains(mapString(row, "message"), "登录")
+}
+
 func (d *Downloader) resolveSoraniMedia(ctx context.Context, task Task) (providerMedia, error) {
 	source, sourceID, valid := splitProviderDramaID(task.DramaID)
 	prefix := providerChapterID(sourceSorani, sourceID, "")
@@ -327,12 +343,32 @@ func (d *Downloader) resolveSoraniMedia(ctx context.Context, task Task) (provide
 		return providerMedia{}, errors.New("青空次元分集 ID 无效")
 	}
 	lineCode := soraniLineCodeDefault
-	value, err := d.soraniRequest(ctx, "/video/episode/"+url.PathEscape(episodeID)+"/play",
-		url.Values{"lineCode": {lineCode}}, 64<<10)
+	client := d.soraniClient()
+	token, err := client.accessToken(ctx)
 	if err != nil {
 		return providerMedia{}, err
 	}
-	row, _ := soraniPayload(value).(map[string]any)
+	row, err := client.play(ctx, episodeID, lineCode, token)
+	if err == nil && token != "" && soraniLoginRejected(row) {
+		if token, err = client.renew(ctx, token); err == nil {
+			row, err = client.play(ctx, episodeID, lineCode, token)
+		}
+	}
+	if err != nil {
+		return providerMedia{}, err
+	}
+	if canPlay, ok := row["canPlay"].(bool); ok && !canPlay {
+		switch {
+		case soraniLoginRejected(row) && token == "":
+			return providerMedia{}, errSoraniLoginRequired
+		case soraniLoginRejected(row):
+			return providerMedia{}, errSoraniLoginExpired
+		case mapString(row, "message") != "":
+			return providerMedia{}, errors.New("青空次元：" + truncate(mapString(row, "message"), 120))
+		default:
+			return providerMedia{}, errors.New("青空次元该分集暂不可播放")
+		}
+	}
 	address := mapString(row, "playUrl", "url")
 	if address == "" {
 		return providerMedia{}, fmt.Errorf("青空次元该分集暂无可用播放地址（线路 %s）", lineCode)

@@ -282,6 +282,12 @@ class SettingsSection extends StatelessWidget {
               subtitle: '开启或关闭站源',
               onTap: () => open('站源管理', (_) => SourcesView(store: store)),
             ),
+            SettingsTile(
+              title: '站源账号',
+              subtitle: '登录需要账号的站源',
+              onTap: () =>
+                  open('站源账号', (_) => SourceAccountsView(store: store)),
+            ),
           ],
         ),
       SettingsCard(

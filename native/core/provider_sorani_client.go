@@ -25,7 +25,14 @@ type soraniAPIClient struct {
 	base       string
 	site       string
 	once       sync.Once
+	accountMu  sync.Mutex
+	loaded     bool
+	session    soraniSession
 }
+
+type soraniAPIError struct{ code, message string }
+
+func (err *soraniAPIError) Error() string { return "青空次元接口错误：" + err.message }
 
 func (d *Downloader) soraniClient() *soraniAPIClient {
 	d.soraniOnce.Do(func() {
@@ -39,6 +46,10 @@ func (d *Downloader) soraniClient() *soraniAPIClient {
 }
 
 func (client *soraniAPIClient) get(ctx context.Context, route string, query url.Values, limit int64) (any, error) {
+	return client.call(ctx, http.MethodGet, route, query, nil, "", limit)
+}
+
+func (client *soraniAPIClient) call(ctx context.Context, method, route string, query url.Values, body any, bearer string, limit int64) (any, error) {
 	if limit <= 0 {
 		limit = 4 << 20
 	}
@@ -57,9 +68,23 @@ func (client *soraniAPIClient) get(ctx context.Context, route string, query url.
 	if len(query) > 0 {
 		address += "?" + query.Encode()
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, address, nil)
+	var payload io.Reader
+	if body != nil {
+		encoded, err := json.Marshal(body)
+		if err != nil {
+			return nil, errors.New("无法创建青空次元请求")
+		}
+		payload = bytes.NewReader(encoded)
+	}
+	request, err := http.NewRequestWithContext(ctx, method, address, payload)
 	if err != nil {
 		return nil, errors.New("无法创建青空次元请求")
+	}
+	if body != nil {
+		request.Header.Set("Content-Type", "application/json")
+	}
+	if bearer != "" {
+		request.Header.Set("Authorization", "Bearer "+bearer)
 	}
 	request.Header.Set("User-Agent", soraniUserAgent)
 	request.Header.Set("Accept", "application/json, text/plain, */*")
@@ -118,7 +143,7 @@ func (client *soraniAPIClient) get(ctx context.Context, route string, query url.
 			if message == "" {
 				message = "上游返回错误码 " + code
 			}
-			return nil, errors.New("青空次元接口错误：" + truncate(message, 120))
+			return nil, &soraniAPIError{code: code, message: truncate(message, 120)}
 		}
 	}
 	return decoded, nil

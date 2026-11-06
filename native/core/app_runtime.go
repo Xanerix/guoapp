@@ -124,6 +124,7 @@ type nativeInput struct {
 	Sequence        int64                   `json:"sequence"`
 	Force           bool                    `json:"force"`
 	Version         string                  `json:"version"`
+	Account         soraniAccountInput      `json:"account"`
 }
 
 type nativeCatalogResult struct {
@@ -306,6 +307,9 @@ func NativeRequest(raw string) (result string) {
 		if errors.Is(err, errNativeLocalFile) {
 			envelope["code"] = "local_media"
 		}
+		if errors.Is(err, errSoraniLoginRequired) || errors.Is(err, errSoraniLoginExpired) {
+			envelope["code"] = "source_login"
+		}
 		var backoff *requestBackoff
 		if errors.As(err, &backoff) {
 			envelope["code"] = "source_blocked"
@@ -383,6 +387,8 @@ func nativeDispatch(input nativeInput) (any, error) {
 		return engine.cachedRecommendations(input.Category)
 	case "hongguoDevices":
 		return engine.hongguoDevices(ctx, input.Command == "register")
+	case "soraniAccount":
+		return engine.downloader.soraniAccount(ctx, input.Command, input.Account)
 	case "rankingBoards":
 		boards := []rankingBoard{}
 		for _, board := range rankingBoards {

@@ -8,6 +8,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../playback_preferences.dart';
 import '../../playback_session.dart';
+import '../settings/sorani_account_view.dart';
 import '../theme/motion.dart';
 import '../widgets/contained_slider.dart';
 import '../widgets/motion/motion_widgets.dart';
@@ -1078,11 +1079,22 @@ class PlaybackFailure extends StatelessWidget {
                 runSpacing: 8,
                 alignment: WrapAlignment.center,
                 children: [
-                  FilledButton(
-                    focusNode: retryFocus,
-                    onPressed: session.retry,
-                    child: Text(session.localFailure ? '重试本地播放' : '重试'),
-                  ),
+                  if (session.loginRequired)
+                    FilledButton(
+                      focusNode: retryFocus,
+                      onPressed: () async {
+                        if (await showSoraniLogin(context) != null) {
+                          await session.retry();
+                        }
+                      },
+                      child: const Text('去登录'),
+                    )
+                  else
+                    FilledButton(
+                      focusNode: retryFocus,
+                      onPressed: session.retry,
+                      child: Text(session.localFailure ? '重试本地播放' : '重试'),
+                    ),
                   if (session.localFailure)
                     TextButton(
                       onPressed: session.switchOnline,

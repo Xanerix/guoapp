@@ -5,6 +5,7 @@ import '../../models.dart';
 import '../app_scope.dart';
 import '../widgets/focus_ring.dart';
 import 'settings_rows.dart';
+import 'sorani_account_view.dart';
 
 class SourcesView extends StatelessWidget {
   const SourcesView({super.key, required this.store});
@@ -47,6 +48,29 @@ class SourcesView extends StatelessWidget {
           const _Note(
             '关闭的站源不在发现、搜索、追剧、观看记录和下载中显示，记录保留，重新开启后恢复。正在下载的集会暂停，重新开启后可在下载页继续。',
           ),
+        ],
+      );
+    },
+  );
+}
+
+class SourceAccountsView extends StatelessWidget {
+  const SourceAccountsView({super.key, required this.store});
+  final LocalStore store;
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: store,
+    builder: (context, _) {
+      final admin = store.profile.admin;
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        children: [
+          if (!admin) ...[
+            const _Note('需要管理员才能登录或退出站源账号'),
+            const SizedBox(height: 12),
+          ],
+          SettingsCard(children: [SoraniAccountTile(admin: admin)]),
         ],
       );
     },
