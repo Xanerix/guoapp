@@ -29,14 +29,15 @@ import (
 )
 
 const (
-	yeguoBaseURL    = "https://analyze.buxefaex.cc"
+	yeguoBaseURL    = "https://attract.vgbyziuz.cc"
 	yeguoTransitURL = "https://ygdj15.com"
 )
 
 var (
+	yeguoBackupSites      = []string{"https://as.vgbyziuz.cc", "https://anyway.vgbyziuz.cc", "https://analyze.buxefaex.cc"}
 	errYeguoDecode        = errors.New("野果接口响应校验或解码失败")
 	yeguoModuleImport     = regexp.MustCompile(`(?s)import\s*\{([^{};]+)\}\s*from\s*["'\x60]([^"'\x60]+)["'\x60]`)
-	yeguoScriptBaseCall   = regexp.MustCompile(`baseURL:([a-zA-Z_$][a-zA-Z0-9_$]*)\(\)`)
+	yeguoScriptBaseCall   = regexp.MustCompile(`baseURL:([a-zA-Z_$][a-zA-Z0-9_$]*)\([a-zA-Z_$]?[a-zA-Z0-9_$]*\)`)
 	yeguoPublicField      = regexp.MustCompile(`\b(version|mode|padding|key|iv|sign_key)\s*:\s*(?:[a-zA-Z_$][a-zA-Z0-9_$]*\(\s*)?["'\x60]([^"'\x60\\\r\n]{1,512})["'\x60]`)
 	yeguoTransitBase64    = regexp.MustCompile(`Base64\.decode\(["']([A-Za-z0-9+/=]{128,})["']\)`)
 	yeguoTransitSuffix    = regexp.MustCompile(`(?i)\+\s*["']\.([a-z0-9-]+(?:\.[a-z0-9-]+)+)["']`)
@@ -115,7 +116,8 @@ func isYeguoActiveSite(raw string) bool {
 	return host == "analyze.buxefaex.cc" ||
 		strings.HasSuffix(host, ".buxefaex.cc") ||
 		strings.HasSuffix(host, ".fzchosdi.cc") ||
-		strings.HasSuffix(host, ".lwblvxvy.cc")
+		strings.HasSuffix(host, ".lwblvxvy.cc") ||
+		strings.HasSuffix(host, ".vgbyziuz.cc")
 }
 
 func yeguoTransitDecodedText(body string) string {
@@ -183,7 +185,7 @@ func yeguoTransitSites(body string) []string {
 	for _, match := range yeguoTransitLiteral.FindAllString(text, 32) {
 		if parsed, err := url.Parse(match); err == nil {
 			host := strings.ToLower(parsed.Hostname())
-			if strings.HasSuffix(host, ".buxefaex.cc") || strings.HasSuffix(host, ".fzchosdi.cc") || strings.HasSuffix(host, ".lwblvxvy.cc") {
+			if strings.HasSuffix(host, ".buxefaex.cc") || strings.HasSuffix(host, ".fzchosdi.cc") || strings.HasSuffix(host, ".lwblvxvy.cc") || strings.HasSuffix(host, ".vgbyziuz.cc") {
 				add(match)
 			}
 		}
@@ -342,14 +344,24 @@ func yeguoValidAPIBase(base string) (string, error) {
 	return strings.TrimRight(base, "/"), nil
 }
 
-func yeguoScriptAPIBase(script string) string {
+func yeguoScriptAPIBase(script, origin string) string {
 	for _, call := range yeguoScriptBaseCall.FindAllStringSubmatch(script, 16) {
-		pattern, err := regexp.Compile(`(?:^|[^a-zA-Z0-9_$.])` + regexp.QuoteMeta(call[1]) + `=\(\)=>["'\x60](https?://[^"'\x60\s]{1,512})["'\x60]`)
+		definition := `(?:^|[^a-zA-Z0-9_$.])` + regexp.QuoteMeta(call[1]) + `=`
+		literal, err := regexp.Compile(definition + `\(\)=>["'\x60](https?://[^"'\x60\s]{1,512})["'\x60]`)
 		if err != nil {
 			continue
 		}
-		if match := pattern.FindStringSubmatch(script); match != nil {
+		if match := literal.FindStringSubmatch(script); match != nil {
 			if base, err := yeguoValidAPIBase(match[1]); err == nil {
+				return base
+			}
+		}
+		sameOrigin, err := regexp.Compile(definition + `\([^()]{0,40}\)=>\{[\s\S]{0,400}?origin:([a-zA-Z_$][a-zA-Z0-9_$]*)[\s\S]{0,400}?\x60\$\{([a-zA-Z_$][a-zA-Z0-9_$]*)\}/api\.php\x60`)
+		if err != nil || origin == "" {
+			continue
+		}
+		if match := sameOrigin.FindStringSubmatch(script); match != nil && match[1] == match[2] {
+			if base, err := yeguoValidAPIBase(origin + "/api.php"); err == nil {
 				return base
 			}
 		}
@@ -420,6 +432,9 @@ func (client *yeguoAPIClient) discoverConfiguration(ctx context.Context) (*yeguo
 	}
 	add(client.site)
 	add(yeguoBaseURL)
+	for _, site := range yeguoBackupSites {
+		add(site)
+	}
 	var lastErr error
 	for index := 0; index < len(sites); index++ {
 		site := sites[index]
@@ -444,6 +459,8 @@ func (client *yeguoAPIClient) discoverConfigurationAt(ctx context.Context, site 
 		return nil, err
 	}
 	apiBase, baseErr := yeguoAPIBase(document, d.cfg.YeguoAPIURL)
+	pageAddress, _ := url.Parse(pageURL)
+	origin := providerMediaOrigin(pageAddress)
 	entry := ""
 	for _, script := range providerHTMLNodes(document, func(node *html.Node) bool {
 		return node.Data == "script" && providerHTMLAttr(node, "type") == "module"
@@ -460,7 +477,7 @@ func (client *yeguoAPIClient) discoverConfigurationAt(ctx context.Context, site 
 		return nil, err
 	}
 	if apiBase == "" {
-		apiBase = yeguoScriptAPIBase(entryBody)
+		apiBase = yeguoScriptAPIBase(entryBody, origin)
 	}
 	imports := yeguoModuleImport.FindAllStringSubmatch(entryBody, 64)
 	sort.SliceStable(imports, func(i, j int) bool {
@@ -494,7 +511,7 @@ func (client *yeguoAPIClient) discoverConfigurationAt(ctx context.Context, site 
 			continue
 		}
 		if apiBase == "" {
-			apiBase = yeguoScriptAPIBase(body)
+			apiBase = yeguoScriptAPIBase(body, origin)
 		}
 		if access == nil {
 			access = parseYeguoPublicConfiguration(body)

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 )
@@ -80,11 +81,24 @@ func TestYeguoScriptAPIBaseFollowsRequestHelper(t *testing.T) {
 	script := "globalThis.$fetch=Qi.create({baseURL:ta()});ta=()=>ea().baseURL,xud=()=>`https://wrong.example/api.php`," +
 		"ud=()=>`https://api.example/api.php/`;function $(e,t){return u(e,{baseURL:ud(),method:a})}" +
 		"var Bd=(e={},t)=>$(`/api/home/homePage`,e,t)"
-	if got := yeguoScriptAPIBase(script); got != "https://api.example/api.php" {
+	if got := yeguoScriptAPIBase(script, "https://line.example"); got != "https://api.example/api.php" {
 		t.Fatalf("api base = %q", got)
 	}
-	if got := yeguoScriptAPIBase("ud=()=>`https://api.example/api.php?x=1`;u(e,{baseURL:ud()})"); got != "" {
+	if got := yeguoScriptAPIBase("ud=()=>`https://api.example/api.php?x=1`;u(e,{baseURL:ud()})", "https://line.example"); got != "" {
 		t.Fatalf("api base with query accepted: %q", got)
+	}
+}
+
+func TestYeguoScriptAPIBaseUsesPageOriginInProduction(t *testing.T) {
+	script := "globalThis.$fetch||(globalThis.$fetch=ca.create({baseURL:da()}));wf=()=>Cf===`production`,Tf=()=>`https://www.yeguodj.com/api.php`," +
+		"Zf=(e=``)=>{let t=Tf();if(!wf())return t;let{hostname:n,origin:r}=window.location,i=e.trim().replace(/\\/+$/,``);" +
+		"return n===`localhost`||n===`127.0.0.1`||i&&i===r?t:`${r}/api.php`},Qf=function(e){return e}(Qf||{});" +
+		"function $(e,t={},n={}){let r=R(),a=`${r.$pinia?.state?.value?.global?.config?.brand_domain||``}`;let d=r.$api;return d(e,{baseURL:Zf(a),method:o,body:u,...c})}"
+	if got := yeguoScriptAPIBase(script, "https://attract.vgbyziuz.cc"); got != "https://attract.vgbyziuz.cc/api.php" {
+		t.Fatalf("api base = %q", got)
+	}
+	if got := yeguoScriptAPIBase(strings.Replace(script, "`${r}/api.php`", "`${n}/api.php`", 1), "https://attract.vgbyziuz.cc"); got != "" {
+		t.Fatalf("api base accepted a non-origin variable: %q", got)
 	}
 }
 
