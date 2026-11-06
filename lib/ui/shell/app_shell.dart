@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../download_converter.dart';
+import '../../merge_queue.dart';
 import '../../download_overview.dart';
 import '../../follow_updater.dart';
 import '../../local_store.dart';
@@ -67,6 +68,7 @@ class _AppShellState extends State<AppShell> {
   Timer? _exitWindow;
   DownloadOverview? _downloads;
   DownloadConverter? _converter;
+  MergeQueue? _merges;
   FollowUpdater? _followUpdater;
 
   NavigatorState? get _navigator => _navigators[_tab.index].currentState;
@@ -91,6 +93,8 @@ class _AppShellState extends State<AppShell> {
       AppScope.of(context).repository,
       _downloads!,
     );
+    _merges ??= MergeQueue(AppScope.of(context).repository)
+      ..onFinished = _mergeFinished;
     _followUpdater ??= FollowUpdater(
       AppScope.of(context).repository,
       widget.store,
@@ -111,12 +115,26 @@ class _AppShellState extends State<AppShell> {
     _header.dispose();
     _exitWindow?.cancel();
     _converter?.dispose();
+    _merges?.dispose();
     _downloads?.dispose();
     _followUpdater?.dispose();
     super.dispose();
   }
 
   void _select(AppTab tab) => setState(() => _tab = tab);
+
+  void _mergeFinished(MergeTask task) {
+    if (task.state == MergeState.cancelled) return;
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(
+        content: Text(
+          task.state == MergeState.done
+              ? '「${task.fileName}」${task.message}'
+              : '「${task.fileName}」合并失败：${task.message}',
+        ),
+      ),
+    );
+  }
 
   void _followFocus() {
     final previous = _lastFocus;
@@ -169,6 +187,7 @@ class _AppShellState extends State<AppShell> {
       store: widget.store,
       downloads: _downloads!,
       converter: _converter!,
+      merges: _merges!,
       entryFocus: _mineEntry,
       onExitUp: _tabFocus[AppTab.mine.index].requestFocus,
     ),

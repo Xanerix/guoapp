@@ -248,7 +248,7 @@ func (engine *nativeEngine) workLease(id, command string) (int, error) {
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
 	if id != "" {
-		if id != "storage" {
+		if id != "storage" && id != "merge" {
 			return 0, errors.New("无效的本地任务")
 		}
 		if command != "start" && command != "end" {
@@ -257,6 +257,12 @@ func (engine *nativeEngine) workLease(id, command string) (int, error) {
 		if command == "start" {
 			if engine.work[id] || manager.moving {
 				return 0, errors.New("已有本地任务正在运行，请稍后重试")
+			}
+			if id == "storage" && engine.work["merge"] {
+				return 0, errors.New("正在合并视频，请等合并完成后再迁移下载目录")
+			}
+			if id == "merge" && engine.work["storage"] {
+				return 0, errors.New("正在迁移下载目录，请稍后再合并")
 			}
 			engine.work[id] = true
 		} else {
