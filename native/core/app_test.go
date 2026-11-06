@@ -20,6 +20,15 @@ func TestNativeMetadataPreservesIdentityAndCover(t *testing.T) {
 	}
 }
 
+func TestNativeScoreKeepsOnlyTenPointRatings(t *testing.T) {
+	for raw, want := range map[string]string{"8.2": "8.2", "评分9.0": "9.0", "8.5分": "8.5", " 7.85 ": "7.8", "9": "9.0",
+		"": "", "0": "", "10.5": "", "-1": "", "NaN": "", "暂无": ""} {
+		if got := nativeNormalize(Drama{ID: "hongguo:1", Score: raw}).Score; got != want {
+			t.Fatalf("score %q became %q, want %q", raw, got, want)
+		}
+	}
+}
+
 func TestNativeBoundaryRejectsInvalidInput(t *testing.T) {
 	for _, input := range []string{"{", strings.Repeat("x", 1<<20+1)} {
 		var result map[string]any

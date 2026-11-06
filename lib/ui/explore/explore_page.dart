@@ -265,6 +265,7 @@ class ExplorePageState extends State<ExplorePage> {
                 rankOf: explore.rankOf,
                 autofocus: television && hero == null,
                 heroScope: 'drama',
+                showScore: !explore.recommending,
                 onOpen: _open,
               ),
             ),

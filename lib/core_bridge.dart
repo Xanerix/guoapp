@@ -328,7 +328,8 @@ class NativeRepository extends AppRepository {
 
   @override
   Future<Drama?> supplementMetadata(Drama drama) async {
-    if (!(drama.source == 'hongguo' && drama.onlineDate.isEmpty ||
+    if (!(drama.source == 'hongguo' &&
+            (drama.onlineDate.isEmpty || drama.score.isEmpty) ||
         drama.source == 'huangdou' &&
             (drama.heat.isEmpty || drama.vipStatus == null))) {
       return null;

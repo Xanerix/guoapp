@@ -9,7 +9,7 @@ import (
 )
 
 func nativeNeedsExtraMetadata(drama nativeDrama) bool {
-	return drama.Source == sourceHongguo && drama.OnlineDate == "" ||
+	return drama.Source == sourceHongguo && (drama.OnlineDate == "" || drama.Score == "") ||
 		drama.Source == sourceHuangdou && (drama.Heat == "" || drama.VIP == nil)
 }
 
@@ -29,13 +29,15 @@ func (engine *nativeEngine) nativeExtraMetadata(ctx context.Context, drama nativ
 		if !hongguoNumericID.MatchString(id) {
 			return drama, errors.New("红果剧集 ID 无效")
 		}
-		body, err := engine.downloader.fetchProviderText(ctx, hongguoBaseURL+"/detail?series_id="+url.QueryEscape(id), hongguoBaseURL+"/")
-		if err != nil {
-			return drama, err
-		}
-		raw, err = parseHongguoSortDetail(body, id)
-		if err != nil {
-			return drama, err
+		if drama.OnlineDate == "" {
+			body, err := engine.downloader.fetchProviderText(ctx, hongguoBaseURL+"/detail?series_id="+url.QueryEscape(id), hongguoBaseURL+"/")
+			if err != nil {
+				return drama, err
+			}
+			raw, err = parseHongguoSortDetail(body, id)
+			if err != nil {
+				return drama, err
+			}
 		}
 	case sourceHuangdou:
 		row, err := engine.downloader.huangdouDetail(ctx, id)
@@ -61,6 +63,9 @@ func (engine *nativeEngine) nativeExtraMetadata(ctx context.Context, drama nativ
 	}
 	if raw.ID == drama.ID {
 		drama = mergeNativeDrama(drama, nativeNormalize(raw))
+	}
+	if source == sourceHongguo && drama.Score == "" {
+		drama.Score = nativeDramaScore(engine.downloader.hongguoSearchScore(ctx, drama.ID, drama.Title))
 	}
 	return drama, ctx.Err()
 }

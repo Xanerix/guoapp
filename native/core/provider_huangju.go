@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -91,12 +90,6 @@ func huangjuDramaFromMap(row map[string]any, site, sourceID string) (Drama, erro
 	if year, valid := huangjuInteger(row["year"], 9999); valid && year >= 1000 {
 		tags = append(tags, strconv.Itoa(year)+"年")
 	}
-	score := mapString(row, "score")
-	if value, err := strconv.ParseFloat(score, 64); err == nil && value > 0 && value <= 10 && !math.IsNaN(value) && !math.IsInf(value, 0) {
-		tags = append(tags, "评分 "+score)
-	} else {
-		score = ""
-	}
 	status := mapString(row, "status")
 	if status == "completed" {
 		status = "finished"
@@ -110,7 +103,7 @@ func huangjuDramaFromMap(row map[string]any, site, sourceID string) (Drama, erro
 		ID: providerDramaID(sourceHuangju, sourceID), Source: sourceHuangju, SourceID: sourceID,
 		Title: truncate(title, 256), Name: truncate(title, 256), Desc: truncate(description, 12000), Intro: truncate(description, 12000),
 		Cover: cover, CoverURL: cover, TotalEpisode: episodes, EpisodeCount: episodes,
-		Category: category, ChannelName: "剧果", Tags: tags, ReleaseStatus: status, Score: score,
+		Category: category, ChannelName: "剧果", Tags: tags, ReleaseStatus: status, Score: mapString(row, "score"),
 	}, nil
 }
 

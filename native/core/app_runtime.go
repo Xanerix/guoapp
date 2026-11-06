@@ -94,6 +94,7 @@ type nativeDrama struct {
 	Heat           string   `json:"heat,omitempty"`
 	Views          string   `json:"views,omitempty"`
 	OnlineDate     string   `json:"onlineDate,omitempty"`
+	Score          string   `json:"score,omitempty"`
 	Tags           []string `json:"tags,omitempty"`
 	ReleaseStatus  string   `json:"releaseStatus,omitempty"`
 }
@@ -234,8 +235,17 @@ func nativeNormalize(drama Drama) nativeDrama {
 	return nativeDrama{MetadataSchema: 1, ID: drama.ID, Source: source, SourceID: sourceID, Title: drama.DisplayTitle(),
 		Description: firstNonEmpty(drama.Desc, drama.Intro), Cover: cover, Episodes: episodes,
 		Category: nativeDramaCategory(drama), VIP: drama.VIP,
-		Heat: drama.Heat, Views: drama.Views, OnlineDate: providerReleaseDate(drama.OnlineDate),
+		Heat: drama.Heat, Views: drama.Views, OnlineDate: providerReleaseDate(drama.OnlineDate), Score: nativeDramaScore(drama.Score),
 		Tags: append([]string(nil), drama.Tags...), ReleaseStatus: drama.ReleaseStatus}
+}
+
+func nativeDramaScore(score string) string {
+	score = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(score), "评分"), "分"))
+	value, err := strconv.ParseFloat(score, 64)
+	if err != nil || !(value > 0 && value <= 10) {
+		return ""
+	}
+	return strconv.FormatFloat(value, 'f', 1, 64)
 }
 
 func nativeDramaCategory(drama Drama) string {

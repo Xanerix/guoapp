@@ -41,10 +41,12 @@ class DramaCover extends StatelessWidget {
     this.details = true,
     this.rank,
     this.heroScope,
+    this.showScore = false,
   });
   final Drama drama;
   final double radius;
   final bool details;
+  final bool showScore;
   final int? rank;
   final String? heroScope;
   static const imagesDisabled = bool.fromEnvironment('DISABLE_REMOTE_IMAGES');
@@ -113,6 +115,19 @@ class DramaCover extends StatelessWidget {
               child: Text(
                 '共 ${drama.episodes} 集',
                 style: const TextStyle(color: Colors.white, fontSize: 12),
+              ),
+            ),
+          if (details && showScore && drama.score.isNotEmpty)
+            Positioned(
+              right: 9,
+              bottom: 9,
+              child: Text(
+                drama.score,
+                style: const TextStyle(
+                  color: Color(0xFFFFC542),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           if (details && drama.vip)

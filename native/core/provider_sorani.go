@@ -107,16 +107,6 @@ func soraniDramaFromMap(row map[string]any) (Drama, error) {
 	if actor := mapString(row, "actors", "actor"); actor != "" {
 		addTag("声优 " + truncate(actor, 32))
 	}
-	score := mapString(row, "bangumiRating", "score")
-	if value, err := strconv.ParseFloat(score, 64); err != nil || value <= 0 || value > 10 {
-		score = ""
-	} else if value > 0 {
-		addTag("评分 " + score)
-	}
-	if score != "" {
-		score = truncate(score, 16)
-	}
-
 	if category == "" {
 		category = "番剧"
 	}
@@ -127,7 +117,7 @@ func soraniDramaFromMap(row map[string]any) (Drama, error) {
 		Cover: cover, CoverURL: cover,
 		TotalEpisode: episodes, EpisodeCount: episodes,
 		Category: category, ChannelName: "青空次元",
-		Tags: tags, Score: score,
+		Tags: tags, Score: mapString(row, "bangumiRating", "score"),
 	}, nil
 }
 

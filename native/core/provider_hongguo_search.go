@@ -294,6 +294,25 @@ func hongguoTitleSearchRank(title, query string) int {
 	}
 }
 
+func (downloader *Downloader) hongguoSearchScore(ctx context.Context, dramaID, title string) string {
+	keyword, err := hongguoSearchKeyword(title)
+	if err != nil {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(ctx, hongguoSearchPageTimeout)
+	defer cancel()
+	page, err := downloader.fetchHongguoSearchPage(ctx, keyword, 1)
+	if err != nil {
+		return ""
+	}
+	for _, drama := range page.Dramas {
+		if drama.ID == dramaID {
+			return drama.Score
+		}
+	}
+	return ""
+}
+
 func (downloader *Downloader) fetchHongguoSearchPage(ctx context.Context, keyword string, pageNum int) (hongguoSearchEntry, error) {
 	client := downloader.hongguoClient()
 	offset := strconv.Itoa((pageNum - 1) * hongguoSearchPageSize)

@@ -130,10 +130,12 @@ class DramaTile extends StatelessWidget {
     this.focusNode,
     this.autofocus = false,
     this.heroScope,
+    this.showScore = false,
   });
   final Drama drama;
   final VoidCallback onTap;
   final String? heroScope;
+  final bool showScore;
   final String? subtitle;
   final int? rank;
   final VoidCallback? onMore;
@@ -165,13 +167,15 @@ class DramaTile extends StatelessWidget {
       drama: drama,
       radius: _coverRadius,
       rank: rank,
+      showScore: showScore,
       heroScope: AppScope.of(context).television || !Visibility.of(context)
           ? null
           : heroScope,
     ),
     label:
         '${rank == null ? '' : '第$rank名，'}'
-        '${drama.title}，${drama.episodes}集${drama.vip ? '，VIP' : ''}',
+        '${drama.title}，${drama.episodes}集${drama.vip ? '，VIP' : ''}'
+        '${showScore && drama.score.isNotEmpty ? '，评分${drama.score}' : ''}',
     onTap: onTap,
     onMore: onMore,
     focusNode: focusNode,

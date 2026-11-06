@@ -41,3 +41,12 @@ func TestHuangguoVideoDetailReleaseStatusFromHeader(t *testing.T) {
 		t.Fatalf("video detail: got %q", got)
 	}
 }
+
+func TestHuangguoAINumericScoreReachesApp(t *testing.T) {
+	for score, want := range map[float64]string{8.6: "8.6", 9: "9.0"} {
+		drama, ok := dramaFromAIMap(map[string]any{"id": "a1", "title": "示例剧", "score": score}, huangguoAIBaseURL, "")
+		if got := nativeNormalize(drama).Score; !ok || got != want {
+			t.Fatalf("score %v became %q, want %q", score, got, want)
+		}
+	}
+}
