@@ -314,4 +314,65 @@ void main() {
     expect(controller.items.first.timeMs, greaterThan(0));
     expect(repository.calls, hasLength(25));
   });
+
+  test(
+    'blocked words hide matching items without dropping the window',
+    () async {
+      final repository = _DanmakuRepository()
+        ..response = (request) => DanmakuPage(
+          episodeId: request.plan.danmakuId,
+          startMs: request.startMs,
+          nextMs: request.startMs + danmakuWindowMs,
+          items: [
+            DanmakuItem(id: 'a', text: '前面高能', timeMs: request.startMs),
+            DanmakuItem(
+              id: 'b',
+              text: '有人剧透结局',
+              timeMs: request.startMs + 1000,
+            ),
+            DanmakuItem(id: 'c', text: 'ＳＢ　发言', timeMs: request.startMs + 2000),
+          ],
+        );
+      final controller = _open(repository);
+      _update(controller);
+      await _flush();
+      expect(controller.items.map((item) => item.id), ['a', 'b', 'c']);
+      expect(controller.blockedCount, 0);
+
+      controller.setBlockedWords(['剧透', ' sb ']);
+      expect(controller.blockedWords, ['剧透', ' sb ']);
+      expect(controller.items.map((item) => item.id), ['a']);
+      expect(controller.blockedCount, 2);
+      expect(controller.status, '已载入 1 条弹幕');
+      expect(repository.calls, hasLength(1));
+    },
+  );
+
+  test('blocked words keep the status honest and revert cleanly', () async {
+    final controller = _open(_DanmakuRepository());
+    _update(controller);
+    await _flush();
+    expect(controller.items, hasLength(1));
+    expect(controller.status, '已载入 1 条弹幕');
+
+    controller.setBlockedWords(const ['合成']);
+    expect(controller.items, isEmpty);
+    expect(controller.blockedCount, 1);
+    expect(controller.status, '这段弹幕都被屏蔽了');
+
+    controller.setBlockedWords(const []);
+    expect(controller.items, hasLength(1));
+    expect(controller.blockedCount, 0);
+    expect(controller.status, '已载入 1 条弹幕');
+  });
+
+  test('identical blocked words do not reload the layout', () async {
+    final controller = _open(_DanmakuRepository());
+    _update(controller);
+    await _flush();
+    controller.setBlockedWords(const ['剧透']);
+    final revision = controller.dataRevision;
+    controller.setBlockedWords(const ['剧透']);
+    expect(controller.dataRevision, revision);
+  });
 }

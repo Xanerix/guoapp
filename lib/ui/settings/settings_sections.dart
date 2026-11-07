@@ -12,6 +12,7 @@ import '../../playback_preferences.dart';
 import '../../resource_settings.dart';
 import '../../resource_settings_editor.dart';
 import '../app_scope.dart';
+import '../player/danmaku_settings.dart';
 import '../update_prompt.dart';
 import '../users/users_view.dart';
 import '../widgets/focus_ring.dart';
@@ -51,8 +52,6 @@ const _decoders = {
   TelevisionDecoder.hardware: '硬解（兼容）',
   TelevisionDecoder.software: '软解（兼容）',
 };
-const _danmakuScaleLabels = ['小', '标准', '大', '特大'];
-const _danmakuColorLabels = ['白色', '黄色', '青色', '粉色', '绿色'];
 const _links = [
   [
     ('GitHub · 重建版', 'https://github.com/Xanerix/guoapp'),
@@ -166,26 +165,12 @@ class SettingsSection extends StatelessWidget {
       ),
       SettingsCard(
         children: [
-          ValueTile<double>(
-            title: '弹幕字号',
-            subtitle: '目前仅红果提供弹幕',
-            options: {
-              for (final (index, scale) in danmakuScales.indexed)
-                scale: _danmakuScaleLabels[index],
-            },
-            value: preferences.danmakuScale,
-            onChanged: (scale) =>
-                savePreferences(preferences.copyWith(danmakuScale: scale)),
-          ),
-          ValueTile<int>(
-            title: '弹幕颜色',
-            options: {
-              for (final (index, color) in danmakuColors.indexed)
-                color: _danmakuColorLabels[index],
-            },
-            value: preferences.danmakuColor,
-            onChanged: (color) =>
-                savePreferences(preferences.copyWith(danmakuColor: color)),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+            child: DanmakuSettings(
+              preferences: preferences,
+              save: savePreferences,
+            ),
           ),
         ],
       ),
