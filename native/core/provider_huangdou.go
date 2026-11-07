@@ -27,17 +27,8 @@ const (
 	huangdouPlatformKey = "7961beb44246e3012ce228d6b5ced05a"
 )
 
-// 域名池首项恒定为该值，huangdouBaseURL 由它派生。
 const huangdouBaseHost = "ferncider.cc"
 
-// huangdouHostPool 是黄豆站点的域名池。站点会不定期换域名，主域名失效后按池内顺序轮转。
-//
-// 池内每个域名都必须能通过 TLS 严格校验：本项目的 transport 不跳过证书验证，
-// 证书过期或 CN 不匹配的域名轮转过去也是白跑，必须从池里剔除
-// （2026-11-06 剔除 xqjurgek.top：证书 CN=ccnirwgj.top 且已过期）。
-//
-// 用定长数组而不是切片，避免后续误用 append 换掉底层数组、让轮转顺序悄悄变化。
-// 注意：池内证书是同一批签发的，到期日均为 2027-01-19，届时需要整体重扫换池。
 var huangdouHostPool = [...]string{
 	huangdouBaseHost,
 	"onyxripple.cc",
@@ -47,25 +38,18 @@ var huangdouHostPool = [...]string{
 	"larksummit.icu",
 }
 
-// huangdouBaseURL 是黄豆的默认站点地址，同时作为 providerBaseURL 的兜底值。
 const huangdouBaseURL = "https://" + huangdouBaseHost
 
-// huangdouAttemptTimeout 是轮转之后单次请求的超时上限。轮转时会把外层 ctx 的剩余时间
-// 按剩余尝试次数均分，避免排在前面的域名吃光预算、后面的域名轮不到。
-const huangdouAttemptTimeout = 8 * time.Second
+const (
+	huangdouAttemptTimeout      = 8 * time.Second
+	huangdouFirstAttemptTimeout = 12 * time.Second
+)
 
-// huangdouFirstAttemptTimeout 是第一个站点的超时上限。站点只是慢（并非连不上）时，
-// 一次成功好过把整个域名池轮转一遍，所以首跳比后续轮转宽裕。
-// 首跳 12s + 5 次轮转 8s = 52s，仍在外层目录请求 60s 的预算内。
-const huangdouFirstAttemptTimeout = 12 * time.Second
-
-// huangdouHostname 从域名或完整地址中取出裸域名（小写、不含 scheme、端口、userinfo 与路径）。
 func huangdouHostname(candidate string) string {
 	candidate = strings.ToLower(strings.TrimSpace(candidate))
 	if index := strings.Index(candidate, "://"); index >= 0 {
 		candidate = candidate[index+3:]
 	}
-	// 协议相对地址（//host/path）
 	candidate = strings.TrimPrefix(candidate, "//")
 	if index := strings.IndexAny(candidate, "/?#"); index >= 0 {
 		candidate = candidate[:index]
@@ -79,7 +63,6 @@ func huangdouHostname(candidate string) string {
 	return strings.TrimSuffix(candidate, ".")
 }
 
-// isHuangdouHost 判断给定域名或地址是否属于黄豆域名池。入参可以是裸域名，也可以是完整 URL。
 func isHuangdouHost(candidate string) bool {
 	host := huangdouHostname(candidate)
 	if host == "" {
@@ -93,11 +76,7 @@ func isHuangdouHost(candidate string) bool {
 	return false
 }
 
-// huangdouNextHostURL 返回域名池中 current 之后的下一个站点；current 不在池中时返回池首。
 func huangdouNextHostURL(current string) string {
-	if len(huangdouHostPool) == 0 {
-		return ""
-	}
 	host := huangdouHostname(current)
 	for index, pooled := range huangdouHostPool {
 		if pooled == host {
@@ -197,13 +176,7 @@ func (d *Downloader) resolveHuangdouPlayback(ctx context.Context, client *huangd
 	return result, nil
 }
 
-// call 发起一次接口调用。遇到网络层失败时按域名池轮转下一个站点；
-// 业务层错误（huangdouAPIError）说明站点可达且已明确拒绝，不再重试也不再切换。
-//
-// 非并发安全：host 这类轮转状态是围绕单次请求的，每个请求新建一个客户端使用，不要跨 goroutine 复用。
 func (c *huangdouAPIClient) call(ctx context.Context, path string, data map[string]any, out *any) error {
-	// 用户显式配置了站点时以配置为准，只按 cfg.Retries 重试同一站点；
-	// 否则把整个域名池走一遍——全局 Retries 的默认值（2）只够切一次。
 	rotate := c.d.cfg.HuangdouURL == ""
 	attempts := 1
 	if rotate {
@@ -211,14 +184,9 @@ func (c *huangdouAPIClient) call(ctx context.Context, path string, data map[stri
 	} else if configured := c.d.cfg.Retries; configured > attempts {
 		attempts = configured
 	}
-	if attempts < 1 {
-		attempts = 1
-	}
 	var lastErr error
 	var backoff time.Duration
 	hostsTried := make(map[string]bool, attempts)
-	// 全池失败时补上「试过几个站点」的上下文，否则用户只看到最后一个陌生域名的报错。
-	// 显式配置站点时是同一域名重试，去重后只有一个域名，不会走到这个包装。
 	fail := func(err error) error {
 		if err == nil || len(hostsTried) < 2 {
 			return err
@@ -239,7 +207,6 @@ func (c *huangdouAPIClient) call(ctx context.Context, path string, data map[stri
 		hostsTried[huangdouHostname(c.host)] = true
 		ceiling := huangdouAttemptTimeout
 		if len(hostsTried) == 1 {
-			// 第一个站点给更宽裕的预算：站点只是慢（并非连不上）时，一次成功好过轮转一圈。
 			ceiling = huangdouFirstAttemptTimeout
 		}
 		lastErr = c.callOnce(ctx, path, data, out, c.attemptTimeout(ctx, attempts-attempt, ceiling))
@@ -257,22 +224,12 @@ func (c *huangdouAPIClient) call(ctx context.Context, path string, data map[stri
 			backoff = time.Duration(attempt+1) * time.Second
 			continue
 		}
-		next := huangdouNextHostURL(c.host)
-		if next == "" || next == c.host {
-			// 当前不可达（轮转模式下域名池至少两项），仅防御域名池退化为 0 或 1 项。
-			backoff = time.Duration(attempt+1) * time.Second
-			continue
-		}
-		// 轮换到新域名是换目标，不是对同一目标的重复请求，无需退避。
-		// 失败不写 providerHosts，所以下次请求仍从主域名开始重试整个池。
-		c.host = next
+		c.host = huangdouNextHostURL(c.host)
 		backoff = 0
 	}
 	return fail(lastErr)
 }
 
-// attemptTimeout 给出单次请求的超时：不超过 ceiling，
-// 并把外层 ctx 的剩余时间按剩余尝试次数均分，避免排在前面的域名吃光预算。
 func (c *huangdouAPIClient) attemptTimeout(ctx context.Context, remainingTries int, ceiling time.Duration) time.Duration {
 	if remainingTries < 1 {
 		remainingTries = 1
