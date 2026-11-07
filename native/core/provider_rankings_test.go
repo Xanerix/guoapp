@@ -210,3 +210,15 @@ func TestRankingConcurrentRequestsShareFetch(t *testing.T) {
 		t.Fatalf("got %d upstream requests, want one", calls.Load())
 	}
 }
+
+func TestNormalizeViewsHidesZero(t *testing.T) {
+	for input, want := range map[string]string{"": "", "0": "", "0.0": "", "994287": "994287次播放", "3.4万": "3.4万次播放"} {
+		if got := normalizeViews(input); got != want {
+			t.Fatalf("normalizeViews(%q) = %q, want %q", input, got, want)
+		}
+	}
+	drama := huangdouDramaFromMap(map[string]any{"id": "13d3d636027d2fd5", "name": "x", "click": json.Number("0")})
+	if drama.Views != "" {
+		t.Fatalf("huangdou views = %q, want empty", drama.Views)
+	}
+}

@@ -1156,7 +1156,7 @@ class _DetailPageState extends State<DetailPage> {
   Widget? _stats(Drama drama, _Metrics m) {
     final stats = [
       if (drama.onlineDate.isNotEmpty) '${drama.onlineDate} 上线',
-      if (drama.views.isNotEmpty) '播放 ${drama.views}',
+      if (drama.views.isNotEmpty && drama.views != '0') '播放 ${drama.views}',
     ];
     if (stats.isEmpty) return null;
     return Text(

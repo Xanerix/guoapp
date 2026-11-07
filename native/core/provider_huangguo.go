@@ -901,8 +901,11 @@ func normalizeViews(s string) string {
 		return s + "次播放"
 	}
 	n, err := strconv.ParseFloat(s, 64)
-	if err != nil || n <= 0 {
+	if err != nil {
 		return s
+	}
+	if n <= 0 {
+		return ""
 	}
 	return strconv.FormatFloat(n, 'f', -1, 64) + "次播放"
 }
