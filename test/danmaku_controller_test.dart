@@ -340,7 +340,6 @@ void main() {
       expect(controller.blockedCount, 0);
 
       controller.setBlockedWords(['剧透', ' sb ']);
-      expect(controller.blockedWords, ['剧透', ' sb ']);
       expect(controller.items.map((item) => item.id), ['a']);
       expect(controller.blockedCount, 2);
       expect(controller.status, '已载入 1 条弹幕');

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../catalog_sort.dart';
 import '../../playback_preferences.dart';
 import '../../playback_session.dart';
 import '../widgets/focus_ring.dart';
@@ -8,10 +9,6 @@ import '../widgets/slider_tile.dart';
 
 const _colorLabels = ['白色', '黄色', '青色', '粉色', '绿色'];
 
-/// 弹幕样式设置：字号、透明度、粗细、描边、阴影、占屏比例与屏蔽词。
-///
-/// [session] 非空时直接改播放中的会话，改完立刻重绘；为空时用 [preferences]
-/// 与 [save] 读写全局设置。
 class DanmakuSettings extends StatelessWidget {
   const DanmakuSettings({
     super.key,
@@ -30,7 +27,6 @@ class DanmakuSettings extends StatelessWidget {
   final ValueChanged<PlaybackPreferences>? save;
   final VoidCallback? onFailure;
 
-  /// 播放器内嵌用紧凑排版。
   final bool dense;
 
   PlaybackPreferences get _preferences =>
@@ -238,7 +234,6 @@ class DanmakuSettings extends StatelessWidget {
   );
 }
 
-/// 编辑屏蔽词列表：输入框加词，列表里点叉删除。
 class _WordsDialog extends StatefulWidget {
   const _WordsDialog({required this.initial});
   final List<String> initial;
@@ -265,7 +260,12 @@ class _WordsDialogState extends State<_WordsDialog> {
       setState(() => _error = '单个屏蔽词最多 $danmakuWordLength 个字');
       return;
     }
-    if (_words.contains(word)) {
+    final key = normalizedSearchText(word);
+    if (key.isEmpty) {
+      setState(() => _error = '只有标点或空格的词无法匹配弹幕');
+      return;
+    }
+    if (_words.any((entry) => normalizedSearchText(entry) == key)) {
       setState(() => _error = '这个词已经在列表里了');
       return;
     }

@@ -2,7 +2,6 @@ import 'package:flutter/painting.dart';
 
 import 'playback_preferences.dart';
 
-/// 弹幕的呈现样式，由 [PlaybackPreferences] 里的弹幕设置生成。
 class DanmakuStyle {
   const DanmakuStyle({
     this.scale = 1,
@@ -24,22 +23,12 @@ class DanmakuStyle {
     coverage: preferences.danmakuCoverage,
   );
 
-  /// 字号相对默认值的缩放。
   final double scale;
-
   final Color color;
-
-  /// 不透明度，1 为完全清晰。
   final double opacity;
-
   final bool bold;
-
-  /// 描边粗细，0 表示不描边。
   final double stroke;
-
-  /// 阴影模糊半径，0 表示不投影。
   final double shadow;
-
   final DanmakuCoverage coverage;
 
   bool get hasStroke => stroke > 0;

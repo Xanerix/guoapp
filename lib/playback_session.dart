@@ -59,6 +59,7 @@ class PlaybackSession extends ChangeNotifier {
       ..setEnabled(_danmakuEnabled)
       ..setBlockedWords(preferences.danmakuWords);
     store.addListener(_accessChanged);
+    store.addListener(_syncBlockedWords);
     _bind();
     _saveTimer = Timer.periodic(
       const Duration(seconds: 5),
@@ -204,7 +205,6 @@ class PlaybackSession extends ChangeNotifier {
   bool get danmakuEnabled => _danmakuEnabled;
   PlaybackPreferences get preferences => _preferences;
   DanmakuStyle get danmakuStyle => DanmakuStyle.of(store.playbackPreferences);
-  List<String> get danmakuWords => store.playbackPreferences.danmakuWords;
   bool get hasPrevious => _index > 0;
   bool get hasNext => _index + 1 < detail.episodes.length;
   String get qualityLabel {
@@ -264,6 +264,11 @@ class PlaybackSession extends ChangeNotifier {
         !store.allowsSource(SourceSite.hongguo.id)) {
       danmaku.setPlan(null);
     }
+  }
+
+  void _syncBlockedWords() {
+    if (_closed) return;
+    danmaku.setBlockedWords(store.playbackPreferences.danmakuWords);
   }
 
   void _sync() {
@@ -976,7 +981,6 @@ class PlaybackSession extends ChangeNotifier {
   Future<void> setDanmakuWords(List<String> words) async {
     final normalized = normalizeDanmakuWords(words);
     await _savePreferences(_preferences.copyWith(danmakuWords: normalized));
-    danmaku.setBlockedWords(normalized);
     _notify();
   }
 
@@ -1030,6 +1034,7 @@ class PlaybackSession extends ChangeNotifier {
     _closed = true;
     _generation++;
     store.removeListener(_accessChanged);
+    store.removeListener(_syncBlockedWords);
     _saveTimer?.cancel();
     _healthTimer?.cancel();
     _errorTimer?.cancel();

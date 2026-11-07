@@ -56,13 +56,8 @@ class DanmakuController extends ChangeNotifier {
   bool get moving => visible && _playing && !_buffering;
   bool get loading => _pendingStart != null;
   bool get canRetry => visible && _failures.isNotEmpty;
-
-  /// 当前生效的屏蔽词。
   List<String> get blockedWords => _words;
-
-  /// 本段被屏蔽词挡掉的弹幕条数。
   int get blockedCount => _blocked;
-
   String get status {
     if (!_enabled) return '弹幕已关闭';
     if (_plan?.local == true) return '本地播放不加载弹幕';
@@ -102,7 +97,6 @@ class DanmakuController extends ChangeNotifier {
     _ensureWindow();
   }
 
-  /// 设置屏蔽词，命中的弹幕立刻从画面移除。
   void setBlockedWords(List<String> words) {
     if (_closed) return;
     final next = List<String>.unmodifiable(words);

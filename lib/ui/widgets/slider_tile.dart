@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 
 import 'contained_slider.dart';
 
-/// 带标题与数值的滑块行。拖动时只改本地草稿，松手才回调 [onChanged]，
-/// 避免连续写盘。
 class SliderTile extends StatefulWidget {
   const SliderTile({
     super.key,
@@ -34,6 +32,13 @@ class SliderTile extends StatefulWidget {
 
 class _SliderTileState extends State<SliderTile> {
   double? _draft;
+  bool _dragging = false;
+
+  @override
+  void didUpdateWidget(SliderTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_dragging) _draft = null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -90,10 +95,15 @@ class _SliderTileState extends State<SliderTile> {
                   divisions: widget.divisions,
                   label: widget.label?.call(value),
                   semanticFormatterCallback: widget.label,
+                  onChangeStart: (_) => _dragging = true,
                   onChanged: (next) => setState(() => _draft = next),
                   onChangeEnd: (next) {
-                    setState(() => _draft = null);
-                    if (next != widget.value) widget.onChanged(next);
+                    _dragging = false;
+                    if (next == widget.value) {
+                      setState(() => _draft = null);
+                    } else {
+                      widget.onChanged(next);
+                    }
                   },
                 ),
               ),

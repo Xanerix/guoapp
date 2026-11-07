@@ -6,8 +6,6 @@ import '../../danmaku_controller.dart';
 import '../../danmaku_models.dart';
 import '../../danmaku_style.dart';
 
-/// 轨道数组的分配上限。真正的行数由可用高度决定，这里只是兜底，
-/// 不让异常尺寸（超长竖屏、缩放手势中间态）申请出无意义的数组。
 const danmakuMaxRows = 64;
 
 class DanmakuFlight {
@@ -72,7 +70,6 @@ List<DanmakuFlight> planDanmaku(
   return flights;
 }
 
-/// 生成弹幕文字样式。[stroke] 为真时返回只描边的样式，用来垫在填充文字下方。
 TextStyle danmakuTextStyle({
   required double fontSize,
   required DanmakuStyle style,
@@ -337,7 +334,6 @@ class _DanmakuMotionState extends State<_DanmakuMotion>
   );
 }
 
-/// 弹幕文字。有描边时先画一层描边再叠填充，避免细描边被填充盖住。
 class _DanmakuText extends StatelessWidget {
   const _DanmakuText({
     required this.text,

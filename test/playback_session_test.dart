@@ -107,6 +107,16 @@ Future<void> _settle(FakePlayer player) async {
 }
 
 void main() {
+  test('blocked words saved elsewhere reach the playing session', () async {
+    final store = await openStore();
+    final (session, _) = await _open(_PlaybackRepository(), store);
+
+    await store.setPlaybackPreferences(
+      store.playbackPreferences.copyWith(danmakuWords: const ['剧透']),
+    );
+    expect(session.danmaku.blockedWords, ['剧透']);
+  });
+
   test('opens the episode at the resume position and saves progress', () async {
     final repository = _PlaybackRepository();
     final store = await openStore();

@@ -57,6 +57,7 @@ void main() {
     expect(normalizeDanmakuWords(null), isEmpty);
     expect(normalizeDanmakuWords('剧透'), isEmpty);
     expect(normalizeDanmakuWords(const [' 剧透 ', '', '剧透', 12]), ['剧透']);
+    expect(normalizeDanmakuWords(const ['SB', 'ｓｂ', '!!']), ['SB']);
 
     final many = [for (var i = 0; i < danmakuWordLimit + 5; i++) 'w$i'];
     expect(normalizeDanmakuWords(many), hasLength(danmakuWordLimit));
