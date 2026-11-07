@@ -28,6 +28,7 @@ import 'storage_view.dart';
 enum SettingsGroup {
   appearance('外观', Icons.palette_outlined),
   playback('播放', Icons.play_arrow_rounded),
+  danmaku('弹幕', Icons.subtitles_outlined),
   download('下载', Icons.download_rounded),
   sources('站源', Icons.dns_outlined),
   proxy('代理', Icons.language_rounded),
@@ -89,6 +90,7 @@ class SettingsSection extends StatelessWidget {
             spacing: 12,
             children: switch (group) {
               SettingsGroup.playback => _playback(context),
+              SettingsGroup.danmaku => _danmaku(context),
               SettingsGroup.download => _download(context),
               SettingsGroup.sources => _sources(context),
               SettingsGroup.proxy => _proxy(context),
@@ -109,6 +111,25 @@ class SettingsSection extends StatelessWidget {
     ),
     null => null,
   };
+
+  List<Widget> _danmaku(BuildContext context) {
+    final preferences = store.playbackPreferences;
+    void savePreferences(PlaybackPreferences next) =>
+        saveSetting(context, () => store.setPlaybackPreferences(next));
+    return [
+      SettingsCard(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+            child: DanmakuSettings(
+              preferences: preferences,
+              save: savePreferences,
+            ),
+          ),
+        ],
+      ),
+    ];
+  }
 
   List<Widget> _playback(BuildContext context) {
     final preferences = store.playbackPreferences;
@@ -160,17 +181,6 @@ class SettingsSection extends StatelessWidget {
             value: preferences.preopens(television: television),
             onChanged: (value) =>
                 savePreferences(preferences.copyWith(preopen: value)),
-          ),
-        ],
-      ),
-      SettingsCard(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-            child: DanmakuSettings(
-              preferences: preferences,
-              save: savePreferences,
-            ),
           ),
         ],
       ),
