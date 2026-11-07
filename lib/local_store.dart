@@ -407,6 +407,10 @@ class LocalStore extends ChangeNotifier {
   bool get deleteAfterAutoExport => _flag('deleteAfterAutoExport', false);
   bool get deleteAfterManualExport => _flag('deleteAfterManualExport', false);
   bool get shareUsage => _flag('shareUsage', true);
+  int get acceptedTerms => switch (_settings['acceptedTerms']) {
+    final int version => version,
+    _ => 0,
+  };
   String get ignoredUpdate => switch (_settings['ignoredUpdate']) {
     final String version => version,
     _ => '',
@@ -541,6 +545,8 @@ class LocalStore extends ChangeNotifier {
   Future<void> setDeleteAfterManualExport(bool value) =>
       _setting('deleteAfterManualExport', value);
   Future<void> setShareUsage(bool value) => _setting('shareUsage', value);
+  Future<void> setAcceptedTerms(int version) =>
+      _setting('acceptedTerms', version);
   Future<void> setIgnoredUpdate(String version) =>
       _setting('ignoredUpdate', version);
   Future<void> setPlaybackPreferences(PlaybackPreferences value) {
