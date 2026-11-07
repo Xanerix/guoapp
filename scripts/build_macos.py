@@ -74,7 +74,7 @@ def repair_media_kit(env):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='构建红果鉴 / 真果鉴 macOS 应用与 dmg')
+    parser = argparse.ArgumentParser(description='构建红果鉴 / 全站源版 macOS 应用与 dmg')
     add_variant_argument(parser)
     options = parser.parse_args()
     variant = BuildVariant(options.all_sources)

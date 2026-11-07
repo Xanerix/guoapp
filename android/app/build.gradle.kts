@@ -13,9 +13,10 @@ val dartDefines = providers.gradleProperty("dart-defines").orNull.orEmpty()
         decoded.substringBefore("=") to decoded.substringAfter("=", "")
     }
 val allSources = dartDefines["ALL_SOURCES"] == "true"
-val allSourcesPackageName = System.getenv("ZHENGUOJIAN_PACKAGE_NAME")?.trim()?.takeIf { it.isNotEmpty() } ?: "com.guoapp.all"
+val allSourcesDisplayName = dartDefines["ZHENGUOJIAN_DISPLAY_NAME"]?.trim()?.takeIf { it.isNotEmpty() } ?: "真果鉴"
+val allSourcesPackageName = System.getenv("ZHENGUOJIAN_PACKAGE_NAME")?.trim()?.takeIf { it.isNotEmpty() } ?: "com.yingshib.xg"
 
-val releaseKey = rootProject.file("key.properties")
+val releaseKey = rootProject.file(if (allSources) "key-all-sources.properties" else "key.properties")
 val releaseProperties = Properties()
 if (releaseKey.exists()) {
     releaseKey.inputStream().use { releaseProperties.load(it) }
@@ -45,7 +46,7 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        manifestPlaceholders["appLabel"] = if (allSources) "真果鉴" else "红果鉴"
+        manifestPlaceholders["appLabel"] = if (allSources) allSourcesDisplayName else "红果鉴"
         manifestPlaceholders["appBanner"] = if (allSources) "@drawable/tv_banner_all_sources" else "@drawable/tv_banner"
     }
 

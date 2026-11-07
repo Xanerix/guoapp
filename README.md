@@ -2,7 +2,7 @@
 
 <img src="ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-1024x1024@1x.png" width="120" alt="红果鉴图标">
 
-# 红果鉴 / 真果鉴
+# 红果鉴
 
 Flutter 多端独立短剧 / 影视应用，手机、平板、电脑和电视分别适配
 
@@ -22,7 +22,7 @@ Flutter 多端独立短剧 / 影视应用，手机、平板、电脑和电视分
 | 版本 | 站源 | 安装包前缀 |
 | --- | --- | --- |
 | **红果鉴** | 只含红果站源 | `hongguojian-` |
-| **真果鉴** | 含全部站源，可在设置里逐个开关 | `zhenguojian-` |
+| **全站源版** | 含全部站源，可在设置里逐个开关 | `zhenguojian-` |
 
 ## 功能
 
@@ -92,7 +92,7 @@ Flutter 多端独立短剧 / 影视应用，手机、平板、电脑和电视分
 
 ## 安装
 
-在 [Releases](../../releases) 下载对应平台的包：`hongguojian-` 开头的是红果鉴，`zhenguojian-` 开头的是真果鉴。
+在 [Releases](../../releases) 下载对应平台的包：`hongguojian-` 开头的是红果鉴，`zhenguojian-` 开头的是全站源版。
 
 | 平台 | 安装包 |
 | --- | --- |
@@ -105,7 +105,7 @@ Flutter 多端独立短剧 / 影视应用，手机、平板、电脑和电视分
 > Android 安装提示 `INSTALL_FAILED_NO_MATCHING_ABIS` 表示 APK 与设备架构不匹配，请换对应架构的安装包。
 
 > [!IMPORTANT]
-> macOS 首次打开前在终端执行（真果鉴把 `红果鉴.app` 换成 `真果鉴.app`）：
+> macOS 首次打开前在终端执行（全站源版把 `红果鉴.app` 换成 dmg 里的应用名）：
 >
 > ```sh
 > xattr -dr com.apple.quarantine /Applications/红果鉴.app
@@ -116,7 +116,7 @@ Flutter 多端独立短剧 / 影视应用，手机、平板、电脑和电视分
 | 请求 | 发送内容 |
 | --- | --- |
 | 检查更新 | 不发送任何数据，只读取最新版本号。启动时检查一次，有新版时每次启动都会提示，可选择忽略此版本或不再提醒 |
-| 匿名使用统计 | 只发送：首次统计时生成的随机编号（与设备、账号无关）、应用版本号、平台（Android / iOS / Windows / macOS）、红果鉴或真果鉴 |
+| 匿名使用统计 | 只发送：首次统计时生成的随机编号（与设备、账号无关）、应用版本号、平台（Android / iOS / Windows / macOS）、所属版本（红果鉴或全站源版） |
 
 不发送观看记录、追剧、搜索、站源设置或其他任何个人数据，接收端代码见 [`worker/`](worker)。两项都可以在 **设置 › 关于** 分别关闭，关闭后应用不会再发出对应的请求。
 

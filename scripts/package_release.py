@@ -131,7 +131,7 @@ def build_macos_dmg(display, staging, staged, target):
 
 
 def package_macos(application):
-    display = '真果鉴' if variant.all_sources else '红果鉴'
+    display = variant.display_name
     staging = root / 'build' / 'macos-dmg'
     if staging.exists():
         shutil.rmtree(staging)
