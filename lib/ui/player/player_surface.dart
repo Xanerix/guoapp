@@ -192,8 +192,7 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
   }
 
   void _toggleControls() {
-    final state = _session.player.state;
-    if (_visible && state.playing && _session.ready && !_session.stalled) {
+    if (_visible && !_session.paused && _session.ready && !_session.stalled) {
       _hideTimer?.cancel();
       setState(() => _visible = false);
     } else {
@@ -300,7 +299,7 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
     builder: (context, _) {
       final state = _session.player.state;
       final visible =
-          _visible || !state.playing || _session.stalled || !_session.ready;
+          _visible || _session.paused || _session.stalled || !_session.ready;
       final popup = visible ? _popup : null;
       return MouseRegion(
         onHover: (_) => _movePointer(),
@@ -353,7 +352,7 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
                     )
                   : null,
             ),
-            _pausedMark(_session.ready && !state.playing),
+            _pausedMark(_session.ready && _session.paused),
             FadePresence(
               scaleFrom: .9,
               child: _streak != 0 ? _streakBadge() : null,
