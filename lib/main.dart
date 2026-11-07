@@ -18,6 +18,7 @@ import 'picture_in_picture.dart';
 import 'ui/app.dart';
 import 'ui/theme/app_theme.dart';
 import 'window_frame.dart';
+import 'windows_data_migration.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -26,6 +27,7 @@ Future<void> main() async {
     SystemChrome.setSystemUIOverlayStyle(AppTheme.systemBars(Brightness.dark));
   }
   if (Platform.isWindows) {
+    await migrateWindowsData();
     await windowManager.ensureInitialized();
     await rememberWindowFrame();
   }

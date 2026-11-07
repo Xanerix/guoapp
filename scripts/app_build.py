@@ -17,7 +17,7 @@ class BuildVariant:
     def bundle_identifier(self):
         if not self.all_sources:
             return 'com.guoapp.phoenix'
-        return os.environ.get('ZHENGUOJIAN_PACKAGE_NAME', '').strip() or 'com.yingshib.xg'
+        return os.environ.get('ZHENGUOJIAN_PACKAGE_NAME', '').strip() or 'com.guoapp.all'
 
     @property
     def display_name(self):

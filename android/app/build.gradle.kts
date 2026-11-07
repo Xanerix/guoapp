@@ -14,7 +14,7 @@ val dartDefines = providers.gradleProperty("dart-defines").orNull.orEmpty()
     }
 val allSources = dartDefines["ALL_SOURCES"] == "true"
 val allSourcesDisplayName = dartDefines["ZHENGUOJIAN_DISPLAY_NAME"]?.trim()?.takeIf { it.isNotEmpty() } ?: "真果鉴"
-val allSourcesPackageName = System.getenv("ZHENGUOJIAN_PACKAGE_NAME")?.trim()?.takeIf { it.isNotEmpty() } ?: "com.yingshib.xg"
+val allSourcesPackageName = System.getenv("ZHENGUOJIAN_PACKAGE_NAME")?.trim()?.takeIf { it.isNotEmpty() } ?: "com.guoapp.all"
 
 val releaseKey = rootProject.file(if (allSources) "key-all-sources.properties" else "key.properties")
 val releaseProperties = Properties()
