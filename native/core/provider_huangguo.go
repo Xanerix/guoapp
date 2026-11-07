@@ -99,12 +99,18 @@ func isHuangguoProviderSource(source string) bool {
 }
 
 func canonicalProviderSource(source string) string {
-	switch strings.ToLower(strings.TrimSpace(source)) {
+	trimmed := strings.ToLower(strings.TrimSpace(source))
+	// 黄豆站点会换域名，域名池里的任意一个都要能识别回源标识。
+	if isHuangdouHost(trimmed) {
+		return sourceHuangdou
+	}
+	switch trimmed {
 	case "huangguo", "huangguoai", "huangguoai.com":
 		return sourceHuangguoAI
 	case "huangguo-video", "huangguo.video":
 		return sourceHuangguoVideo
 	case "huangdou", "tideember.cc", "xqjurgek.top":
+		// 后两个是黄豆的历史域名，已失效、不再进域名池，但旧缓存或手填的 source 仍需识别。
 		return sourceHuangdou
 	case "hongguo", "hongguoduanju.com":
 		return sourceHongguo
