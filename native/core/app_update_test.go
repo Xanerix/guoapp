@@ -17,7 +17,9 @@ func withUpdateServer(t *testing.T, handler http.HandlerFunc) *nativeEngine {
 	t.Cleanup(server.Close)
 	previous := nativeUpdateServer
 	nativeUpdateServer = server.URL
-	t.Cleanup(func() { nativeUpdateServer = previous })
+	previousProject := nativeProjectURL
+	nativeProjectURL = "https://example.test/project/"
+	t.Cleanup(func() { nativeUpdateServer, nativeProjectURL = previous, previousProject })
 	engine, err := newNativeEngine(t.TempDir(), "")
 	if err != nil {
 		t.Fatal(err)
@@ -26,7 +28,7 @@ func withUpdateServer(t *testing.T, handler http.HandlerFunc) *nativeEngine {
 }
 
 func TestNativeCheckUpdate(t *testing.T) {
-	latest := `{"version":"1.0.2+102","url":"https://github.com/Xanerix/guoapp/releases/tag/app-v1.0.2-102"}`
+	latest := `{"version":"1.0.2+102","url":"https://example.test/project/releases/tag/app-v1.0.2-102"}`
 	engine := withUpdateServer(t, func(writer http.ResponseWriter, request *http.Request) {
 		if request.Method != http.MethodGet || request.URL.Path != "/v1/latest" || request.URL.RawQuery != "" {
 			http.Error(writer, "invalid", http.StatusBadRequest)
@@ -46,6 +48,12 @@ func TestNativeCheckUpdate(t *testing.T) {
 	if update, err = engine.checkUpdate(context.Background(), "1.0.1+101"); err != nil || update.Available {
 		t.Fatalf("foreign url update = %+v, err = %v", update, err)
 	}
+	latest = `{"version":"9.0.0+900","url":"https://example.test/project/releases/tag/app-v9.0.0-900"}`
+	nativeProjectURL = ""
+	if update, err = engine.checkUpdate(context.Background(), "1.0.1+101"); err != nil || update.Available {
+		t.Fatalf("unset project update = %+v, err = %v", update, err)
+	}
+	nativeProjectURL = "https://example.test/project"
 	latest = `{}`
 	if update, err = engine.checkUpdate(context.Background(), "1.0.1+101"); err != nil || update.Available {
 		t.Fatalf("empty update = %+v, err = %v", update, err)
@@ -119,7 +127,7 @@ func TestNativeUpdateServerFallback(t *testing.T) {
 			writer.WriteHeader(http.StatusNoContent)
 			return
 		}
-		writer.Write([]byte(`{"version":"1.0.2+102","url":"https://github.com/Xanerix/guoapp/releases/tag/app-v1.0.2-102"}`))
+		writer.Write([]byte(`{"version":"1.0.2+102","url":"https://example.test/project/releases/tag/app-v1.0.2-102"}`))
 	})
 	nativeUpdateServer = down.URL + "/ , " + nativeUpdateServer
 

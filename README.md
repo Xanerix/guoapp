@@ -11,9 +11,6 @@ Flutter 多端独立短剧 / 影视应用，手机、平板、电脑和电视分
 ![Flutter](https://img.shields.io/badge/Flutter-3.47.9-02569B?style=flat-square&logo=flutter&logoColor=white)
 ![Platforms](https://img.shields.io/badge/platform-Android%20%7C%20iOS%20%7C%20Windows%20%7C%20macOS-8fa3bc?style=flat-square)
 
-[![交流群组](https://img.shields.io/badge/Telegram-交流群组-26A5E4?style=flat-square&logo=telegram&logoColor=white)](https://t.me/+c9YKHp7FjSk0MjI1)
-[![更新频道](https://img.shields.io/badge/Telegram-更新频道-26A5E4?style=flat-square&logo=telegram&logoColor=white)](https://t.me/+F9NnQSsMfOU3OTdl)
-
 [下载](#安装) · [功能](#功能) · [站源](#站源) · [隐私](#检查更新与使用统计) · [开发](#开发)
 
 </div>

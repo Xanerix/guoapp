@@ -55,12 +55,12 @@ const _decoders = {
 };
 const _links = [
   [
-    ('GitHub · 重建版', 'https://github.com/Xanerix/guoapp'),
+    ('GitHub · 重建版', String.fromEnvironment('PROJECT_URL')),
     ('GitHub · 原作者', 'https://github.com/fish2018'),
   ],
   [
-    ('Telegram · 交流群组', 'https://t.me/+c9YKHp7FjSk0MjI1'),
-    ('Telegram · 更新频道', 'https://t.me/+F9NnQSsMfOU3OTdl'),
+    ('Telegram · 交流群组', String.fromEnvironment('TELEGRAM_GROUP_URL')),
+    ('Telegram · 更新频道', String.fromEnvironment('TELEGRAM_CHANNEL_URL')),
   ],
 ];
 
@@ -445,16 +445,18 @@ class SettingsSection extends StatelessWidget {
         ],
       ),
       for (final links in _links)
-        SettingsCard(
-          children: [
-            for (final (title, url) in links)
-              SettingsTile(
-                title: title,
-                subtitle: url.replaceFirst('https://', ''),
-                onTap: () => _openLink(context, url),
-              ),
-          ],
-        ),
+        if (links.any((link) => link.$2.isNotEmpty))
+          SettingsCard(
+            children: [
+              for (final (title, url) in links)
+                if (url.isNotEmpty)
+                  SettingsTile(
+                    title: title,
+                    subtitle: url.replaceFirst('https://', ''),
+                    onTap: () => _openLink(context, url),
+                  ),
+            ],
+          ),
     ];
   }
 

@@ -13,6 +13,7 @@ val dartDefines = providers.gradleProperty("dart-defines").orNull.orEmpty()
         decoded.substringBefore("=") to decoded.substringAfter("=", "")
     }
 val allSources = dartDefines["ALL_SOURCES"] == "true"
+val allSourcesPackageName = System.getenv("ZHENGUOJIAN_PACKAGE_NAME")?.trim()?.takeIf { it.isNotEmpty() } ?: "com.guoapp.all"
 
 val releaseKey = rootProject.file("key.properties")
 val releaseProperties = Properties()
@@ -39,7 +40,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = if (allSources) "com.guoapp.all" else "com.guoapp.phoenix"
+        applicationId = if (allSources) allSourcesPackageName else "com.guoapp.phoenix"
         minSdk = 24
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

@@ -20,7 +20,7 @@ import (
 
 var nativeUpdateServer = ""
 
-const nativeReleasePrefix = "https://github.com/Xanerix/guoapp/releases/"
+var nativeProjectURL = ""
 
 var nativeAppVersionPattern = regexp.MustCompile(`^\d+\.\d+\.\d+\+(\d+)$`)
 var nativeInstallIDPattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
@@ -39,6 +39,14 @@ func nativeUpdateServers() []string {
 		}
 	}
 	return servers
+}
+
+func nativeReleasePrefix() string {
+	project := strings.TrimRight(strings.TrimSpace(nativeProjectURL), "/")
+	if project == "" {
+		return ""
+	}
+	return project + "/releases/"
 }
 
 func nativeAppBuildSlug() string {
@@ -131,7 +139,8 @@ func (engine *nativeEngine) checkUpdate(ctx context.Context, version string) (na
 		return nativeUpdate{}, err
 	}
 	number, valid := nativeAppBuildNumber(latest.Version)
-	if !valid || number <= current || !strings.HasPrefix(latest.URL, nativeReleasePrefix) {
+	prefix := nativeReleasePrefix()
+	if !valid || number <= current || prefix == "" || !strings.HasPrefix(latest.URL, prefix) {
 		return nativeUpdate{}, nil
 	}
 	return nativeUpdate{Available: true, Version: latest.Version, URL: latest.URL}, nil

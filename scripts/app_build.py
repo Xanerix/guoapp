@@ -1,6 +1,8 @@
 import os
 from dataclasses import dataclass
 
+LINK_DEFINES = ['PROJECT_URL', 'TELEGRAM_GROUP_URL', 'TELEGRAM_CHANNEL_URL']
+
 
 @dataclass(frozen=True)
 class BuildVariant:
@@ -12,7 +14,9 @@ class BuildVariant:
 
     @property
     def bundle_identifier(self):
-        return 'com.guoapp.all' if self.all_sources else 'com.guoapp.phoenix'
+        if not self.all_sources:
+            return 'com.guoapp.phoenix'
+        return os.environ.get('ZHENGUOJIAN_PACKAGE_NAME', '').strip() or 'com.guoapp.all'
 
     @property
     def arguments(self):
@@ -20,7 +24,12 @@ class BuildVariant:
 
     @property
     def flutter_arguments(self):
-        return ['--dart-define=ALL_SOURCES=' + str(self.all_sources).lower()]
+        arguments = ['--dart-define=ALL_SOURCES=' + str(self.all_sources).lower()]
+        for name in LINK_DEFINES:
+            value = os.environ.get(name, '').strip()
+            if value:
+                arguments.append(f'--dart-define={name}={value}')
+        return arguments
 
     @property
     def linker_flags(self):
@@ -28,6 +37,9 @@ class BuildVariant:
         update_server = os.environ.get('UPDATE_SERVER_URL', '').strip()
         if update_server:
             flags += ' -X duanjuapp/native/core.nativeUpdateServer=' + update_server
+        project = os.environ.get('PROJECT_URL', '').strip()
+        if project:
+            flags += ' -X duanjuapp/native/core.nativeProjectURL=' + project
         return flags
 
 
