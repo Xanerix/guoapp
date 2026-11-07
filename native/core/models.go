@@ -45,6 +45,7 @@ type Drama struct {
 	SortName          string             `json:"sortName"`
 	SortNameSnake     string             `json:"sort_name"`
 	Remark            string             `json:"remark,omitempty"`
+	Badge             string             `json:"badge,omitempty"`
 	Score             string             `json:"score,omitempty"`
 	Views             string             `json:"views,omitempty"`
 	Heat              string             `json:"heat,omitempty"`

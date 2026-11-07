@@ -47,6 +47,8 @@ func (d *Downloader) providerBaseURL(source string) string {
 		configured, fallback = d.cfg.GuipianURL, guipianSiteBaseURL
 	case sourceHanxiaoquan:
 		configured, fallback = d.cfg.HanxiaoquanURL, hanxiaoquanSiteBaseURL
+	case sourceHeitao:
+		configured, fallback = d.cfg.HeitaoURL, heitaoBaseURL
 	default:
 		fallback = "https://d2pypzndaqisk.cloudfront.net"
 	}
@@ -86,6 +88,8 @@ func providerSourceForURL(raw string) string {
 		return sourceGuipian
 	case host == "jennyhow.com" || host == "www.jennyhow.com":
 		return sourceHanxiaoquan
+	case host == "heitaodj.com" || host == "www.heitaodj.com":
+		return sourceHeitao
 	default:
 		return ""
 	}
@@ -161,6 +165,9 @@ func (d *Downloader) resolveProviderMedia(ctx context.Context, task Task) (provi
 	}
 	if chapter.Source == sourceHanxiaoquan {
 		return d.resolveHanxiaoquanMedia(ctx, task)
+	}
+	if chapter.Source == sourceHeitao {
+		return d.resolveHeitaoMedia(ctx, task)
 	}
 	if strings.HasPrefix(chapter.VideoURL, "hongguo-cenc://") {
 		return d.resolveHongguoMedia(ctx, task)
