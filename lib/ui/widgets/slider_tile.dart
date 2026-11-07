@@ -87,24 +87,29 @@ class _SliderTileState extends State<SliderTile> {
                 thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
                 overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
               ),
-              child: ContainedSlider(
-                slider: Slider(
-                  value: value.clamp(widget.min, widget.max),
-                  min: widget.min,
-                  max: widget.max,
-                  divisions: widget.divisions,
-                  label: widget.label?.call(value),
-                  semanticFormatterCallback: widget.label,
-                  onChangeStart: (_) => _dragging = true,
-                  onChanged: (next) => setState(() => _draft = next),
-                  onChangeEnd: (next) {
-                    _dragging = false;
-                    if (next == widget.value) {
-                      setState(() => _draft = null);
-                    } else {
-                      widget.onChanged(next);
-                    }
-                  },
+              child: MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(navigationMode: NavigationMode.directional),
+                child: ContainedSlider(
+                  slider: Slider(
+                    value: value.clamp(widget.min, widget.max),
+                    min: widget.min,
+                    max: widget.max,
+                    divisions: widget.divisions,
+                    label: widget.label?.call(value),
+                    semanticFormatterCallback: widget.label,
+                    onChangeStart: (_) => _dragging = true,
+                    onChanged: (next) => setState(() => _draft = next),
+                    onChangeEnd: (next) {
+                      _dragging = false;
+                      if (next == widget.value) {
+                        setState(() => _draft = null);
+                      } else {
+                        widget.onChanged(next);
+                      }
+                    },
+                  ),
                 ),
               ),
             ),
