@@ -113,7 +113,9 @@ func (engine *nativeEngine) resourceSettings() nativeResourceSettings {
 	settings := engine.settings
 	system := engine.downloader.proxyRouter.systemSettings()
 	settings.SystemProxyStatus = "自动读取系统静态代理及环境变量"
-	if system.PAC && system.HTTP == "" && system.HTTPS == "" {
+	if system.PACURL != "" {
+		settings.SystemProxyStatus = "已读取系统自动代理脚本"
+	} else if system.PAC && system.HTTP == "" && system.HTTPS == "" {
 		settings.SystemProxyStatus = "检测到系统自动代理脚本；请配置手动代理或选择直连"
 	} else if system.HTTP != "" || system.HTTPS != "" {
 		settings.SystemProxyStatus = "已读取系统静态代理"

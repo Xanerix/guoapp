@@ -16,9 +16,15 @@ type nativeSystemProxy struct {
 	HTTPS  string   `json:"https"`
 	Bypass []string `json:"bypass"`
 	PAC    bool     `json:"pac"`
+	PACURL string   `json:"-"`
 }
 
 func (proxy nativeSystemProxy) resolve(request *http.Request) (*url.URL, error) {
+	if proxy.PACURL != "" {
+		if address, err := platformPACProxy(proxy.PACURL, request.URL); err == nil {
+			return address, nil
+		}
+	}
 	host := strings.ToLower(request.URL.Hostname())
 	for _, exception := range proxy.Bypass {
 		exception = strings.ToLower(strings.TrimSpace(exception))
@@ -34,7 +40,7 @@ func (proxy nativeSystemProxy) resolve(request *http.Request) (*url.URL, error) 
 		address = proxy.HTTPS
 	}
 	if address == "" {
-		if proxy.PAC {
+		if proxy.PAC && proxy.PACURL == "" {
 			return nil, errors.New("系统使用自动代理脚本，请在网络设置中配置手动代理或选择直连")
 		}
 		return http.ProxyFromEnvironment(request)
