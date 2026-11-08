@@ -187,16 +187,15 @@ class _DownloadsPageState extends State<DownloadsPage>
         FormFactor.phone || FormFactor.pad => true,
         FormFactor.window || FormFactor.television => false,
       };
-      final swipeable = touch && _selection == null;
-      final swiped = SwipeSwitch(
-        onPrevious: swipeable && index > 0
-            ? () => _tabs.animateTo(index - 1)
-            : null,
-        onNext: swipeable && index < _tabs.length - 1
-            ? () => _tabs.animateTo(index + 1)
-            : null,
-        child: body,
-      );
+      final swiped = touch
+          ? SwipeSwitch(
+              index: index,
+              count: _tabs.length,
+              enabled: _selection == null,
+              onSwitch: _tabs.animateTo,
+              child: body,
+            )
+          : body;
       return PopScope(
         canPop: _selection == null,
         onPopInvokedWithResult: (didPop, _) {

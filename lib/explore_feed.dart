@@ -26,6 +26,8 @@ class ExploreFeed extends ChangeNotifier {
   CatalogCategory _tab = CatalogCategory.all;
   DramaFeed? _feed;
   Map<String, int> _ranks = const {};
+  final _feeds = <String, DramaFeed>{};
+  final _rankings = <String, Map<String, int>>{};
   bool _disposed = false;
 
   SourceSite? get source => _catalog?.source;
@@ -83,8 +85,7 @@ class ExploreFeed extends ChangeNotifier {
     if (id == _catalog?.source.id) return;
     unawaited(repository.cancelCatalog());
     unawaited(repository.cancelRecommendations());
-    _feed?.dispose();
-    _feed = null;
+    _dropFeeds();
     if (id.isEmpty) {
       _catalog = null;
       return;
@@ -109,12 +110,18 @@ class ExploreFeed extends ChangeNotifier {
     final catalog = _catalog!;
     if (recommending) unawaited(repository.cancelRecommendations());
     _tab = tab;
-    _feed?.dispose();
+    if (_feeds[tab.id] case final kept?) {
+      _feed = kept;
+      _ranks = _rankings[tab.id] ?? const {};
+      if (kept.items.isEmpty && !kept.loading) unawaited(kept.reload());
+      _notify();
+      return;
+    }
     final board = catalog.boards
         .where((board) => rankingTab(board).id == tab.id)
         .firstOrNull;
-    final ranks = _ranks = <String, int>{};
-    final feed = _feed = tab.id == recommendTab.id
+    final ranks = _ranks = _rankings[tab.id] = <String, int>{};
+    final feed = _feed = _feeds[tab.id] = tab.id == recommendTab.id
         ? DramaFeed(
             cumulative: true,
             load: (page, force) =>
@@ -169,8 +176,20 @@ class ExploreFeed extends ChangeNotifier {
     final drama = repository.catalogUpdates.latest;
     if (drama == null || drama.source != source?.id) return;
     _catalog?.remember([drama]);
-    _feed?.update(drama);
+    for (final feed in _feeds.values) {
+      feed.update(drama);
+    }
     unawaited(store.refreshDrama(drama).catchError((Object _) {}));
+  }
+
+  void _dropFeeds() {
+    for (final feed in _feeds.values) {
+      feed.dispose();
+    }
+    _feeds.clear();
+    _rankings.clear();
+    _feed = null;
+    _ranks = const {};
   }
 
   void _notify() {
@@ -182,7 +201,7 @@ class ExploreFeed extends ChangeNotifier {
     _disposed = true;
     store.removeListener(_storeChanged);
     repository.catalogUpdates.removeListener(_metadataChanged);
-    _feed?.dispose();
+    _dropFeeds();
     unawaited(repository.cancelCatalog());
     unawaited(repository.cancelRecommendations());
     super.dispose();

@@ -96,13 +96,14 @@ class ExplorePageState extends State<ExplorePage> {
     openSearch(context, widget.store, source, query: query);
   }
 
-  void _resetScroll(ExploreFeed explore) {
-    final shown = '${explore.source?.id}|${explore.tab.id}';
+  void _resetScroll(ExploreFeed explore, {required bool deferred}) {
+    final source = '${explore.source?.id}|';
+    final shown = '$source${explore.tab.id}';
     if (shown == _shown) return;
+    final switched = _shown.startsWith(source);
     _shown = shown;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scroll.hasClients) _scroll.jumpTo(0);
-    });
+    if (deferred && switched) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _toTop());
   }
 
   @override
@@ -114,7 +115,7 @@ class ExplorePageState extends State<ExplorePage> {
       final form = AppScope.formFactorOf(context);
       final television = form == FormFactor.television;
       final desktop = form == FormFactor.window;
-      _resetScroll(explore);
+      _resetScroll(explore, deferred: _swipes(form));
       if (source == null) {
         return Scaffold(
           body: SafeArea(
@@ -189,17 +190,29 @@ class ExplorePageState extends State<ExplorePage> {
     },
   );
 
+  bool _swipes(FormFactor form) =>
+      form == FormFactor.phone || form == FormFactor.pad;
+
   Widget _swipeTabs(ExploreFeed explore, FormFactor form, Widget child) {
-    if (form != FormFactor.phone && form != FormFactor.pad) return child;
     final tabs = explore.tabs;
     final index = tabs.indexWhere((tab) => tab.id == explore.tab.id);
+    if (!_swipes(form) || index < 0) return child;
     return SwipeSwitch(
-      onPrevious: index > 0 ? () => explore.select(tabs[index - 1].id) : null,
-      onNext: index >= 0 && index < tabs.length - 1
-          ? () => explore.select(tabs[index + 1].id)
-          : null,
+      key: ValueKey(explore.source?.id),
+      index: index,
+      count: tabs.length,
+      ready: switch (explore.feed) {
+        final feed? => feed.items.isNotEmpty || !feed.loading,
+        null => true,
+      },
+      onSwitch: (index) => explore.select(tabs[index].id),
+      onEnter: _toTop,
       child: child,
     );
+  }
+
+  void _toTop() {
+    if (_scroll.hasClients) _scroll.jumpTo(0);
   }
 
   Widget _content(
@@ -286,6 +299,7 @@ class ExplorePageState extends State<ExplorePage> {
               child: television
                   ? heroSection
                   : AnimatedSize(
+                      key: ValueKey(explore.tab.id),
                       duration: Motion.of(context, Motion.long),
                       curve: Motion.enter,
                       alignment: Alignment.topCenter,

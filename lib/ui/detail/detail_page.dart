@@ -1410,12 +1410,10 @@ class _DetailPageState extends State<DetailPage> {
   );
 
   Widget _swipeGroups(DramaDetails details, _Metrics m) {
-    final group = details.group;
     return SwipeSwitch(
-      onPrevious: group > 0 ? () => _swipeTo(details, group - 1) : null,
-      onNext: group < details.groupCount - 1
-          ? () => _swipeTo(details, group + 1)
-          : null,
+      index: details.group,
+      count: details.groupCount,
+      onSwitch: (group) => _swipeTo(details, group),
       child: _grid(details, m),
     );
   }
