@@ -495,6 +495,11 @@ class LocalStore extends ChangeNotifier {
   Future<void> clearRecentSearches() =>
       _userSetting('recentSearches', const <String>[]);
 
+  Future<void> forgetSearch(String query) => _userSetting('recentSearches', [
+    for (final entry in recentSearches)
+      if (entry != query) entry,
+  ]);
+
   Future<void> setForceLogin(bool value) => _queue(() async {
     _requireAdmin();
     await _saveUsers(_profiles, _current, value);

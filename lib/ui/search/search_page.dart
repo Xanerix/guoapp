@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core_bridge.dart';
 import '../../drama_feed.dart';
@@ -12,6 +13,7 @@ import '../detail/detail_page.dart';
 import '../shell/app_shell.dart';
 import '../theme/motion.dart';
 import '../widgets/drama_grid.dart';
+import '../widgets/follow_button.dart';
 import '../widgets/focus_ring.dart';
 import '../widgets/motion/motion_widgets.dart';
 import '../widgets/search_field.dart';
@@ -64,6 +66,11 @@ class _SearchPageState extends State<SearchPage> {
     _controller.dispose();
     _focus.dispose();
     super.dispose();
+  }
+
+  void _forget(String query) {
+    unawaited(HapticFeedback.selectionClick());
+    unawaited(widget.store.forgetSearch(query).catchError((Object _) {}));
   }
 
   void _submit(String text) {
@@ -233,6 +240,7 @@ class _SearchPageState extends State<SearchPage> {
                 autofocus: television,
                 heroScope: 'drama',
                 onOpen: _open,
+                onMore: (drama) => quickFollow(context, widget.store, drama),
               ),
             ),
             SliverPadding(
@@ -307,10 +315,14 @@ class _SearchPageState extends State<SearchPage> {
               for (final query in recent)
                 FocusRing(
                   radius: 8,
-                  child: ActionChip(
-                    avatar: const Icon(Icons.history_rounded, size: 16),
-                    label: Text(query),
-                    onPressed: () => _submit(query),
+                  child: GestureDetector(
+                    onLongPress: () => _forget(query),
+                    onSecondaryTap: () => _forget(query),
+                    child: ActionChip(
+                      avatar: const Icon(Icons.history_rounded, size: 16),
+                      label: Text(query),
+                      onPressed: () => _submit(query),
+                    ),
                   ),
                 ),
             ],

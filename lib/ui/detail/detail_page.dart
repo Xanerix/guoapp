@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -18,6 +19,7 @@ import '../widgets/follow_button.dart';
 import '../theme/motion.dart';
 import '../widgets/motion/motion_widgets.dart';
 import '../widgets/status_view.dart';
+import '../widgets/swipe_switch.dart';
 
 class _Metrics {
   const _Metrics({
@@ -201,6 +203,7 @@ class _DetailPageState extends State<DetailPage> {
   final _played = <Object>{};
   final _descriptionFocus = FocusNode();
   final _groupFocus = <FocusNode>[];
+  final _groupKeys = <GlobalKey>[];
   final _episodeFocus = List.generate(episodeGroupSize, (_) => FocusNode());
   bool _entered = false;
 
@@ -449,87 +452,95 @@ class _DetailPageState extends State<DetailPage> {
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: _appBar(details, kToolbarHeight),
-      body: CustomScrollView(
-        slivers: [
-          SliverToBoxAdapter(
-            child: _withBackdrop(
-              drama,
-              top + 250,
-              Padding(
-                padding: EdgeInsets.fromLTRB(20, top + 4, 20, 0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      spacing: 16,
-                      children: [
-                        _cover(drama, m),
-                        Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.only(top: 6),
-                            child: _enter(0, _followingHeadline(details, m, 6)),
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (_stats(drama, m) case final stats?)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 14),
-                        child: _enter(1, stats),
-                      ),
-                    if (_tags(drama, m) case final tags?)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 10),
-                        child: _enter(2, tags),
-                      ),
-                    if (drama.description.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 12),
-                        child: _enter(3, _description(drama, m)),
-                      ),
-                    if (details.warning.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: _warning(details.warning, m),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          if (details.episodes.isEmpty)
-            SliverFillRemaining(
-              hasScrollBody: false,
-              child: _episodeStatus(details),
-            )
-          else ...[
+      body: RefreshIndicator(
+        edgeOffset: top,
+        onRefresh: _refresh,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
             SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 8, 0),
-                child: _episodeHeader(details, m),
-              ),
-            ),
-            if (details.groupCount > 1)
-              SliverToBoxAdapter(
-                child: SizedBox(
-                  height: m.chip + 2,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.fromLTRB(20, 2, 20, 0),
-                    itemCount: details.groupCount,
-                    separatorBuilder: (_, _) => const SizedBox(width: 8),
-                    itemBuilder: (context, group) =>
-                        _groupChip(details, m, group),
+              child: _withBackdrop(
+                drama,
+                top + 250,
+                Padding(
+                  padding: EdgeInsets.fromLTRB(20, top + 4, 20, 0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        spacing: 16,
+                        children: [
+                          _cover(drama, m),
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.only(top: 6),
+                              child: _enter(
+                                0,
+                                _followingHeadline(details, m, 6),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (_stats(drama, m) case final stats?)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 14),
+                          child: _enter(1, stats),
+                        ),
+                      if (_tags(drama, m) case final tags?)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 10),
+                          child: _enter(2, tags),
+                        ),
+                      if (drama.description.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: _enter(3, _description(drama, m)),
+                        ),
+                      if (details.warning.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: _warning(details.warning, m),
+                        ),
+                    ],
                   ),
                 ),
               ),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-              sliver: SliverToBoxAdapter(child: _grid(details, m)),
             ),
+            if (details.episodes.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: _episodeStatus(details),
+              )
+            else ...[
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 8, 0),
+                  child: _episodeHeader(details, m),
+                ),
+              ),
+              if (details.groupCount > 1)
+                SliverToBoxAdapter(
+                  child: SizedBox(
+                    height: m.chip + 2,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.fromLTRB(20, 2, 20, 0),
+                      itemCount: details.groupCount,
+                      separatorBuilder: (_, _) => const SizedBox(width: 8),
+                      itemBuilder: (context, group) =>
+                          _groupChip(details, m, group),
+                    ),
+                  ),
+                ),
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                sliver: SliverToBoxAdapter(child: _swipeGroups(details, m)),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
       bottomNavigationBar: Material(
         color: Theme.of(context).colorScheme.surfaceContainerLow,
@@ -644,7 +655,7 @@ class _DetailPageState extends State<DetailPage> {
                 ),
               Padding(
                 padding: const EdgeInsets.only(top: 14),
-                child: _grid(details, m),
+                child: desktop ? _grid(details, m) : _swipeGroups(details, m),
               ),
             ],
           );
@@ -1390,12 +1401,53 @@ class _DetailPageState extends State<DetailPage> {
     int group, {
     FocusNode? focusNode,
   }) => _GroupChip(
+    key: _groupKey(group),
     label: details.groupLabel(group),
     selected: group == details.group,
     metrics: m,
     focusNode: focusNode,
     onPressed: () => details.selectGroup(group),
   );
+
+  Widget _swipeGroups(DramaDetails details, _Metrics m) {
+    final group = details.group;
+    return SwipeSwitch(
+      onPrevious: group > 0 ? () => _swipeTo(details, group - 1) : null,
+      onNext: group < details.groupCount - 1
+          ? () => _swipeTo(details, group + 1)
+          : null,
+      child: _grid(details, m),
+    );
+  }
+
+  GlobalKey _groupKey(int group) {
+    while (_groupKeys.length <= group) {
+      _groupKeys.add(GlobalKey());
+    }
+    return _groupKeys[group];
+  }
+
+  void _swipeTo(DramaDetails details, int group) {
+    details.selectGroup(group);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final chip = _groupKey(group).currentContext;
+      if (chip == null || !chip.mounted) return;
+      final position = Scrollable.maybeOf(
+        chip,
+        axis: Axis.horizontal,
+      )?.position;
+      final box = chip.findRenderObject();
+      if (position == null || box == null) return;
+      unawaited(
+        position.ensureVisible(
+          box,
+          alignment: .5,
+          duration: Motion.of(chip, Motion.medium),
+          curve: Motion.standard,
+        ),
+      );
+    });
+  }
 
   Widget _grid(
     DramaDetails details,
@@ -1464,6 +1516,7 @@ class _DetailPageState extends State<DetailPage> {
 
 class _GroupChip extends StatelessWidget {
   const _GroupChip({
+    super.key,
     required this.label,
     required this.selected,
     required this.metrics,

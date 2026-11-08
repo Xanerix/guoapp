@@ -57,6 +57,7 @@ class _AppShellState extends State<AppShell> {
     for (final _ in AppTab.values) GlobalKey<NavigatorState>(),
   ];
   final _tabFocus = [for (final _ in AppTab.values) FocusNode()];
+  final _tabScrolls = [for (final _ in AppTab.values) ScrollController()];
   final _followEntry = FocusNode();
   final _mineEntry = FocusNode();
   final _header = FocusNode();
@@ -107,6 +108,9 @@ class _AppShellState extends State<AppShell> {
     for (final node in _tabFocus) {
       node.dispose();
     }
+    for (final scroll in _tabScrolls) {
+      scroll.dispose();
+    }
     for (final hero in _heroes) {
       hero.dispose();
     }
@@ -122,6 +126,25 @@ class _AppShellState extends State<AppShell> {
   }
 
   void _select(AppTab tab) => setState(() => _tab = tab);
+
+  void _tap(AppTab tab) {
+    if (tab != _tab) return _select(tab);
+    final navigator = _navigator;
+    if (navigator != null && navigator.canPop()) {
+      return navigator.popUntil((route) => route.isFirst);
+    }
+    if (tab == AppTab.explore) return _explore.currentState?.reselect();
+    for (final position in _tabScrolls[tab.index].positions) {
+      if (position.pixels <= position.minScrollExtent) continue;
+      unawaited(
+        position.animateTo(
+          position.minScrollExtent,
+          duration: Motion.of(context, Motion.long),
+          curve: Motion.enter,
+        ),
+      );
+    }
+  }
 
   void _mergeFinished(MergeTask task) {
     if (task.state == MergeState.cancelled) return;
@@ -214,7 +237,12 @@ class _AppShellState extends State<AppShell> {
                   routeDirectionalTraversalEdgeBehavior:
                       TraversalEdgeBehavior.parentScope,
                   onGenerateInitialRoutes: (_, _) => [
-                    MaterialPageRoute<void>(builder: (_) => _root(tab)),
+                    MaterialPageRoute<void>(
+                      builder: (_) => PrimaryScrollController(
+                        controller: _tabScrolls[tab.index],
+                        child: _root(tab),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -240,8 +268,7 @@ class _AppShellState extends State<AppShell> {
               ? null
               : NavigationBar(
                   selectedIndex: _tab.index,
-                  onDestinationSelected: (index) =>
-                      _select(AppTab.values[index]),
+                  onDestinationSelected: (index) => _tap(AppTab.values[index]),
                   destinations: [
                     for (final tab in AppTab.values)
                       NavigationDestination(
@@ -341,7 +368,7 @@ class _AppShellState extends State<AppShell> {
             selected: _tab,
             expanded: expanded,
             badged: _badged,
-            onSelect: _select,
+            onSelect: _tap,
             onToggle: roomy
                 ? () => widget.store.setSideBarExpanded(!expanded)
                 : null,

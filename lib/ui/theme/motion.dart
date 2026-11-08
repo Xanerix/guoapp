@@ -1,5 +1,7 @@
 import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../app_scope.dart';
 
@@ -42,17 +44,136 @@ class _FadeScalePageTransitionsBuilder extends PageTransitionsBuilder {
     Animation<double> secondaryAnimation,
     Widget child,
   ) {
-    if (Motion.reduced(context)) return child;
-    final enter = CurvedAnimation(
-      parent: animation,
-      curve: Motion.enter,
-      reverseCurve: Motion.exit,
+    final reduced = Motion.reduced(context);
+    Widget transition() {
+      if (reduced) return child;
+      final enter = CurvedAnimation(
+        parent: animation,
+        curve: Motion.enter,
+        reverseCurve: Motion.exit,
+      );
+      return FadeTransition(
+        opacity: enter,
+        child: ScaleTransition(
+          scale: Tween(begin: 0.92, end: 1.0).animate(enter),
+          child: child,
+        ),
+      );
+    }
+
+    if (defaultTargetPlatform != TargetPlatform.android) return transition();
+    return _BackGesture(
+      route: route,
+      builder: (context, edge, committedAt) =>
+          route.popGestureInProgress && !reduced
+          ? _BackGestureTransition(
+              animation: animation,
+              edge: edge,
+              committedAt: committedAt,
+              child: child,
+            )
+          : transition(),
     );
-    return FadeTransition(
-      opacity: enter,
-      child: ScaleTransition(
-        scale: Tween(begin: 0.92, end: 1.0).animate(enter),
-        child: child,
+  }
+}
+
+class _BackGesture extends StatefulWidget {
+  const _BackGesture({required this.route, required this.builder});
+  final PageRoute<dynamic> route;
+  final Widget Function(
+    BuildContext context,
+    SwipeEdge edge,
+    double? committedAt,
+  )
+  builder;
+
+  @override
+  State<_BackGesture> createState() => _BackGestureState();
+}
+
+class _BackGestureState extends State<_BackGesture>
+    with WidgetsBindingObserver {
+  var _edge = SwipeEdge.left;
+  double? _committedAt;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  bool handleStartBackGesture(PredictiveBackEvent backEvent) {
+    final route = widget.route;
+    if (backEvent.isButtonEvent ||
+        !route.isCurrent ||
+        !route.popGestureEnabled) {
+      return false;
+    }
+    route.handleStartBackGesture(progress: 1 - backEvent.progress);
+    setState(() {
+      _edge = backEvent.swipeEdge;
+      _committedAt = null;
+    });
+    return true;
+  }
+
+  @override
+  void handleUpdateBackGestureProgress(PredictiveBackEvent backEvent) => widget
+      .route
+      .handleUpdateBackGestureProgress(progress: 1 - backEvent.progress);
+
+  @override
+  void handleCancelBackGesture() => widget.route.handleCancelBackGesture();
+
+  @override
+  void handleCommitBackGesture() {
+    setState(() => _committedAt = widget.route.animation?.value);
+    widget.route.handleCommitBackGesture();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      widget.builder(context, _edge, _committedAt);
+}
+
+class _BackGestureTransition extends AnimatedWidget {
+  const _BackGestureTransition({
+    required Animation<double> animation,
+    required this.edge,
+    required this.committedAt,
+    required this.child,
+  }) : super(listenable: animation);
+  final SwipeEdge edge;
+  final double? committedAt;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final shown = (listenable as Animation<double>).value;
+    final progress = 1 - shown;
+    final width = MediaQuery.sizeOf(context).width;
+    final shift = (width / 20 - 8) * progress;
+    return Opacity(
+      opacity: switch (committedAt) {
+        final from? when from > 0 => (shown / from).clamp(0.0, 1.0),
+        _ => 1.0,
+      },
+      child: Transform.translate(
+        offset: Offset(edge == SwipeEdge.left ? shift : -shift, 0),
+        child: Transform.scale(
+          scale: 1 - 0.1 * progress,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(32 * progress.clamp(0, 1)),
+            child: child,
+          ),
+        ),
       ),
     );
   }

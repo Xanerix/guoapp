@@ -15,6 +15,7 @@ import '../widgets/drama_tile.dart';
 import '../widgets/focus_ring.dart';
 import '../widgets/motion/motion_widgets.dart';
 import '../widgets/status_view.dart';
+import '../widgets/swipe_switch.dart';
 import 'download_actions.dart';
 import 'downloaded_drama_page.dart';
 import 'merge_actions.dart';
@@ -182,14 +183,28 @@ class _DownloadsPageState extends State<DownloadsPage>
           : index == 1
           ? _downloadedGrid(context, view)
           : _mergeList(context);
+      final touch = switch (AppScope.formFactorOf(context)) {
+        FormFactor.phone || FormFactor.pad => true,
+        FormFactor.window || FormFactor.television => false,
+      };
+      final swipeable = touch && _selection == null;
+      final swiped = SwipeSwitch(
+        onPrevious: swipeable && index > 0
+            ? () => _tabs.animateTo(index - 1)
+            : null,
+        onNext: swipeable && index < _tabs.length - 1
+            ? () => _tabs.animateTo(index + 1)
+            : null,
+        child: body,
+      );
       return PopScope(
         canPop: _selection == null,
         onPopInvokedWithResult: (didPop, _) {
           if (!didPop) setState(() => _selection = null);
         },
         child: AppScope.formFactorOf(context) == FormFactor.phone
-            ? _phone(context, view, body)
-            : _wide(context, view, body),
+            ? _phone(context, view, swiped)
+            : _wide(context, view, swiped),
       );
     },
   );
@@ -604,6 +619,8 @@ class _DownloadsPageState extends State<DownloadsPage>
                 selected: view.selection?.contains(view.pending[index - 1].id),
                 busy: _busy,
                 onToggle: () => _toggle(view.pending[index - 1].id),
+                onSelect: () =>
+                    setState(() => _selection = {view.pending[index - 1].id}),
                 onControl: () => _control(view.pending[index - 1]),
               ),
             ),
@@ -703,6 +720,9 @@ class _DownloadsPageState extends State<DownloadsPage>
                           drama: item.drama,
                         ),
                       ),
+                onMore: view.selection == null
+                    ? () => setState(() => _selection = {item.drama.id})
+                    : null,
               ),
             );
           },
@@ -720,6 +740,7 @@ class _JobRow extends StatelessWidget {
     required this.selected,
     required this.busy,
     required this.onToggle,
+    required this.onSelect,
     required this.onControl,
   });
   final DownloadJob job;
@@ -727,6 +748,7 @@ class _JobRow extends StatelessWidget {
   final bool? selected;
   final bool busy;
   final VoidCallback onToggle;
+  final VoidCallback onSelect;
   final VoidCallback onControl;
 
   @override
@@ -766,6 +788,7 @@ class _JobRow extends StatelessWidget {
           clipBehavior: Clip.antiAlias,
           child: InkWell(
             onTap: selected == null ? null : onToggle,
+            onLongPress: selected == null ? onSelect : null,
             child: Padding(
               padding: const EdgeInsets.all(12),
               child: Row(

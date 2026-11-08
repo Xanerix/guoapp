@@ -39,6 +39,14 @@ class _SwipeControlsState extends State<SwipeControls> {
 
   PlaybackSession get _session => widget.session;
 
+  @override
+  void didUpdateWidget(SwipeControls oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.enabled) return;
+    _seekCancel();
+    _levelEnd();
+  }
+
   int get _duration => _session.player.state.duration.inMilliseconds;
 
   int get _seekTarget => (_seekFrom! + _seekOffset).round().clamp(0, _duration);

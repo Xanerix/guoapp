@@ -639,6 +639,9 @@ class _FollowPageState extends State<FollowPage> {
           : null,
       selected: selection?.contains(drama.id),
       onTap: selection == null ? () => _open(drama) : () => _toggle(drama.id),
+      onMore: selection == null
+          ? () => setState(() => _selection = {drama.id})
+          : null,
     );
   }
 

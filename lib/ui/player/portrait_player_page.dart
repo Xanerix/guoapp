@@ -67,6 +67,10 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
   late int _lastIndex = _session.index;
   bool _immersive = false;
   EdgeInsets _bars = EdgeInsets.zero;
+  final _pointers = <int, Offset>{};
+  double? _pinchFrom;
+  double _pinchBase = 1;
+  double _zoom = 1;
 
   PlaybackSession get _session => widget.handle.session;
 
@@ -250,6 +254,57 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
     });
   }
 
+  double get _fillZoom {
+    final size = MediaQuery.sizeOf(context);
+    if (size.isEmpty) return 1;
+    final screen = size.width / size.height;
+    final video = _session.aspectRatio;
+    return math.max(screen / video, video / screen);
+  }
+
+  bool get _pinching => _pinchFrom != null;
+
+  double get _span {
+    final [first, second, ...] = _pointers.values.toList();
+    return (first - second).distance;
+  }
+
+  void _pointerDown(PointerDownEvent event) {
+    _pointers[event.pointer] = event.position;
+    if (_pointers.length != 2) return;
+    if (_holding) _pressEnd();
+    setState(() {
+      _pinchFrom = math.max(_span, 1);
+      _pinchBase = _zoom;
+    });
+  }
+
+  void _pointerMove(PointerMoveEvent event) {
+    if (!_pointers.containsKey(event.pointer)) return;
+    _pointers[event.pointer] = event.position;
+    final from = _pinchFrom;
+    if (from == null || _pointers.length != 2) return;
+    setState(() => _zoom = (_pinchBase * _span / from).clamp(1.0, _fillZoom));
+  }
+
+  void _pointerUp(PointerEvent event) {
+    final from = _pinchFrom;
+    if (from != null && _pointers.length == 2) _settleZoom();
+    _pointers.remove(event.pointer);
+    if (_pointers.isEmpty && from != null) setState(() => _pinchFrom = null);
+  }
+
+  void _settleZoom() {
+    final fill = _fillZoom;
+    final filled = _pinchBase > 1
+        ? _zoom > fill - (fill - 1) * .3
+        : _zoom > 1 + (fill - 1) * .3;
+    setState(() => _zoom = filled ? fill : 1);
+    if (filled == (_pinchBase > 1) || fill <= 1.01) return;
+    unawaited(HapticFeedback.selectionClick());
+    _say(filled ? '已铺满屏幕，双指捏合恢复' : '已恢复完整画面');
+  }
+
   void _pressStart(LongPressStartDetails details, double width) {
     if (details.localPosition.dx < width / 5) {
       if (!_session.boostLocked) _session.holdBoost();
@@ -332,14 +387,22 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
           body: Stack(
             fit: StackFit.expand,
             children: [
-              NotificationListener<ScrollNotification>(
-                onNotification: _scrolled,
-                child: PageView.builder(
-                  controller: _pages,
-                  scrollDirection: Axis.vertical,
-                  physics: const _PagePhysics(),
-                  itemCount: _session.detail.episodes.length,
-                  itemBuilder: _page,
+              Listener(
+                onPointerDown: _pointerDown,
+                onPointerMove: _pointerMove,
+                onPointerUp: _pointerUp,
+                onPointerCancel: _pointerUp,
+                child: NotificationListener<ScrollNotification>(
+                  onNotification: _scrolled,
+                  child: PageView.builder(
+                    controller: _pages,
+                    scrollDirection: Axis.vertical,
+                    physics: _pinching
+                        ? const NeverScrollableScrollPhysics()
+                        : const _PagePhysics(),
+                    itemCount: _session.detail.episodes.length,
+                    itemBuilder: _page,
+                  ),
                 ),
               ),
               IgnorePointer(ignoring: _scrolling, child: _controls(context)),
@@ -365,10 +428,19 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
         fit: StackFit.expand,
         children: [
           if (!waiting)
-            PlayerVideo(
-              key: ValueKey(player),
-              handle: widget.handle,
-              player: player,
+            ClipRect(
+              child: AnimatedScale(
+                scale: _zoom,
+                duration: _pinching
+                    ? Duration.zero
+                    : Motion.of(context, Motion.medium),
+                curve: Motion.standard,
+                child: PlayerVideo(
+                  key: ValueKey(player),
+                  handle: widget.handle,
+                  player: player,
+                ),
+              ),
             ),
           FadePresence(
             duration: Motion.medium,
@@ -402,12 +474,14 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
             SwipeControls(
               key: const ValueKey('gestures'),
               session: session,
+              enabled: !_pinching,
               child: LayoutBuilder(
                 builder: (context, constraints) => GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onTap: session.togglePlayback,
-                  onLongPressStart: (details) =>
-                      _pressStart(details, constraints.maxWidth),
+                  onTap: _pinching ? null : session.togglePlayback,
+                  onLongPressStart: _pinching
+                      ? null
+                      : (details) => _pressStart(details, constraints.maxWidth),
                   onLongPressMoveUpdate: _pressMove,
                   onLongPressEnd: (_) => _pressEnd(),
                   onLongPressCancel: _pressEnd,

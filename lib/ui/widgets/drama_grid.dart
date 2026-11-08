@@ -74,6 +74,7 @@ class DramaSliverGrid extends StatelessWidget {
     required this.width,
     required this.items,
     required this.onOpen,
+    this.onMore,
     this.rankOf,
     this.autofocus = false,
     this.entered,
@@ -83,6 +84,7 @@ class DramaSliverGrid extends StatelessWidget {
   final double width;
   final List<Drama> items;
   final ValueChanged<Drama> onOpen;
+  final ValueChanged<Drama>? onMore;
   final int? Function(Drama drama)? rankOf;
   final bool autofocus;
   final Set<Object>? entered;
@@ -113,6 +115,7 @@ class DramaSliverGrid extends StatelessWidget {
             heroScope: heroIndex[drama.id] == index ? heroScope : null,
             showScore: showScore,
             onTap: () => onOpen(drama),
+            onMore: onMore == null ? null : () => onMore!(drama),
           ),
         );
         final played = entered;

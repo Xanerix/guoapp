@@ -612,4 +612,15 @@ void main() {
       expect((await restartStore(store)).watched(first.id)?.position, 15);
     });
   });
+
+  test('a recent search can be forgotten on its own', () async {
+    final store = await _open();
+    for (final query in ['甲', '乙', '丙']) {
+      await store.rememberSearch(query);
+    }
+    await store.forgetSearch('乙');
+    expect(store.recentSearches, ['丙', '甲']);
+    final restarted = await restartStore(store);
+    expect(restarted.recentSearches, ['丙', '甲']);
+  });
 }

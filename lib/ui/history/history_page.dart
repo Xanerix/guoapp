@@ -605,6 +605,9 @@ class _HistoryPageState extends State<HistoryPage> {
               (_) => DetailPage(store: widget.store, drama: drama),
             )
           : () => _toggle(drama.id),
+      onMore: selection == null
+          ? () => setState(() => _selection = {drama.id})
+          : null,
     );
   }
 
