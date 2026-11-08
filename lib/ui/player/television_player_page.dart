@@ -117,7 +117,11 @@ class _TelevisionPlayerPageState extends State<TelevisionPlayerPage>
       unawaited(_playing?.cancel());
       _playing = player.stream.playing.listen((playing) {
         if (!mounted) return;
-        playing ? _scheduleHide() : _reveal();
+        if (playing) {
+          _scheduleHide();
+        } else if (_session.paused || !_session.hasNext) {
+          _reveal();
+        }
         setState(() {});
       });
     }
