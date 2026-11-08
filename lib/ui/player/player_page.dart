@@ -182,7 +182,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
         keyboard.isShiftPressed) {
       return KeyEventResult.ignored;
     }
-    if (key == LogicalKeyboardKey.escape || key == LogicalKeyboardKey.goBack) {
+    if (key == LogicalKeyboardKey.escape) {
       if (down) _back();
       return KeyEventResult.handled;
     }
