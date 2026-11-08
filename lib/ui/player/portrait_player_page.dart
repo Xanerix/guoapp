@@ -5,7 +5,6 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
-import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../local_store.dart';
 import '../../models.dart';
@@ -23,6 +22,7 @@ import 'mini_player.dart';
 import 'playback_sheets.dart';
 import 'playback_handle.dart';
 import 'player_surface.dart';
+import 'player_video.dart';
 import 'swipe_controls.dart';
 
 const _maskHeight = 68.0;
@@ -365,12 +365,10 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
         fit: StackFit.expand,
         children: [
           if (!waiting)
-            Video(
+            PlayerVideo(
               key: ValueKey(player),
-              controller: widget.handle.video(player),
-              controls: NoVideoControls,
-              fill: Colors.black,
-              pauseUponEnteringBackgroundMode: false,
+              handle: widget.handle,
+              player: player,
             ),
           FadePresence(
             duration: Motion.medium,

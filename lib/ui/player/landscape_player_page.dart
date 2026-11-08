@@ -4,7 +4,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
-import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../app_device.dart';
 import '../../local_store.dart';
@@ -26,6 +25,7 @@ import 'playback_handle.dart';
 import 'playback_sheets.dart';
 import 'fade_presence.dart';
 import 'player_surface.dart';
+import 'player_video.dart';
 import 'swipe_controls.dart';
 import 'window_fullscreen.dart';
 
@@ -428,12 +428,10 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
     return Stack(
       fit: StackFit.expand,
       children: [
-        Video(
+        PlayerVideo(
           key: ValueKey(session.player),
-          controller: widget.handle.video(session.player),
-          controls: NoVideoControls,
-          fill: Colors.black,
-          pauseUponEnteringBackgroundMode: false,
+          handle: widget.handle,
+          player: session.player,
         ),
         DanmakuOverlay(
           controller: session.danmaku,

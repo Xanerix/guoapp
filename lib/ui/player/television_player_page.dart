@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
-import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../playback_preferences.dart';
 import '../../playback_session.dart';
@@ -15,6 +14,7 @@ import 'danmaku_overlay.dart';
 import 'fade_presence.dart';
 import 'playback_handle.dart';
 import 'player_surface.dart';
+import 'player_video.dart';
 
 enum _Menu { speed, quality }
 
@@ -427,12 +427,10 @@ class _TelevisionPlayerPageState extends State<TelevisionPlayerPage>
                 body: Stack(
                   fit: StackFit.expand,
                   children: [
-                    Video(
+                    PlayerVideo(
                       key: ValueKey(_session.player),
-                      controller: widget.handle.video(_session.player),
-                      controls: NoVideoControls,
-                      fill: Colors.black,
-                      pauseUponEnteringBackgroundMode: false,
+                      handle: widget.handle,
+                      player: _session.player,
                     ),
                     DanmakuOverlay(
                       controller: _session.danmaku,
