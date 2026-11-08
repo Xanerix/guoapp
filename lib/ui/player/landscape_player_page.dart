@@ -810,6 +810,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
 
   Widget _clock(double fontSize) => PlaybackProgressBuilder(
     player: _session.player,
+    active: _visible || _pinned,
     builder: (context) {
       final state = _session.player.state;
       final position = _seekValue != null
@@ -885,6 +886,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
   Widget _progress(BuildContext context, {required double thumb}) =>
       PlaybackProgressBuilder(
         player: _session.player,
+        active: _visible || _pinned,
         builder: (context) => _progressBar(context, thumb: thumb),
       );
 

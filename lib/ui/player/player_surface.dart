@@ -103,15 +103,15 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
         if (target != null && (position.inMilliseconds - target).abs() < 1000) {
           _endSeek();
         }
-        _refresh();
+        if (_controlsVisible) _refresh();
       }),
     );
-    for (final changes in [
-      stream.duration,
-      stream.buffer,
-      stream.buffering,
-      stream.volume,
-    ]) {
+    _subscriptions.add(
+      stream.buffer.listen((_) {
+        if (_controlsVisible) _refresh();
+      }),
+    );
+    for (final changes in [stream.duration, stream.buffering, stream.volume]) {
       _subscriptions.add(changes.listen((_) => _refresh()));
     }
     _subscriptions.add(
@@ -141,6 +141,9 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
   void _refresh() {
     if (mounted) setState(() {});
   }
+
+  bool get _controlsVisible =>
+      _visible || _session.paused || _session.stalled || !_session.ready;
 
   void _scheduleHide() {
     _hideTimer?.cancel();
@@ -298,8 +301,7 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
     listenable: _session,
     builder: (context, _) {
       final state = _session.player.state;
-      final visible =
-          _visible || _session.paused || _session.stalled || !_session.ready;
+      final visible = _controlsVisible;
       final popup = visible ? _popup : null;
       return MouseRegion(
         onHover: (_) => _movePointer(),
@@ -947,9 +949,11 @@ class PlaybackProgressBuilder extends StatefulWidget {
     super.key,
     required this.player,
     required this.builder,
+    this.active = true,
   });
   final Player player;
   final WidgetBuilder builder;
+  final bool active;
 
   @override
   State<PlaybackProgressBuilder> createState() =>
@@ -968,7 +972,10 @@ class _PlaybackProgressBuilderState extends State<PlaybackProgressBuilder> {
   @override
   void didUpdateWidget(PlaybackProgressBuilder oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!identical(oldWidget.player, widget.player)) _listen();
+    if (!identical(oldWidget.player, widget.player) ||
+        oldWidget.active != widget.active) {
+      _listen();
+    }
   }
 
   @override
@@ -979,6 +986,7 @@ class _PlaybackProgressBuilderState extends State<PlaybackProgressBuilder> {
 
   void _listen() {
     _cancel();
+    if (!widget.active) return;
     final stream = widget.player.stream;
     for (final changes in [stream.position, stream.buffer]) {
       _subscriptions.add(

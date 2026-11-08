@@ -227,6 +227,23 @@ func (manager *nativeDownloads) snapshot() ([]nativeDownloadJob, error) {
 	return jobs, nil
 }
 
+func (manager *nativeDownloads) snapshotSince(since string) (map[string]any, error) {
+	jobs, err := manager.snapshot()
+	if err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(jobs)
+	if err != nil {
+		return nil, err
+	}
+	hash := sha256.Sum256(data)
+	fingerprint := hex.EncodeToString(hash[:8])
+	if since == fingerprint {
+		return map[string]any{"fingerprint": fingerprint}, nil
+	}
+	return map[string]any{"jobs": json.RawMessage(data), "fingerprint": fingerprint}, nil
+}
+
 func (manager *nativeDownloads) enqueue(input nativeInput) (int, error) {
 	return manager.enqueueContext(context.Background(), input)
 }

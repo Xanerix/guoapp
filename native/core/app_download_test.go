@@ -526,3 +526,28 @@ func TestNativeDownloadHLSRejectsLiveAndUnsupportedEncryption(t *testing.T) {
 		}
 	}
 }
+
+func TestNativeDownloadsSnapshotSinceSkipsUnchangedJobs(t *testing.T) {
+	manager := downloadTestManager(t)
+	drama := nativeDrama{ID: "hongguo:806", Source: "hongguo", Title: "样本"}
+	id := nativeDownloadID(drama.ID, 1)
+	manager.mu.Lock()
+	manager.jobs[id] = &nativeDownloadRecord{nativeDownloadJob: nativeDownloadJob{ID: id, Index: 1, Drama: drama, State: "paused"}}
+	manager.mu.Unlock()
+	first, err := manager.snapshotSince("")
+	if err != nil || first["jobs"] == nil {
+		t.Fatalf("first snapshot must carry jobs: %v %v", first, err)
+	}
+	fingerprint := first["fingerprint"].(string)
+	unchanged, err := manager.snapshotSince(fingerprint)
+	if err != nil || unchanged["jobs"] != nil || unchanged["fingerprint"] != fingerprint {
+		t.Fatalf("unchanged snapshot resent jobs: %v %v", unchanged, err)
+	}
+	manager.mu.Lock()
+	manager.jobs[id].Progress = .5
+	manager.mu.Unlock()
+	changed, err := manager.snapshotSince(fingerprint)
+	if err != nil || changed["jobs"] == nil || changed["fingerprint"] == fingerprint {
+		t.Fatalf("progress change not reported: %v %v", changed, err)
+	}
+}

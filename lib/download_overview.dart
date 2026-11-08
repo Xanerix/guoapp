@@ -67,7 +67,9 @@ class DownloadOverview extends ChangeNotifier {
   ].join('\n');
 
   void _replace(List<DownloadJob> jobs) {
-    if (_signature(jobs) == _signature(_jobs)) return;
+    if (identical(jobs, _jobs) || _signature(jobs) == _signature(_jobs)) {
+      return;
+    }
     _jobs = jobs;
     if (!_disposed) notifyListeners();
   }

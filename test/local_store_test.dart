@@ -6,6 +6,7 @@ import 'package:duanju_app/local_files.dart';
 import 'package:duanju_app/local_profiles.dart';
 import 'package:duanju_app/local_snapshot.dart';
 import 'package:duanju_app/local_store.dart';
+import 'package:duanju_app/models.dart';
 import 'package:duanju_app/playback_preferences.dart';
 import 'package:duanju_app/theme_color.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -577,5 +578,38 @@ void main() {
         expect((await restartStore(store)).history.single.drama.id, second.id);
       },
     );
+
+    test('quiet saves only notify when the visible history changes', () async {
+      final store = await _open();
+      var notified = 0;
+      store.addListener(() => notified++);
+      var minute = 0;
+      Future<void> save(Drama item, {int episode = 1, bool quiet = true}) =>
+          store.saveWatch(
+            WatchEntry(
+              drama: item,
+              episode: episode,
+              position: 10.0 + minute,
+              duration: 100,
+              updatedAt: DateTime(2026, 10, 20, 0, minute++),
+            ),
+            quiet: quiet,
+          );
+
+      await save(first);
+      expect(notified, 1);
+      await save(first);
+      expect(notified, 1);
+      expect(store.watched(first.id)?.position, 11);
+      await save(first, episode: 2);
+      expect(notified, 2);
+      await save(second);
+      expect(notified, 3);
+      await save(first, episode: 2);
+      expect(notified, 4);
+      await save(first, episode: 2, quiet: false);
+      expect(notified, 5);
+      expect((await restartStore(store)).watched(first.id)?.position, 15);
+    });
   });
 }

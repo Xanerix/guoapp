@@ -712,8 +712,11 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
     ),
   );
 
-  Widget _progress(BuildContext context) =>
-      PlaybackProgressBuilder(player: _session.player, builder: _progressBar);
+  Widget _progress(BuildContext context) => PlaybackProgressBuilder(
+    player: _session.player,
+    active: _chromeShown,
+    builder: _progressBar,
+  );
 
   Widget _progressBar(BuildContext context) {
     final session = _session;

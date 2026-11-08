@@ -449,6 +449,8 @@ class NativeRepository extends AppRepository {
     }))['count'],
   );
   int _playbackSequence = DateTime.now().microsecondsSinceEpoch;
+  (String, List<DownloadJob>) _downloadCache = ('', const []);
+  List<DownloadJob> _visibleDownloads = const [];
 
   @override
   Future<AppUpdate?> checkUpdate(String version) async {
@@ -791,16 +793,36 @@ class NativeRepository extends AppRepository {
 
   @override
   Future<List<DownloadJob>> downloads() async {
-    final result = await _call({'action': 'downloads'});
-    return (result['jobs'] as List? ?? [])
-        .whereType<Map>()
-        .map((value) => DownloadJob.fromJson(Map<String, dynamic>.from(value)))
+    final result = await _call({
+      'action': 'downloads',
+      'since': _downloadCache.$1,
+    });
+    if (result['jobs'] case final List jobs) {
+      _downloadCache = (
+        result['fingerprint'] as String? ?? '',
+        jobs
+            .whereType<Map>()
+            .map(
+              (value) => DownloadJob.fromJson(Map<String, dynamic>.from(value)),
+            )
+            .toList(),
+      );
+    }
+    final visible = _downloadCache.$2
         .where(
           (job) =>
               SourceSite.isAvailable(job.drama.source) &&
               (access == null || access!.allowsSource(job.drama.source)),
         )
         .toList();
+    final previous = _visibleDownloads;
+    if (visible.length == previous.length &&
+        visible.indexed.every(
+          (entry) => identical(entry.$2, previous[entry.$1]),
+        )) {
+      return previous;
+    }
+    return _visibleDownloads = List.unmodifiable(visible);
   }
 
   @override

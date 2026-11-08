@@ -127,6 +127,7 @@ type nativeInput struct {
 	Sequence        int64                   `json:"sequence"`
 	Force           bool                    `json:"force"`
 	Version         string                  `json:"version"`
+	Since           string                  `json:"since"`
 	Account         soraniAccountInput      `json:"account"`
 }
 
@@ -427,8 +428,7 @@ func nativeDispatch(input nativeInput) (any, error) {
 		count, err := engine.workLease(input.JobID, input.Command)
 		return map[string]int{"count": count}, err
 	case "downloads":
-		jobs, err := engine.downloads.snapshot()
-		return map[string]any{"jobs": jobs}, err
+		return engine.downloads.snapshotSince(input.Since)
 	case "enqueueDownloads":
 		added, err := engine.downloads.enqueueContext(ctx, input)
 		return map[string]int{"added": added}, err

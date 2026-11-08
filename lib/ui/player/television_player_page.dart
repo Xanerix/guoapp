@@ -623,6 +623,7 @@ class _TelevisionPlayerPageState extends State<TelevisionPlayerPage>
         height: 28,
         child: PlaybackProgressBuilder(
           player: _session.player,
+          active: !focusable || _visible,
           builder: (context) => ListenableBuilder(
             listenable: _bar,
             builder: (context, _) => _progressRow(
