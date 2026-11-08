@@ -188,6 +188,9 @@ jobs:
           if (-not $exe) { throw 'MinGW-w64 安装失败，找不到 gcc' }
           Split-Path $exe | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           & $exe --version | Select-Object -First 1
+      - name: Set up Inno Setup
+        shell: pwsh
+        run: choco upgrade innosetup --no-progress -y
       - run: python scripts/build_windows.py ${{ matrix.arguments }}
       - uses: actions/upload-artifact@v4
         with:
@@ -301,7 +304,8 @@ jobs:
           - *-ios-unsigned.ipa：未签名 IPA，可用相关工具安装
 
           Windows：
-          - *-windows-x64.zip：解压后运行 hongguojian.exe 或 zhenguojian.exe
+          - *-windows-x64-setup.exe：安装包，默认安装到当前用户，无需管理员权限；安装时可改为所有用户
+          - *-windows-x64.zip：便携版，解压后运行 hongguojian.exe 或 zhenguojian.exe
 
           macOS：
           - *-macos-universal.dmg：适用于 macOS 12 及以上的 Apple 芯片和 Intel 电脑，打开后拖入 Applications；未经公证，首次打开前在终端执行 xattr -dr com.apple.quarantine /Applications/红果鉴.app（${name}为 ${name}.app）

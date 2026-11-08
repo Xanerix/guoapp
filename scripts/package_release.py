@@ -167,6 +167,50 @@ def package_macos(application):
     return target
 
 
+def windows_product_name(path):
+    import ctypes
+    version = ctypes.windll.version
+    size = version.GetFileVersionInfoSizeW(str(path), None)
+    if not size:
+        return ''
+    data = ctypes.create_string_buffer(size)
+    version.GetFileVersionInfoW(str(path), 0, size, data)
+    value = ctypes.c_wchar_p()
+    length = ctypes.c_uint()
+    version.VerQueryValueW(data, r'\StringFileInfo\040904e4\ProductName', ctypes.byref(value), ctypes.byref(length))
+    return value.value or ''
+
+
+def find_inno_compiler():
+    candidates = [shutil.which('iscc')]
+    for variable, folder in (('LOCALAPPDATA', 'Programs'), ('ProgramFiles(x86)', ''), ('ProgramFiles', '')):
+        if os.environ.get(variable):
+            candidates.append(str(Path(os.environ[variable]) / folder / 'Inno Setup 6' / 'ISCC.exe'))
+    for candidate in candidates:
+        if candidate and Path(candidate).is_file():
+            return candidate
+    raise SystemExit('找不到 Inno Setup 6 的 ISCC.exe，请先安装：winget install JRSoftware.InnoSetup')
+
+
+def package_windows_installer(bundle, bundle_executable):
+    base_name = f'{variant.slug}-{version}-windows-x64-setup'
+    run([find_inno_compiler(), '/Q',
+         f'/DAppId={variant.bundle_identifier}',
+         f'/DAppName={variant.display_name}',
+         f'/DAppVersion={version}',
+         f'/DNumericVersion={version.replace("+", ".")}',
+         f'/DSlug={variant.slug}',
+         f'/DBundleExecutable={bundle_executable}',
+         f'/DSourceDir={bundle}',
+         f'/DOutputDir={output}',
+         f'/DOutputBaseName={base_name}',
+         root / 'windows' / 'installer' / 'setup.iss'])
+    target = output / f'{base_name}.exe'
+    if not target.is_file():
+        raise SystemExit('Windows 安装包没有生成：' + str(target))
+    return target
+
+
 if options.platform == 'android':
     for abi in options.abi or ['arm64-v8a', 'armeabi-v7a', 'x86_64']:
         source = root / 'build' / 'app' / 'outputs' / 'flutter-apk' / f'app-{abi}-release.apk'
@@ -184,21 +228,27 @@ if options.platform == 'android':
         artifacts.append(target)
 elif options.platform == 'windows':
     bundle = root / 'build' / 'windows' / 'x64' / 'runner' / 'Release'
-    required = ['zhenguojian.exe', 'duanju_core.dll', 'flutter_windows.dll', 'libffmpegkit.dll',
+    bundle_executable = 'zhenguojian.exe'
+    required = [bundle_executable, 'duanju_core.dll', 'flutter_windows.dll', 'libffmpegkit.dll',
                 'libmpv-2.dll', 'msvcp140.dll', 'vcruntime140.dll',
                 'data/icudtl.dat', 'data/app.so']
     missing = [name for name in required if not (bundle / name).is_file()]
     if missing:
         raise SystemExit('Windows 安装包缺少文件：' + ', '.join(missing))
+    built = windows_product_name(bundle / bundle_executable)
+    if built != variant.bundle_identifier:
+        raise SystemExit(f'构建产物是 {built or "未知版本"}，与要打包的 {variant.bundle_identifier} 不符，'
+                         '请先用 build_windows.py 以相同参数重新构建。')
     target = output / f'{variant.slug}-{version}-windows-x64.zip'
     with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED) as archive:
         for source in sorted(bundle.rglob('*')):
             if source.is_file():
                 relative = source.relative_to(bundle).as_posix()
-                if relative == 'zhenguojian.exe':
+                if relative == bundle_executable:
                     relative = variant.slug + '.exe'
                 archive.write(source, relative)
     artifacts.append(target)
+    artifacts.append(package_windows_installer(bundle, bundle_executable))
 else:
     application = root / 'build' / 'macos' / 'Build' / 'Products' / 'Release' / 'duanju_app.app'
     if not application.is_dir():

@@ -5,7 +5,7 @@
 Flutter `3.47.9`、Dart `3.12+`、Go `1.24.1+`、Python `3.10+`。
 
 - Android：JDK 17、SDK 36、NDK `28.2.13676358`
-- Windows：Visual Studio C++ 桌面组件、MinGW-w64 x64
+- Windows：Visual Studio C++ 桌面组件、MinGW-w64 x64、Inno Setup 6.5+（`winget install JRSoftware.InnoSetup`）
 - iOS：macOS、完整 Xcode、CocoaPods
 - macOS：完整 Xcode、CocoaPods，打 dmg 需 `pip install dmgbuild Pillow`；`xcode-select` 指向 Command Line Tools 时 `build_macos.py` 会自动改用 `/Applications/Xcode*.app`，也可以在系统层面执行 `sudo xcode-select -s`
 
@@ -36,7 +36,7 @@ python3 scripts/build_ios.py --core-only [--simulator]
 python3 scripts/build_ios.py --export-options /path/to/ExportOptions.plist
 ~~~
 
-产物在 `dist/android`、`dist/windows`、`dist/ios`、`dist/macos`，红果鉴以 `hongguojian-` 开头，全站源版以 `zhenguojian-` 开头。macOS 出 arm64 + x86_64 通用 dmg；dmg 的安装窗口（背景图、图标位置、隐藏工具栏）由 `dmgbuild` 写入 `.DS_Store`，打包机需要 `pip install dmgbuild Pillow`，没装时会退回普通镜像并提示。默认 ad-hoc 签名，从网络下载的 dmg 在其他 Mac 上首次打开会被 Gatekeeper 拦一次（右键「打开」，或执行 `xattr -dr com.apple.quarantine /Applications/红果鉴.app`）。有 Developer ID 时用 `package_release.py --platform macos --identity "Developer ID Application: ..."` 重新打包并公证，才能免掉这一步。本机 Android 签名：红果鉴用 `android/key.properties`，全站源版用 `android/key-all-sources.properties`（均不入库）。
+产物在 `dist/android`、`dist/windows`、`dist/ios`、`dist/macos`，红果鉴以 `hongguojian-` 开头，全站源版以 `zhenguojian-` 开头。Windows 同时出便携 zip 和 Inno Setup 安装包（`windows/installer/setup.iss`，简体中文语言文件取自 Inno Setup 官方仓库），安装包以包名为 AppId，两个版本可同时安装，默认装到 `%LOCALAPPDATA%\Programs\<包名>`，安装时可提权改为所有用户，卸载窗口先显示「卸载选项」页（插在卸载进度窗口里），勾选「同时清除本地数据」才删除 `%APPDATA%\<包名>`（含默认下载目录），默认保留；静默卸载不删。macOS 出 arm64 + x86_64 通用 dmg；dmg 的安装窗口（背景图、图标位置、隐藏工具栏）由 `dmgbuild` 写入 `.DS_Store`，打包机需要 `pip install dmgbuild Pillow`，没装时会退回普通镜像并提示。默认 ad-hoc 签名，从网络下载的 dmg 在其他 Mac 上首次打开会被 Gatekeeper 拦一次（右键「打开」，或执行 `xattr -dr com.apple.quarantine /Applications/红果鉴.app`）。有 Developer ID 时用 `package_release.py --platform macos --identity "Developer ID Application: ..."` 重新打包并公证，才能免掉这一步。本机 Android 签名：红果鉴用 `android/key.properties`，全站源版用 `android/key-all-sources.properties`（均不入库）。
 
 其他脚本：`generate_brand_assets.py` 从 `brand_icon.svg` 生成各平台图标；`clear_app_data.py`、`clear_catalog_cache.py` 清理 Windows 上的应用数据和剧库缓存。
 
@@ -95,7 +95,7 @@ Go RE2 正则**不支持 lookahead**。解析多线路播放列表时不能用 `
 | 产物 | 内容 |
 | --- | --- |
 | `*-android` | 三种架构 APK，使用发布证书签名并通过指纹校验 |
-| `*-windows` | Windows x64 ZIP |
+| `*-windows` | Windows x64 安装包和便携 ZIP |
 | `*-ios-unsigned` | arm64 iPhone 未签名 IPA |
 | `*-macos` | arm64 + x86_64 通用 dmg，ad-hoc 签名、未公证 |
 
