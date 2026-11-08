@@ -22,3 +22,4 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 给用户的连通性测试脚本写在 scratchpad，回复中只给一行执行命令，不在回复里贴多行脚本，脚本形式不限，可以是 `.ps1(UTF-8 with BOM)`、`.py` 等。
 - 脚本输出只打印到用户控制台，不写入任何文件，也不通过 `!` 前缀等方式回到会话；请求体等中间数据走 stdin，不落临时文件。
 - 脚本在用户控制台的输出没有限制，提醒用户检查内容后再贴回。
+- 编写探测脚本时使用项目 skill `masked-probe`（`.claude/skills/masked-probe/`），用其中的遮罩脚本给输出打码，减少用户审查的工作量。
