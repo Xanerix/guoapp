@@ -280,7 +280,15 @@ jobs:
 
   release:
     needs: [checks, prepare, android, windows, ios, macos]
-    if: always() && needs.ios.result == 'success'
+    if: >-
+      always() && !cancelled()
+      && needs.checks.result == 'success'
+      && needs.prepare.result == 'success'
+      && needs.ios.result == 'success'
+      && (inputs.platforms == 'ios'
+      || (needs.android.result == 'success'
+      && needs.windows.result == 'success'
+      && needs.macos.result == 'success'))
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
