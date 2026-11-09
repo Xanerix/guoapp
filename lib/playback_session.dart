@@ -171,6 +171,7 @@ class PlaybackSession extends ChangeNotifier {
   bool _playIntent = true;
   bool _pendingError = false;
   bool _resumeIntent = true;
+  int _iosRebuilds = 0;
   bool _boosting = false;
   bool _boostLocked = false;
   bool _engaged;
@@ -416,6 +417,14 @@ class PlaybackSession extends ChangeNotifier {
     _errorTimer?.cancel();
     _pendingError = false;
     final position = currentPosition;
+    if (Platform.isIOS && !current.local && _iosRebuilds < 2) {
+      // iOS 上换线路/刷新地址救不活被回收的实例，直接重建一次。
+      _iosRebuilds++;
+      _errorTimer?.cancel();
+      DiaryService.add('[Play] iOS 播放异常，重建播放器 原因=$reason');
+      await _rebuildAndResume(position, _playIntent);
+      return;
+    }
     final action = current.local
         ? PlaybackRecoveryAction.stop
         : _recovery.next(current);
@@ -1019,13 +1028,43 @@ class PlaybackSession extends ChangeNotifier {
       unawaited(saveProgress());
       return;
     }
+    _iosRebuilds = 0;
     if (Platform.isIOS) {
-      // iOS 锁屏会回收 mpv 的渲染上下文与音频会话，旧 Player 实例回前台后
-      // 无法可靠恢复；这里重建播放器后按原位置续播。
-      _scheduleResume();
+      if (_pendingError) {
+        // 后台期间已经收到播放器错误，直接重建。
+        _scheduleResume();
+      } else if (_resumeIntent) {
+        // 先尝试在原实例上继续播放，只有确认播不动时才重建，
+        // 避免短暂切出再切回也重新加载、丢失暂停画面。
+        _resumeTimer?.cancel();
+        _resumeTimer = Timer(const Duration(milliseconds: 300), () {
+          if (_closed || !_foreground || !_resumeIntent) return;
+          unawaited(_resumeExisting());
+        });
+      }
     } else if (_pendingError) {
       _queueRecovery('foreground_pending_error');
     }
+  }
+
+  Future<void> _resumeExisting() async {
+    final before = player.state.position;
+    _playIntent = true;
+    _syncDanmaku();
+    _notify();
+    try {
+      await player.play();
+    } catch (_) {
+      _scheduleResume();
+      return;
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 2500));
+    if (_closed || !_foreground || !_playIntent) return;
+    final state = player.state;
+    // buffering 属于正常的重新缓冲，只要位置在推进或仍在缓冲就认为实例可用。
+    if (state.playing && (state.buffering || state.position > before)) return;
+    DiaryService.add('[Play] 切回前台后播放未继续，重建播放器');
+    _scheduleResume();
   }
 
   void _scheduleResume() {
