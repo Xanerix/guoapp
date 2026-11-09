@@ -1,5 +1,6 @@
 import argparse
 import hashlib
+import json
 import os
 import platform
 import re
@@ -36,10 +37,10 @@ def _mpv_archive_spec(makefile):
     return version.group(1), checksum.group(1), address
 
 
-def _download(url, timeout=300):
-    for attempt in range(1, _MPV_ATTEMPTS + 1):
+def _download(url, timeout=300, headers=None, attempts=_MPV_ATTEMPTS):
+    for attempt in range(1, attempts + 1):
         try:
-            request = urllib.request.Request(url, headers={'User-Agent': 'guoapp-build'})
+            request = urllib.request.Request(url, headers=headers or {'User-Agent': 'guoapp-build'})
             with urllib.request.urlopen(request, timeout=timeout) as response:
                 body = response.read()
             if not body:
@@ -47,10 +48,41 @@ def _download(url, timeout=300):
             return body
         except Exception as error:  # noqa: BLE001 - 下载失败一律重试
             print(f'下载第 {attempt} 次失败：{error}', flush=True)
-            if attempt == _MPV_ATTEMPTS:
-                raise SystemExit(f'下载失败，请检查网络后重试：{url}') from error
+            if attempt == attempts:
+                raise
             time.sleep(attempt * 3)
     raise AssertionError('不可达')
+
+
+def _github_asset_url(owner, repo, tag, filename):
+    endpoint = f'https://api.github.com/repos/{owner}/{repo}/releases/tags/{tag}'
+    request = urllib.request.Request(endpoint, headers={
+        'User-Agent': 'guoapp-build',
+        'Accept': 'application/vnd.github+json',
+    })
+    with urllib.request.urlopen(request, timeout=60) as response:
+        payload = json.loads(response.read())
+    for asset in payload.get('assets', []):
+        if asset.get('name') == filename:
+            return asset['url']
+    raise ValueError(f'发布页里没有 {filename}')
+
+
+def _fetch_zip(urls, timeout=600):
+    for address in urls:
+        try:
+            print(f'尝试下载 {address}', flush=True)
+            body = _download(address, timeout=timeout, attempts=3, headers={
+                'User-Agent': 'guoapp-build',
+                'Accept': 'application/octet-stream, application/vnd.github+json',
+            })
+        except Exception as error:  # noqa: BLE001 - 换下一个来源
+            print(f'来源不可用：{error}', flush=True)
+            continue
+        if body[:2] == b'PK':
+            return body
+        print(f'来源返回的不是 zip（{len(body)} 字节）', flush=True)
+    raise SystemExit(f'所有下载来源都失败：{urls}')
 
 
 def _download_archive(url, checksum, destination):
@@ -109,20 +141,44 @@ def prepare_ffmpegkit():
         '${VARIANT}', variant.group(1))
     archive = package / '.cache' / (
         f'ffmpeg-kit-ios-{variant.group(1)}-{version.group(1)}.zip')
-    if not (archive.is_file() and zipfile.is_zipfile(archive)):
+    if not (archive.is_file() and _valid_zip(archive, 'ffmpegkit.framework/')):
         archive.parent.mkdir(parents=True, exist_ok=True)
         print(f'预下载 FFmpegKit {variant.group(1)} {version.group(1)} 归档', flush=True)
-        archive.write_bytes(_download(release, timeout=600))
-        if not zipfile.is_zipfile(archive):
+        sources = []
+        override = os.environ.get('FFMPEG_KIT_IOS_URL')
+        if override:
+            sources.append(override)
+        sources.append(release)
+        match = re.match(r'https://github\.com/([^/]+)/([^/]+)/releases/download/([^/]+)/(.+)$',
+                         release)
+        if match:
+            owner, repo, tag, name = match.groups()
+            try:
+                sources.append(_github_asset_url(owner, repo, tag, name))
+            except Exception as error:  # noqa: BLE001 - 仅作为备用来源
+                print(f'解析 GitHub 资产地址失败：{error}', flush=True)
+        # github.com 的 Release 下载在部分网络下稳定返回 504，退回到公共加速镜像。
+        sources.append(f'https://ghfast.top/{release}')
+        sources.append(f'https://gh-proxy.com/{release}')
+        archive.write_bytes(_fetch_zip(sources))
+        if not _valid_zip(archive, 'ffmpegkit.framework/'):
             archive.unlink(missing_ok=True)
-            raise SystemExit('FFmpegKit 归档不是有效的 zip。')
-    with zipfile.ZipFile(archive) as bundle:
-        names = bundle.namelist()
-    if not any(name.startswith('ffmpegkit.framework/') for name in names):
-        raise SystemExit('FFmpegKit 归档缺少 ffmpegkit.framework。')
+            raise SystemExit('FFmpegKit 归档校验失败（疑似下载不完整）。')
     print('生成 FFmpegKit xcframework', flush=True)
     run(['bash', '../scripts/setup_ios.sh'], cwd=folder,
         env={**os.environ, 'FFMPEG_KIT_IOS_URL': archive.resolve().as_uri()})
+
+
+def _valid_zip(path, member):
+    if not zipfile.is_zipfile(path):
+        return False
+    try:
+        with zipfile.ZipFile(path) as bundle:
+            if bundle.testzip() is not None:
+                return False
+            return any(name.startswith(member) for name in bundle.namelist())
+    except zipfile.BadZipFile:
+        return False
 
 
 def validate_unsigned_application(application):
