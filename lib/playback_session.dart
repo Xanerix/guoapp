@@ -570,6 +570,7 @@ class PlaybackSession extends ChangeNotifier {
         if (plan.url.isEmpty) throw AppFailure('站源未返回播放地址，请重试');
         await _configure(player, plan);
         await _limitCache(player, !_engaged);
+        await _selectAudio(player, true);
         _plan = plan;
         installed = true;
         _acceptErrors = true;
@@ -732,7 +733,7 @@ class PlaybackSession extends ChangeNotifier {
 
   Future<void> _selectAudio(Player target, bool enabled) async {
     final platform = target.platform;
-    if (platform is! NativePlayer) return;
+    if (platform is! NativePlayer || !Platform.isIOS) return;
     await platform.setProperty('aid', enabled ? 'auto' : 'no');
   }
 
