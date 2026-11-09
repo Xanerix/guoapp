@@ -83,27 +83,16 @@ func (engine *nativeEngine) nativeOpenPlayback(ctx context.Context, choice nativ
 		plan.ExpiresAt = media.credentials.expires.UnixMilli()
 	}
 	choice.streamSession = ""
-	{
-		engine.mu.Lock()
-		// 回到前台后监听套接字可能已被系统回收，旧地址只会拒绝连接，
-		// 所以打开新媒体前先确认取流服务存活，失效则重建。
-		recreated := false
-		if engine.stream == nil || !engine.stream.nativeAlive() {
-			stream, createErr := newNativeStreamServer(engine.downloader)
-			if createErr != nil {
-				engine.mu.Unlock()
-				return nativePlan{}, createErr
-			}
-			engine.stream = stream
-			recreated = true
-		}
-		stream := engine.stream
-		engine.mu.Unlock()
-		if recreated {
-			stream.nativeLog(nativeStreamDiagnostic{}, "listener_recreated", "", "", 0, "")
-		}
-		plan.URL, choice.streamSession = stream.nativeOpen(media)
+	// 打开与关闭监听共用 streamMu：探活、关闭旧监听、创建新监听、
+	// 建立会话必须串行，否则并发恢复可能创建出重复的 listener。
+	engine.streamMu.Lock()
+	stream, streamErr := engine.nativeEnsureStreamLocked()
+	if streamErr != nil {
+		engine.streamMu.Unlock()
+		return nativePlan{}, streamErr
 	}
+	plan.URL, choice.streamSession = stream.nativeOpen(media)
+	engine.streamMu.Unlock()
 	choice.created = time.Now()
 	engine.mu.Lock()
 	if engine.playbacks == nil {
@@ -127,11 +116,11 @@ func (engine *nativeEngine) nativeOpenPlayback(ctx context.Context, choice nativ
 		delete(engine.playbacks, oldest)
 	}
 	engine.playbacks[plan.Session] = choice
-	stream := engine.stream
+	releaser := engine.stream
 	engine.mu.Unlock()
-	if stream != nil {
+	if releaser != nil {
 		for _, token := range expired {
-			stream.nativeRelease(token)
+			releaser.nativeRelease(token)
 		}
 	}
 	if err := ctx.Err(); err != nil {

@@ -177,8 +177,10 @@ class PlaybackSession extends ChangeNotifier {
   bool _playerSuspect = false;
   bool _rebuilding = false;
   bool _rebuildQueued = false;
+  int? _queuedToken;
   double _queuedPosition = 0;
   bool _queuedPlay = true;
+  int _restoreToken = 0;
   bool _forceSoftwareDecode = false;
   bool _boosting = false;
   bool _boostLocked = false;
@@ -546,6 +548,8 @@ class PlaybackSession extends ChangeNotifier {
     bool playWhenReady = true,
   }) async {
     if (!_usable || index < 0 || index >= detail.episodes.length) return;
+    // 用户主动开新集/重试：作废还在等待的恢复任务，避免它反向覆盖。
+    _restoreToken++;
     endBoost();
     _staleAudio = false;
     if (_playerSuspect) await _replacePlayer();
@@ -790,6 +794,7 @@ class PlaybackSession extends ChangeNotifier {
 
   void start(int index, {double position = 0}) {
     if (!_usable) return;
+    _restoreToken++;
     final wasEngaged = _engaged;
     _engaged = true;
     if (index != _index ||
@@ -831,6 +836,7 @@ class PlaybackSession extends ChangeNotifier {
 
   void togglePlayback() {
     if (!_usable || !ready) return;
+    _restoreToken++;
     endBoost();
     _playIntent = !player.state.playing;
     _health.reset();
@@ -1059,6 +1065,8 @@ class PlaybackSession extends ChangeNotifier {
 
   void setForeground(bool visible) {
     if (_closed || _foreground == visible) return;
+    // 任何一次前后台变化都作废正在进行的恢复任务。
+    _restoreToken++;
     _foreground = visible;
     _health.reset();
     _sync();
@@ -1068,7 +1076,8 @@ class PlaybackSession extends ChangeNotifier {
       if (_openedIndex == _index && snapshot > Duration.zero) {
         _resumePosition = snapshot.inMilliseconds / 1000;
       }
-      _resumeIntent = _playIntent || player.state.playing;
+      // 只信用户意图：系统挂起/恢复期间底层 playing 可能与实际操作不一致。
+      _resumeIntent = _playIntent;
       if (Platform.isIOS) {
         // iOS 会随挂起回收播放器、备用实例与取流会话，留着会命中死实例。
         _playerSuspect = true;
@@ -1087,36 +1096,114 @@ class PlaybackSession extends ChangeNotifier {
     }
     _iosRebuilds = 0;
     if (Platform.isIOS) {
-      // 锁屏会破坏底层播放器与渲染上下文，回前台统一重建，
-      // 不再用旧实例的 playing/buffering 决定是否需要恢复。
-      unawaited(_restoreAfterBackground());
+      // 锁屏可能破坏播放器与渲染上下文，但不一定；先由原生取流服务探活决定。
+      unawaited(_restoreAfterBackground(_restoreToken));
     } else if (_pendingError) {
       _queueRecovery('foreground_pending_error');
     }
   }
 
-  Future<void> _restoreAfterBackground() async {
+  bool _restorable(int token) => !_closed && _foreground && token == _restoreToken;
+
+  Future<void> _restoreAfterBackground(int token) async {
+    final watch = Stopwatch()..start();
+    final index = _index;
     final position = _resumePosition;
-    final playWhenReady = _resumeIntent;
+    final playIntent = _resumeIntent;
     final activated = await AppDevice.activateAudio();
-    if (_closed || !_foreground) return;
+    if (!_restorable(token)) return;
     if (!activated) {
       // 音频会话只影响出声，失败不阻断画面恢复，也不反复重试激活。
       DiaryService.add('[Play] iOS 音频会话激活失败，继续恢复画面');
     }
+    final alive = await repository
+        .playbackAlive()
+        .catchError((Object _) => false);
+    if (!_restorable(token)) return;
+    if (playIntent && alive) {
+      // 取流服务还在：先原地续播，1.2 秒判活，失败才重建。
+      await _resumeInPlace(token, watch, index, position);
+      return;
+    }
+    if (!playIntent && alive) {
+      // 用户主动暂停且服务可用：保留原实例与冻结画面，不播放也不重建。
+      _playerSuspect = false;
+      _pendingError = false;
+      _errorTimer?.cancel();
+      DiaryService.add(
+        '[Play] 续播=false 且取流服务正常，保留原实例 '
+        '位置=${position.toStringAsFixed(1)} 用时=${watch.elapsedMilliseconds}ms',
+      );
+      return;
+    }
+    // 取流服务已失效，只有这时才需要重新加载。
+    DiaryService.add(
+      '[Play] 重建开始 原因=stream_lost 集数=${index + 1} '
+      '位置=${position.toStringAsFixed(1)} 续播=$playIntent',
+    );
     // 避开 paused → inactive → resumed 的连续抖动，免得在转场中销毁纹理。
     await Future<void>.delayed(const Duration(milliseconds: 250));
-    if (_closed || !_foreground) return;
-    // 等待期间用户可能已经切集或点了播放，那条路径会自行重建实例。
-    if (!_playerSuspect) return;
-    DiaryService.add(
-      '[Play] iOS 回前台重建播放器 位置=${position.toStringAsFixed(1)} '
-      '续播=$playWhenReady',
-    );
+    if (!_restorable(token)) return;
     _pendingError = false;
     _errorTimer?.cancel();
     _recovery.reset();
-    await _rebuildAndResume(position, playWhenReady);
+    await _rebuildAndResume(position, playIntent, restoreToken: token);
+  }
+
+  /// 原实例仍然可用时直接继续播放，保留已缓冲画面，做到切回来无黑屏。
+  Future<void> _resumeInPlace(
+    int token,
+    Stopwatch watch,
+    int index,
+    double position,
+  ) async {
+    final generation = _generation;
+    final before = player.state.position;
+    _playerSuspect = false;
+    _pendingError = false;
+    _errorTimer?.cancel();
+    _recovery.reset();
+    _health.reset();
+    _playIntent = true;
+    _resumeIntent = true;
+    _sync();
+    _notify();
+    Object? failure;
+    try {
+      await player.play();
+    } catch (error) {
+      failure = error;
+    }
+    if (!_restorable(token) || generation != _generation) return;
+    if (failure == null) {
+      await Future<void>.delayed(const Duration(milliseconds: 1200));
+      // 期间若已切集、暂停或开始别的恢复，旧任务必须放弃。
+      if (!_restorable(token) ||
+          generation != _generation ||
+          index != _index ||
+          _loading) {
+        return;
+      }
+      final state = player.state;
+      // 位置在推进或仍在缓冲都算有效；但位置推进不等于画面正常。
+      if (state.playing && (state.buffering || state.position > before)) {
+        DiaryService.add(
+          '[Play] 原地恢复成功 用时=${watch.elapsedMilliseconds}ms '
+          '位置=${currentPosition.toStringAsFixed(1)}',
+        );
+        return;
+      }
+    }
+    final reason = failure == null ? 'position_stalled' : 'play_exception';
+    DiaryService.add(
+      '[Play] 原地恢复失败 原因=$reason 用时=${watch.elapsedMilliseconds}ms'
+      '${failure == null ? '' : ' 详情=${_diagnostic(failure)}'}',
+    );
+    await _rebuildAndResume(
+      currentPosition > 0 ? currentPosition : position,
+      true,
+      restoreToken: token,
+    );
   }
 
   Future<void> _replacePlayer() async {
@@ -1153,20 +1240,27 @@ class PlaybackSession extends ChangeNotifier {
     _notify();
   }
 
-  Future<void> _rebuildAndResume(double position, bool playWhenReady) async {
+  Future<void> _rebuildAndResume(
+    double position,
+    bool playWhenReady, {
+    int? restoreToken,
+  }) async {
     if (_rebuilding) {
       // 正在重建时又来了恢复请求：记下最新位置与意图，完成后补跑一次，
-      // 不能像以前那样直接丢弃。
+      // 不能像以前那样直接丢弃；保留 token 以便新操作让排队任务作废。
       _rebuildQueued = true;
       _queuedPosition = position;
       _queuedPlay = playWhenReady;
+      _queuedToken = restoreToken;
       return;
     }
+    if (restoreToken != null && !_restorable(restoreToken)) return;
     final respawn = _respawn;
     if (respawn == null) {
       await play(_index, position: position, playWhenReady: playWhenReady);
       return;
     }
+    final watch = Stopwatch()..start();
     _rebuilding = true;
     // 先作废所有进行中的 play/open，排队中的旧流程拿到队列后会自行放弃。
     final ticket = ++_generation;
@@ -1203,14 +1297,21 @@ class PlaybackSession extends ChangeNotifier {
         return;
       }
       await play(_index, position: position, playWhenReady: playWhenReady);
+      DiaryService.add(
+        '[Play] 重建完成 用时=${watch.elapsedMilliseconds}ms '
+        '位置=${position.toStringAsFixed(1)} 续播=$playWhenReady',
+      );
     } finally {
       _rebuilding = false;
       if (_rebuildQueued) {
         _rebuildQueued = false;
         final next = _queuedPosition;
         final playQueued = _queuedPlay;
-        if (!_closed && _foreground) {
-          unawaited(_rebuildAndResume(next, playQueued));
+        final token = _queuedToken;
+        if (!_closed && _foreground && (token == null || _restorable(token))) {
+          unawaited(
+            _rebuildAndResume(next, playQueued, restoreToken: token),
+          );
         }
       }
     }
@@ -1255,6 +1356,7 @@ class PlaybackSession extends ChangeNotifier {
     unawaited(saveProgress());
     _closed = true;
     _generation++;
+    _restoreToken++;
     store.removeListener(_accessChanged);
     store.removeListener(_syncBlockedWords);
     _saveTimer?.cancel();

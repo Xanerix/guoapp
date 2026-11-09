@@ -107,6 +107,24 @@ func (stream *nativeStreamServer) nativeAlive() bool {
 	return true
 }
 
+// nativeClose 关闭监听与所有会话，返回关闭前仍在跟踪的会话数量。
+// 调用方必须持有 engine.streamMu，保证关闭期间不会有新的会话建立。
+func (stream *nativeStreamServer) nativeClose() int {
+	stream.mu.Lock()
+	stream.failed.Store(true)
+	sessions := stream.sessions
+	stream.sessions = map[string]*nativeStreamSession{}
+	server := stream.server
+	stream.mu.Unlock()
+	for _, session := range sessions {
+		session.cancel()
+	}
+	if server != nil {
+		_ = server.Close()
+	}
+	return len(sessions)
+}
+
 func (stream *nativeStreamServer) nativeOpen(media providerMedia) (string, string) {
 	tokenBytes := make([]byte, 24)
 	if _, err := rand.Read(tokenBytes); err != nil {

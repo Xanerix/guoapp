@@ -184,6 +184,7 @@ type nativeEngine struct {
 	catalogSaveError error
 	covers           *nativeCoverCache
 	stream           *nativeStreamServer
+	streamMu         sync.Mutex
 	playbacks        map[string]nativePlaybackChoice
 	playbackMu       sync.Mutex
 	playbackSequence int64
@@ -481,6 +482,8 @@ func nativeDispatch(input nativeInput) (any, error) {
 	case "cancelPlayback":
 		engine.nativeCancelPlayback(input.Sequence)
 		return true, nil
+	case "playbackAlive":
+		return map[string]any{"alive": engine.nativePlaybackAlive()}, nil
 	case "release":
 		engine.nativeReleasePlayback(input.Session)
 		return true, nil

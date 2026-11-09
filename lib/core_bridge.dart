@@ -183,6 +183,9 @@ abstract class AppRepository {
   Future<PlaybackPlan> fallback(PlaybackPlan current);
   Future<void> cancelPlayback();
   Future<void> release(String session);
+
+  /// 本机取流服务是否仍可接受连接；iOS 挂起后监听失效，只能重建播放器。
+  Future<bool> playbackAlive() async => true;
 }
 
 class NativeRepository extends AppRepository {
@@ -786,6 +789,12 @@ class NativeRepository extends AppRepository {
   @override
   Future<void> cancelPlayback() async {
     await _call({'action': 'cancelPlayback', 'sequence': ++_playbackSequence});
+  }
+
+  @override
+  Future<bool> playbackAlive() async {
+    final result = await _call({'action': 'playbackAlive'});
+    return result['alive'] == true;
   }
 
   @override
