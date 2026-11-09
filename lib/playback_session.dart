@@ -5,6 +5,7 @@ import 'dart:ui' show Size;
 import 'package:flutter/foundation.dart';
 import 'package:media_kit/media_kit.dart';
 
+import 'app_device.dart';
 import 'core_bridge.dart';
 import 'danmaku_controller.dart';
 import 'danmaku_style.dart';
@@ -173,6 +174,7 @@ class PlaybackSession extends ChangeNotifier {
   bool _resumeIntent = true;
   int _iosRebuilds = 0;
   bool _playerSuspect = false;
+  bool _forceSoftwareDecode = false;
   bool _boosting = false;
   bool _boostLocked = false;
   bool _engaged;
@@ -417,12 +419,18 @@ class PlaybackSession extends ChangeNotifier {
     danmaku.setPlan(null);
     _errorTimer?.cancel();
     _pendingError = false;
-    final position = currentPosition;
-    if (Platform.isIOS && !current.local && _iosRebuilds < 2) {
-      // iOS 上换线路/刷新地址救不活被回收的实例，直接重建一次。
+    // 用本次播放请求的起点，而不是旧播放器的位置：切集失败时旧位置属于
+    // 上一集，用它重开会直接跳到片尾之外。
+    final position = _resumePosition;
+    if (Platform.isIOS && !current.local && _iosRebuilds < 3) {
+      // iOS 上换线路/刷新地址救不活被回收的实例，直接重建一次；
+      // 连续失败时改用软件解码，绕开刚恢复时 VideoToolbox 初始化失败。
       _iosRebuilds++;
+      if (_iosRebuilds >= 2) _forceSoftwareDecode = true;
       _errorTimer?.cancel();
-      DiaryService.add('[Play] iOS 播放异常，重建播放器 原因=$reason');
+      DiaryService.add(
+        '[Play] iOS 播放异常，重建播放器 原因=$reason 次数=$_iosRebuilds',
+      );
       await _rebuildAndResume(position, _playIntent);
       return;
     }
@@ -474,7 +482,9 @@ class PlaybackSession extends ChangeNotifier {
   Future<void> _configure(Player target, PlaybackPlan plan) async {
     final platform = target.platform;
     if (platform is! NativePlayer) return;
-    final hwdec = switch (store.playbackPreferences.televisionDecoder) {
+    final hwdec = _forceSoftwareDecode
+        ? 'no'
+        : switch (store.playbackPreferences.televisionDecoder) {
       TelevisionDecoder.software => 'no',
       TelevisionDecoder.hardware when Platform.isAndroid => 'mediacodec-copy',
       TelevisionDecoder.hardware when Platform.isIOS || Platform.isMacOS =>
@@ -627,6 +637,7 @@ class PlaybackSession extends ChangeNotifier {
     } catch (error) {
       if (_current(ticket)) {
         if (prepared != null && identical(_plan, prepared)) {
+          DiaryService.add('[Play] 打开播放地址失败：${_diagnostic(error)}');
           _acceptErrors = true;
           _queueRecovery('open_exception');
         } else {
@@ -1049,6 +1060,7 @@ class PlaybackSession extends ChangeNotifier {
     }
     _iosRebuilds = 0;
     if (Platform.isIOS) {
+      unawaited(AppDevice.activateAudio());
       if (_pendingError) {
         // 后台期间已经收到播放器错误，直接重建。
         _scheduleResume();
@@ -1072,6 +1084,7 @@ class PlaybackSession extends ChangeNotifier {
     // 所以真正需要打开新媒体前先换一个干净实例。
     final respawn = _respawn;
     if (respawn == null) return;
+    DiaryService.add('[Play] 打开新媒体前重建播放器');
     final previous = _player;
     final volume = previous.state.volume;
     final standby = _standby;
