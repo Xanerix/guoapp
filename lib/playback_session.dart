@@ -57,6 +57,7 @@ class PlaybackSession extends ChangeNotifier {
     required this._player,
     this._standby,
     this._respawn,
+    this._onRetired,
     required int index,
     double position = 0,
     bool autoplay = true,
@@ -141,6 +142,7 @@ class PlaybackSession extends ChangeNotifier {
   final DramaDetail detail;
   Player _player;
   final Player Function()? _respawn;
+  final void Function(Player player)? _onRetired;
   Player? _standby;
   late final DanmakuController danmaku;
   late final PlaybackLoader _loader;
@@ -152,7 +154,6 @@ class PlaybackSession extends ChangeNotifier {
   Timer? _saveTimer;
   Timer? _healthTimer;
   Timer? _errorTimer;
-  Timer? _resumeTimer;
   Timer? _boostTimer;
   Timer? _stallTimer;
   Timer? _volumeTimer;
@@ -175,6 +176,9 @@ class PlaybackSession extends ChangeNotifier {
   int _iosRebuilds = 0;
   bool _playerSuspect = false;
   bool _rebuilding = false;
+  bool _rebuildQueued = false;
+  double _queuedPosition = 0;
+  bool _queuedPlay = true;
   bool _forceSoftwareDecode = false;
   bool _boosting = false;
   bool _boostLocked = false;
@@ -401,6 +405,10 @@ class PlaybackSession extends ChangeNotifier {
           !state.buffering &&
           (state.width ?? 0) > 0 &&
           state.position > position + const Duration(milliseconds: 300)) {
+        // 画面确实在推进，才说明这次重建真正成功；open() 返回成功
+        // 不代表地址可用（连接被拒也要等到 mpv 异步报错）。
+        _iosRebuilds = 0;
+        _forceSoftwareDecode = false;
         return;
       }
       unawaited(_recover(reason));
@@ -474,6 +482,17 @@ class PlaybackSession extends ChangeNotifier {
     await repository.release(session).catchError((Object _) {});
   }
 
+  /// 等待旧实例真正释放，再让新实例打开媒体；释放失败也不能阻塞恢复。
+  Future<void> _retire(Player target) async {
+    try {
+      await target.dispose().timeout(const Duration(seconds: 3));
+    } catch (error) {
+      DiaryService.add('[Play] 释放播放器异常：${_diagnostic(error)}');
+    } finally {
+      _onRetired?.call(target);
+    }
+  }
+
   Future<void> _serialize(Future<void> Function() operation) {
     final next = _operations.catchError((Object _) {}).then((_) => operation());
     _operations = next;
@@ -528,7 +547,6 @@ class PlaybackSession extends ChangeNotifier {
   }) async {
     if (!_usable || index < 0 || index >= detail.episodes.length) return;
     endBoost();
-    _resumeTimer?.cancel();
     _staleAudio = false;
     if (_playerSuspect) await _replacePlayer();
     if (index != _index) _online = false;
@@ -627,11 +645,6 @@ class PlaybackSession extends ChangeNotifier {
         );
         if (!_current(ticket)) return;
         _openedIndex = index;
-        if (Platform.isIOS) {
-          // 本次打开成功，说明实例与解码方式可用，重置恢复计数。
-          _iosRebuilds = 0;
-          _forceSoftwareDecode = false;
-        }
         _health.reset();
         await _setRate(_rate);
         if (!_current(ticket)) return;
@@ -789,7 +802,7 @@ class PlaybackSession extends ChangeNotifier {
     if (!wasEngaged) unawaited(_limitCache(player, false));
     if (ready) {
       if (_playerSuspect) {
-        unawaited(_resumeExisting());
+        unawaited(_rebuildAndResume(currentPosition, true));
       } else {
         unawaited(player.play());
       }
@@ -822,8 +835,8 @@ class PlaybackSession extends ChangeNotifier {
     _playIntent = !player.state.playing;
     _health.reset();
     if (_playIntent && _playerSuspect) {
-      // 离开过前台的实例可能已失效，先尝试续播并在失败时重建。
-      unawaited(_resumeExisting());
+      // 离开过前台的实例可能已失效，直接重建并从当前位置续播。
+      unawaited(_rebuildAndResume(currentPosition, true));
       return;
     }
     if (_playIntent && player.state.completed) {
@@ -1050,38 +1063,60 @@ class PlaybackSession extends ChangeNotifier {
     _health.reset();
     _sync();
     if (!visible) {
-      _resumeTimer?.cancel();
-      _resumeIntent = _playIntent;
+      // 锁屏/切后台时直接读播放器状态，不等异步 position 事件。
+      final snapshot = player.state.position;
+      if (_openedIndex == _index && snapshot > Duration.zero) {
+        _resumePosition = snapshot.inMilliseconds / 1000;
+      }
+      _resumeIntent = _playIntent || player.state.playing;
       if (Platform.isIOS) {
-        // iOS 会随挂起回收预开的备用播放器与预加载会话，留着会导致切集
-        // 命中已死实例；主播放器若被回收，下次 open 前会另行重建。
+        // iOS 会随挂起回收播放器、备用实例与取流会话，留着会命中死实例。
         _playerSuspect = true;
         _dropStandby();
+        _preloader.clear();
       }
       endBoost();
       _playIntent = false;
+      DiaryService.add(
+        '[Play] 进入后台，保存恢复状态 集数=${_index + 1} '
+        '位置=${_resumePosition.toStringAsFixed(1)} 续播=$_resumeIntent',
+      );
       unawaited(player.pause());
       unawaited(saveProgress());
       return;
     }
     _iosRebuilds = 0;
     if (Platform.isIOS) {
-      unawaited(AppDevice.activateAudio());
-      if (_pendingError) {
-        // 后台期间已经收到播放器错误，直接重建。
-        _scheduleResume(expected: _generation);
-      } else if (_resumeIntent) {
-        // 先尝试在原实例上继续播放，只有确认播不动时才重建，
-        // 避免短暂切出再切回也重新加载、丢失暂停画面。
-        _resumeTimer?.cancel();
-        _resumeTimer = Timer(const Duration(milliseconds: 300), () {
-          if (_closed || !_foreground || !_resumeIntent) return;
-          unawaited(_resumeExisting());
-        });
-      }
+      // 锁屏会破坏底层播放器与渲染上下文，回前台统一重建，
+      // 不再用旧实例的 playing/buffering 决定是否需要恢复。
+      unawaited(_restoreAfterBackground());
     } else if (_pendingError) {
       _queueRecovery('foreground_pending_error');
     }
+  }
+
+  Future<void> _restoreAfterBackground() async {
+    final position = _resumePosition;
+    final playWhenReady = _resumeIntent;
+    final activated = await AppDevice.activateAudio();
+    if (_closed || !_foreground) return;
+    if (!activated) {
+      // 音频会话只影响出声，失败不阻断画面恢复，也不反复重试激活。
+      DiaryService.add('[Play] iOS 音频会话激活失败，继续恢复画面');
+    }
+    // 避开 paused → inactive → resumed 的连续抖动，免得在转场中销毁纹理。
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    if (_closed || !_foreground) return;
+    // 等待期间用户可能已经切集或点了播放，那条路径会自行重建实例。
+    if (!_playerSuspect) return;
+    DiaryService.add(
+      '[Play] iOS 回前台重建播放器 位置=${position.toStringAsFixed(1)} '
+      '续播=$playWhenReady',
+    );
+    _pendingError = false;
+    _errorTimer?.cancel();
+    _recovery.reset();
+    await _rebuildAndResume(position, playWhenReady);
   }
 
   Future<void> _replacePlayer() async {
@@ -1107,65 +1142,26 @@ class PlaybackSession extends ChangeNotifier {
       _aspectKnown = false;
       _playerSuspect = false;
       danmaku.setPlan(null);
+      await previous.stop().catchError((Object _) {});
       _player = respawn();
       _bind();
-      await previous.stop().catchError((Object _) {});
-      unawaited(previous.dispose().catchError((Object _) {}));
-      if (standby != null) {
-        unawaited(standby.dispose().catchError((Object _) {}));
-      }
+      // 先把界面切到新实例，再等旧实例彻底释放，避免读到已销毁的播放器。
+      await _retire(previous);
+      if (standby != null) await _retire(standby);
       unawaited(_player.setVolume(volume));
     });
     _notify();
   }
 
-  Future<void> _resumeExisting() async {
-    final ticket = _generation;
-    final index = _index;
-    final before = player.state.position;
-    _playIntent = true;
-    _resumeIntent = true;
-    _syncDanmaku();
-    _notify();
-    try {
-      await player.play();
-    } catch (_) {
-      if (_current(ticket)) _scheduleResume(expected: ticket);
+  Future<void> _rebuildAndResume(double position, bool playWhenReady) async {
+    if (_rebuilding) {
+      // 正在重建时又来了恢复请求：记下最新位置与意图，完成后补跑一次，
+      // 不能像以前那样直接丢弃。
+      _rebuildQueued = true;
+      _queuedPosition = position;
+      _queuedPlay = playWhenReady;
       return;
     }
-    await Future<void>.delayed(const Duration(milliseconds: 2500));
-    if (_closed || !_foreground || !_playIntent) return;
-    // 期间可能已经切集、换清晰度或开始了新的打开流程，此时旧实例的
-    // 静止状态不代表失效，不能据此再次重建。
-    if (!_current(ticket) || index != _index || _loading) return;
-    final state = player.state;
-    // buffering 属于正常的重新缓冲，只要位置在推进或仍在缓冲就认为实例可用。
-    if (state.playing && (state.buffering || state.position > before)) return;
-    DiaryService.add('[Play] 切回前台后播放未继续，重建播放器');
-    _scheduleResume(expected: ticket);
-  }
-
-  void _scheduleResume({int? expected}) {
-    if (_closed || !_foreground) return;
-    if (!_pendingError && !_resumeIntent) return;
-    final ticket = expected ?? _generation;
-    final position = currentPosition;
-    final playWhenReady = _resumeIntent;
-    _resumeTimer?.cancel();
-    _resumeTimer = Timer(const Duration(milliseconds: 500), () {
-      if (_closed || !_foreground || !_current(ticket)) return;
-      _pendingError = false;
-      _errorTimer?.cancel();
-      _recovery.reset();
-      DiaryService.add(
-        '[Play] 回到前台重建播放器 位置=${position.toStringAsFixed(1)}',
-      );
-      unawaited(_rebuildAndResume(position, playWhenReady));
-    });
-  }
-
-  Future<void> _rebuildAndResume(double position, bool playWhenReady) async {
-    if (_rebuilding) return;
     final respawn = _respawn;
     if (respawn == null) {
       await play(_index, position: position, playWhenReady: playWhenReady);
@@ -1190,16 +1186,14 @@ class PlaybackSession extends ChangeNotifier {
         _openedIndex = -1;
         _aspectKnown = false;
         danmaku.setPlan(null);
-        _player = respawn();
-        _bind();
-        // 先停旧实例再释放取流会话，避免旧 mpv 仍在拉流时地址被销毁。
         await previous.stop().catchError((Object _) {});
         await _release(plan?.session ?? '');
-        unawaited(previous.dispose().catchError((Object _) {}));
+        _player = respawn();
+        _bind();
+        // 旧实例释放完成前不打开新媒体，避免音频与渲染资源交叠。
+        await _retire(previous);
         final retired = standby;
-        if (retired != null) {
-          unawaited(retired.dispose().catchError((Object _) {}));
-        }
+        if (retired != null) await _retire(retired);
         await _player.setVolume(volume);
         await _setRate(_speed);
       });
@@ -1211,6 +1205,14 @@ class PlaybackSession extends ChangeNotifier {
       await play(_index, position: position, playWhenReady: playWhenReady);
     } finally {
       _rebuilding = false;
+      if (_rebuildQueued) {
+        _rebuildQueued = false;
+        final next = _queuedPosition;
+        final playQueued = _queuedPlay;
+        if (!_closed && _foreground) {
+          unawaited(_rebuildAndResume(next, playQueued));
+        }
+      }
     }
   }
 
@@ -1258,7 +1260,6 @@ class PlaybackSession extends ChangeNotifier {
     _saveTimer?.cancel();
     _healthTimer?.cancel();
     _errorTimer?.cancel();
-    _resumeTimer?.cancel();
     _boostTimer?.cancel();
     _stallTimer?.cancel();
     _volumeTimer?.cancel();
@@ -1273,12 +1274,13 @@ class PlaybackSession extends ChangeNotifier {
     final standbyPlan = _standbyPlan;
     if (standbyPlan != null) unawaited(_release(standbyPlan.session));
     final standby = _standby;
+    final current = _player;
     unawaited(_loader.close().catchError((Object _) {}));
     unawaited(
       _operations.catchError((Object _) {}).then((_) async {
         await _rates.catchError((Object _) {});
-        await player.dispose();
-        await standby?.dispose();
+        await _retire(current);
+        if (standby != null) await _retire(standby);
       }),
     );
     super.dispose();

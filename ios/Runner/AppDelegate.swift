@@ -46,12 +46,19 @@ import MediaPlayer
         let arguments = call.arguments as? [String: Any]
         switch call.method {
         case "activateAudio":
-          // iOS 从后台/锁屏恢复时音频会话可能已被系统停用，
-          // 重新激活后新的播放器实例才能正常建立音频输出。
-          let session = AVAudioSession.sharedInstance()
-          try? session.setCategory(.playback, mode: .moviePlayback, options: [])
-          try? session.setActive(true)
-          result(true)
+          // iOS 从后台/锁屏恢复时音频会话可能已被系统停用。
+          // 失败必须让 Dart 侧知道，不能一律回报成功。
+          do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playback, mode: .moviePlayback, options: [])
+            try session.setActive(true)
+            result(true)
+          } catch {
+            result(FlutterError(
+              code: "audio_session_activation_failed",
+              message: error.localizedDescription,
+              details: nil))
+          }
           return
         case "getBrightness":
           result(self.screen.map { Double($0.brightness) })

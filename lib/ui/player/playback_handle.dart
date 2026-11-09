@@ -33,6 +33,7 @@ class PlaybackHandle {
       player: main,
       standby: standby,
       respawn: _respawnPlayer,
+      onRetired: _retireVideo,
       index: index,
       position: position,
       autoplay: autoplay,
@@ -48,6 +49,10 @@ class PlaybackHandle {
     _videos[player] = VideoController(player);
     return player;
   }
+
+  /// media_kit_video 2.0.1 的 VideoController 没有公开 dispose，
+  /// 播放器释放后只需移除映射，避免每次重建都残留一份引用。
+  void _retireVideo(Player player) => _videos.remove(player);
 
   VideoController video(Player player) => _videos[player]!;
 

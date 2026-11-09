@@ -63,7 +63,6 @@ func (engine *nativeEngine) nativeOpenPlayback(ctx context.Context, choice nativ
 		return nativePlan{}, errors.New("该集没有其他可用的播放线路")
 	}
 	media := choice.media[choice.index]
-	var err error
 	if !isProviderHTTPMediaURL(media.URL) {
 		return nativePlan{}, errors.New("站源未返回有效的播放地址")
 	}
@@ -86,13 +85,22 @@ func (engine *nativeEngine) nativeOpenPlayback(ctx context.Context, choice nativ
 	choice.streamSession = ""
 	{
 		engine.mu.Lock()
-		if engine.stream == nil {
-			engine.stream, err = newNativeStreamServer(engine.downloader)
+		// 回到前台后监听套接字可能已被系统回收，旧地址只会拒绝连接，
+		// 所以打开新媒体前先确认取流服务存活，失效则重建。
+		recreated := false
+		if engine.stream == nil || !engine.stream.nativeAlive() {
+			stream, createErr := newNativeStreamServer(engine.downloader)
+			if createErr != nil {
+				engine.mu.Unlock()
+				return nativePlan{}, createErr
+			}
+			engine.stream = stream
+			recreated = true
 		}
 		stream := engine.stream
 		engine.mu.Unlock()
-		if err != nil {
-			return nativePlan{}, err
+		if recreated {
+			stream.nativeLog(nativeStreamDiagnostic{}, "listener_recreated", "", "", 0, "")
 		}
 		plan.URL, choice.streamSession = stream.nativeOpen(media)
 	}
