@@ -2,6 +2,14 @@ name: Build app packages
 
 on:
   workflow_dispatch:
+    inputs:
+      platforms:
+        description: 构建范围
+        type: choice
+        options:
+          - all
+          - ios
+        default: all
 
 permissions:
   contents: read
@@ -86,6 +94,7 @@ jobs:
 
   android:
     needs: prepare
+    if: inputs.platforms == 'all'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy: &editions
@@ -169,6 +178,7 @@ jobs:
 
   windows:
     needs: prepare
+    if: inputs.platforms == 'all'
     runs-on: windows-latest
     timeout-minutes: 45
     strategy: *editions
@@ -235,6 +245,7 @@ jobs:
 
   macos:
     needs: prepare
+    if: inputs.platforms == 'all'
     runs-on: macos-latest
     timeout-minutes: 60
     strategy: *editions
@@ -269,6 +280,7 @@ jobs:
 
   release:
     needs: [checks, prepare, android, windows, ios, macos]
+    if: always() && needs.ios.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -284,6 +296,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.prepare.outputs.version }}
           TAG: ${{ needs.prepare.outputs.tag }}
+          PLATFORMS: ${{ inputs.platforms }}
           ANDROID_CERT_SHA256: ${{ vars.ANDROID_CERT_SHA256 }}
           ZHENGUOJIAN_CERT_SHA256: ${{ vars.ZHENGUOJIAN_CERT_SHA256 }}
         run: |
@@ -314,6 +327,16 @@ jobs:
           - 红果鉴：${ANDROID_CERT_SHA256}
           - ${name}：${ZHENGUOJIAN_CERT_SHA256}
           EOF
+          if [ "${PLATFORMS}" != "all" ]; then
+            cat > notes.md <<EOF
+          版本 ${VERSION} 未签名 iOS 安装包：
+
+          - hongguojian-ios-unsigned.ipa：红果鉴，仅红果站源
+          - zhenguojian-ios-unsigned.ipa：${name}，全部站源
+
+          两个版本功能相同，区别只在站源范围，按需选择。
+          EOF
+          fi
           changes="$(awk -v heading="## ${VERSION}" '
             $0 == heading { found = 1; next }
             found && /^## / { exit }
