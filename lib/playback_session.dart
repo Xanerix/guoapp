@@ -172,6 +172,7 @@ class PlaybackSession extends ChangeNotifier {
   bool _pendingError = false;
   bool _resumeIntent = true;
   int _iosRebuilds = 0;
+  bool _playerSuspect = false;
   bool _boosting = false;
   bool _boostLocked = false;
   bool _engaged;
@@ -518,6 +519,7 @@ class PlaybackSession extends ChangeNotifier {
     endBoost();
     _resumeTimer?.cancel();
     _staleAudio = false;
+    if (_playerSuspect) await _replacePlayer();
     if (index != _index) _online = false;
     if (recovery == null &&
         position == 0 &&
@@ -768,7 +770,13 @@ class PlaybackSession extends ChangeNotifier {
     }
     _playIntent = true;
     if (!wasEngaged) unawaited(_limitCache(player, false));
-    if (ready) unawaited(player.play());
+    if (ready) {
+      if (_playerSuspect) {
+        unawaited(_resumeExisting());
+      } else {
+        unawaited(player.play());
+      }
+    }
   }
 
   Future<void> retry() =>
@@ -796,6 +804,11 @@ class PlaybackSession extends ChangeNotifier {
     endBoost();
     _playIntent = !player.state.playing;
     _health.reset();
+    if (_playIntent && _playerSuspect) {
+      // 离开过前台的实例可能已失效，先尝试续播并在失败时重建。
+      unawaited(_resumeExisting());
+      return;
+    }
     if (_playIntent && player.state.completed) {
       unawaited(play(_index));
       return;
@@ -1022,6 +1035,12 @@ class PlaybackSession extends ChangeNotifier {
     if (!visible) {
       _resumeTimer?.cancel();
       _resumeIntent = _playIntent;
+      if (Platform.isIOS) {
+        // iOS 会随挂起回收预开的备用播放器与预加载会话，留着会导致切集
+        // 命中已死实例；主播放器若被回收，下次 open 前会另行重建。
+        _playerSuspect = true;
+        _dropStandby();
+      }
       endBoost();
       _playIntent = false;
       unawaited(player.pause());
@@ -1047,9 +1066,38 @@ class PlaybackSession extends ChangeNotifier {
     }
   }
 
+  Future<void> _replacePlayer() async {
+    // 离开过前台后实例可能已被 iOS 回收：当前已缓冲的流也许还能续播，
+    // 但重新 open 新媒体（下一集、换清晰度、换线路）会失败或静默卡住，
+    // 所以真正需要打开新媒体前先换一个干净实例。
+    final respawn = _respawn;
+    if (respawn == null) return;
+    final previous = _player;
+    final volume = previous.state.volume;
+    final standby = _standby;
+    _standby = null;
+    _dropStandby();
+    _preloader.clear();
+    _generation++;
+    _seekSequence++;
+    _acceptErrors = false;
+    _openedIndex = -1;
+    _aspectKnown = false;
+    _playerSuspect = false;
+    danmaku.setPlan(null);
+    _player = respawn();
+    _bind();
+    unawaited(previous.stop().catchError((Object _) {}));
+    unawaited(previous.dispose().catchError((Object _) {}));
+    if (standby != null) unawaited(standby.dispose().catchError((Object _) {}));
+    unawaited(_player.setVolume(volume));
+    _notify();
+  }
+
   Future<void> _resumeExisting() async {
     final before = player.state.position;
     _playIntent = true;
+    _resumeIntent = true;
     _syncDanmaku();
     _notify();
     try {
@@ -1096,6 +1144,7 @@ class PlaybackSession extends ChangeNotifier {
     final plan = _plan;
     final standby = _standby;
     _standby = null;
+    _playerSuspect = false;
     _dropStandby();
     _preloader.clear();
     _generation++;
