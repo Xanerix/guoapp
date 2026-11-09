@@ -36,42 +36,51 @@ def _mpv_archive_spec(makefile):
     return version.group(1), checksum.group(1), address
 
 
-def _download_archive(url, checksum, destination):
+def _download(url, timeout=300):
     for attempt in range(1, _MPV_ATTEMPTS + 1):
-        temporary = destination.with_suffix('.tmp')
         try:
             request = urllib.request.Request(url, headers={'User-Agent': 'guoapp-build'})
-            with urllib.request.urlopen(request, timeout=60) as response:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
                 body = response.read()
-            digest = hashlib.sha256(body).hexdigest()
-            if digest != checksum:
-                raise ValueError(f'校验不匹配（收到 {len(body)} 字节）')
-            temporary.write_bytes(body)
-            temporary.replace(destination)
-            return
+            if not body:
+                raise ValueError('响应为空')
+            return body
         except Exception as error:  # noqa: BLE001 - 下载失败一律重试
-            print(f'libmpv 下载第 {attempt} 次失败：{error}', flush=True)
-            temporary.unlink(missing_ok=True)
+            print(f'下载第 {attempt} 次失败：{error}', flush=True)
             if attempt == _MPV_ATTEMPTS:
-                raise SystemExit('libmpv 归档下载失败，请检查网络后重试。') from error
+                raise SystemExit(f'下载失败，请检查网络后重试：{url}') from error
             time.sleep(attempt * 3)
+    raise AssertionError('不可达')
+
+
+def _download_archive(url, checksum, destination):
+    body = _download(url)
+    digest = hashlib.sha256(body).hexdigest()
+    if digest != checksum:
+        raise SystemExit(f'归档校验失败（收到 {len(body)} 字节）：{url}')
+    temporary = destination.with_suffix('.tmp')
+    temporary.write_bytes(body)
+    temporary.replace(destination)
+
+
+def _hosted_package(name):
+    hosted = Path(os.environ.get('PUB_CACHE') or Path.home() / '.pub-cache') / 'hosted'
+    directories = list(hosted.glob(f'*/{name}-*'))
+    if not directories:
+        raise SystemExit(f'未找到 {name} 包，请先执行 flutter pub get。')
+    lock = (root / 'pubspec.lock').read_text(encoding='utf-8')
+    pinned = re.search(rf'^  {name}:\n(?:    .*\n)*?    version:\s*"?([^"\n]+)"?',
+                       lock, re.MULTILINE)
+    if pinned:
+        matched = [path for path in directories if path.name.endswith('-' + pinned.group(1))]
+        directories = matched or directories
+    return directories[0]
 
 
 def prepare_libmpv():
     if not (root / 'pubspec.lock').is_file():
         raise SystemExit('缺少 pubspec.lock。')
-    hosted = Path(os.environ.get('PUB_CACHE') or Path.home() / '.pub-cache') / 'hosted'
-    directories = list(hosted.glob('*/media_kit_libs_ios_video-*'))
-    if not directories:
-        raise SystemExit('未找到 media_kit_libs_ios_video 包，请先执行 flutter pub get。')
-    lock = (root / 'pubspec.lock').read_text(encoding='utf-8')
-    pinned = re.search(r'^  media_kit_libs_ios_video:\n(?:    .*\n)*?    version:\s*"?([^"\n]+)"?',
-                       lock, re.MULTILINE)
-    if pinned:
-        matched = [path for path in directories
-                   if path.name.endswith('-' + pinned.group(1))]
-        directories = matched or directories
-    package = directories[0]
+    package = _hosted_package('media_kit_libs_ios_video')
     makefile = (package / 'ios' / 'Makefile').read_text(encoding='utf-8')
     version, checksum, url = _mpv_archive_spec(makefile)
     archive = package / 'ios' / '.cache' / 'xcframeworks' / (
@@ -81,6 +90,39 @@ def prepare_libmpv():
     archive.parent.mkdir(parents=True, exist_ok=True)
     print(f'预下载 libmpv {version} 归档', flush=True)
     _download_archive(url, checksum, archive)
+
+
+def prepare_ffmpegkit():
+    if platform.system() != 'Darwin':
+        return
+    package = _hosted_package('ffmpeg_kit_flutter_new_min_gpl')
+    folder = package / 'ios'
+    if (folder / 'Frameworks' / 'ffmpegkit.xcframework').is_dir():
+        return
+    script = (package / 'scripts' / 'setup_ios.sh').read_text(encoding='utf-8')
+    version = re.search(r'^VERSION="?([^"\n]+)"?', script, re.MULTILINE)
+    variant = re.search(r'^VARIANT="?([^"\n]+)"?', script, re.MULTILINE)
+    address = re.search(r'^DEFAULT_URL="?([^"\n]+)"?', script, re.MULTILINE)
+    if not version or not variant or not address:
+        raise SystemExit('无法解析 ffmpeg_kit 的下载配置。')
+    release = address.group(1).replace('${VERSION}', version.group(1)).replace(
+        '${VARIANT}', variant.group(1))
+    archive = package / '.cache' / (
+        f'ffmpeg-kit-ios-{variant.group(1)}-{version.group(1)}.zip')
+    if not (archive.is_file() and zipfile.is_zipfile(archive)):
+        archive.parent.mkdir(parents=True, exist_ok=True)
+        print(f'预下载 FFmpegKit {variant.group(1)} {version.group(1)} 归档', flush=True)
+        archive.write_bytes(_download(release, timeout=600))
+        if not zipfile.is_zipfile(archive):
+            archive.unlink(missing_ok=True)
+            raise SystemExit('FFmpegKit 归档不是有效的 zip。')
+    with zipfile.ZipFile(archive) as bundle:
+        names = bundle.namelist()
+    if not any(name.startswith('ffmpegkit.framework/') for name in names):
+        raise SystemExit('FFmpegKit 归档缺少 ffmpegkit.framework。')
+    print('生成 FFmpegKit xcframework', flush=True)
+    run(['bash', '../scripts/setup_ios.sh'], cwd=folder,
+        env={**os.environ, 'FFMPEG_KIT_IOS_URL': archive.resolve().as_uri()})
 
 
 def validate_unsigned_application(application):
@@ -179,6 +221,7 @@ def main():
         raise SystemExit('请安装 Flutter 和 CocoaPods。')
     run([flutter, 'pub', 'get', '--enforce-lockfile'])
     prepare_libmpv()
+    prepare_ffmpegkit()
     run(['pod', 'install'], cwd=root / 'ios')
     output = root / 'dist' / 'ios'
     output.mkdir(parents=True, exist_ok=True)
