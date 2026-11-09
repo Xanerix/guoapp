@@ -107,6 +107,24 @@ Future<void> _settle(FakePlayer player) async {
 }
 
 void main() {
+  test('benign player diagnostics do not count as failures', () {
+    expect(
+      isBenignPlayerError('Failed to allocate AVHWDeviceContext.'),
+      isTrue,
+    );
+    expect(
+      isBenignPlayerError(
+        'Could not open/initialize audio device -> no sound.',
+      ),
+      isTrue,
+    );
+    expect(
+      isBenignPlayerError('Failed to open https://example.test/a.m3u8'),
+      isFalse,
+    );
+    expect(isBenignPlayerError(''), isFalse);
+  });
+
   test('blocked words saved elsewhere reach the playing session', () async {
     final store = await openStore();
     final (session, _) = await _open(_PlaybackRepository(), store);

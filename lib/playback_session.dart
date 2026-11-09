@@ -34,6 +34,20 @@ String _diagnostic(Object error) {
   return text.length > 300 ? text.substring(0, 300) : text;
 }
 
+/// mpv 的降级提示：硬解初始化失败会回退软解，音频设备不可用只是静音，
+/// 两者都不影响继续播放，不应触发恢复流程。
+const _benignPlayerErrors = [
+  'Failed to allocate AVHWDeviceContext',
+  'Could not open/initialize audio device',
+];
+
+bool isBenignPlayerError(String error) {
+  for (final marker in _benignPlayerErrors) {
+    if (error.contains(marker)) return true;
+  }
+  return false;
+}
+
 class PlaybackSession extends ChangeNotifier {
   PlaybackSession({
     required this.repository,
@@ -135,6 +149,7 @@ class PlaybackSession extends ChangeNotifier {
   Timer? _saveTimer;
   Timer? _healthTimer;
   Timer? _errorTimer;
+  Timer? _resumeTimer;
   Timer? _boostTimer;
   Timer? _stallTimer;
   Timer? _volumeTimer;
@@ -153,6 +168,7 @@ class PlaybackSession extends ChangeNotifier {
   bool _foreground = true;
   bool _playIntent = true;
   bool _pendingError = false;
+  bool _resumeIntent = true;
   bool _boosting = false;
   bool _boostLocked = false;
   bool _engaged;
@@ -342,6 +358,7 @@ class PlaybackSession extends ChangeNotifier {
   void _playerError(String error) {
     if (_closed || !_acceptErrors || error.trim().isEmpty) return;
     DiaryService.add('[Play] 播放器报错：${_diagnostic(error)}');
+    if (isBenignPlayerError(error)) return;
     _queueRecovery('player_error');
   }
 
@@ -488,6 +505,7 @@ class PlaybackSession extends ChangeNotifier {
   }) async {
     if (!_usable || index < 0 || index >= detail.episodes.length) return;
     endBoost();
+    _resumeTimer?.cancel();
     _staleAudio = false;
     if (index != _index) _online = false;
     if (recovery == null &&
@@ -991,13 +1009,37 @@ class PlaybackSession extends ChangeNotifier {
     _health.reset();
     _sync();
     if (!visible) {
+      _resumeTimer?.cancel();
+      _resumeIntent = _playIntent;
       endBoost();
       _playIntent = false;
       unawaited(player.pause());
       unawaited(saveProgress());
+      return;
+    }
+    if (Platform.isIOS) {
+      // iOS 锁屏会挂起播放器，回前台后原来的暂停/错误状态无法可靠恢复；
+      // 统一重新取流打开，避免走有限的自动恢复次数后直接报失败。
+      _scheduleResume();
     } else if (_pendingError) {
       _queueRecovery('foreground_pending_error');
     }
+  }
+
+  void _scheduleResume() {
+    if (_closed || !_foreground) return;
+    if (!_pendingError && !_resumeIntent) return;
+    final position = currentPosition;
+    final playWhenReady = _resumeIntent;
+    _resumeTimer?.cancel();
+    _resumeTimer = Timer(const Duration(milliseconds: 500), () {
+      if (_closed || !_foreground) return;
+      _pendingError = false;
+      _errorTimer?.cancel();
+      _recovery.reset();
+      DiaryService.add('[Play] 回到前台重新打开 位置=${position.toStringAsFixed(1)}');
+      unawaited(play(_index, position: position, playWhenReady: playWhenReady));
+    });
   }
 
   Future<void> saveProgress({bool quiet = false}) async {
@@ -1044,6 +1086,7 @@ class PlaybackSession extends ChangeNotifier {
     _saveTimer?.cancel();
     _healthTimer?.cancel();
     _errorTimer?.cancel();
+    _resumeTimer?.cancel();
     _boostTimer?.cancel();
     _stallTimer?.cancel();
     _volumeTimer?.cancel();

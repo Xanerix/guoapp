@@ -79,6 +79,8 @@ func validNativeCategory(source, category string) bool {
 		return validHeitaoCategory(category)
 	case sourceBeabox:
 		return validBeaboxCategory(category)
+	case sourceXvideos:
+		return validXvideosCategory(category)
 	}
 	return false
 }
@@ -169,6 +171,8 @@ func (engine *nativeEngine) nativeCategories(ctx context.Context, source string,
 		if err == nil {
 			all = append(all, categories...)
 		}
+	case sourceXvideos:
+		all = append(all, d.fetchXvideosCategories(ctx)...)
 	default:
 		return nil, errors.New("请选择有效站源")
 	}
