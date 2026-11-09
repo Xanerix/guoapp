@@ -55,6 +55,7 @@ class PlaybackSession extends ChangeNotifier {
     required this.detail,
     required this._player,
     this._standby,
+    this._respawn,
     required int index,
     double position = 0,
     bool autoplay = true,
@@ -138,6 +139,7 @@ class PlaybackSession extends ChangeNotifier {
   final LocalStore store;
   final DramaDetail detail;
   Player _player;
+  final Player Function()? _respawn;
   Player? _standby;
   late final DanmakuController danmaku;
   late final PlaybackLoader _loader;
@@ -1018,8 +1020,8 @@ class PlaybackSession extends ChangeNotifier {
       return;
     }
     if (Platform.isIOS) {
-      // iOS 锁屏会挂起播放器，回前台后原来的暂停/错误状态无法可靠恢复；
-      // 统一重新取流打开，避免走有限的自动恢复次数后直接报失败。
+      // iOS 锁屏会回收 mpv 的渲染上下文与音频会话，旧 Player 实例回前台后
+      // 无法可靠恢复；这里重建播放器后按原位置续播。
       _scheduleResume();
     } else if (_pendingError) {
       _queueRecovery('foreground_pending_error');
@@ -1037,9 +1039,45 @@ class PlaybackSession extends ChangeNotifier {
       _pendingError = false;
       _errorTimer?.cancel();
       _recovery.reset();
-      DiaryService.add('[Play] 回到前台重新打开 位置=${position.toStringAsFixed(1)}');
-      unawaited(play(_index, position: position, playWhenReady: playWhenReady));
+      DiaryService.add(
+        '[Play] 回到前台重建播放器 位置=${position.toStringAsFixed(1)}',
+      );
+      unawaited(_rebuildAndResume(position, playWhenReady));
     });
+  }
+
+  Future<void> _rebuildAndResume(double position, bool playWhenReady) async {
+    final respawn = _respawn;
+    if (respawn == null) {
+      await play(_index, position: position, playWhenReady: playWhenReady);
+      return;
+    }
+    final previous = _player;
+    final volume = previous.state.volume;
+    final plan = _plan;
+    final standby = _standby;
+    _standby = null;
+    _dropStandby();
+    _preloader.clear();
+    _generation++;
+    _seekSequence++;
+    _acceptErrors = false;
+    _plan = null;
+    _openedIndex = -1;
+    _aspectKnown = false;
+    danmaku.setPlan(null);
+    _player = respawn();
+    _bind();
+    unawaited(_release(plan?.session ?? ''));
+    unawaited(previous.stop().catchError((Object _) {}));
+    unawaited(previous.dispose().catchError((Object _) {}));
+    final retired = standby;
+    if (retired != null) unawaited(retired.dispose().catchError((Object _) {}));
+    await _player.setVolume(volume);
+    await _setRate(_speed);
+    _notify();
+    if (_closed || !_foreground) return;
+    await play(_index, position: position, playWhenReady: playWhenReady);
   }
 
   Future<void> saveProgress({bool quiet = false}) async {

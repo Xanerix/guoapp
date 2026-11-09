@@ -124,6 +124,9 @@ class _TelevisionPlayerPageState extends State<TelevisionPlayerPage>
         }
         setState(() {});
       });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() {});
+      });
     }
     final failed = _session.error != null;
     if (failed == _failed) return;

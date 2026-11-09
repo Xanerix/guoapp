@@ -120,6 +120,9 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
         _refresh();
       }),
     );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   @override

@@ -71,10 +71,12 @@ class _PlaybackPageState extends State<PlaybackPage> {
   }
 
   void _changed() {
+    final previous = _bound;
     _bind();
     _sync();
     final wide = _measure();
-    if (wide != _wideVideo) setState(() => _wideVideo = wide);
+    final swapped = !identical(previous, _bound);
+    if (wide != _wideVideo || swapped) setState(() => _wideVideo = wide);
   }
 
   void _bind() {

@@ -23,9 +23,8 @@ class PlaybackHandle {
     bool autoplay = true,
     bool preopen = true,
   }) {
-    final main = _player();
+    final main = _respawnPlayer();
     final standby = preopen ? _player() : null;
-    _videos[main] = VideoController(main);
     if (standby != null) _videos[standby] = VideoController(standby);
     session = PlaybackSession(
       repository: repository,
@@ -33,6 +32,7 @@ class PlaybackHandle {
       detail: detail,
       player: main,
       standby: standby,
+      respawn: _respawnPlayer,
       index: index,
       position: position,
       autoplay: autoplay,
@@ -41,6 +41,13 @@ class PlaybackHandle {
 
   late final PlaybackSession session;
   final _videos = <Player, VideoController>{};
+
+  /// iOS 回前台需要连同渲染上下文一起重建播放器。
+  Player _respawnPlayer() {
+    final player = _player();
+    _videos[player] = VideoController(player);
+    return player;
+  }
 
   VideoController video(Player player) => _videos[player]!;
 
