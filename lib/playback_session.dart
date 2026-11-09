@@ -174,6 +174,7 @@ class PlaybackSession extends ChangeNotifier {
   bool _resumeIntent = true;
   int _iosRebuilds = 0;
   bool _playerSuspect = false;
+  bool _rebuilding = false;
   bool _forceSoftwareDecode = false;
   bool _boosting = false;
   bool _boostLocked = false;
@@ -626,6 +627,11 @@ class PlaybackSession extends ChangeNotifier {
         );
         if (!_current(ticket)) return;
         _openedIndex = index;
+        if (Platform.isIOS) {
+          // 本次打开成功，说明实例与解码方式可用，重置恢复计数。
+          _iosRebuilds = 0;
+          _forceSoftwareDecode = false;
+        }
         _health.reset();
         await _setRate(_rate);
         if (!_current(ticket)) return;
@@ -1063,7 +1069,7 @@ class PlaybackSession extends ChangeNotifier {
       unawaited(AppDevice.activateAudio());
       if (_pendingError) {
         // 后台期间已经收到播放器错误，直接重建。
-        _scheduleResume();
+        _scheduleResume(expected: _generation);
       } else if (_resumeIntent) {
         // 先尝试在原实例上继续播放，只有确认播不动时才重建，
         // 避免短暂切出再切回也重新加载、丢失暂停画面。
@@ -1085,29 +1091,37 @@ class PlaybackSession extends ChangeNotifier {
     final respawn = _respawn;
     if (respawn == null) return;
     DiaryService.add('[Play] 打开新媒体前重建播放器');
-    final previous = _player;
-    final volume = previous.state.volume;
-    final standby = _standby;
-    _standby = null;
-    _dropStandby();
-    _preloader.clear();
     _generation++;
-    _seekSequence++;
-    _acceptErrors = false;
-    _openedIndex = -1;
-    _aspectKnown = false;
-    _playerSuspect = false;
-    danmaku.setPlan(null);
-    _player = respawn();
-    _bind();
-    unawaited(previous.stop().catchError((Object _) {}));
-    unawaited(previous.dispose().catchError((Object _) {}));
-    if (standby != null) unawaited(standby.dispose().catchError((Object _) {}));
-    unawaited(_player.setVolume(volume));
+    // 与 play() 中的 open 共用同一条串行队列：换实例不会在别的打开动作
+    // 进行途中发生，避免旧会话地址被换到新实例上打开。
+    await _serialize(() async {
+      final previous = _player;
+      final volume = previous.state.volume;
+      final standby = _standby;
+      _standby = null;
+      _dropStandby();
+      _preloader.clear();
+      _seekSequence++;
+      _acceptErrors = false;
+      _openedIndex = -1;
+      _aspectKnown = false;
+      _playerSuspect = false;
+      danmaku.setPlan(null);
+      _player = respawn();
+      _bind();
+      await previous.stop().catchError((Object _) {});
+      unawaited(previous.dispose().catchError((Object _) {}));
+      if (standby != null) {
+        unawaited(standby.dispose().catchError((Object _) {}));
+      }
+      unawaited(_player.setVolume(volume));
+    });
     _notify();
   }
 
   Future<void> _resumeExisting() async {
+    final ticket = _generation;
+    final index = _index;
     final before = player.state.position;
     _playIntent = true;
     _resumeIntent = true;
@@ -1116,26 +1130,30 @@ class PlaybackSession extends ChangeNotifier {
     try {
       await player.play();
     } catch (_) {
-      _scheduleResume();
+      if (_current(ticket)) _scheduleResume(expected: ticket);
       return;
     }
     await Future<void>.delayed(const Duration(milliseconds: 2500));
     if (_closed || !_foreground || !_playIntent) return;
+    // 期间可能已经切集、换清晰度或开始了新的打开流程，此时旧实例的
+    // 静止状态不代表失效，不能据此再次重建。
+    if (!_current(ticket) || index != _index || _loading) return;
     final state = player.state;
     // buffering 属于正常的重新缓冲，只要位置在推进或仍在缓冲就认为实例可用。
     if (state.playing && (state.buffering || state.position > before)) return;
     DiaryService.add('[Play] 切回前台后播放未继续，重建播放器');
-    _scheduleResume();
+    _scheduleResume(expected: ticket);
   }
 
-  void _scheduleResume() {
+  void _scheduleResume({int? expected}) {
     if (_closed || !_foreground) return;
     if (!_pendingError && !_resumeIntent) return;
+    final ticket = expected ?? _generation;
     final position = currentPosition;
     final playWhenReady = _resumeIntent;
     _resumeTimer?.cancel();
     _resumeTimer = Timer(const Duration(milliseconds: 500), () {
-      if (_closed || !_foreground) return;
+      if (_closed || !_foreground || !_current(ticket)) return;
       _pendingError = false;
       _errorTimer?.cancel();
       _recovery.reset();
@@ -1147,38 +1165,53 @@ class PlaybackSession extends ChangeNotifier {
   }
 
   Future<void> _rebuildAndResume(double position, bool playWhenReady) async {
+    if (_rebuilding) return;
     final respawn = _respawn;
     if (respawn == null) {
       await play(_index, position: position, playWhenReady: playWhenReady);
       return;
     }
-    final previous = _player;
-    final volume = previous.state.volume;
-    final plan = _plan;
-    final standby = _standby;
-    _standby = null;
-    _playerSuspect = false;
-    _dropStandby();
-    _preloader.clear();
-    _generation++;
-    _seekSequence++;
-    _acceptErrors = false;
-    _plan = null;
-    _openedIndex = -1;
-    _aspectKnown = false;
-    danmaku.setPlan(null);
-    _player = respawn();
-    _bind();
-    unawaited(_release(plan?.session ?? ''));
-    unawaited(previous.stop().catchError((Object _) {}));
-    unawaited(previous.dispose().catchError((Object _) {}));
-    final retired = standby;
-    if (retired != null) unawaited(retired.dispose().catchError((Object _) {}));
-    await _player.setVolume(volume);
-    await _setRate(_speed);
-    _notify();
-    if (_closed || !_foreground) return;
-    await play(_index, position: position, playWhenReady: playWhenReady);
+    _rebuilding = true;
+    // 先作废所有进行中的 play/open，排队中的旧流程拿到队列后会自行放弃。
+    final ticket = ++_generation;
+    try {
+      await _serialize(() async {
+        final previous = _player;
+        final volume = previous.state.volume;
+        final plan = _plan;
+        final standby = _standby;
+        _standby = null;
+        _playerSuspect = false;
+        _dropStandby();
+        _preloader.clear();
+        _seekSequence++;
+        _acceptErrors = false;
+        _plan = null;
+        _openedIndex = -1;
+        _aspectKnown = false;
+        danmaku.setPlan(null);
+        _player = respawn();
+        _bind();
+        // 先停旧实例再释放取流会话，避免旧 mpv 仍在拉流时地址被销毁。
+        await previous.stop().catchError((Object _) {});
+        await _release(plan?.session ?? '');
+        unawaited(previous.dispose().catchError((Object _) {}));
+        final retired = standby;
+        if (retired != null) {
+          unawaited(retired.dispose().catchError((Object _) {}));
+        }
+        await _player.setVolume(volume);
+        await _setRate(_speed);
+      });
+      _notify();
+      if (_closed || !_foreground || !_current(ticket)) {
+        if (!_closed) DiaryService.add('[Play] 跳过过期重建');
+        return;
+      }
+      await play(_index, position: position, playWhenReady: playWhenReady);
+    } finally {
+      _rebuilding = false;
+    }
   }
 
   Future<void> saveProgress({bool quiet = false}) async {
