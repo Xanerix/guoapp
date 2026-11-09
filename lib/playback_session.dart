@@ -49,6 +49,9 @@ bool isBenignPlayerError(String error) {
   return false;
 }
 
+/// 取流服务探活结果：明确存活、确认失效、或状态未知（通信异常）。
+enum _StreamProbe { alive, dead, unknown }
+
 class PlaybackSession extends ChangeNotifier {
   PlaybackSession({
     required this.repository,
@@ -171,6 +174,7 @@ class PlaybackSession extends ChangeNotifier {
   bool _acceptErrors = false;
   bool _foreground = true;
   bool _playIntent = true;
+  bool _pausedByUser = false;
   bool _pendingError = false;
   bool _resumeIntent = true;
   int _iosRebuilds = 0;
@@ -552,6 +556,7 @@ class PlaybackSession extends ChangeNotifier {
     _restoreToken++;
     endBoost();
     _staleAudio = false;
+    _pausedByUser = false;
     if (_playerSuspect) await _replacePlayer();
     if (index != _index) _online = false;
     if (recovery == null &&
@@ -795,6 +800,7 @@ class PlaybackSession extends ChangeNotifier {
   void start(int index, {double position = 0}) {
     if (!_usable) return;
     _restoreToken++;
+    _pausedByUser = false;
     final wasEngaged = _engaged;
     _engaged = true;
     if (index != _index ||
@@ -839,6 +845,7 @@ class PlaybackSession extends ChangeNotifier {
     _restoreToken++;
     endBoost();
     _playIntent = !player.state.playing;
+    _pausedByUser = !_playIntent;
     _health.reset();
     if (_playIntent && _playerSuspect) {
       // 离开过前台的实例可能已失效，直接重建并从当前位置续播。
@@ -1105,6 +1112,28 @@ class PlaybackSession extends ChangeNotifier {
 
   bool _restorable(int token) => !_closed && _foreground && token == _restoreToken;
 
+  /// 取流探活结果：只有两次都明确返回 false 才算确认失效。
+  Future<_StreamProbe> _probeStream() async {
+    var sawDead = false;
+    var sawError = false;
+    for (var attempt = 0; attempt < 2; attempt++) {
+      if (attempt > 0) {
+        await Future<void>.delayed(const Duration(milliseconds: 150));
+      }
+      try {
+        final alive = await repository
+            .playbackAlive()
+            .timeout(const Duration(seconds: 2));
+        if (alive) return _StreamProbe.alive;
+        sawDead = true;
+      } catch (_) {
+        sawError = true;
+      }
+    }
+    // 一次 false 一次异常仍属"未确认"，按未知处理，避免误触发重建。
+    return sawDead && !sawError ? _StreamProbe.dead : _StreamProbe.unknown;
+  }
+
   Future<void> _restoreAfterBackground(int token) async {
     final watch = Stopwatch()..start();
     final index = _index;
@@ -1116,30 +1145,44 @@ class PlaybackSession extends ChangeNotifier {
       // 音频会话只影响出声，失败不阻断画面恢复，也不反复重试激活。
       DiaryService.add('[Play] iOS 音频会话激活失败，继续恢复画面');
     }
-    final alive = await repository
-        .playbackAlive()
-        .catchError((Object _) => false);
+    final probeWatch = Stopwatch()..start();
+    final probe = await _probeStream();
+    final probeMs = probeWatch.elapsedMilliseconds;
     if (!_restorable(token)) return;
-    if (playIntent && alive) {
-      // 取流服务还在：先原地续播，1.2 秒判活，失败才重建。
-      await _resumeInPlace(token, watch, index, position);
-      return;
-    }
-    if (!playIntent && alive) {
+    if (probe == _StreamProbe.alive) {
+      if (playIntent) {
+        // 取流服务还在：先原地续播，确认位置真的推进才算成功。
+        await _resumeInPlace(token, watch, index, position, probeMs);
+        return;
+      }
       // 用户主动暂停且服务可用：保留原实例与冻结画面，不播放也不重建。
       _playerSuspect = false;
       _pendingError = false;
       _errorTimer?.cancel();
       DiaryService.add(
-        '[Play] 续播=false 且取流服务正常，保留原实例 '
-        '位置=${position.toStringAsFixed(1)} 用时=${watch.elapsedMilliseconds}ms',
+        '[Play] 续播=false 且取流服务正常，保留原实例 探活=${probeMs}ms '
+        '总=${watch.elapsedMilliseconds}ms 位置=${position.toStringAsFixed(1)}',
       );
       return;
     }
-    // 取流服务已失效，只有这时才需要重新加载。
+    if (probe == _StreamProbe.unknown) {
+      // 探活通信异常不等于服务死亡：保留实例，必要时让播放器自己报错再恢复。
+      _pendingError = false;
+      _errorTimer?.cancel();
+      if (!playIntent) _playerSuspect = false;
+      DiaryService.add(
+        '[Play] 取流探活异常，保留原实例 探活=${probeMs}ms '
+        '总=${watch.elapsedMilliseconds}ms',
+      );
+      if (playIntent) {
+        await _resumeInPlace(token, watch, index, position, probeMs);
+      }
+      return;
+    }
+    // 确认失效，只有这时才需要重新加载。
     DiaryService.add(
       '[Play] 重建开始 原因=stream_lost 集数=${index + 1} '
-      '位置=${position.toStringAsFixed(1)} 续播=$playIntent',
+      '位置=${position.toStringAsFixed(1)} 续播=$playIntent 探活=${probeMs}ms',
     );
     // 避开 paused → inactive → resumed 的连续抖动，免得在转场中销毁纹理。
     await Future<void>.delayed(const Duration(milliseconds: 250));
@@ -1156,6 +1199,7 @@ class PlaybackSession extends ChangeNotifier {
     Stopwatch watch,
     int index,
     double position,
+    int probeMs,
   ) async {
     final generation = _generation;
     final before = player.state.position;
@@ -1168,35 +1212,56 @@ class PlaybackSession extends ChangeNotifier {
     _resumeIntent = true;
     _sync();
     _notify();
+    final playWatch = Stopwatch()..start();
     Object? failure;
     try {
       await player.play();
     } catch (error) {
       failure = error;
     }
-    if (!_restorable(token) || generation != _generation) return;
-    if (failure == null) {
-      await Future<void>.delayed(const Duration(milliseconds: 1200));
-      // 期间若已切集、暂停或开始别的恢复，旧任务必须放弃。
-      if (!_restorable(token) ||
-          generation != _generation ||
-          index != _index ||
-          _loading) {
-        return;
+    if (!_restorable(token) || generation != _generation) {
+      // 只有用户明确暂停时才回退播放；切集/重试由对应路径自己接管。
+      if (_pausedByUser && player.state.playing) {
+        unawaited(player.pause());
       }
-      final state = player.state;
-      // 位置在推进或仍在缓冲都算有效；但位置推进不等于画面正常。
-      if (state.playing && (state.buffering || state.position > before)) {
-        DiaryService.add(
-          '[Play] 原地恢复成功 用时=${watch.elapsedMilliseconds}ms '
-          '位置=${currentPosition.toStringAsFixed(1)}',
-        );
-        return;
+      return;
+    }
+    var advanced = false;
+    if (failure == null) {
+      // 缓冲本身不算成功，必须看到位置推进；仍在缓冲时多给一个窗口。
+      for (var attempt = 0; attempt < 2; attempt++) {
+        await Future<void>.delayed(const Duration(milliseconds: 1200));
+        if (!_restorable(token) ||
+            generation != _generation ||
+            index != _index ||
+            _loading) {
+          return;
+        }
+        final state = player.state;
+        if (state.playing &&
+            state.position > before + const Duration(milliseconds: 300)) {
+          advanced = true;
+          break;
+        }
+        if (!state.buffering) break;
       }
     }
-    final reason = failure == null ? 'position_stalled' : 'play_exception';
+    if (advanced) {
+      DiaryService.add(
+        '[Play] 原地恢复成功 探活=${probeMs}ms 播放=${playWatch.elapsedMilliseconds}ms '
+        '总=${watch.elapsedMilliseconds}ms 位置=${currentPosition.toStringAsFixed(1)}',
+      );
+      return;
+    }
+    final buffering = failure == null && player.state.buffering;
+    final reason = failure != null
+        ? 'play_exception'
+        : buffering
+        ? 'buffering_without_progress'
+        : 'position_stalled';
     DiaryService.add(
-      '[Play] 原地恢复失败 原因=$reason 用时=${watch.elapsedMilliseconds}ms'
+      '[Play] 原地恢复失败 原因=$reason 探活=${probeMs}ms '
+      '播放=${playWatch.elapsedMilliseconds}ms 总=${watch.elapsedMilliseconds}ms'
       '${failure == null ? '' : ' 详情=${_diagnostic(failure)}'}',
     );
     await _rebuildAndResume(
@@ -1261,6 +1326,7 @@ class PlaybackSession extends ChangeNotifier {
       return;
     }
     final watch = Stopwatch()..start();
+    final index = _index;
     _rebuilding = true;
     // 先作废所有进行中的 play/open，排队中的旧流程拿到队列后会自行放弃。
     final ticket = ++_generation;
@@ -1294,6 +1360,13 @@ class PlaybackSession extends ChangeNotifier {
       _notify();
       if (_closed || !_foreground || !_current(ticket)) {
         if (!_closed) DiaryService.add('[Play] 跳过过期重建');
+        return;
+      }
+      if (restoreToken != null && !_restorable(restoreToken)) {
+        // 用户在重建期间暂停了：只恢复暂停画面，不再自动播放。
+        if (_foreground && _pausedByUser && index == _index) {
+          await play(index, position: position, playWhenReady: false);
+        }
         return;
       }
       await play(_index, position: position, playWhenReady: playWhenReady);
