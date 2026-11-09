@@ -234,6 +234,11 @@ jobs:
           go version
           flutter --version
           flutter precache --ios
+      - name: Cache pub packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: pub-cache-${{ hashFiles('pubspec.lock') }}
       - name: Build unsigned iOS packages
         run: python scripts/build_ios.py ${{ matrix.arguments }}
       - uses: actions/upload-artifact@v4
