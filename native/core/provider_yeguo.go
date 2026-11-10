@@ -315,3 +315,46 @@ func (d *Downloader) resolveYeguoMedia(ctx context.Context, task Task) (provider
 	media.Variants = options
 	return d.prepareWebProviderMedia(ctx, media, "野果")
 }
+
+type yeguoProvider struct{ d *Downloader }
+
+var yeguoDescriptor = SourceDescriptor{
+	ID:                 sourceYeguo,
+	Name:               "野果",
+	Description:        "分类短剧 · 在线搜索",
+	Aliases:            []string{"ygdj7.com", "www.ygdj7.com", "ygdj15.com", "www.ygdj15.com", "analyze.buxefaex.cc", "attract.vgbyziuz.cc", "delta.ygrwdsgt.cc", "yeguodj.com", "www.yeguodj.com"},
+	HostSuffixes:       []string{".buxefaex.cc", ".fzchosdi.cc", ".lwblvxvy.cc", ".vgbyziuz.cc"},
+	BaseURL:            yeguoBaseURL,
+	AllowEmptyCatalog:  true,
+	NoHostRotation:     true,
+	KeepDetailEpisodes: true,
+	ValidCategory:      validYeguoCategory,
+}
+
+func init() {
+	Register(yeguoDescriptor, func(d *Downloader) Provider { return &yeguoProvider{d: d} })
+}
+
+func (p *yeguoProvider) Descriptor() SourceDescriptor { return yeguoDescriptor }
+
+func (p *yeguoProvider) BaseURL() string { return firstNonEmpty(p.d.cfg.YeguoURL, yeguoBaseURL) }
+
+func (p *yeguoProvider) Categories(ctx context.Context, force bool) ([]nativeCategory, error) {
+	return p.d.fetchYeguoCategories(ctx)
+}
+
+func (p *yeguoProvider) CatalogPage(ctx context.Context, page int, category string) ([]Drama, bool, error) {
+	return p.d.fetchYeguoCatalogPage(ctx, page, category, "")
+}
+
+func (p *yeguoProvider) Search(ctx context.Context, page int, query string) ([]Drama, bool, error) {
+	return p.d.fetchYeguoCatalogPage(ctx, page, "", query)
+}
+
+func (p *yeguoProvider) Detail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
+	return p.d.fetchYeguoDetail(ctx, sourceID)
+}
+
+func (p *yeguoProvider) ResolveMedia(ctx context.Context, task Task) (providerMedia, error) {
+	return p.d.resolveYeguoMedia(ctx, task)
+}

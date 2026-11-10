@@ -743,3 +743,42 @@ func (d *Downloader) resolveBeaboxMedia(ctx context.Context, task Task) (provide
 	}
 	return d.prepareWebProviderMedia(ctx, providerMedia{URL: address, Referer: site + "/"}, "笔盒")
 }
+
+type beaboxProvider struct{ d *Downloader }
+
+var beaboxDescriptor = SourceDescriptor{
+	ID:                sourceBeabox,
+	Name:              "笔盒",
+	Description:       "分类视频 · 在线搜索",
+	BaseURL:           beaboxBaseURL,
+	AllowEmptyCatalog: true,
+	ValidCategory:     validBeaboxCategory,
+}
+
+func init() {
+	Register(beaboxDescriptor, func(d *Downloader) Provider { return &beaboxProvider{d: d} })
+}
+
+func (p *beaboxProvider) Descriptor() SourceDescriptor { return beaboxDescriptor }
+
+func (p *beaboxProvider) BaseURL() string { return firstNonEmpty(p.d.cfg.BeaboxURL, beaboxBaseURL) }
+
+func (p *beaboxProvider) Categories(ctx context.Context, force bool) ([]nativeCategory, error) {
+	return p.d.fetchBeaboxCategories(ctx)
+}
+
+func (p *beaboxProvider) CatalogPage(ctx context.Context, page int, category string) ([]Drama, bool, error) {
+	return p.d.fetchBeaboxCatalogPage(ctx, page, category, "")
+}
+
+func (p *beaboxProvider) Search(ctx context.Context, page int, query string) ([]Drama, bool, error) {
+	return p.d.fetchBeaboxCatalogPage(ctx, page, "", query)
+}
+
+func (p *beaboxProvider) Detail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
+	return p.d.fetchBeaboxDetail(ctx, sourceID)
+}
+
+func (p *beaboxProvider) ResolveMedia(ctx context.Context, task Task) (providerMedia, error) {
+	return p.d.resolveBeaboxMedia(ctx, task)
+}

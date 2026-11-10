@@ -576,3 +576,43 @@ func (d *Downloader) resolveDSDMedia(ctx context.Context, task Task) (providerMe
 	}}
 	return d.prepareWebProviderMedia(ctx, media, "帝果")
 }
+
+type dSDProvider struct{ d *Downloader }
+
+var dSDDescriptor = SourceDescriptor{
+	ID:                sourceDSD,
+	Name:              "帝果",
+	Description:       "分类视频 · 在线搜索",
+	Aliases:           []string{"dsd.com.se", "www.dsd.com.se"},
+	BaseURL:           dsdBaseURL,
+	AllowEmptyCatalog: true,
+	ValidCategory:     validDSDCategory,
+}
+
+func init() {
+	Register(dSDDescriptor, func(d *Downloader) Provider { return &dSDProvider{d: d} })
+}
+
+func (p *dSDProvider) Descriptor() SourceDescriptor { return dSDDescriptor }
+
+func (p *dSDProvider) BaseURL() string { return firstNonEmpty(p.d.cfg.DSDURL, dsdBaseURL) }
+
+func (p *dSDProvider) Categories(ctx context.Context, force bool) ([]nativeCategory, error) {
+	return p.d.fetchDSDCategories(ctx, force)
+}
+
+func (p *dSDProvider) CatalogPage(ctx context.Context, page int, category string) ([]Drama, bool, error) {
+	return p.d.fetchDSDCatalogPage(ctx, page, category, "")
+}
+
+func (p *dSDProvider) Search(ctx context.Context, page int, query string) ([]Drama, bool, error) {
+	return p.d.fetchDSDCatalogPage(ctx, page, "", query)
+}
+
+func (p *dSDProvider) Detail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
+	return p.d.fetchDSDDetail(ctx, sourceID)
+}
+
+func (p *dSDProvider) ResolveMedia(ctx context.Context, task Task) (providerMedia, error) {
+	return p.d.resolveDSDMedia(ctx, task)
+}

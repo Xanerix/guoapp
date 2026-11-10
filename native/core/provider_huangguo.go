@@ -96,7 +96,7 @@ func isHuangguoProviderSource(source string) bool {
 		return true
 	}
 	switch source {
-	case sourceHuangguoAI, sourceHuangguoVideo, sourceHuangdou, sourceHongguo, sourceHuangju, sourceYeguo, sourceJinguoDuanju, sourceJinguo, sourceDSD, sourceCloudFront, sourceSorani, sourceHanxiaoquan, sourceHeitao, sourceBeabox:
+	case sourceHuangguoAI, sourceHuangguoVideo, sourceHuangdou, sourceHongguo, sourceCloudFront:
 		return true
 	default:
 		return false
@@ -120,26 +120,8 @@ func canonicalProviderSource(source string) string {
 		return sourceHuangdou
 	case "hongguo", "hongguoduanju.com":
 		return sourceHongguo
-	case "huangju", "huangju.net", "api.huangju.net":
-		return sourceHuangju
-	case "yeguo", "ygdj7.com", "www.ygdj7.com", "ygdj15.com", "www.ygdj15.com", "analyze.buxefaex.cc", "attract.vgbyziuz.cc", "delta.ygrwdsgt.cc", "yeguodj.com", "www.yeguodj.com":
-		return sourceYeguo
-	case "jinguoduanju", "jinguoduanju.app", "www.jinguoduanju.app", "play.jinguoduanju.app", "jgdj.app", "www.jgdj.app":
-		return sourceJinguoDuanju
-	case "jinguo":
-		return sourceJinguo
-	case "dsd", "dsd.com.se", "www.dsd.com.se":
-		return sourceDSD
 	case "cloudfront":
 		return sourceCloudFront
-	case "sorani", "sorani.net", "www.sorani.net", "api.sorani.cc", "sorani.cc":
-		return sourceSorani
-	case "hanxiaoquan", "jennyhow.com", "www.jennyhow.com":
-		return sourceHanxiaoquan
-	case "heitao", "heitaodj.com", "www.heitaodj.com":
-		return sourceHeitao
-	case "beabox":
-		return sourceBeabox
 	default:
 		return strings.TrimSpace(source)
 	}
@@ -244,33 +226,6 @@ func (d *Downloader) GetHuangguoChapters(ctx context.Context, source, sourceID s
 		return d.fetchHuangdouChapters(ctx, sourceID)
 	case sourceHongguo:
 		return d.fetchHongguoChapters(ctx, sourceID)
-	case sourceHuangju:
-		drama, chapters, err := d.fetchHuangjuDetail(ctx, sourceID)
-		return drama.DisplayTitle(), chapters, err
-	case sourceYeguo:
-		drama, chapters, err := d.fetchYeguoDetail(ctx, sourceID)
-		return drama.DisplayTitle(), chapters, err
-	case sourceJinguoDuanju:
-		drama, chapters, err := d.fetchJinguoDuanjuDetail(ctx, sourceID)
-		return drama.DisplayTitle(), chapters, err
-	case sourceJinguo:
-		drama, chapters, err := d.fetchJinguoDetail(ctx, sourceID)
-		return drama.DisplayTitle(), chapters, err
-	case sourceDSD:
-		drama, chapters, err := d.fetchDSDDetail(ctx, sourceID)
-		return drama.DisplayTitle(), chapters, err
-	case sourceSorani:
-		drama, chapters, err := d.fetchSoraniDetail(ctx, sourceID)
-		return drama.DisplayTitle(), chapters, err
-	case sourceHanxiaoquan:
-		drama, chapters, err := d.fetchHanxiaoquanDetail(ctx, sourceID)
-		return drama.DisplayTitle(), chapters, err
-	case sourceHeitao:
-		drama, chapters, err := d.fetchHeitaoDetail(ctx, sourceID)
-		return drama.DisplayTitle(), chapters, err
-	case sourceBeabox:
-		drama, chapters, err := d.fetchBeaboxDetail(ctx, sourceID)
-		return drama.DisplayTitle(), chapters, err
 	case sourceCloudFront:
 		return d.fetchLegacyChapters(ctx, sourceID)
 	default:

@@ -436,3 +436,41 @@ func (d *Downloader) searchHanxiaoquan(ctx context.Context, page int, query stri
 	}
 	return parseHanxiaoquanCards(body), false, nil
 }
+
+type hanxiaoquanProvider struct{ d *Downloader }
+
+var hanxiaoquanDescriptor = SourceDescriptor{
+	ID:                sourceHanxiaoquan,
+	Name:              "韩小圈",
+	Description:       "韩剧 · 韩国电影 · 综艺动漫",
+	Aliases:           []string{"jennyhow.com", "www.jennyhow.com"},
+	BaseURL:           hanxiaoquanSiteBaseURL,
+	AllowEmptyCatalog: true,
+	ValidCategory:     validHanxiaoquanCategory,
+}
+
+func init() {
+	Register(hanxiaoquanDescriptor, func(d *Downloader) Provider { return &hanxiaoquanProvider{d: d} })
+}
+
+func (p *hanxiaoquanProvider) Descriptor() SourceDescriptor { return hanxiaoquanDescriptor }
+
+func (p *hanxiaoquanProvider) Categories(ctx context.Context, force bool) ([]nativeCategory, error) {
+	return p.d.fetchHanxiaoquanCategories(), nil
+}
+
+func (p *hanxiaoquanProvider) CatalogPage(ctx context.Context, page int, category string) ([]Drama, bool, error) {
+	return p.d.fetchHanxiaoquanCatalogPage(ctx, page, category, "")
+}
+
+func (p *hanxiaoquanProvider) Search(ctx context.Context, page int, query string) ([]Drama, bool, error) {
+	return p.d.fetchHanxiaoquanCatalogPage(ctx, page, "", query)
+}
+
+func (p *hanxiaoquanProvider) Detail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
+	return p.d.fetchHanxiaoquanDetail(ctx, sourceID)
+}
+
+func (p *hanxiaoquanProvider) ResolveMedia(ctx context.Context, task Task) (providerMedia, error) {
+	return p.d.resolveHanxiaoquanMedia(ctx, task)
+}

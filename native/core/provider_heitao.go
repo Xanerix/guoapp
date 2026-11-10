@@ -521,3 +521,41 @@ func (d *Downloader) resolveHeitaoMedia(ctx context.Context, task Task) (provide
 	}
 	return d.prepareWebProviderMedia(ctx, providerMedia{URL: address, Referer: site + "/"}, "黑桃")
 }
+
+type heitaoProvider struct{ d *Downloader }
+
+var heitaoDescriptor = SourceDescriptor{
+	ID:                sourceHeitao,
+	Name:              "黑桃",
+	Description:       "分类短剧 · 在线搜索",
+	Aliases:           []string{"heitaodj.com", "www.heitaodj.com"},
+	BaseURL:           heitaoBaseURL,
+	AllowEmptyCatalog: true,
+	ValidCategory:     validHeitaoCategory,
+}
+
+func init() {
+	Register(heitaoDescriptor, func(d *Downloader) Provider { return &heitaoProvider{d: d} })
+}
+
+func (p *heitaoProvider) Descriptor() SourceDescriptor { return heitaoDescriptor }
+
+func (p *heitaoProvider) Categories(ctx context.Context, force bool) ([]nativeCategory, error) {
+	return p.d.fetchHeitaoCategories(ctx)
+}
+
+func (p *heitaoProvider) CatalogPage(ctx context.Context, page int, category string) ([]Drama, bool, error) {
+	return p.d.fetchHeitaoCatalogPage(ctx, page, category, "")
+}
+
+func (p *heitaoProvider) Search(ctx context.Context, page int, query string) ([]Drama, bool, error) {
+	return p.d.fetchHeitaoCatalogPage(ctx, page, "", query)
+}
+
+func (p *heitaoProvider) Detail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
+	return p.d.fetchHeitaoDetail(ctx, sourceID)
+}
+
+func (p *heitaoProvider) ResolveMedia(ctx context.Context, task Task) (providerMedia, error) {
+	return p.d.resolveHeitaoMedia(ctx, task)
+}

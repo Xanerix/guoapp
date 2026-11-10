@@ -62,24 +62,6 @@ func validNativeCategory(source, category string) bool {
 		return err == nil && id > 0
 	case sourceCloudFront:
 		return strings.TrimSpace(category) == category
-	case sourceHuangju:
-		return category == huangjuNewestCategory || validHuangjuID(category) && !strings.HasPrefix(category, "@")
-	case sourceYeguo:
-		return validYeguoCategory(category)
-	case sourceJinguoDuanju:
-		return validJinguoDuanjuCategory(category)
-	case sourceJinguo:
-		return validJinguoCategory(category)
-	case sourceDSD:
-		return webProviderNumericID.MatchString(category)
-	case sourceSorani:
-		return validSoraniCategory(category)
-	case sourceHanxiaoquan:
-		return validHanxiaoquanCategory(category)
-	case sourceHeitao:
-		return validHeitaoCategory(category)
-	case sourceBeabox:
-		return validBeaboxCategory(category)
 	}
 	return false
 }
@@ -128,52 +110,6 @@ func (engine *nativeEngine) nativeCategories(ctx context.Context, source string,
 			body, err = d.fetchProviderText(ctx, address, d.providerBaseURL(source)+"/")
 			if err == nil {
 				all = append(all, parseHuangguoVideoCategories(body)...)
-			}
-		case sourceHuangju:
-			var categories []nativeCategory
-			categories, err = d.fetchHuangjuCategories(ctx)
-			if err == nil {
-				all = append(all, categories...)
-			}
-		case sourceYeguo:
-			var categories []nativeCategory
-			categories, err = d.fetchYeguoCategories(ctx)
-			if err == nil {
-				all = append(all, categories...)
-			}
-		case sourceJinguoDuanju:
-			var categories []nativeCategory
-			categories, err = d.fetchJinguoDuanjuCategories(ctx)
-			if err == nil {
-				all = append(all, categories...)
-			}
-		case sourceJinguo:
-			var categories []nativeCategory
-			categories, err = d.fetchJinguoCategories(ctx)
-			if err == nil {
-				all = append(all, categories...)
-			}
-		case sourceDSD:
-			var categories []nativeCategory
-			categories, err = d.fetchDSDCategories(ctx, force)
-			if err == nil {
-				all = append(all, categories...)
-			}
-		case sourceSorani:
-			all = append(all, d.fetchSoraniCategories()...)
-		case sourceHanxiaoquan:
-			all = append(all, d.fetchHanxiaoquanCategories()...)
-		case sourceHeitao:
-			var categories []nativeCategory
-			categories, err = d.fetchHeitaoCategories(ctx)
-			if err == nil {
-				all = append(all, categories...)
-			}
-		case sourceBeabox:
-			var categories []nativeCategory
-			categories, err = d.fetchBeaboxCategories(ctx)
-			if err == nil {
-				all = append(all, categories...)
 			}
 		default:
 			return nil, errors.New("请选择有效站源")

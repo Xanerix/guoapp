@@ -343,3 +343,5 @@ func (d *Downloader) fetchDSDCatalogPage(ctx context.Context, page int, category
 	}
 	return items, hasMore, errors.Join(failures...)
 }
+
+func validDSDCategory(category string) bool { return webProviderNumericID.MatchString(category) }

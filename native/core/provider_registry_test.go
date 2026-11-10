@@ -35,3 +35,20 @@ func TestRegisteredProviderResolvesAliasesAndCapabilities(t *testing.T) {
 		t.Fatal("unknown source must not resolve to a provider")
 	}
 }
+
+func TestRegisteredProviderHostSuffixesAndConfiguredBaseURL(t *testing.T) {
+	if got := providerSourceForURL("https://some-line.buxefaex.cc/drama/video/1/"); got != sourceYeguo {
+		t.Fatalf("yeguo suffix host resolved to %q", got)
+	}
+	d := &Downloader{cfg: defaultConfig()}
+	d.cfg.HuangjuURL = "https://huangju.test/"
+	if got := d.providerBaseURL(sourceHuangju); got != "https://huangju.test" {
+		t.Fatalf("configured huangju base ignored: %q", got)
+	}
+	if got := d.providerURLCandidates("https://huangju.net/x"); len(got) != 1 {
+		t.Fatalf("huangju must not rotate hosts, got %v", got)
+	}
+	if !validNativeCategory(sourceHuangju, huangjuNewestCategory) || validNativeCategory(sourceDSD, "abc") {
+		t.Fatal("descriptor category validation mismatch")
+	}
+}

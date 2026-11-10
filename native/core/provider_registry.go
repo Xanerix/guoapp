@@ -7,13 +7,16 @@ import (
 )
 
 type SourceDescriptor struct {
-	ID                string
-	Name              string
-	Description       string
-	Aliases           []string
-	BaseURL           string
-	AllowEmptyCatalog bool
-	ValidCategory     func(category string) bool
+	ID                 string
+	Name               string
+	Description        string
+	Aliases            []string
+	HostSuffixes       []string
+	BaseURL            string
+	AllowEmptyCatalog  bool
+	NoHostRotation     bool
+	KeepDetailEpisodes bool
+	ValidCategory      func(category string) bool
 }
 
 type Provider interface {
@@ -22,6 +25,10 @@ type Provider interface {
 	CatalogPage(ctx context.Context, page int, category string) ([]Drama, bool, error)
 	Detail(ctx context.Context, sourceID string) (Drama, []Chapter, error)
 	ResolveMedia(ctx context.Context, task Task) (providerMedia, error)
+}
+
+type Sited interface {
+	BaseURL() string
 }
 
 type Searcher interface {
@@ -59,8 +66,18 @@ func Register(descriptor SourceDescriptor, factory ProviderFactory) {
 func registeredSource(alias string) (string, bool) {
 	providerRegistry.RLock()
 	defer providerRegistry.RUnlock()
-	id, ok := providerRegistry.aliases[strings.ToLower(strings.TrimSpace(alias))]
-	return id, ok
+	alias = strings.ToLower(strings.TrimSpace(alias))
+	if id, ok := providerRegistry.aliases[alias]; ok {
+		return id, true
+	}
+	for id, descriptor := range providerRegistry.descriptors {
+		for _, suffix := range descriptor.HostSuffixes {
+			if strings.HasSuffix(alias, suffix) {
+				return id, true
+			}
+		}
+	}
+	return "", false
 }
 
 func registeredDescriptor(source string) (SourceDescriptor, bool) {

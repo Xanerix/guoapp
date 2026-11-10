@@ -381,3 +381,41 @@ func (d *Downloader) resolveSoraniMedia(ctx context.Context, task Task) (provide
 	}
 	return media, nil
 }
+
+type soraniProvider struct{ d *Downloader }
+
+var soraniDescriptor = SourceDescriptor{
+	ID:                sourceSorani,
+	Name:              "青空",
+	Description:       "番剧 · 剧场动画 · 特摄",
+	Aliases:           []string{"sorani.net", "www.sorani.net", "api.sorani.cc", "sorani.cc"},
+	BaseURL:           soraniSiteBaseURL,
+	AllowEmptyCatalog: true,
+	ValidCategory:     validSoraniCategory,
+}
+
+func init() {
+	Register(soraniDescriptor, func(d *Downloader) Provider { return &soraniProvider{d: d} })
+}
+
+func (p *soraniProvider) Descriptor() SourceDescriptor { return soraniDescriptor }
+
+func (p *soraniProvider) Categories(ctx context.Context, force bool) ([]nativeCategory, error) {
+	return p.d.fetchSoraniCategories(), nil
+}
+
+func (p *soraniProvider) CatalogPage(ctx context.Context, page int, category string) ([]Drama, bool, error) {
+	return p.d.fetchSoraniCatalogPage(ctx, page, category, "")
+}
+
+func (p *soraniProvider) Search(ctx context.Context, page int, query string) ([]Drama, bool, error) {
+	return p.d.fetchSoraniCatalogPage(ctx, page, "", query)
+}
+
+func (p *soraniProvider) Detail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
+	return p.d.fetchSoraniDetail(ctx, sourceID)
+}
+
+func (p *soraniProvider) ResolveMedia(ctx context.Context, task Task) (providerMedia, error) {
+	return p.d.resolveSoraniMedia(ctx, task)
+}

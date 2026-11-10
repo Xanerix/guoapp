@@ -348,3 +348,49 @@ func (d *Downloader) resolveHuangjuMedia(ctx context.Context, task Task) (provid
 	}
 	return media, nil
 }
+
+type huangjuProvider struct{ d *Downloader }
+
+var huangjuDescriptor = SourceDescriptor{
+	ID:                 sourceHuangju,
+	Name:               "剧果",
+	Description:        "热门 · 最新 · 分类短剧",
+	Aliases:            []string{"huangju.net", "www.huangju.net", "api.huangju.net"},
+	BaseURL:            huangjuBaseURL,
+	AllowEmptyCatalog:  true,
+	NoHostRotation:     true,
+	KeepDetailEpisodes: true,
+	ValidCategory:      validHuangjuCategory,
+}
+
+func init() {
+	Register(huangjuDescriptor, func(d *Downloader) Provider { return &huangjuProvider{d: d} })
+}
+
+func (p *huangjuProvider) Descriptor() SourceDescriptor { return huangjuDescriptor }
+
+func (p *huangjuProvider) BaseURL() string { return firstNonEmpty(p.d.cfg.HuangjuURL, huangjuBaseURL) }
+
+func (p *huangjuProvider) Categories(ctx context.Context, force bool) ([]nativeCategory, error) {
+	return p.d.fetchHuangjuCategories(ctx)
+}
+
+func (p *huangjuProvider) CatalogPage(ctx context.Context, page int, category string) ([]Drama, bool, error) {
+	return p.d.fetchHuangjuCatalogPage(ctx, page, category, "")
+}
+
+func (p *huangjuProvider) Search(ctx context.Context, page int, query string) ([]Drama, bool, error) {
+	return p.d.fetchHuangjuCatalogPage(ctx, page, "", query)
+}
+
+func (p *huangjuProvider) Detail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
+	return p.d.fetchHuangjuDetail(ctx, sourceID)
+}
+
+func (p *huangjuProvider) ResolveMedia(ctx context.Context, task Task) (providerMedia, error) {
+	return p.d.resolveHuangjuMedia(ctx, task)
+}
+
+func validHuangjuCategory(category string) bool {
+	return category == huangjuNewestCategory || validHuangjuID(category) && !strings.HasPrefix(category, "@")
+}

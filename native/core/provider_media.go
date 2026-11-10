@@ -24,6 +24,11 @@ type providerMedia struct {
 func (d *Downloader) providerBaseURL(source string) string {
 	source = canonicalProviderSource(source)
 	if descriptor, ok := registeredDescriptor(source); ok {
+		if p, ok := d.provider(source); ok {
+			if sited, ok := p.(Sited); ok {
+				return strings.TrimRight(sited.BaseURL(), "/")
+			}
+		}
 		return strings.TrimRight(descriptor.BaseURL, "/")
 	}
 	var configured, fallback string
@@ -36,22 +41,6 @@ func (d *Downloader) providerBaseURL(source string) string {
 		configured, fallback = d.cfg.HuangdouURL, huangdouBaseURL
 	case sourceHongguo:
 		configured, fallback = d.cfg.HongguoURL, hongguoBaseURL
-	case sourceHuangju:
-		configured, fallback = d.cfg.HuangjuURL, huangjuBaseURL
-	case sourceYeguo:
-		configured, fallback = d.cfg.YeguoURL, yeguoBaseURL
-	case sourceJinguoDuanju:
-		configured, fallback = jinguoDuanjuContentSite(d.cfg.JinguoDuanjuURL), jinguoDuanjuBaseURL
-	case sourceDSD:
-		configured, fallback = d.cfg.DSDURL, dsdBaseURL
-	case sourceSorani:
-		configured, fallback = d.cfg.SoraniURL, soraniSiteBaseURL
-	case sourceHanxiaoquan:
-		configured, fallback = d.cfg.HanxiaoquanURL, hanxiaoquanSiteBaseURL
-	case sourceHeitao:
-		configured, fallback = d.cfg.HeitaoURL, heitaoBaseURL
-	case sourceBeabox:
-		configured, fallback = d.cfg.BeaboxURL, beaboxBaseURL
 	default:
 		fallback = "https://d2pypzndaqisk.cloudfront.net"
 	}
@@ -76,24 +65,6 @@ func providerSourceForURL(raw string) string {
 		return sourceHuangdou
 	case host == "hongguoduanju.com" || host == "www.hongguoduanju.com":
 		return sourceHongguo
-	case host == "huangju.net" || host == "www.huangju.net" || host == "api.huangju.net":
-		return sourceHuangju
-	case host == "ygdj7.com" || host == "www.ygdj7.com" || host == "ygdj15.com" || host == "www.ygdj15.com" ||
-		host == "analyze.buxefaex.cc" || strings.HasSuffix(host, ".buxefaex.cc") ||
-		strings.HasSuffix(host, ".fzchosdi.cc") || strings.HasSuffix(host, ".lwblvxvy.cc") || strings.HasSuffix(host, ".vgbyziuz.cc") ||
-		host == "delta.ygrwdsgt.cc" || host == "yeguodj.com" || host == "www.yeguodj.com":
-		return sourceYeguo
-	case host == "jinguoduanju.app" || host == "www.jinguoduanju.app" || host == "play.jinguoduanju.app" ||
-		host == "jgdj.app" || host == "www.jgdj.app":
-		return sourceJinguoDuanju
-	case host == "dsd.com.se" || host == "www.dsd.com.se":
-		return sourceDSD
-	case host == "sorani.net" || host == "www.sorani.net" || host == "api.sorani.cc" || host == "sorani.cc":
-		return sourceSorani
-	case host == "jennyhow.com" || host == "www.jennyhow.com":
-		return sourceHanxiaoquan
-	case host == "heitaodj.com" || host == "www.heitaodj.com":
-		return sourceHeitao
 	default:
 		return ""
 	}
@@ -110,7 +81,7 @@ func isHuangguoAIMirrorHost(host string) bool {
 
 func (d *Downloader) providerURLCandidates(raw string) []string {
 	source := providerSourceForURL(raw)
-	if source == "" || source == sourceHuangju || source == sourceYeguo {
+	if descriptor, registered := registeredDescriptor(source); source == "" || registered && descriptor.NoHostRotation {
 		return []string{raw}
 	}
 	parsed, _ := url.Parse(raw)
@@ -148,33 +119,6 @@ func (d *Downloader) resolveProviderMedia(ctx context.Context, task Task) (provi
 	}
 	if chapter.Source == sourceCloudFront {
 		return d.resolveLegacyMedia(ctx, task)
-	}
-	if chapter.Source == sourceHuangju {
-		return d.resolveHuangjuMedia(ctx, task)
-	}
-	if chapter.Source == sourceYeguo {
-		return d.resolveYeguoMedia(ctx, task)
-	}
-	if chapter.Source == sourceJinguoDuanju {
-		return d.resolveJinguoDuanjuMedia(ctx, task)
-	}
-	if chapter.Source == sourceJinguo {
-		return d.resolveJinguoMedia(ctx, task)
-	}
-	if chapter.Source == sourceDSD {
-		return d.resolveDSDMedia(ctx, task)
-	}
-	if chapter.Source == sourceSorani {
-		return d.resolveSoraniMedia(ctx, task)
-	}
-	if chapter.Source == sourceHanxiaoquan {
-		return d.resolveHanxiaoquanMedia(ctx, task)
-	}
-	if chapter.Source == sourceHeitao {
-		return d.resolveHeitaoMedia(ctx, task)
-	}
-	if chapter.Source == sourceBeabox {
-		return d.resolveBeaboxMedia(ctx, task)
 	}
 	if strings.HasPrefix(chapter.VideoURL, "hongguo-cenc://") {
 		return d.resolveHongguoMedia(ctx, task)

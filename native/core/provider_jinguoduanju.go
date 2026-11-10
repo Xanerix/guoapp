@@ -340,3 +340,46 @@ func (d *Downloader) resolveJinguoDuanjuMedia(ctx context.Context, task Task) (p
 	}
 	return d.prepareWebProviderMedia(ctx, providerMedia{URL: address, Referer: referer}, "禁果短剧")
 }
+
+type jinguoDuanjuProvider struct{ d *Downloader }
+
+var jinguoDuanjuDescriptor = SourceDescriptor{
+	ID:                 sourceJinguoDuanju,
+	Name:               "禁果短剧",
+	Description:        "推荐 · 分类短剧 · 在线搜索",
+	Aliases:            []string{"jinguoduanju.app", "www.jinguoduanju.app", "play.jinguoduanju.app", "jgdj.app", "www.jgdj.app"},
+	BaseURL:            jinguoDuanjuBaseURL,
+	AllowEmptyCatalog:  true,
+	KeepDetailEpisodes: true,
+	ValidCategory:      validJinguoDuanjuCategory,
+}
+
+func init() {
+	Register(jinguoDuanjuDescriptor, func(d *Downloader) Provider { return &jinguoDuanjuProvider{d: d} })
+}
+
+func (p *jinguoDuanjuProvider) Descriptor() SourceDescriptor { return jinguoDuanjuDescriptor }
+
+func (p *jinguoDuanjuProvider) BaseURL() string {
+	return firstNonEmpty(jinguoDuanjuContentSite(p.d.cfg.JinguoDuanjuURL), jinguoDuanjuBaseURL)
+}
+
+func (p *jinguoDuanjuProvider) Categories(ctx context.Context, force bool) ([]nativeCategory, error) {
+	return p.d.fetchJinguoDuanjuCategories(ctx)
+}
+
+func (p *jinguoDuanjuProvider) CatalogPage(ctx context.Context, page int, category string) ([]Drama, bool, error) {
+	return p.d.fetchJinguoDuanjuCatalogPage(ctx, page, category, "")
+}
+
+func (p *jinguoDuanjuProvider) Search(ctx context.Context, page int, query string) ([]Drama, bool, error) {
+	return p.d.fetchJinguoDuanjuCatalogPage(ctx, page, "", query)
+}
+
+func (p *jinguoDuanjuProvider) Detail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
+	return p.d.fetchJinguoDuanjuDetail(ctx, sourceID)
+}
+
+func (p *jinguoDuanjuProvider) ResolveMedia(ctx context.Context, task Task) (providerMedia, error) {
+	return p.d.resolveJinguoDuanjuMedia(ctx, task)
+}

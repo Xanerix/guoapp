@@ -266,3 +266,40 @@ func (d *Downloader) resolveJinguoMedia(ctx context.Context, task Task) (provide
 	}
 	return providerMedia{}, errors.New("禁果播放会话已失效，请稍后重试")
 }
+
+type jinguoProvider struct{ d *Downloader }
+
+var jinguoDescriptor = SourceDescriptor{
+	ID:                 sourceJinguo,
+	Name:               "禁果",
+	Description:        "精选 · 最新 · 分类短剧 · 在线搜索",
+	AllowEmptyCatalog:  true,
+	KeepDetailEpisodes: true,
+	ValidCategory:      validJinguoCategory,
+}
+
+func init() {
+	Register(jinguoDescriptor, func(d *Downloader) Provider { return &jinguoProvider{d: d} })
+}
+
+func (p *jinguoProvider) Descriptor() SourceDescriptor { return jinguoDescriptor }
+
+func (p *jinguoProvider) Categories(ctx context.Context, force bool) ([]nativeCategory, error) {
+	return p.d.fetchJinguoCategories(ctx)
+}
+
+func (p *jinguoProvider) CatalogPage(ctx context.Context, page int, category string) ([]Drama, bool, error) {
+	return p.d.fetchJinguoCatalogPage(ctx, page, category, "")
+}
+
+func (p *jinguoProvider) Search(ctx context.Context, page int, query string) ([]Drama, bool, error) {
+	return p.d.fetchJinguoCatalogPage(ctx, page, "", query)
+}
+
+func (p *jinguoProvider) Detail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
+	return p.d.fetchJinguoDetail(ctx, sourceID)
+}
+
+func (p *jinguoProvider) ResolveMedia(ctx context.Context, task Task) (providerMedia, error) {
+	return p.d.resolveJinguoMedia(ctx, task)
+}
