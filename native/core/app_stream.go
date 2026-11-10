@@ -30,7 +30,7 @@ type nativeStreamAsset struct {
 }
 
 type nativeStreamSession struct {
-	credentials  *providerMediaCredentials
+	credentials  *MediaCredentials
 	mu           sync.Mutex
 	assets       map[string]nativeStreamAsset
 	referer      string
@@ -89,8 +89,8 @@ func (stream *nativeStreamServer) nativeOpen(media ProviderMedia) (string, strin
 		panic(err)
 	}
 	token := hex.EncodeToString(tokenBytes)
-	ctx, cancel := context.WithCancel(providerMediaContext(context.Background(), media.credentials))
-	session := &nativeStreamSession{assets: map[string]nativeStreamAsset{}, referer: media.Referer, key: media.HLSKey, ctx: ctx, cancel: cancel, lastUsed: time.Now(), credentials: media.credentials, diagnosticID: nativeStreamID(token)}
+	ctx, cancel := context.WithCancel(providerMediaContext(context.Background(), media.Credentials))
+	session := &nativeStreamSession{assets: map[string]nativeStreamAsset{}, referer: media.Referer, key: media.HLSKey, ctx: ctx, cancel: cancel, lastUsed: time.Now(), credentials: media.Credentials, diagnosticID: nativeStreamID(token)}
 	stream.mu.Lock()
 	for id, old := range stream.sessions {
 		if time.Since(old.lastUsed) > 10*time.Minute {

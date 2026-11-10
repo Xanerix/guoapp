@@ -110,8 +110,8 @@ func (d *Downloader) prepareWebProviderMedia(ctx context.Context, media Provider
 		return ProviderMedia{}, fmt.Errorf("%s未返回有效播放地址，请刷新详情后重试", sourceName)
 	}
 	if strings.HasSuffix(strings.ToLower(address.Path), ".m3u8") {
-		if media.credentials != nil {
-			ctx = providerMediaContext(ctx, media.credentials)
+		if media.Credentials != nil {
+			ctx = providerMediaContext(ctx, media.Credentials)
 		}
 		media.Playlist, media.URL, err = d.fetchMediaPlaylist(ctx, media.URL, media.Referer)
 		if err != nil {

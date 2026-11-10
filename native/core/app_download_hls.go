@@ -100,7 +100,7 @@ func nativeDownloadAssetName(address, extension string) string {
 }
 
 func (manager *nativeDownloads) downloadBundle(ctx context.Context, media ProviderMedia, quality int) (nativeDownloadBundle, error) {
-	ctx = providerMediaContext(ctx, media.credentials)
+	ctx = providerMediaContext(ctx, media.Credentials)
 	bundle := nativeDownloadBundle{quality: media.Quality, playlists: map[string][]byte{}}
 	visited := map[string]string{}
 	pending := map[string]bool{}

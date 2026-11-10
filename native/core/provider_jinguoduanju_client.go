@@ -38,7 +38,8 @@ type jinguoDuanjuAuthCall struct {
 }
 
 type jinguoDuanjuAPIClient struct {
-	downloader *Downloader
+	host       Host
+	configured string
 	mu         sync.Mutex
 	base       string
 	site       string
@@ -78,20 +79,13 @@ type jinguoDuanjuStatusError struct {
 
 func (err *jinguoDuanjuStatusError) Error() string { return err.message }
 
-func (d *Downloader) jinguoDuanjuClient() *jinguoDuanjuAPIClient {
-	d.jinguoDuanjuOnce.Do(func() {
-		d.jinguoDuanju = &jinguoDuanjuAPIClient{downloader: d}
-	})
-	return d.jinguoDuanju
-}
-
 func (client *jinguoDuanjuAPIClient) siteURL() string {
 	client.mu.Lock()
 	defer client.mu.Unlock()
 	if client.site != "" {
 		return client.site
 	}
-	if site := jinguoDuanjuContentSite(client.downloader.cfg.JinguoDuanjuURL); site != "" {
+	if site := jinguoDuanjuContentSite(client.configured); site != "" {
 		return site
 	}
 	return jinguoDuanjuBaseURL
@@ -139,7 +133,7 @@ func (client *jinguoDuanjuAPIClient) candidates() []string {
 		bases = append(bases, base)
 	}
 	add(pinned)
-	add(jinguoDuanjuContentSite(client.downloader.cfg.JinguoDuanjuURL) + "/api/v1")
+	add(jinguoDuanjuContentSite(client.configured) + "/api/v1")
 	add(jinguoDuanjuBaseURL + "/api/v1")
 	add("https://jgdj.app/api/v1")
 	add("https://play.jinguoduanju.app/api/v1")
@@ -265,74 +259,38 @@ func (client *jinguoDuanjuAPIClient) requestBase(ctx context.Context, base, meth
 	if err != nil || !isProviderHTTPMediaURL(base) || parsed.User != nil {
 		return nil, errors.New("禁果短剧接口地址无效")
 	}
-	timeout := 15 * time.Second
-	if background, _ := ctx.Value(backgroundCatalogKey{}).(bool); background {
-		timeout = 8 * time.Second
-	}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
 	address := strings.TrimRight(base, "/") + route
 	if len(query) > 0 {
 		address += "?" + query.Encode()
 	}
-	request, err := http.NewRequestWithContext(ctx, method, address, bytes.NewReader(body))
-	if err != nil {
-		return nil, errors.New("无法创建禁果短剧请求")
-	}
-	request.Header.Set("User-Agent", jinguoDuanjuUserAgent)
-	request.Header.Set("Accept", "application/json, text/plain, */*")
-	request.Header.Set("Accept-Language", "zh-CN,zh;q=0.9")
 	origin := jinguoDuanjuOrigin(base)
-	request.Header.Set("Referer", origin+"/")
-	request.Header.Set("Origin", origin)
+	header := map[string]string{
+		"User-Agent":      jinguoDuanjuUserAgent,
+		"Accept":          "application/json, text/plain, */*",
+		"Accept-Language": "zh-CN,zh;q=0.9",
+		"Referer":         origin + "/",
+		"Origin":          origin,
+	}
 	if len(body) > 0 {
-		request.Header.Set("Content-Type", "application/json")
+		header["Content-Type"] = "application/json"
 	}
 	if token != "" {
-		request.Header.Set("Authorization", "Bearer "+token)
+		header["Authorization"] = "Bearer " + token
 	}
-	d := client.downloader
-	if d.limiter != nil {
-		release, err := d.limiter.acquire(ctx, request)
-		if err != nil {
-			return nil, err
-		}
-		defer release()
-	}
-	transport := *d.client
-	transport.Jar = nil
-	previousRedirect := transport.CheckRedirect
-	transport.CheckRedirect = func(next *http.Request, via []*http.Request) error {
-		if len(via) >= 5 || !strings.EqualFold(next.URL.Host, parsed.Host) {
-			return errors.New("禁果短剧接口重定向地址异常")
-		}
-		if previousRedirect != nil {
-			return previousRedirect(next, via)
-		}
-		return nil
-	}
-	response, err := transport.Do(request)
-	if err != nil {
-		return nil, fmt.Errorf("禁果短剧连接失败：%w", publicError(err))
-	}
-	defer response.Body.Close()
-	data, readErr := io.ReadAll(io.LimitReader(response.Body, limit+1))
-	blocked := catalogResponseBlockReason(response, data) != ""
-	if retryAuth && token != "" && response.StatusCode == http.StatusUnauthorized && readErr == nil && int64(len(data)) <= limit && !blocked {
+	response, err := client.host.Fetch(ctx, HTTPRequest{Label: "禁果短剧", Method: method, URL: address, Header: header, Body: body, Limit: limit, Timeout: 15 * time.Second})
+	if retryAuth && token != "" && response.Status == http.StatusUnauthorized && !response.Blocked {
 		return nil, errJinguoDuanjuAuthExpired
 	}
-	if d.limiter != nil {
-		d.limiter.observe(request, response)
-	}
-	if response.StatusCode < 200 || response.StatusCode >= 300 || blocked {
-		if message := jinguoDuanjuErrorMessage(data); message != "" && !blocked {
+	if err != nil {
+		if response.Status == 0 {
+			return nil, err
+		}
+		if message := jinguoDuanjuErrorMessage(response.Body); message != "" && !response.Blocked {
 			return nil, &jinguoDuanjuStatusError{message: "禁果短剧接口返回失败：" + message}
 		}
-		return nil, &jinguoDuanjuStatusError{message: d.catalogResponseError(request, response, data).Error()}
+		return nil, &jinguoDuanjuStatusError{message: err.Error()}
 	}
-	if readErr != nil || int64(len(data)) > limit {
-		return nil, errors.New("禁果短剧返回的数据过大或读取失败")
-	}
+	data := response.Body
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.UseNumber()
 	var decoded any

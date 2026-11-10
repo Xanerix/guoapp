@@ -9,7 +9,7 @@ import (
 )
 
 type ProviderMedia struct {
-	credentials *providerMediaCredentials
+	Credentials *MediaCredentials
 	URL         string
 	Referer     string
 	Duration    time.Duration

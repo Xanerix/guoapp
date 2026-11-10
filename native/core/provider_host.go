@@ -3,6 +3,7 @@ package core
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 )
 
@@ -35,17 +37,21 @@ type HTTPRequest struct {
 	Body    []byte
 	Limit   int64
 	Timeout time.Duration
+
+	AcceptJSONStatus []int
 }
 
 type HTTPResponse struct {
-	Status int
-	Body   []byte
+	Status  int
+	Header  map[string][]string
+	Body    []byte
+	Blocked bool
 }
 
 type Host interface {
 	Fetch(ctx context.Context, request HTTPRequest) (HTTPResponse, error)
 	FetchText(ctx context.Context, request TextRequest) (TextResponse, error)
-	FetchPlaylist(ctx context.Context, address, referer string) (playlist, finalURL string, err error)
+	FetchPlaylist(ctx context.Context, address, referer string, credentials *MediaCredentials) (playlist, finalURL string, err error)
 	LoadState(name string) ([]byte, error)
 	SaveState(name string, data []byte) error
 	PrepareWebMedia(ctx context.Context, media ProviderMedia, sourceName string) (ProviderMedia, error)
@@ -78,7 +84,10 @@ func (d *Downloader) PrepareWebMedia(ctx context.Context, media ProviderMedia, s
 	return d.prepareWebProviderMedia(ctx, media, sourceName)
 }
 
-func (d *Downloader) FetchPlaylist(ctx context.Context, address, referer string) (string, string, error) {
+func (d *Downloader) FetchPlaylist(ctx context.Context, address, referer string, credentials *MediaCredentials) (string, string, error) {
+	if credentials != nil {
+		ctx = providerMediaContext(ctx, credentials)
+	}
 	return d.fetchMediaPlaylist(ctx, address, referer)
 }
 
@@ -132,21 +141,25 @@ func (d *Downloader) Fetch(ctx context.Context, input HTTPRequest) (HTTPResponse
 	}
 	defer response.Body.Close()
 	data, readErr := io.ReadAll(io.LimitReader(response.Body, limit+1))
+	oversized := readErr != nil || int64(len(data)) > limit
+	blocked := catalogResponseBlockReason(response, data) != ""
+	result := HTTPResponse{Status: response.StatusCode, Header: response.Header.Clone(), Blocked: blocked}
+	if !oversized {
+		result.Body = data
+	}
+	if slices.Contains(input.AcceptJSONStatus, response.StatusCode) && !oversized && !blocked && json.Valid(data) {
+		return result, nil
+	}
 	if d.limiter != nil {
 		d.limiter.observe(request, response)
 	}
-	oversized := readErr != nil || int64(len(data)) > limit
-	if response.StatusCode < 200 || response.StatusCode >= 300 || catalogResponseBlockReason(response, data) != "" {
-		result := HTTPResponse{Status: response.StatusCode}
-		if !oversized {
-			result.Body = data
-		}
+	if response.StatusCode < 200 || response.StatusCode >= 300 || blocked {
 		return result, d.catalogResponseError(request, response, data)
 	}
 	if oversized {
 		return HTTPResponse{}, fmt.Errorf("%s返回的数据过大或读取失败", input.Label)
 	}
-	return HTTPResponse{Status: response.StatusCode, Body: data}, nil
+	return result, nil
 }
 
 func (d *Downloader) statePath(name string) (string, error) {

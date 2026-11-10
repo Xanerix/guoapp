@@ -13,10 +13,10 @@ func TestJinguoDuanjuAliasesAndDramaParsing(t *testing.T) {
 	if got := (&Downloader{cfg: defaultConfig()}).providerBaseURL(sourceJinguoDuanju); got != jinguoDuanjuBaseURL {
 		t.Fatalf("unexpected default jinguoDuanju endpoint: %s", got)
 	}
-	if got := (&Downloader{cfg: Config{JinguoDuanjuURL: "https://jgdj.app/"}}).providerBaseURL(sourceJinguoDuanju); got != "https://jgdj.app" {
+	if got := jinguoDuanjuConfigured("https://jgdj.app/").providerBaseURL(sourceJinguoDuanju); got != "https://jgdj.app" {
 		t.Fatalf("content host override was ignored: %s", got)
 	}
-	if got := (&Downloader{cfg: Config{JinguoDuanjuURL: "https://example.com"}}).providerBaseURL(sourceJinguoDuanju); got != jinguoDuanjuBaseURL {
+	if got := jinguoDuanjuConfigured("https://example.com").providerBaseURL(sourceJinguoDuanju); got != jinguoDuanjuBaseURL {
 		t.Fatalf("unknown host was used as the catalog endpoint: %s", got)
 	}
 	for _, address := range []string{
@@ -106,26 +106,26 @@ func TestJinguoDuanjuCatalogDetailAndPlaybackDoNotUnlock(t *testing.T) {
 	}))
 	defer server.Close()
 	d := &Downloader{cfg: Config{}, client: server.Client(), limiter: newRequestLimiter(3, 0), providerHosts: map[string]string{}}
-	client := d.jinguoDuanjuClient()
+	client := jinguoDuanjuFixtureProvider(d).client
 	client.base = server.URL + "/api/v1"
 	client.site = server.URL
 
-	items, more, err := d.fetchJinguoDuanjuCatalogPage(context.Background(), 1, "", "")
+	items, more, err := jinguoDuanjuFixtureProvider(d).fetchJinguoDuanjuCatalogPage(context.Background(), 1, "", "")
 	if err != nil || more || len(items) != 2 || items[0].ID != "jinguoduanju:2137" || items[1].VIP == nil || !*items[1].VIP {
 		t.Fatalf("catalog page parsed incorrectly: %+v more=%t err=%v", items, more, err)
 	}
-	if rest, more, err := d.fetchJinguoDuanjuCatalogPage(context.Background(), 2, "", ""); err != nil || more || len(rest) != 0 || catalogRequests != 1 {
+	if rest, more, err := jinguoDuanjuFixtureProvider(d).fetchJinguoDuanjuCatalogPage(context.Background(), 2, "", ""); err != nil || more || len(rest) != 0 || catalogRequests != 1 {
 		t.Fatalf("second page did not reuse the cached listing: %d more=%t err=%v requests=%d", len(rest), more, err, catalogRequests)
 	}
-	categories, err := d.fetchJinguoDuanjuCategories(context.Background())
+	categories, err := jinguoDuanjuFixtureProvider(d).fetchJinguoDuanjuCategories(context.Background())
 	if err != nil || len(categories) != 4 || categories[2].ID != "nav:2" || categories[3].ID != "tag:22" {
 		t.Fatalf("categories parsed incorrectly: %+v err=%v", categories, err)
 	}
-	found, more, err := d.fetchJinguoDuanjuCatalogPage(context.Background(), 1, "", "样本")
+	found, more, err := jinguoDuanjuFixtureProvider(d).fetchJinguoDuanjuCatalogPage(context.Background(), 1, "", "样本")
 	if err != nil || more || len(found) != 2 {
 		t.Fatalf("search page parsed incorrectly: %d more=%t err=%v", len(found), more, err)
 	}
-	drama, chapters, err := d.fetchJinguoDuanjuDetail(context.Background(), "2137")
+	drama, chapters, err := jinguoDuanjuFixtureProvider(d).fetchJinguoDuanjuDetail(context.Background(), "2137")
 	if err != nil || drama.Desc != "简介" || len(chapters) != 2 || !chapters[1].VIP || chapters[0].VideoURL != "jinguoduanju-play://5671" {
 		t.Fatalf("detail parsed incorrectly: %+v chapters=%+v err=%v", drama, chapters, err)
 	}
@@ -140,4 +140,15 @@ func TestJinguoDuanjuCatalogDetailAndPlaybackDoNotUnlock(t *testing.T) {
 
 func serverURL(request *http.Request) string {
 	return "https://" + request.Host
+}
+
+func jinguoDuanjuFixtureProvider(d *Downloader) *jinguoDuanjuProvider {
+	p, _ := d.provider(sourceJinguoDuanju)
+	return p.(*jinguoDuanjuProvider)
+}
+
+func jinguoDuanjuConfigured(site string) *Downloader {
+	d := &Downloader{}
+	jinguoDuanjuFixtureProvider(d).client.configured = site
+	return d
 }

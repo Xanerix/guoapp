@@ -570,8 +570,8 @@ func (p *dSDProvider) resolveDSDMedia(ctx context.Context, task Task) (ProviderM
 	if signedByVplayer || strings.Contains(address, "sign=") {
 		referer = dsdVplayerReferer(site)
 	}
-	media := ProviderMedia{URL: address, Referer: referer, credentials: &providerMediaCredentials{
-		origin: providerMediaOrigin(parsed), referer: referer, userAgent: dsdUserAgent,
+	media := ProviderMedia{URL: address, Referer: referer, Credentials: &MediaCredentials{
+		Origin: providerMediaOrigin(parsed), Referer: referer, UserAgent: dsdUserAgent,
 	}}
 	return p.host.PrepareWebMedia(ctx, media, "帝果")
 }

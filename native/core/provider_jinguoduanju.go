@@ -33,8 +33,8 @@ func jinguoDuanjuActive(row map[string]any, key string) bool {
 	return isBool && flag
 }
 
-func (d *Downloader) fetchJinguoDuanjuCategories(ctx context.Context) ([]Category, error) {
-	client := d.jinguoDuanjuClient()
+func (p *jinguoDuanjuProvider) fetchJinguoDuanjuCategories(ctx context.Context) ([]Category, error) {
+	client := p.client
 	navigation, err := client.get(ctx, "/top-navigation", nil, 1<<20)
 	if err != nil {
 		return nil, err
@@ -194,12 +194,12 @@ func jinguoDuanjuDramaRows(value any) ([]any, error) {
 	return nil, errors.New("禁果短剧目录格式无效")
 }
 
-func (d *Downloader) fetchJinguoDuanjuDramas(ctx context.Context, category, query string) ([]Drama, error) {
+func (p *jinguoDuanjuProvider) fetchJinguoDuanjuDramas(ctx context.Context, category, query string) ([]Drama, error) {
 	values, err := jinguoDuanjuCatalogQuery(category, query)
 	if err != nil {
 		return nil, err
 	}
-	client := d.jinguoDuanjuClient()
+	client := p.client
 	decoded, err := client.get(ctx, "/dramas", values, 8<<20)
 	if err != nil {
 		return nil, err
@@ -235,13 +235,13 @@ func jinguoDuanjuPage(items []Drama, page int) ([]Drama, bool, error) {
 	return pageItems, end < len(items), nil
 }
 
-func (d *Downloader) fetchJinguoDuanjuCatalogPage(ctx context.Context, page int, category, query string) ([]Drama, bool, error) {
-	client := d.jinguoDuanjuClient()
+func (p *jinguoDuanjuProvider) fetchJinguoDuanjuCatalogPage(ctx context.Context, page int, category, query string) ([]Drama, bool, error) {
+	client := p.client
 	key := category + "\x00" + strings.TrimSpace(query)
 	items, cached := client.cachedListing(key)
 	if page == 1 || !cached {
 		var err error
-		if items, err = d.fetchJinguoDuanjuDramas(ctx, category, query); err != nil {
+		if items, err = p.fetchJinguoDuanjuDramas(ctx, category, query); err != nil {
 			return nil, false, err
 		}
 		client.storeListing(key, items)
@@ -272,11 +272,11 @@ func jinguoDuanjuChapters(site, sourceID string, rows []any) ([]Chapter, error) 
 	return chapters, nil
 }
 
-func (d *Downloader) fetchJinguoDuanjuDetail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
+func (p *jinguoDuanjuProvider) fetchJinguoDuanjuDetail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
 	if !webProviderNumericID.MatchString(sourceID) {
 		return Drama{}, nil, errors.New("禁果短剧剧集 ID 无效")
 	}
-	client := d.jinguoDuanjuClient()
+	client := p.client
 	decoded, err := client.get(ctx, "/dramas/"+url.PathEscape(sourceID), nil, 4<<20)
 	if err != nil {
 		return Drama{}, nil, err
@@ -309,7 +309,7 @@ func (d *Downloader) fetchJinguoDuanjuDetail(ctx context.Context, sourceID strin
 	return drama, chapters, nil
 }
 
-func (d *Downloader) resolveJinguoDuanjuMedia(ctx context.Context, task Task) (ProviderMedia, error) {
+func (p *jinguoDuanjuProvider) resolveJinguoDuanjuMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	source, sourceID, valid := splitProviderDramaID(task.DramaID)
 	prefix := providerChapterID(sourceJinguoDuanju, sourceID, "")
 	if !valid || source != sourceJinguoDuanju || !webProviderNumericID.MatchString(sourceID) || !strings.HasPrefix(task.Chapter.ID, prefix) {
@@ -319,7 +319,7 @@ func (d *Downloader) resolveJinguoDuanjuMedia(ctx context.Context, task Task) (P
 	if !webProviderNumericID.MatchString(episodeID) {
 		return ProviderMedia{}, errors.New("禁果短剧播放分集 ID 无效")
 	}
-	client := d.jinguoDuanjuClient()
+	client := p.client
 	decoded, err := client.get(ctx, "/episodes/"+url.PathEscape(episodeID)+"/play", nil, 256<<10)
 	if err != nil {
 		return ProviderMedia{}, err
@@ -338,10 +338,13 @@ func (d *Downloader) resolveJinguoDuanjuMedia(ctx context.Context, task Task) (P
 	if !isProviderHTTPMediaURL(address) {
 		return ProviderMedia{}, errors.New("禁果短剧未提供该集播放地址，请确认是否需要会员或解锁")
 	}
-	return d.prepareWebProviderMedia(ctx, ProviderMedia{URL: address, Referer: referer}, "禁果短剧")
+	return p.host.PrepareWebMedia(ctx, ProviderMedia{URL: address, Referer: referer}, "禁果短剧")
 }
 
-type jinguoDuanjuProvider struct{ d *Downloader }
+type jinguoDuanjuProvider struct {
+	host   Host
+	client *jinguoDuanjuAPIClient
+}
 
 var jinguoDuanjuDescriptor = SourceDescriptor{
 	ID:                 sourceJinguoDuanju,
@@ -356,31 +359,33 @@ var jinguoDuanjuDescriptor = SourceDescriptor{
 }
 
 func init() {
-	Register(jinguoDuanjuDescriptor, func(host Host) Provider { return &jinguoDuanjuProvider{d: host.(*Downloader)} })
+	Register(jinguoDuanjuDescriptor, func(host Host) Provider {
+		return &jinguoDuanjuProvider{host: host, client: &jinguoDuanjuAPIClient{host: host}}
+	})
 }
 
 func (p *jinguoDuanjuProvider) Descriptor() SourceDescriptor { return jinguoDuanjuDescriptor }
 
 func (p *jinguoDuanjuProvider) BaseURL() string {
-	return firstNonEmpty(jinguoDuanjuContentSite(p.d.cfg.JinguoDuanjuURL), jinguoDuanjuBaseURL)
+	return firstNonEmpty(jinguoDuanjuContentSite(p.client.configured), jinguoDuanjuBaseURL)
 }
 
 func (p *jinguoDuanjuProvider) Categories(ctx context.Context, force bool) ([]Category, error) {
-	return p.d.fetchJinguoDuanjuCategories(ctx)
+	return p.fetchJinguoDuanjuCategories(ctx)
 }
 
 func (p *jinguoDuanjuProvider) CatalogPage(ctx context.Context, page int, category string) ([]Drama, bool, error) {
-	return p.d.fetchJinguoDuanjuCatalogPage(ctx, page, category, "")
+	return p.fetchJinguoDuanjuCatalogPage(ctx, page, category, "")
 }
 
 func (p *jinguoDuanjuProvider) Search(ctx context.Context, page int, query string) ([]Drama, bool, error) {
-	return p.d.fetchJinguoDuanjuCatalogPage(ctx, page, "", query)
+	return p.fetchJinguoDuanjuCatalogPage(ctx, page, "", query)
 }
 
 func (p *jinguoDuanjuProvider) Detail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
-	return p.d.fetchJinguoDuanjuDetail(ctx, sourceID)
+	return p.fetchJinguoDuanjuDetail(ctx, sourceID)
 }
 
 func (p *jinguoDuanjuProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
-	return p.d.resolveJinguoDuanjuMedia(ctx, task)
+	return p.resolveJinguoDuanjuMedia(ctx, task)
 }

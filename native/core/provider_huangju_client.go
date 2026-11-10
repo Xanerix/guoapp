@@ -30,29 +30,18 @@ type huangjuGuestCall struct {
 }
 
 type huangjuAPIClient struct {
-	downloader *Downloader
-	base       string
-	site       string
-	mu         sync.Mutex
-	deviceID   string
-	token      string
-	pending    *huangjuGuestCall
+	host     Host
+	base     string
+	site     string
+	mu       sync.Mutex
+	deviceID string
+	token    string
+	pending  *huangjuGuestCall
 }
 
 type huangjuAPIResponse struct {
 	value   any
 	headers http.Header
-}
-
-func (d *Downloader) huangjuClient() *huangjuAPIClient {
-	d.huangjuOnce.Do(func() {
-		d.huangju = &huangjuAPIClient{
-			downloader: d,
-			base:       strings.TrimRight(firstNonEmpty(d.cfg.HuangjuAPIURL, huangjuAPIBaseURL), "/"),
-			site:       d.providerBaseURL(sourceHuangju),
-		}
-	})
-	return d.huangju
 }
 
 func (client *huangjuAPIClient) guestToken(ctx context.Context) (string, error) {
@@ -143,71 +132,35 @@ func (client *huangjuAPIClient) request(ctx context.Context, method, route strin
 	if err != nil || !isProviderHTTPMediaURL(client.base) || base.User != nil || base.RawQuery != "" || base.Fragment != "" {
 		return huangjuAPIResponse{}, errors.New("剧果接口地址无效")
 	}
-	timeout := 15 * time.Second
-	if background, _ := ctx.Value(backgroundCatalogKey{}).(bool); background {
-		timeout = 8 * time.Second
-	}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
 	address := client.base + route
 	if len(query) > 0 {
 		address += "?" + query.Encode()
 	}
-	request, err := http.NewRequestWithContext(ctx, method, address, bytes.NewReader(body))
-	if err != nil {
-		return huangjuAPIResponse{}, errors.New("无法创建剧果请求")
+	header := map[string]string{
+		"User-Agent":      huangjuUserAgent,
+		"Accept":          "application/json, text/plain, */*",
+		"Accept-Language": "zh-CN,zh;q=0.9",
+		"Referer":         client.site + "/",
+		"Origin":          client.site,
 	}
-	request.Header.Set("User-Agent", huangjuUserAgent)
-	request.Header.Set("Accept", "application/json, text/plain, */*")
-	request.Header.Set("Accept-Language", "zh-CN,zh;q=0.9")
-	request.Header.Set("Referer", client.site+"/")
-	request.Header.Set("Origin", client.site)
 	if len(body) > 0 {
-		request.Header.Set("Content-Type", "application/json")
+		header["Content-Type"] = "application/json"
 	}
 	if token != "" {
-		request.Header.Set("Authorization", "Bearer "+token)
+		header["Authorization"] = "Bearer " + token
 	}
-	d := client.downloader
-	if d.limiter != nil {
-		release, err := d.limiter.acquire(ctx, request)
-		if err != nil {
-			return huangjuAPIResponse{}, err
-		}
-		defer release()
+	input := HTTPRequest{Label: "剧果", Method: method, URL: address, Header: header, Body: body, Limit: limit, Timeout: 15 * time.Second}
+	if retryAuth && token != "" {
+		input.AcceptJSONStatus = []int{http.StatusUnauthorized, http.StatusForbidden}
 	}
-	transport := *d.client
-	transport.Jar = nil
-	previousRedirect := transport.CheckRedirect
-	transport.CheckRedirect = func(next *http.Request, via []*http.Request) error {
-		if len(via) >= 5 || providerMediaOrigin(next.URL) != providerMediaOrigin(base) {
-			return errors.New("剧果接口重定向地址异常")
-		}
-		if previousRedirect != nil {
-			return previousRedirect(next, via)
-		}
-		return nil
-	}
-	response, err := transport.Do(request)
+	response, err := client.host.Fetch(ctx, input)
 	if err != nil {
-		return huangjuAPIResponse{}, fmt.Errorf("剧果连接失败：%w", publicError(err))
+		return huangjuAPIResponse{}, err
 	}
-	defer response.Body.Close()
-	data, readErr := io.ReadAll(io.LimitReader(response.Body, limit+1))
-	blocked := catalogResponseBlockReason(response, data) != ""
-	authFailed := response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden
-	if retryAuth && token != "" && authFailed && readErr == nil && int64(len(data)) <= limit && !blocked && json.Valid(data) {
+	if response.Status == http.StatusUnauthorized || response.Status == http.StatusForbidden {
 		return huangjuAPIResponse{}, errHuangjuGuestExpired
 	}
-	if d.limiter != nil {
-		d.limiter.observe(request, response)
-	}
-	if response.StatusCode < 200 || response.StatusCode >= 300 || blocked {
-		return huangjuAPIResponse{}, d.catalogResponseError(request, response, data)
-	}
-	if readErr != nil || int64(len(data)) > limit {
-		return huangjuAPIResponse{}, errors.New("剧果返回的数据过大或读取失败")
-	}
+	data := response.Body
 	var decoded any
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.UseNumber()
@@ -217,7 +170,7 @@ func (client *huangjuAPIClient) request(ctx context.Context, method, route strin
 	if decoder.Decode(new(any)) != io.EOF {
 		return huangjuAPIResponse{}, errors.New("剧果返回的数据格式无效")
 	}
-	return huangjuAPIResponse{value: decoded, headers: response.Header.Clone()}, nil
+	return huangjuAPIResponse{value: decoded, headers: http.Header(response.Header)}, nil
 }
 
 func huangjuPayload(value any) any {

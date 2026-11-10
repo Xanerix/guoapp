@@ -38,7 +38,7 @@ type nativeDownloadFileState struct {
 }
 
 func (manager *nativeDownloads) transferMedia(ctx context.Context, job nativeDownloadJob, media ProviderMedia) (nativeDownloadResult, error) {
-	ctx = providerMediaContext(ctx, media.credentials)
+	ctx = providerMediaContext(ctx, media.Credentials)
 	bundle := nativeDownloadBundle{quality: media.Quality, playlists: map[string][]byte{}}
 	parsed, err := url.Parse(media.URL)
 	if err != nil || !isProviderHTTPMediaURL(media.URL) {

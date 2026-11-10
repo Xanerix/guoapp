@@ -41,7 +41,7 @@ func TestRegisteredProviderHostSuffixesAndConfiguredBaseURL(t *testing.T) {
 		t.Fatalf("yeguo suffix host resolved to %q", got)
 	}
 	d := &Downloader{cfg: defaultConfig()}
-	d.cfg.HuangjuURL = "https://huangju.test/"
+	huangjuFixtureProvider(d, huangjuAPIBaseURL, "https://huangju.test/")
 	if got := d.providerBaseURL(sourceHuangju); got != "https://huangju.test" {
 		t.Fatalf("configured huangju base ignored: %q", got)
 	}

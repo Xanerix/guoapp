@@ -30,8 +30,7 @@ func providerParityDownloader(t *testing.T, transport func(*http.Request, url.Va
 		}
 		return transport(request, form)
 	})
-	d.cfg.HuangjuAPIURL = "https://api.huangju.test"
-	d.cfg.HuangjuURL = "https://huangju.test"
+	huangjuFixtureProvider(d, "https://api.huangju.test", "https://huangju.test")
 	d.cfg.YeguoURL = "https://yeguo.test"
 	dsd, _ := d.provider(sourceDSD)
 	dsd.(*dSDProvider).site = "https://dsd.test"
@@ -172,8 +171,8 @@ func TestHuangjuPlaybackUsesSignedCookiesForPlaylist(t *testing.T) {
 	}))
 	defer server.Close()
 	mediaURL = server.URL + "/media.m3u8"
-	d := &Downloader{cfg: Config{HuangjuAPIURL: server.URL, HuangjuURL: "https://huangju.test"}, client: server.Client(), limiter: newRequestLimiter(3, 0), providerHosts: map[string]string{}}
-	media, err := d.resolveHuangjuMedia(context.Background(), Task{DramaID: providerDramaID(sourceHuangju, "sample-77"), Chapter: Chapter{ID: providerChapterID(sourceHuangju, "sample-77", "episode-1")}})
+	d := &Downloader{client: server.Client(), limiter: newRequestLimiter(3, 0), providerHosts: map[string]string{}}
+	media, err := huangjuFixtureProvider(d, server.URL, "https://huangju.test").resolveHuangjuMedia(context.Background(), Task{DramaID: providerDramaID(sourceHuangju, "sample-77"), Chapter: Chapter{ID: providerChapterID(sourceHuangju, "sample-77", "episode-1")}})
 	if err != nil || !sawCookie || media.Playlist == "" || !strings.HasPrefix(media.Playlist, "#EXTM3U") {
 		t.Fatalf("huangju playback was not resolved through signed playlist: %+v %v", media, err)
 	}
@@ -190,7 +189,7 @@ func TestProviderMediaCredentialsLimitOriginAndUseBackupAddresses(t *testing.T) 
 	if err != nil || media.URL != primary || len(media.Variants) != 2 || media.Variants[1].URL != backup || media.Duration != 6*time.Second {
 		t.Fatalf("hongguo backup media fields were lost: %+v %v", media, err)
 	}
-	credentials := &providerMediaCredentials{origin: "https://media.example.test", cookie: "Signed=fixture", referer: "https://source.example.test/page", userAgent: "Agent"}
+	credentials := &MediaCredentials{Origin: "https://media.example.test", Cookie: "Signed=fixture", Referer: "https://source.example.test/page", UserAgent: "Agent"}
 	request, _ := http.NewRequest(http.MethodGet, "https://media.example.test/part", nil)
 	if err := credentials.apply(request); err != nil || request.Header.Get("Cookie") != "Signed=fixture" || request.Header.Get("Origin") != "https://source.example.test" || request.Header.Get("User-Agent") != "Agent" {
 		t.Fatal("credentials not applied on exact origin", err, request.Header)
@@ -216,4 +215,11 @@ func TestProviderDSDMediaSigningPropagatesFetchErrors(t *testing.T) {
 	if path := dsdVplayerMediaPath("https://media.example.test/video/index.m3u8?token=a%2Fb"); path != "/video/index.m3u8?token=a%2Fb" {
 		t.Fatal("dsd media path changed", path)
 	}
+}
+
+func huangjuFixtureProvider(d *Downloader, api, site string) *huangjuProvider {
+	p, _ := d.provider(sourceHuangju)
+	huangju := p.(*huangjuProvider)
+	huangju.client.base, huangju.client.site = api, site
+	return huangju
 }

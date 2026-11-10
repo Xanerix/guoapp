@@ -107,8 +107,8 @@ func huangjuDramaFromMap(row map[string]any, site, sourceID string) (Drama, erro
 	}, nil
 }
 
-func (d *Downloader) fetchHuangjuCategories(ctx context.Context) ([]Category, error) {
-	response, err := d.huangjuClient().get(ctx, "/categories", nil, 256<<10)
+func (p *huangjuProvider) fetchHuangjuCategories(ctx context.Context) ([]Category, error) {
+	response, err := p.client.get(ctx, "/categories", nil, 256<<10)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +133,7 @@ func (d *Downloader) fetchHuangjuCategories(ctx context.Context) ([]Category, er
 	return categories, nil
 }
 
-func (d *Downloader) fetchHuangjuCatalogPage(ctx context.Context, page int, category, query string) ([]Drama, bool, error) {
+func (p *huangjuProvider) fetchHuangjuCatalogPage(ctx context.Context, page int, category, query string) ([]Drama, bool, error) {
 	if page < 1 || page > 1000000 || len(query) > 1024 || !validNativeCategory(sourceHuangju, category) {
 		return nil, false, errors.New("剧果目录查询参数无效")
 	}
@@ -148,7 +148,7 @@ func (d *Downloader) fetchHuangjuCatalogPage(ctx context.Context, page int, cate
 	default:
 		values.Set("category", category)
 	}
-	response, err := d.huangjuClient().get(ctx, "/dramas", values, 4<<20)
+	response, err := p.client.get(ctx, "/dramas", values, 4<<20)
 	if err != nil {
 		return nil, false, err
 	}
@@ -188,7 +188,7 @@ func (d *Downloader) fetchHuangjuCatalogPage(ctx context.Context, page int, cate
 	seen := map[string]bool{}
 	for _, entry := range rows {
 		value, _ := entry.(map[string]any)
-		drama, err := huangjuDramaFromMap(value, d.providerBaseURL(sourceHuangju), "")
+		drama, err := huangjuDramaFromMap(value, p.client.site, "")
 		if err != nil {
 			return nil, false, err
 		}
@@ -201,16 +201,16 @@ func (d *Downloader) fetchHuangjuCatalogPage(ctx context.Context, page int, cate
 	return items, hasMore, nil
 }
 
-func (d *Downloader) fetchHuangjuDetail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
+func (p *huangjuProvider) fetchHuangjuDetail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
 	if !validHuangjuID(sourceID) {
 		return Drama{}, nil, errors.New("剧果剧集地址无效")
 	}
-	response, err := d.huangjuClient().get(ctx, "/dramas/"+url.PathEscape(sourceID), nil, 8<<20)
+	response, err := p.client.get(ctx, "/dramas/"+url.PathEscape(sourceID), nil, 8<<20)
 	if err != nil {
 		return Drama{}, nil, err
 	}
 	row, _ := huangjuPayload(response.value).(map[string]any)
-	drama, err := huangjuDramaFromMap(row, d.providerBaseURL(sourceHuangju), sourceID)
+	drama, err := huangjuDramaFromMap(row, p.client.site, sourceID)
 	if err != nil {
 		return Drama{}, nil, err
 	}
@@ -247,7 +247,7 @@ func (d *Downloader) fetchHuangjuDetail(ctx context.Context, sourceID string) (D
 		chapters = append(chapters, Chapter{
 			ID: providerChapterID(sourceHuangju, sourceID, id), Source: sourceHuangju,
 			Title: fmt.Sprintf("第 %d 集", number), CurrentEpisode: json.RawMessage(strconv.Itoa(number)),
-			VideoURL: "huangju-play://" + url.PathEscape(id), Referer: d.providerBaseURL(sourceHuangju) + "/",
+			VideoURL: "huangju-play://" + url.PathEscape(id), Referer: p.client.site + "/",
 		})
 	}
 	sort.SliceStable(chapters, func(i, j int) bool {
@@ -272,7 +272,7 @@ func huangjuExpiration(value any) time.Time {
 	return parsed
 }
 
-func huangjuMediaCredentials(headers http.Header, address, site string, expiration any) (*providerMediaCredentials, error) {
+func huangjuMediaCredentials(headers http.Header, address, site string, expiration any) (*MediaCredentials, error) {
 	cookies := map[string]string{}
 	expires := huangjuExpiration(expiration)
 	rememberExpiry := func(value time.Time) {
@@ -311,13 +311,13 @@ func huangjuMediaCredentials(headers http.Header, address, site string, expirati
 	if err != nil || !isProviderHTTPMediaURL(address) || parsed.User != nil {
 		return nil, errors.New("剧果播放地址无效")
 	}
-	return &providerMediaCredentials{
-		cookie: strings.Join(values, "; "), origin: providerMediaOrigin(parsed),
-		referer: site + "/", userAgent: huangjuUserAgent, expires: expires,
+	return &MediaCredentials{
+		Cookie: strings.Join(values, "; "), Origin: providerMediaOrigin(parsed),
+		Referer: site + "/", UserAgent: huangjuUserAgent, Expires: expires,
 	}, nil
 }
 
-func (d *Downloader) resolveHuangjuMedia(ctx context.Context, task Task) (ProviderMedia, error) {
+func (p *huangjuProvider) resolveHuangjuMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	source, sourceID, valid := splitProviderDramaID(task.DramaID)
 	prefix := providerChapterID(sourceHuangju, sourceID, "")
 	if !valid || source != sourceHuangju || !validHuangjuID(sourceID) || !strings.HasPrefix(task.Chapter.ID, prefix) {
@@ -327,20 +327,20 @@ func (d *Downloader) resolveHuangjuMedia(ctx context.Context, task Task) (Provid
 	if !validHuangjuID(id) {
 		return ProviderMedia{}, errors.New("剧果分集地址无效")
 	}
-	response, err := d.huangjuClient().get(ctx, "/play/"+url.PathEscape(id), nil, 64<<10)
+	response, err := p.client.get(ctx, "/play/"+url.PathEscape(id), nil, 64<<10)
 	if err != nil {
 		return ProviderMedia{}, err
 	}
 	row, _ := huangjuPayload(response.value).(map[string]any)
 	address, _ := row["url"].(string)
-	credentials, err := huangjuMediaCredentials(response.headers, address, d.providerBaseURL(sourceHuangju), row["expiresAt"])
+	credentials, err := huangjuMediaCredentials(response.headers, address, p.client.site, row["expiresAt"])
 	if err != nil {
 		return ProviderMedia{}, err
 	}
-	media := ProviderMedia{URL: address, Referer: credentials.referer, credentials: credentials}
+	media := ProviderMedia{URL: address, Referer: credentials.Referer, Credentials: credentials}
 	parsed, _ := url.Parse(address)
 	if strings.HasSuffix(strings.ToLower(parsed.Path), ".m3u8") {
-		media.Playlist, media.URL, err = d.fetchMediaPlaylist(providerMediaContext(ctx, credentials), media.URL, media.Referer)
+		media.Playlist, media.URL, err = p.host.FetchPlaylist(ctx, media.URL, media.Referer, credentials)
 		if err != nil {
 			return ProviderMedia{}, fmt.Errorf("获取剧果播放列表失败：%w", err)
 		}
@@ -349,7 +349,10 @@ func (d *Downloader) resolveHuangjuMedia(ctx context.Context, task Task) (Provid
 	return media, nil
 }
 
-type huangjuProvider struct{ d *Downloader }
+type huangjuProvider struct {
+	host   Host
+	client *huangjuAPIClient
+}
 
 var huangjuDescriptor = SourceDescriptor{
 	ID:                 sourceHuangju,
@@ -365,31 +368,33 @@ var huangjuDescriptor = SourceDescriptor{
 }
 
 func init() {
-	Register(huangjuDescriptor, func(host Host) Provider { return &huangjuProvider{d: host.(*Downloader)} })
+	Register(huangjuDescriptor, func(host Host) Provider {
+		return &huangjuProvider{host: host, client: &huangjuAPIClient{host: host, base: huangjuAPIBaseURL, site: huangjuBaseURL}}
+	})
 }
 
 func (p *huangjuProvider) Descriptor() SourceDescriptor { return huangjuDescriptor }
 
-func (p *huangjuProvider) BaseURL() string { return firstNonEmpty(p.d.cfg.HuangjuURL, huangjuBaseURL) }
+func (p *huangjuProvider) BaseURL() string { return p.client.site }
 
 func (p *huangjuProvider) Categories(ctx context.Context, force bool) ([]Category, error) {
-	return p.d.fetchHuangjuCategories(ctx)
+	return p.fetchHuangjuCategories(ctx)
 }
 
 func (p *huangjuProvider) CatalogPage(ctx context.Context, page int, category string) ([]Drama, bool, error) {
-	return p.d.fetchHuangjuCatalogPage(ctx, page, category, "")
+	return p.fetchHuangjuCatalogPage(ctx, page, category, "")
 }
 
 func (p *huangjuProvider) Search(ctx context.Context, page int, query string) ([]Drama, bool, error) {
-	return p.d.fetchHuangjuCatalogPage(ctx, page, "", query)
+	return p.fetchHuangjuCatalogPage(ctx, page, "", query)
 }
 
 func (p *huangjuProvider) Detail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
-	return p.d.fetchHuangjuDetail(ctx, sourceID)
+	return p.fetchHuangjuDetail(ctx, sourceID)
 }
 
 func (p *huangjuProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
-	return p.d.resolveHuangjuMedia(ctx, task)
+	return p.resolveHuangjuMedia(ctx, task)
 }
 
 func validHuangjuCategory(category string) bool {

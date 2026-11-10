@@ -369,7 +369,7 @@ func (p *soraniProvider) resolveSoraniMedia(ctx context.Context, task Task) (Pro
 		return ProviderMedia{}, errors.New("青空次元播放地址无效")
 	}
 	if strings.HasSuffix(strings.ToLower(parsed.Path), ".m3u8") {
-		playlist, finalURL, err := p.host.FetchPlaylist(ctx, media.URL, media.Referer)
+		playlist, finalURL, err := p.host.FetchPlaylist(ctx, media.URL, media.Referer, nil)
 		if err != nil {
 			return ProviderMedia{}, fmt.Errorf("获取青空次元播放列表失败：%w", err)
 		}

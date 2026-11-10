@@ -24,11 +24,8 @@ type Config struct {
 	HuangguoVideoURL string
 	HuangdouURL      string
 	HongguoURL       string
-	HuangjuURL       string
-	HuangjuAPIURL    string
 	YeguoURL         string
 	YeguoAPIURL      string
-	JinguoDuanjuURL  string
 	BeaboxURL        string
 	Token            string
 	AESKeyHex        string
@@ -59,12 +56,8 @@ type Downloader struct {
 	proxyRouter           *proxyRouter
 	hongguoOnce           sync.Once
 	hongguo               *hongguoAppClient
-	huangjuOnce           sync.Once
-	huangju               *huangjuAPIClient
 	yeguoOnce             sync.Once
 	yeguo                 *yeguoAPIClient
-	jinguoDuanjuOnce      sync.Once
-	jinguoDuanju          *jinguoDuanjuAPIClient
 	jinguoOnce            sync.Once
 	jinguo                *jinguoAPIClient
 	diagnostics           *diagnosticLog
