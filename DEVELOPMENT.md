@@ -21,7 +21,7 @@ flutter pub get --enforce-lockfile
 flutter run
 ~~~
 
-调试全站源版：`build_native.py` 加 `--all-sources`，再 `flutter run --dart-define=ALL_SOURCES=true`；iOS 对应 `build_ios.py --core-only --all-sources`，macOS 用 `build_native.py --platform darwin --all-sources`。版本是编译期开关，Dart 常量和 Go 编译参数必须一致，应用启动时会校验，避免混装原生库。
+调试全站源版：`build_native.py` 加 `--all-sources`，再 `flutter run --dart-define=APP_FLAVOR=zhenguojian`；iOS 对应 `build_ios.py --core-only --all-sources`，macOS 用 `build_native.py --platform darwin --all-sources`。版本是编译期开关，Dart 常量和 Go 编译参数必须一致，应用启动时会校验，避免混装原生库。
 
 ## 出包
 
@@ -46,10 +46,10 @@ python3 scripts/build_ios.py --export-options /path/to/ExportOptions.plist
 dart format --output=none --set-exit-if-changed lib test
 dart analyze --fatal-infos lib test
 flutter test --dart-define=DISABLE_REMOTE_IMAGES=true
-flutter test --dart-define=DISABLE_REMOTE_IMAGES=true --dart-define=ALL_SOURCES=true
+flutter test --dart-define=DISABLE_REMOTE_IMAGES=true --dart-define=APP_FLAVOR=zhenguojian
 cd native
 go test -race ./...
-go test -race -ldflags="-X duanjuapp/native/core.buildAllSources=true" ./...
+go test -race -tags=zhenguojian ./...
 ~~~
 
 Flutter 测试一律带 `DISABLE_REMOTE_IMAGES=true`，避免加载站源图片。测试只覆盖数据兼容、权限和逻辑层，界面改动不写测试；公共假仓库在 `test/support/`。

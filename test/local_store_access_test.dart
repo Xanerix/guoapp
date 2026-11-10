@@ -7,6 +7,7 @@ import 'package:duanju_app/models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fakes.dart';
+import 'support/source_fixture.dart';
 
 Map<String, Object> _viewer(List<String> sources) => {
   'profiles': jsonEncode([

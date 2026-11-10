@@ -78,7 +78,7 @@ def build_core(simulator=False, variant=BuildVariant()):
             'GOOS': 'ios', 'GOARCH': architecture, 'CC': compiler,
             'CGO_CFLAGS': flags, 'CGO_LDFLAGS': flags,
         }
-        run([go, 'build', '-trimpath', '-buildmode=c-archive', '-ldflags=' + variant.linker_flags,
+        run([go, 'build', '-trimpath', '-buildmode=c-archive', *variant.go_arguments,
              '-o', str(output), './bridge'], cwd=root / 'native', env=build_env)
         shutil.copy2(output.with_suffix('.h'), headers / 'DuanjuCore.h')
         libraries.append((sdk, output, headers))

@@ -1,5 +1,8 @@
-const allSourcesEnabled = bool.fromEnvironment('ALL_SOURCES');
-const appName = allSourcesEnabled
-    ? String.fromEnvironment('ZHENGUOJIAN_DISPLAY_NAME', defaultValue: '真果鉴')
-    : '红果鉴';
-const appSlug = allSourcesEnabled ? 'zhenguojian' : 'hongguojian';
+const appFlavor = String.fromEnvironment(
+  'APP_FLAVOR',
+  defaultValue: 'hongguojian',
+);
+const appName = appFlavor == 'hongguojian'
+    ? '红果鉴'
+    : String.fromEnvironment('ZHENGUOJIAN_DISPLAY_NAME', defaultValue: '真果鉴');
+const appSlug = appFlavor;

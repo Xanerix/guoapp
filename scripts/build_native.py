@@ -38,7 +38,7 @@ def build(goos, architecture, compiler, output, extra=None):
         build_env.update(extra)
     print('Building ' + str(output.relative_to(root)), flush=True)
     subprocess.run([go, 'build', '-trimpath', '-buildmode=c-shared',
-                    '-ldflags=' + variant.linker_flags, '-o', str(output), './bridge'],
+                    *variant.go_arguments, '-o', str(output), './bridge'],
                    cwd=root / 'native', env=build_env, check=True)
 
 if options.platform == 'android':
@@ -84,7 +84,7 @@ else:
         build_env = environment | {'GOOS': 'darwin', 'GOARCH': architecture, 'CC': str(compiler),
                                    'CGO_CFLAGS': '-target ' + triple, 'CGO_LDFLAGS': '-target ' + triple}
         subprocess.run([go, 'build', '-trimpath', '-buildmode=c-archive',
-                        '-ldflags=' + variant.linker_flags, '-o', str(library), './bridge'],
+                        *variant.go_arguments, '-o', str(library), './bridge'],
                        cwd=root / 'native', env=build_env, check=True)
         slices.append(str(library))
     subprocess.run(['lipo', '-create', *slices, '-output', str(output)], check=True)

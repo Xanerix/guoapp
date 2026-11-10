@@ -12,7 +12,7 @@ val dartDefines = providers.gradleProperty("dart-defines").orNull.orEmpty()
         val decoded = String(Base64.getDecoder().decode(it), Charsets.UTF_8)
         decoded.substringBefore("=") to decoded.substringAfter("=", "")
     }
-val allSources = dartDefines["ALL_SOURCES"] == "true"
+val allSources = dartDefines["APP_FLAVOR"] == "zhenguojian"
 val allSourcesDisplayName = dartDefines["ZHENGUOJIAN_DISPLAY_NAME"]?.trim()?.takeIf { it.isNotEmpty() } ?: "真果鉴"
 val allSourcesPackageName = System.getenv("ZHENGUOJIAN_PACKAGE_NAME")?.trim()?.takeIf { it.isNotEmpty() } ?: "com.guoapp.all"
 

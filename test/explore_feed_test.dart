@@ -1,10 +1,10 @@
-import 'package:duanju_app/app_build.dart';
 import 'package:duanju_app/explore_feed.dart';
 import 'package:duanju_app/local_store.dart';
 import 'package:duanju_app/ranking_models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fakes.dart';
+import 'support/source_fixture.dart';
 
 Future<ExploreFeed> _open(
   FakeRepository repository, [

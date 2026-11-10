@@ -45,12 +45,12 @@ jobs:
       # 测试当前不阻塞出包（开发优先、集中验证暂缓），结果仍会显示在运行详情里。
       - run: flutter test --dart-define=DISABLE_REMOTE_IMAGES=true
         continue-on-error: true
-      - run: flutter test --dart-define=DISABLE_REMOTE_IMAGES=true --dart-define=ALL_SOURCES=true
+      - run: flutter test --dart-define=DISABLE_REMOTE_IMAGES=true --dart-define=APP_FLAVOR=zhenguojian
         continue-on-error: true
       - run: go test -race ./...
         working-directory: native
         continue-on-error: true
-      - run: go test -race -ldflags="-X duanjuapp/native/core.buildAllSources=true" ./...
+      - run: go test -race -tags=zhenguojian ./...
         working-directory: native
         continue-on-error: true
 

@@ -31,7 +31,7 @@ class BuildVariant:
 
     @property
     def flutter_arguments(self):
-        arguments = ['--dart-define=ALL_SOURCES=' + str(self.all_sources).lower()]
+        arguments = ['--dart-define=APP_FLAVOR=' + self.slug]
         for name in ENVIRONMENT_DEFINES:
             value = os.environ.get(name, '').strip()
             if value:
@@ -39,8 +39,12 @@ class BuildVariant:
         return arguments
 
     @property
+    def go_arguments(self):
+        return ['-tags=' + self.slug, '-ldflags=' + self.linker_flags]
+
+    @property
     def linker_flags(self):
-        flags = '-s -w -X duanjuapp/native/core.buildAllSources=' + str(self.all_sources).lower()
+        flags = '-s -w'
         update_server = os.environ.get('UPDATE_SERVER_URL', '').strip()
         if update_server:
             flags += ' -X duanjuapp/native/core.nativeUpdateServer=' + update_server

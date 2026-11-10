@@ -5,8 +5,6 @@ import (
 	"slices"
 )
 
-var buildAllSources = "false"
-
 var errNativeBuildSource = errors.New("当前版本不包含此站源")
 
 type buildFlavorSpec struct {
