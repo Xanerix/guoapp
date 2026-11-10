@@ -36,6 +36,7 @@ const (
 	sourceHanxiaoquan   = "hanxiaoquan"
 	sourceHeitao        = "heitao"
 	sourceBeabox        = "beabox"
+	sourceLanguo        = "languo"
 
 	providerMaxBodyBytes = 20 * 1024 * 1024
 	providerTimeout      = 12 * time.Second
@@ -46,6 +47,8 @@ var (
 	huangguoAIBaseMirrors   = []string{"https://huangguoai.com", "https://thu.lbvrhyir.cc", "https://pku.xxbgwypx.cc", "https://ttvoij.ediayikma.cc", "https://thu.ediayikma.cc", "https://pku.ediayikma.cc", "https://fdu.ediayikma.cc", "https://thu.agdkczeyx.cc"}
 	huangguoAIMirrorDomains = []string{"lbvrhyir.cc", "xxbgwypx.cc", "ediayikma.cc", "agdkczeyx.cc"}
 	huangguoVideoBaseURL    = "https://huangguo.video"
+	languoBaseURL           = "https://languo.ai"
+	languoBaseMirrors       = []string{"https://languo.ai", "https://www.languo.ai", "https://languo.me", "https://www.languo.me", "https://hkc44e.y0bsjd8v.cc", "https://fyj10.y0bsjd8v.cc"}
 
 	huangguoAISlugs = []string{"recommend", "newest", "ai-duanju", "ai-manju", "ai-huanlian", "ai-mogai", "ranks/hot"}
 
@@ -92,7 +95,7 @@ func splitProviderDramaID(id string) (source, sourceID string, ok bool) {
 
 func isHuangguoProviderSource(source string) bool {
 	switch canonicalProviderSource(source) {
-	case sourceHuangguoAI, sourceHuangguoVideo, sourceHuangdou, sourceHongguo, sourceHuangju, sourceYeguo, sourceJinguoDuanju, sourceJinguo, sourceDSD, sourceCloudFront, sourceSorani, sourceGuipian, sourceHanxiaoquan, sourceHeitao, sourceBeabox:
+	case sourceHuangguoAI, sourceHuangguoVideo, sourceHuangdou, sourceHongguo, sourceHuangju, sourceYeguo, sourceJinguoDuanju, sourceJinguo, sourceDSD, sourceCloudFront, sourceSorani, sourceGuipian, sourceHanxiaoquan, sourceHeitao, sourceBeabox, sourceLanguo:
 		return true
 	default:
 		return false
@@ -135,6 +138,8 @@ func canonicalProviderSource(source string) string {
 		return sourceHeitao
 	case "beabox":
 		return sourceBeabox
+	case "languo", "languo.ai", "www.languo.ai", "languo.me", "www.languo.me", "languotv.com", "languoai.pages.dev", "1g9z14j0.cc":
+		return sourceLanguo
 	default:
 		return strings.TrimSpace(source)
 	}
@@ -265,6 +270,9 @@ func (d *Downloader) GetHuangguoChapters(ctx context.Context, source, sourceID s
 	case sourceBeabox:
 		drama, chapters, err := d.fetchBeaboxDetail(ctx, sourceID)
 		return drama.DisplayTitle(), chapters, err
+	case sourceLanguo:
+		drama, chapters, err := d.fetchLanguoDetail(ctx, sourceID)
+		return drama.DisplayTitle(), chapters, err
 	case sourceCloudFront:
 		return d.fetchLegacyChapters(ctx, sourceID)
 	default:
@@ -345,9 +353,15 @@ func (d *Downloader) fetchProviderRequest(ctx context.Context, rawURL, referer s
 		referer = rawURL
 	}
 	candidates := d.providerURLCandidates(rawURL)
+	seenCandidates := make(map[string]bool, len(candidates))
+	for _, candidate := range candidates {
+		seenCandidates[candidate] = true
+	}
 	var lastErr error
 	tried := 0
-	for _, candidate := range candidates {
+	refreshedPublish := false
+	for index := 0; index < len(candidates); index++ {
+		candidate := candidates[index]
 		if err := ctx.Err(); err != nil {
 			return "", err
 		}
@@ -434,13 +448,29 @@ func (d *Downloader) fetchProviderRequest(ctx context.Context, rawURL, referer s
 				d.providerMu.Lock()
 				d.providerHosts[source] = effectiveURL.Scheme + "://" + effectiveURL.Host
 				d.providerMu.Unlock()
+				rememberPublishedProviderHosts(source, []string{effectiveURL.Scheme + "://" + effectiveURL.Host})
 			}
 			rememberPlaybackResponseURL(ctx, rawURL, resp)
 			return string(body), nil
 		}
+		if source := providerSourceForURL(rawURL); source != "" && !refreshedPublish && (source == sourceHuangguoAI || source == sourceLanguo) {
+			refreshedPublish = true
+			hosts, err := d.refreshProviderPublishedHosts(ctx, source)
+			if err == nil && len(hosts) > 0 {
+				parsed, _ := url.Parse(rawURL)
+				for _, host := range hosts {
+					next := rehostProviderURL(parsed, host)
+					if next == "" || seenCandidates[next] {
+						continue
+					}
+					seenCandidates[next] = true
+					candidates = append(candidates[:index+1], append([]string{next}, candidates[index+1:]...)...)
+				}
+			}
+		}
 	}
 	if len(candidates) > 1 && lastErr != nil {
-		return "", fmt.Errorf("黄果来源请求失败：已尝试 %d 个域名，最后错误：%w", tried, lastErr)
+		return "", fmt.Errorf("%s来源请求失败：已尝试 %d 个域名，最后错误：%w", providerSourceLabel(providerSourceForURL(rawURL)), tried, lastErr)
 	}
 	return "", lastErr
 }

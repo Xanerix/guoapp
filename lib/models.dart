@@ -20,6 +20,7 @@ class SourceSite {
       id == 'hanxiaoquan' ||
       id == 'heitao' ||
       id == 'beabox' ||
+      id == 'languo' ||
       id == 'huangguoai';
   bool get searchSuggestions => id == 'hongguo';
   String get groupId => switch (id) {
@@ -50,6 +51,7 @@ class SourceSite {
     SourceSite('huangdou', '黄豆', '精选短剧'),
     SourceSite('huangju', '剧果', '热门 · 最新 · 分类短剧'),
     SourceSite('yeguo', '野果', '分类短剧 · 在线搜索'),
+    SourceSite('languo', '蓝果', '男同短剧 · GV · 在线搜索'),
     dsd,
     SourceSite('jinguoduanju', '禁果短剧', '推荐 · 分类短剧 · 在线搜索'),
     SourceSite('jinguo', '禁果', '精选 · 最新 · 分类短剧 · 在线搜索'),

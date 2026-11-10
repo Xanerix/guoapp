@@ -51,6 +51,8 @@ func (d *Downloader) providerBaseURL(source string) string {
 		configured, fallback = d.cfg.HeitaoURL, heitaoBaseURL
 	case sourceBeabox:
 		configured, fallback = d.cfg.BeaboxURL, beaboxBaseURL
+	case sourceLanguo:
+		configured, fallback = d.cfg.LanguoURL, languoBaseURL
 	default:
 		fallback = "https://d2pypzndaqisk.cloudfront.net"
 	}
@@ -63,6 +65,9 @@ func providerSourceForURL(raw string) string {
 		return ""
 	}
 	host := strings.ToLower(parsed.Hostname())
+	if source := publishedProviderHostSource(host); source != "" {
+		return source
+	}
 	switch {
 	case host == "huangguoai.com" || isHuangguoAIMirrorHost(host):
 		return sourceHuangguoAI
@@ -92,6 +97,9 @@ func providerSourceForURL(raw string) string {
 		return sourceHanxiaoquan
 	case host == "heitaodj.com" || host == "www.heitaodj.com":
 		return sourceHeitao
+	case host == "languo.ai" || host == "www.languo.ai" || host == "languo.me" || host == "www.languo.me" ||
+		strings.HasSuffix(host, ".languo.ai") || strings.HasSuffix(host, ".languo.me") || strings.HasSuffix(host, ".y0bsjd8v.cc"):
+		return sourceLanguo
 	default:
 		return ""
 	}
@@ -124,13 +132,32 @@ func (d *Downloader) providerURLCandidates(raw string) []string {
 		}
 	}
 	add(rehostProviderURL(parsed, preferred))
+	for _, mirror := range d.providerPublishedHosts(source) {
+		add(rehostProviderURL(parsed, mirror))
+	}
 	configured := d.providerBaseURL(source)
 	add(rehostProviderURL(parsed, configured))
 	if providerSourceForURL(configured) == "" {
+		if len(candidates) == 0 {
+			return []string{raw}
+		}
 		return candidates
 	}
-	for _, candidate := range providerURLCandidates(raw) {
-		add(candidate)
+	switch source {
+	case sourceHuangguoAI:
+		for _, mirror := range huangguoAIBaseMirrors {
+			add(rehostProviderURL(parsed, mirror))
+		}
+		for _, mirror := range generatedHuangguoAIMirrors(raw, 8) {
+			add(rehostProviderURL(parsed, mirror))
+		}
+	case sourceLanguo:
+		for _, mirror := range languoBaseMirrors {
+			add(rehostProviderURL(parsed, mirror))
+		}
+	}
+	if len(candidates) == 0 {
+		return []string{raw}
 	}
 	return candidates
 }
@@ -177,7 +204,7 @@ func (d *Downloader) resolveProviderMedia(ctx context.Context, task Task) (provi
 	if strings.HasPrefix(chapter.VideoURL, "hongguo-cenc://") {
 		return d.resolveHongguoMedia(ctx, task)
 	}
-	if chapter.PageURL == "" && chapter.Source == sourceHuangguoVideo {
+	if chapter.PageURL == "" && (chapter.Source == sourceHuangguoVideo || chapter.Source == sourceLanguo) {
 		if source, sourceID, valid := splitProviderDramaID(task.DramaID); valid {
 			_, chapters, err := d.GetHuangguoChapters(ctx, source, sourceID)
 			if err != nil {
@@ -223,7 +250,7 @@ func (d *Downloader) resolveProviderMedia(ctx context.Context, task Task) (provi
 		}
 		media.URL = address
 	}
-	if chapter.PageURL != "" && chapter.Source == sourceHuangguoVideo {
+	if chapter.PageURL != "" && (chapter.Source == sourceHuangguoVideo || chapter.Source == sourceLanguo) {
 		responses := &playbackResponseURLs{}
 		pageContext := context.WithValue(ctx, playbackResponseURLsKey{}, responses)
 		body, err := d.fetchProviderText(pageContext, chapter.PageURL, media.Referer)
@@ -234,7 +261,11 @@ func (d *Downloader) resolveProviderMedia(ctx context.Context, task Task) (provi
 		if actual, ok := responses.values.Load(chapter.PageURL); ok {
 			pageURL = actual.(string)
 		}
-		media.URL = parseDataHLS(body, pageURL)
+		if chapter.Source == sourceLanguo {
+			media.URL = languoPlaybackURL(body, pageURL)
+		} else {
+			media.URL = parseDataHLS(body, pageURL)
+		}
 		media.Referer = pageURL
 	}
 	if !isProviderHTTPMediaURL(media.URL) {

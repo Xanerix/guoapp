@@ -79,6 +79,8 @@ func validNativeCategory(source, category string) bool {
 		return validHeitaoCategory(category)
 	case sourceBeabox:
 		return validBeaboxCategory(category)
+	case sourceLanguo:
+		return validLanguoCategory(category)
 	}
 	return false
 }
@@ -96,6 +98,8 @@ func (engine *nativeEngine) nativeCategories(ctx context.Context, source string,
 		return append(all, nativeAICategories...), nil
 	case sourceHuangdou:
 		return all, nil
+	case sourceLanguo:
+		return append(all, languoCategories...), nil
 	}
 	engine.mu.Lock()
 	cached := append([]nativeCategory{}, engine.categoryOptions[source]...)

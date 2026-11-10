@@ -97,6 +97,26 @@ func huangguoDetailMetadata(body, pageURL, source, sourceID string) Drama {
 	if patch, err := parseHuangguoSortDetail(body, pageURL, drama); err == nil {
 		drama = patch
 	}
+	if data := languoInitialData(body); data != nil {
+		if title := languoCleanTitle(mapString(data, "title")); title != "" {
+			drama.Title, drama.Name = title, title
+		}
+		if description := mapString(data, "description"); description != "" {
+			drama.Desc, drama.Intro = description, description
+		}
+		if cover := providerCoverAddress(mapString(data, "coverSrc", "posterSrc"), pageURL); cover != "" {
+			drama.Cover, drama.CoverURL = cover, cover
+		}
+		if views := normalizeViews(mapString(data, "views")); views != "" {
+			drama.Views = views
+		}
+		if online := providerReleaseDate(mapString(data, "time")); online != "" {
+			drama.OnlineDate = online
+		}
+		if tags := mapStringSlice(data, "tags"); len(tags) > 0 {
+			drama.Tags = tags
+		}
+	}
 	drama.Name, drama.Intro = drama.Title, drama.Desc
 	meta := cleanText(huangguoClassBlock(huangguoNonContent.ReplaceAllString(body, ""), "hg-web-detail__meta"))
 	drama.ReleaseStatus = releaseStatusFromRemark(meta)
