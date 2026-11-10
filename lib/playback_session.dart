@@ -184,6 +184,7 @@ class PlaybackSession extends ChangeNotifier {
   int _iosRebuilds = 0;
   bool _playerSuspect = false;
   bool _rebuilding = false;
+  bool _advancingSeason = false;
   bool _rebuildQueued = false;
   int? _queuedToken;
   double _queuedPosition = 0;
@@ -397,11 +398,34 @@ class PlaybackSession extends ChangeNotifier {
       // 本季已看完：同一站源内自动接上下一季第 1 集。
       unawaited(_playNextSeason());
     } else {
+      DiaryService.add(
+        '[Play] 本季已看完 季数=${detail.seasons.length} '
+        '下一季=${_nextSeason?.label ?? '无'}',
+      );
       _playIntent = false;
       endBoost();
       unawaited(player.pause());
       unawaited(saveProgress());
     }
+  }
+
+  /// 详情页的季列表是异步加载的，可能在播放会话创建之后才到；
+  /// 这里同步给它，供本季播完自动衔接下一季。
+  void syncSeasons(List<DramaSeason> seasons) {
+    if (_closed || seasons.length <= 1) return;
+    final current = detail.seasons;
+    if (current.length == seasons.length &&
+        current.isNotEmpty &&
+        current.first.drama.id == seasons.first.drama.id) {
+      return;
+    }
+    detail = DramaDetail(
+      detail.drama,
+      detail.episodes,
+      warning: detail.warning,
+      seasons: seasons,
+    );
+    _notify();
   }
 
   /// 当前季在季列表中的下一季；单季或顺序不可知时返回 null。
@@ -416,16 +440,28 @@ class PlaybackSession extends ChangeNotifier {
   }
 
   Future<void> _playNextSeason() async {
+    if (_advancingSeason) return;
     final season = _nextSeason;
     if (season == null || _closed || !_foreground || !_usable) return;
+    _advancingSeason = true;
     final ticket = _generation;
     DiaryService.add('[Play] 本季结束，切换到${season.label}');
-    // 先把上一季的收尾进度按旧剧集记下来，再替换详情。
-    await saveProgress();
-    if (!_current(ticket)) return;
+    // 备用实例与预加载都属于上一季，换季前丢干净，避免命中旧剧集。
+    _dropStandby();
+    _preloader.clear();
     try {
+      // 先把上一季的收尾进度按旧剧集记下来，再替换详情。
+      await saveProgress();
+      if (!_current(ticket)) return;
       final next = await repository.detail(season.drama);
       if (!_current(ticket) || _closed || !_foreground) return;
+      if (next.episodes.isEmpty) {
+        DiaryService.add('[Play] 下一季没有可播放的分集');
+        _playIntent = false;
+        endBoost();
+        unawaited(player.pause());
+        return;
+      }
       detail = DramaDetail(
         repository.catalogUpdates.current(season.drama).merge(next.drama),
         next.episodes,
@@ -438,6 +474,13 @@ class PlaybackSession extends ChangeNotifier {
       _playIntent = true;
       _notify();
       await play(0, playWhenReady: true);
+      if (_error?.contains('context canceled') ?? false) {
+        // 换季解析被并发操作取消时重试一次，避免停在错误页。
+        DiaryService.add('[Play] 换季解析被取消，重试一次');
+        _error = null;
+        _loading = false;
+        await play(0, playWhenReady: true);
+      }
     } catch (error) {
       DiaryService.add('[Play] 切换下一季失败：${_diagnostic(error)}');
       if (!_closed) {
@@ -445,6 +488,8 @@ class PlaybackSession extends ChangeNotifier {
         endBoost();
         unawaited(player.pause());
       }
+    } finally {
+      _advancingSeason = false;
     }
   }
 

@@ -214,7 +214,7 @@ class _DetailPageState extends State<DetailPage> {
       AppScope.of(context).repository,
       widget.store,
       widget.drama,
-    )..addListener(_preopen);
+    )..addListener(_detailsChanged);
   }
 
   @override
@@ -283,6 +283,13 @@ class _DetailPageState extends State<DetailPage> {
     ),
   );
 
+  void _detailsChanged() {
+    // 季列表晚于剧集到达时，把它同步给已经创建的播放会话。
+    final seasons = _details?.seasons ?? const <DramaSeason>[];
+    if (seasons.length > 1) _handle?.session.syncSeasons(seasons);
+    _preopen();
+  }
+
   void _preopen() {
     final details = _details!;
     if (_handle != null ||
@@ -328,6 +335,7 @@ class _DetailPageState extends State<DetailPage> {
     if (!mounted || !details.allowed) return;
     final position = _startAt(index, resume: resume);
     final handle = _handle ?? _open(index, position: position);
+    handle.session.syncSeasons(details.seasons);
     _handle = null;
     handle.session.start(index, position: position);
     _watching = true;
@@ -337,7 +345,23 @@ class _DetailPageState extends State<DetailPage> {
       ),
     );
     _watching = false;
-    if (mounted && AppScope.of(context).television) _focusWatched(details);
+    if (!mounted) return;
+    // 播放器可能自动接上了下一季，回到详情页时同步到实际播放的那一季。
+    final played = handle.session.detail.drama;
+    if (played.id != details.drama.id) {
+      DramaSeason? season;
+      for (final candidate in details.seasons) {
+        if (candidate.drama.id == played.id) {
+          season = candidate;
+          break;
+        }
+      }
+      if (season != null) {
+        await details.selectSeason(season);
+        if (!mounted) return;
+      }
+    }
+    if (AppScope.of(context).television) _focusWatched(details);
   }
 
   void _focusWatched(DramaDetails details) {
