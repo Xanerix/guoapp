@@ -29,7 +29,7 @@ void main() {
         drama('3', category: 'AI 漫剧'),
         drama('4', source: 'huangdou', category: '甜宠'),
       ]);
-    final catalog = SourceCatalog(repository, SourceSite.hongguo);
+    final catalog = SourceCatalog(repository, SourceSite.byId('hongguo'));
     await catalog.loadCategories();
     expect(
       [for (final category in catalog.categories) category.id],
@@ -50,7 +50,7 @@ void main() {
         drama('1', category: '都市'),
         drama('2', category: '成长'),
       ]);
-    final catalog = SourceCatalog(repository, SourceSite.hongguo);
+    final catalog = SourceCatalog(repository, SourceSite.byId('hongguo'));
     await catalog.loadCategories();
     expect(
       [for (final category in catalog.categories) category.id],
@@ -64,7 +64,7 @@ void main() {
         drama('1', category: '都市'),
         drama('2', category: '成长'),
       ]);
-    final catalog = SourceCatalog(repository, SourceSite.hongguo);
+    final catalog = SourceCatalog(repository, SourceSite.byId('hongguo'));
     await catalog.loadCategories();
     final topic = catalog.categories.last;
     expect(topic.local, isTrue);
@@ -86,7 +86,7 @@ void main() {
     ).search('剧名');
     final hongguo = await SourceCatalog(
       repository,
-      SourceSite.hongguo,
+      SourceSite.byId('hongguo'),
     ).search('剧名', page: 2);
     expect(huangdou.hasMore, isFalse);
     expect(hongguo.hasMore, isTrue);

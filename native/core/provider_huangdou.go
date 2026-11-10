@@ -526,6 +526,7 @@ var huangdouDescriptor = SourceDescriptor{
 	ID:          sourceHuangdou,
 	Name:        "黄豆",
 	Description: "精选短剧",
+	DefaultOff:  true,
 	Aliases:     []string{"tideember.cc", "xqjurgek.top"},
 	MatchesHost: isHuangdouHost,
 	BaseURL:     huangdouBaseURL,

@@ -144,7 +144,7 @@ class SeriesSeasonNotice {
     final id = json['id'], title = json['title'], season = json['season'];
     final unit = json['unit'], read = json['read'];
     if (id is! String ||
-        !id.startsWith('${SourceSite.hongguo.id}:') ||
+        !id.startsWith('$hongguoSourceId:') ||
         id.length > 512 ||
         title is! String ||
         title.trim().isEmpty ||

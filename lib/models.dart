@@ -1,73 +1,84 @@
 import 'dart:convert';
 
-import 'app_build.dart';
+const hongguoSourceId = 'hongguo';
 
 class SourceSite {
-  const SourceSite(this.id, this.name, this.description);
+  const SourceSite(
+    this.id,
+    this.name,
+    this.description, {
+    this.group = '',
+    this.groupLabel = '',
+    this.entryLabel = '',
+    this.defaultOff = false,
+    this.available = true,
+    this.pagedSearch = false,
+    this.searchSuggestions = false,
+    this.recommends = false,
+    this.danmaku = false,
+    this.devices = false,
+    this.account = false,
+    this.vipPrompt = true,
+  });
+  factory SourceSite.fromJson(Map<String, dynamic> json) => SourceSite(
+    json['id'] as String? ?? '',
+    json['name'] as String? ?? '',
+    json['description'] as String? ?? '',
+    group: json['group'] as String? ?? '',
+    groupLabel: json['groupName'] as String? ?? '',
+    entryLabel: json['entryName'] as String? ?? '',
+    defaultOff: json['defaultOff'] == true,
+    available: json['available'] == true,
+    pagedSearch: json['search'] == true,
+    searchSuggestions: json['suggestions'] == true,
+    recommends: json['recommendations'] == true,
+    danmaku: json['danmaku'] == true,
+    devices: json['devices'] == true,
+    account: json['account'] == true,
+    vipPrompt: json['vipPrompt'] != false,
+  );
   final String id;
   final String name;
   final String description;
+  final String group;
+  final String groupLabel;
+  final String entryLabel;
+  final bool defaultOff;
+  final bool available;
+  final bool pagedSearch;
+  final bool searchSuggestions;
+  final bool recommends;
+  final bool danmaku;
+  final bool devices;
+  final bool account;
+  final bool vipPrompt;
   bool get onlineSearch => pagedSearch;
-  bool get pagedSearch =>
-      id == 'hongguo' ||
-      id == 'huangju' ||
-      id == 'yeguo' ||
-      id == 'jinguoduanju' ||
-      id == 'jinguo' ||
-      id == 'dsd' ||
-      id == 'sorani' ||
-      id == 'guipian' ||
-      id == 'hanxiaoquan' ||
-      id == 'heitao' ||
-      id == 'beabox' ||
-      id == 'huangguoai';
-  bool get searchSuggestions => id == 'hongguo';
-  String get groupId => switch (id) {
-    'huangguo-video' || 'huangguoai' || 'cloudfront' => 'huangguo',
-    _ => id,
-  };
-  String get groupName => groupId == 'huangguo' ? '黄果' : name;
-  String get entryName => switch (id) {
-    'huangguo-video' => '视频',
-    'huangguoai' => 'AI',
-    'cloudfront' => '旧版',
-    _ => name,
-  };
+  String get groupId => group.isEmpty ? id : group;
+  String get groupName => groupLabel.isEmpty ? name : groupLabel;
+  String get entryName => entryLabel.isEmpty ? name : entryLabel;
 
-  static const hongguo = SourceSite('hongguo', '红果', '短剧 · 漫剧 · AI 剧');
-  static const dsd = SourceSite('dsd', '帝果', '分类视频 · 在线搜索');
-  static const sorani = SourceSite('sorani', '青空', '番剧 · 剧场动画 · 特摄');
-  static const guipian = SourceSite('guipian', '鬼片', '鬼片 · 电视剧 · 动漫');
-  static const hanxiaoquan = SourceSite(
-    'hanxiaoquan',
-    '韩小圈',
-    '韩剧 · 韩国电影 · 综艺动漫',
-  );
+  static List<SourceSite> _all = const [];
+  static List<SourceSite> _available = const [];
 
-  static const primaryValues = [hongguo, hanxiaoquan, guipian, sorani];
+  static void install(Iterable<SourceSite> sites) {
+    _all = List.unmodifiable(sites.where((site) => site.id.isNotEmpty));
+    _available = List.unmodifiable(_all.where((site) => site.available));
+  }
 
-  static const restrictedValues = [
-    SourceSite('huangdou', '黄豆', '精选短剧'),
-    SourceSite('huangju', '剧果', '热门 · 最新 · 分类短剧'),
-    SourceSite('yeguo', '野果', '分类短剧 · 在线搜索'),
-    dsd,
-    SourceSite('jinguoduanju', '禁果短剧', '推荐 · 分类短剧 · 在线搜索'),
-    SourceSite('jinguo', '禁果', '精选 · 最新 · 分类短剧 · 在线搜索'),
-    SourceSite('heitao', '黑桃', '分类短剧 · 在线搜索'),
-    SourceSite('beabox', '笔盒', '分类视频 · 在线搜索'),
-    SourceSite('huangguo-video', '黄果视频', '视频剧集'),
-    SourceSite('huangguoai', '黄果 AI', 'AI 短剧'),
-    SourceSite('cloudfront', '黄果旧版', '旧 API 剧库'),
+  static List<SourceSite> get allValues => _all;
+  static List<SourceSite> get values => _available;
+  static List<SourceSite> get restrictedValues => [
+    for (final site in _all)
+      if (site.defaultOff) site,
   ];
-  static const knownValues = [...primaryValues, ...restrictedValues];
-  static const allValues = [...primaryValues, ...restrictedValues];
-  static const values = allSourcesEnabled ? knownValues : [hongguo];
-  static bool isAvailable(String id) => values.any((site) => site.id == id);
-  static bool isKnown(String id) => allValues.any((site) => site.id == id);
+  static bool isAvailable(String id) => _available.any((site) => site.id == id);
+  static bool isKnown(String id) => _all.any((site) => site.id == id);
   static bool isRestricted(String id) =>
-      restrictedValues.any((site) => site.id == id);
-  static SourceSite byId(String id) =>
-      allValues.firstWhere((site) => site.id == id, orElse: () => hongguo);
+      _all.any((site) => site.id == id && site.defaultOff);
+  static SourceSite byId(String id) => _all.firstWhere(
+    (site) => site.id == id,
+    orElse: () => SourceSite(id, id, '', available: false),
+  );
 }
 
 class SourceGroup {

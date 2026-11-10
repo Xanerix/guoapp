@@ -666,6 +666,10 @@ class NativeRepository extends AppRepository {
     if (build['allSources'] != allSourcesEnabled) {
       throw AppFailure('应用与原生核心的站源版本不一致，请使用完整安装包重新安装');
     }
+    SourceSite.install([
+      for (final row in build['sources'] as List? ?? const [])
+        SourceSite.fromJson(Map<String, dynamic>.from(row as Map)),
+    ]);
     if (!background) await BackgroundDownloads.prepare();
     if (!background) {
       SystemProxyMonitor.start((value) async {

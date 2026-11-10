@@ -202,7 +202,7 @@ class PlaybackSession extends ChangeNotifier {
   int get quality => _quality;
   bool get local => _plan?.local == true;
   List<int> get qualities => _plan?.qualities ?? const [];
-  bool get danmakuSupported => detail.drama.source == SourceSite.hongguo.id;
+  bool get danmakuSupported => SourceSite.byId(detail.drama.source).danmaku;
   bool get danmakuEnabled => _danmakuEnabled;
   PlaybackPreferences get preferences => _preferences;
   DanmakuStyle get danmakuStyle => DanmakuStyle.of(store.playbackPreferences);
@@ -262,7 +262,7 @@ class PlaybackSession extends ChangeNotifier {
     }
     if (store.profileEpoch != _epoch ||
         store.locked ||
-        !store.allowsSource(SourceSite.hongguo.id)) {
+        !store.allowsSource(detail.drama.source)) {
       danmaku.setPlan(null);
     }
   }
@@ -292,7 +292,7 @@ class PlaybackSession extends ChangeNotifier {
           _openedIndex == _index &&
           _usable &&
           !store.locked &&
-          store.allowsSource(SourceSite.hongguo.id),
+          store.allowsSource(detail.drama.source),
     );
   }
 

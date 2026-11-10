@@ -164,6 +164,10 @@ var legacyDescriptor = SourceDescriptor{
 	ID:            sourceCloudFront,
 	Name:          "黄果旧版",
 	Description:   "旧 API 剧库",
+	Group:         "huangguo",
+	GroupName:     "黄果",
+	EntryName:     "旧版",
+	DefaultOff:    true,
 	BaseURL:       "https://d2pypzndaqisk.cloudfront.net",
 	ValidCategory: func(category string) bool { return strings.TrimSpace(category) == category },
 }

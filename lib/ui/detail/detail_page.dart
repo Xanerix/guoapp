@@ -303,7 +303,7 @@ class _DetailPageState extends State<DetailPage> {
     final details = _details!;
     final episode = details.episodes[index];
     if (episode.vip &&
-        details.drama.source != SourceSite.dsd.id &&
+        SourceSite.byId(details.drama.source).vipPrompt &&
         await showDialog<bool>(
               context: context,
               builder: (context) => AlertDialog(

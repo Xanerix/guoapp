@@ -322,6 +322,7 @@ var yeguoDescriptor = SourceDescriptor{
 	ID:                 sourceYeguo,
 	Name:               "野果",
 	Description:        "分类短剧 · 在线搜索",
+	DefaultOff:         true,
 	Aliases:            []string{"ygdj7.com", "www.ygdj7.com", "ygdj15.com", "www.ygdj15.com", "analyze.buxefaex.cc", "attract.vgbyziuz.cc", "delta.ygrwdsgt.cc", "yeguodj.com", "www.yeguodj.com"},
 	HostSuffixes:       []string{".buxefaex.cc", ".fzchosdi.cc", ".lwblvxvy.cc", ".vgbyziuz.cc"},
 	BaseURL:            yeguoBaseURL,

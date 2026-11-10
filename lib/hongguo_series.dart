@@ -88,7 +88,7 @@ int? _seasonNumber(String label) {
 }
 
 HongguoSeriesInfo? hongguoSeriesInfo(Drama drama, {String? unit}) {
-  if (drama.source != SourceSite.hongguo.id) return null;
+  if (drama.source != hongguoSourceId) return null;
   final title = drama.title.trim();
   final match = _seasonSuffix.firstMatch(title);
   if (match == null) {
@@ -117,7 +117,7 @@ List<HongguoSeriesEntry> hongguoSeriesEntries(
   Drama anchor,
   Iterable<Drama> candidates,
 ) {
-  if (anchor.source != SourceSite.hongguo.id) return const [];
+  if (anchor.source != hongguoSourceId) return const [];
   var anchorInfo = hongguoSeriesInfo(anchor);
   String key, unit;
   int anchorSeason;
@@ -157,7 +157,7 @@ List<HongguoSeriesEntry> hongguoSeriesEntries(
   if (anchorInfo == null) return const [];
   final byId = <String, HongguoSeriesEntry>{};
   for (final drama in [anchor, ...candidates]) {
-    if (drama.source != SourceSite.hongguo.id) continue;
+    if (drama.source != hongguoSourceId) continue;
     final info = hongguoSeriesInfo(drama, unit: unit);
     if (info == null || info.key != key || info.unit != unit) continue;
     byId[drama.id] = HongguoSeriesEntry(

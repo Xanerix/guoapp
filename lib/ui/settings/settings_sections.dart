@@ -8,6 +8,7 @@ import '../../app_build.dart';
 import '../../app_device.dart';
 import '../../download_preferences.dart';
 import '../../local_store.dart';
+import '../../models.dart';
 import '../../playback_preferences.dart';
 import '../../resource_settings.dart';
 import '../../resource_settings_editor.dart';
@@ -316,7 +317,7 @@ class SettingsSection extends StatelessWidget {
     final settings = editor.settings;
     final editable = settings != null && !editor.saving;
     return [
-      if (allSourcesEnabled)
+      if (SourceSite.values.length > 1)
         SettingsCard(
           children: [
             SettingsTile(

@@ -12,6 +12,11 @@ type SourceDescriptor struct {
 	ID                 string
 	Name               string
 	Description        string
+	Group              string
+	GroupName          string
+	EntryName          string
+	DefaultOff         bool
+	SkipVIPPrompt      bool
 	Aliases            []string
 	HostSuffixes       []string
 	MatchesHost        func(host string) bool

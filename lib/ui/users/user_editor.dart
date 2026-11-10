@@ -238,7 +238,7 @@ class _UserEditorState extends State<UserEditor> {
                       1,
                       4,
                     );
-                    const sites = SourceSite.values;
+                    final sites = SourceSite.values;
                     return Column(
                       children: [
                         for (var row = 0; row < sites.length; row += columns)

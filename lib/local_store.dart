@@ -774,8 +774,8 @@ class LocalStore extends ChangeNotifier {
             notice.id,
             () => Drama(
               id: notice.id,
-              source: SourceSite.hongguo.id,
-              sourceId: notice.id.substring(SourceSite.hongguo.id.length + 1),
+              source: hongguoSourceId,
+              sourceId: notice.id.substring(hongguoSourceId.length + 1),
               title: notice.title,
             ),
           );
@@ -783,7 +783,7 @@ class LocalStore extends ChangeNotifier {
       }
       final favoriteIds = favorites.keys.toSet();
       for (final favorite in favorites.values) {
-        if (favorite.source != SourceSite.hongguo.id ||
+        if (favorite.source != hongguoSourceId ||
             states[favorite.id] == null) {
           continue;
         }
