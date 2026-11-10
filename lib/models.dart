@@ -253,10 +253,16 @@ class Episode {
 }
 
 class DramaDetail {
-  DramaDetail(this.drama, this.episodes, {this.warning = ''});
+  DramaDetail(
+    this.drama,
+    this.episodes, {
+    this.warning = '',
+    this.seasons = const [],
+  });
   final Drama drama;
   final List<Episode> episodes;
   final String warning;
+  final List<DramaSeason> seasons;
   factory DramaDetail.fromJson(Map<String, dynamic> json) {
     final rows = json['chapters'] as List? ?? const [];
     return DramaDetail(
@@ -266,8 +272,38 @@ class DramaDetail {
           Episode(Map<String, dynamic>.from(rows[i] as Map), i + 1),
       ],
       warning: json['warning'] as String? ?? '',
+      seasons: [
+        for (final row in json['seasons'] as List? ?? const [])
+          DramaSeason.fromJson(Map<String, dynamic>.from(row as Map)),
+      ],
     );
   }
+}
+
+/// 同一站源内按季聚合时的一项；每季仍是独立 [Drama]。
+class DramaSeason {
+  const DramaSeason({
+    required this.number,
+    required this.title,
+    required this.drama,
+    this.unit = '季',
+    this.episodes = 0,
+  });
+  final int number;
+  final String unit;
+  final String title;
+  final int episodes;
+  final Drama drama;
+
+  String get label => number > 0 ? '第$number$unit' : title;
+
+  factory DramaSeason.fromJson(Map<String, dynamic> json) => DramaSeason(
+    number: intValue(json['number']),
+    unit: json['unit'] as String? ?? '季',
+    title: json['title'] as String? ?? '',
+    episodes: intValue(json['episodes']),
+    drama: Drama.fromJson(Map<String, dynamic>.from(json['drama'] as Map)),
+  );
 }
 
 class CatalogPage {

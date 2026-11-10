@@ -21,15 +21,20 @@ class DramaDetails extends ChangeNotifier {
   final int _epoch;
   Drama _drama;
   List<Episode> _episodes = const [];
+  List<DramaSeason> _seasons = const [];
   String _warning = '';
   String? _error;
   bool _loading = false;
+  bool _seasonsLoading = false;
   int _group = 0;
   int _generation = 0;
   bool _disposed = false;
 
   Drama get drama => _drama;
   List<Episode> get episodes => _episodes;
+  /// 同站源内的季列表；长度 ≤ 1 时 UI 不展示季切换。
+  List<DramaSeason> get seasons => _seasons;
+  bool get seasonsLoading => _seasonsLoading;
   String get warning => _warning;
   String? get error => _error;
   bool get loading => _loading;
@@ -77,6 +82,7 @@ class DramaDetails extends ChangeNotifier {
       _notify();
       repository.catalogUpdates.publish(_drama, retryCover: true);
       unawaited(store.refreshDrama(_drama).catchError((Object _) {}));
+      unawaited(_loadSeasons(generation));
       unawaited(_supplement(generation));
     } catch (error) {
       if (!_current(generation)) return;
@@ -85,6 +91,35 @@ class DramaDetails extends ChangeNotifier {
       _notify();
       repository.catalogUpdates.publish(_drama, retryCover: true);
     }
+  }
+
+  /// 季列表只是增强信息：异步、带超时、失败保持单季体验。
+  Future<void> _loadSeasons(int generation) async {
+    if (_seasonsLoading || _seasons.isNotEmpty) return;
+    _seasonsLoading = true;
+    try {
+      final seasons = await repository
+          .seasons(_drama)
+          .timeout(const Duration(seconds: 6));
+      if (!_current(generation) || seasons.length <= 1) return;
+      _seasons = seasons;
+      _notify();
+    } catch (_) {
+    } finally {
+      _seasonsLoading = false;
+    }
+  }
+
+  /// 切换到另一季：换掉当前 [Drama] 后重新加载剧集，进度按季独立。
+  Future<void> selectSeason(DramaSeason season) async {
+    if (!allowed || season.drama.id == _drama.id) return;
+    _drama = repository.catalogUpdates.current(season.drama);
+    _episodes = const [];
+    _warning = '';
+    _group = 0;
+    _error = null;
+    _notify();
+    await load();
   }
 
   Future<void> _supplement(int generation) async {

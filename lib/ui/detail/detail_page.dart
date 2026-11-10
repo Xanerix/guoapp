@@ -263,6 +263,7 @@ class _DetailPageState extends State<DetailPage> {
       details.drama,
       details.episodes,
       warning: details.warning,
+      seasons: details.seasons,
     );
   }
 
@@ -1125,6 +1126,7 @@ class _DetailPageState extends State<DetailPage> {
           ),
         ),
         Text(meta.join(' · '), style: sub(m.meta)),
+        if (details.seasons.length > 1) _seasonSelector(details, m),
         if (drama.score.isNotEmpty)
           Text('评分 ${drama.score}', style: sub(m.meta)),
         if (drama.category.isNotEmpty) Text(drama.category, style: sub(m.meta)),
@@ -1140,6 +1142,31 @@ class _DetailPageState extends State<DetailPage> {
         ...trailing,
       ],
     );
+  }
+
+  Widget _seasonSelector(DramaDetails details, _Metrics m) => Wrap(
+    spacing: 8,
+    runSpacing: 8,
+    children: [
+      for (final season in details.seasons)
+        ChoiceChip(
+          label: Text(season.label),
+          selected: season.drama.id == details.drama.id,
+          visualDensity: VisualDensity.compact,
+          labelStyle: TextStyle(fontSize: m.meta),
+          onSelected: (_) => unawaited(_selectSeason(details, season)),
+        ),
+    ],
+  );
+
+  Future<void> _selectSeason(DramaDetails details, DramaSeason season) async {
+    if (season.drama.id == details.drama.id) return;
+    // 预开实例属于上一季，先释放再切，避免用旧剧集打开播放。
+    _handle?.dispose();
+    _handle = null;
+    await details.selectSeason(season);
+    if (!mounted) return;
+    _preopen();
   }
 
   Widget _followingHeadline(DramaDetails details, _Metrics m, double top) =>

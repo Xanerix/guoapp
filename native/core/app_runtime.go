@@ -465,6 +465,8 @@ func nativeDispatch(input nativeInput) (any, error) {
 		return engine.prepareCover(ctx, input.Drama)
 	case "detail":
 		return engine.nativeDetail(ctx, input.Drama)
+	case "seasons":
+		return engine.nativeSeasons(ctx, input)
 	case "metadata":
 		return engine.nativeMetadata(ctx, input.Drama)
 	case "followCheck":

@@ -54,7 +54,7 @@ func nativeAuthorizeInput(input nativeInput) error {
 		if !nativeSourceAvailable(input.Source) {
 			return errNativeBuildSource
 		}
-	case "cover", "prepareCover", "detail", "metadata", "followCheck", "resolve", "preload", "enqueueDownloads", "localPlayback":
+	case "cover", "prepareCover", "detail", "seasons", "metadata", "followCheck", "resolve", "preload", "enqueueDownloads", "localPlayback":
 		if !nativeDramaAvailable(input.Drama) {
 			return errNativeBuildSource
 		}

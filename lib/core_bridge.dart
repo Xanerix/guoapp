@@ -184,6 +184,9 @@ abstract class AppRepository {
   Future<void> cancelPlayback();
   Future<void> release(String session);
 
+  /// 同站源内的季列表；没有可靠季信息时返回空，UI 维持单季体验。
+  Future<List<DramaSeason>> seasons(Drama drama) async => const [];
+
   /// 本机取流服务是否仍可接受连接；iOS 挂起后监听失效，只能重建播放器。
   Future<bool> playbackAlive() async => true;
 }
@@ -565,6 +568,7 @@ class NativeRepository extends AppRepository {
         'cover',
         'prepareCover',
         'detail',
+        'seasons',
         'metadata',
         'resolve',
         'preload',
@@ -762,6 +766,15 @@ class NativeRepository extends AppRepository {
   Future<DramaDetail> detail(Drama drama) async => DramaDetail.fromJson(
     await _call({'action': 'detail', 'drama': drama.toJson()}),
   );
+
+  @override
+  Future<List<DramaSeason>> seasons(Drama drama) async {
+    final result = await _call({'action': 'seasons', 'drama': drama.toJson()});
+    return [
+      for (final row in result['items'] as List? ?? const [])
+        DramaSeason.fromJson(Map<String, dynamic>.from(row as Map)),
+    ];
+  }
   @override
   Future<PlaybackPlan> resolve(
     Drama drama,
