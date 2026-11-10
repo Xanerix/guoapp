@@ -40,13 +40,13 @@ func hongguoTagQuery(offset int, session string) url.Values {
 	return query
 }
 
-func (downloader *Downloader) fetchHongguoTagCategories(ctx context.Context) ([]Category, error) {
+func (p *hongguoProvider) fetchHongguoTagCategories(ctx context.Context) ([]Category, error) {
 	query := hongguoTagQuery(0, "")
 	query.Set("category_id", hongguoTagPanelCategory)
 	query.Set("selected_item_from_front_page", hongguoTagPanelCategory)
 	query.Set("is_merged_landing_page", "true")
 	query.Set("category_new_page_715", "1")
-	result, err := downloader.hongguoAppRequest(ctx, http.MethodGet, hongguoTagLandingPath, query, nil)
+	result, err := p.hongguoAppRequest(ctx, http.MethodGet, hongguoTagLandingPath, query, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -74,8 +74,8 @@ func (downloader *Downloader) fetchHongguoTagCategories(ctx context.Context) ([]
 	return categories, nil
 }
 
-func (downloader *Downloader) fetchHongguoTagPage(ctx context.Context, category string, page int) ([]Drama, bool, error) {
-	client := downloader.hongguoClient()
+func (p *hongguoProvider) fetchHongguoTagPage(ctx context.Context, category string, page int) ([]Drama, bool, error) {
+	client := p.client
 	client.mu.Lock()
 	cursor := client.tagCursors[category]
 	client.mu.Unlock()
@@ -86,7 +86,7 @@ func (downloader *Downloader) fetchHongguoTagPage(ctx context.Context, category 
 	query.Set("category_id", "0")
 	query.Set("selected_items", strings.TrimPrefix(category, hongguoTagPrefix))
 	query.Set("selected_order", "new_sort_hot")
-	result, err := downloader.hongguoAppRequest(ctx, http.MethodGet, hongguoTagLandingPath, query, nil)
+	result, err := p.hongguoAppRequest(ctx, http.MethodGet, hongguoTagLandingPath, query, nil)
 	if err != nil {
 		return nil, false, err
 	}

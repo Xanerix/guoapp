@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -35,8 +34,8 @@ func (client *hongguoAppClient) device(helper bool) (string, string, bool) {
 	return client.deviceLocked(helper)
 }
 
-func (downloader *Downloader) ensureHongguoDevice(ctx context.Context, helper bool, rejected string) error {
-	client := downloader.hongguoClient()
+func (p *hongguoProvider) ensureHongguoDevice(ctx context.Context, helper bool, rejected string) error {
+	client := p.client
 	settled := func() bool {
 		current, _, registered := client.device(helper)
 		return rejected == "" && registered || rejected != "" && rejected != current
@@ -52,7 +51,7 @@ func (downloader *Downloader) ensureHongguoDevice(ctx context.Context, helper bo
 	if time.Now().Before(client.registerPausedUntil) {
 		return fmt.Errorf("红果设备注册暂不可用：%v", client.registerPauseErr)
 	}
-	deviceID, installID, err := downloader.registerHongguoDevice(ctx)
+	deviceID, installID, err := p.registerHongguoDevice(ctx)
 	if err != nil {
 		var rejection hongguoRegisterRejection
 		if errors.As(err, &rejection) {
@@ -70,7 +69,7 @@ func (downloader *Downloader) ensureHongguoDevice(ctx context.Context, helper bo
 	return nil
 }
 
-func (downloader *Downloader) registerHongguoDevice(ctx context.Context) (string, string, error) {
+func (p *hongguoProvider) registerHongguoDevice(ctx context.Context) (string, string, error) {
 	header := map[string]any{
 		"display_name": "红果免费短剧", "aid": 8662, "app_version": "7.3.5.32", "version_code": 73532,
 		"manifest_version_code": 73532, "update_version_code": 73532, "channel": "update_64", "package": "com.phoenix.read",
@@ -89,27 +88,22 @@ func (downloader *Downloader) registerHongguoDevice(ctx context.Context) (string
 	query.Del("device_id")
 	query.Del("iid")
 	query.Set("req_id", uuidLike())
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, hongguoDeviceRegisterURL, bytes.NewReader(body))
+	ticket, err := p.host.Reserve(ctx, hongguoDeviceRegisterURL, "")
 	if err != nil {
 		return "", "", err
 	}
-	request.Header.Set("User-Agent", hongguoAppUserAgent)
-	request.Header.Set("Accept", "application/json")
-	request.Header.Set("Content-Type", "application/json; charset=utf-8")
-	response, err := downloader.doPreparedCatalogRequest(request, 20*time.Second, func(prepared *http.Request) {
-		query.Set("_rticket", strconv.FormatInt(time.Now().UnixMilli(), 10))
-		prepared.URL.RawQuery = query.Encode()
+	query.Set("_rticket", strconv.FormatInt(time.Now().UnixMilli(), 10))
+	response, err := p.host.Fetch(ctx, HTTPRequest{
+		Label: "红果设备注册", Method: http.MethodPost, URL: hongguoDeviceRegisterURL + "?" + query.Encode(), Body: body, Ticket: ticket,
+		Limit: 64 << 10, Timeout: 20 * time.Second, FollowRedirects: true, AnyStatus: true,
+		Header: map[string]string{"User-Agent": hongguoAppUserAgent, "Accept": "application/json", "Content-Type": "application/json; charset=utf-8"},
 	})
 	if err != nil {
 		return "", "", err
 	}
-	content, err := io.ReadAll(io.LimitReader(response.Body, 64<<10))
-	response.Body.Close()
-	if err != nil {
-		return "", "", err
-	}
-	if response.StatusCode != http.StatusOK {
-		return "", "", hongguoRegisterRejection{fmt.Errorf("红果设备注册 HTTP %d", response.StatusCode)}
+	content := response.Body
+	if response.Status != http.StatusOK {
+		return "", "", hongguoRegisterRejection{fmt.Errorf("红果设备注册 HTTP %d", response.Status)}
 	}
 	var result map[string]any
 	decoder := json.NewDecoder(bytes.NewReader(content))

@@ -16,23 +16,23 @@ import (
 
 const hongguoBaseURL = "https://hongguoduanju.com"
 
-func (d *Downloader) fetchHongguoDramas(ctx context.Context) ([]Drama, error) {
-	initialized := hongguoCatalogInitialized(d.hongguoCatalogSnapshot())
-	dramas, appErr := d.fetchHongguoAppCatalog(ctx)
+func (p *hongguoProvider) fetchHongguoDramas(ctx context.Context) ([]Drama, error) {
+	initialized := hongguoCatalogInitialized(p.hongguoCatalogSnapshot())
+	dramas, appErr := p.fetchHongguoAppCatalog(ctx)
 	if len(dramas) > 0 || appErr == nil && initialized {
 		return dramas, appErr
 	}
 	if ctx.Err() != nil {
 		return dramas, ctx.Err()
 	}
-	webDramas, webErr := d.fetchHongguoWebDramas(ctx)
+	webDramas, webErr := p.fetchHongguoWebDramas(ctx)
 	if len(webDramas) > 0 && webErr == nil {
 		return webDramas, nil
 	}
 	return webDramas, errors.Join(appErr, webErr)
 }
 
-func (d *Downloader) fetchHongguoWebDramas(ctx context.Context) ([]Drama, error) {
+func (p *hongguoProvider) fetchHongguoWebDramas(ctx context.Context) ([]Drama, error) {
 	routes := []struct {
 		path string
 		name string
@@ -50,7 +50,7 @@ func (d *Downloader) fetchHongguoWebDramas(ctx context.Context) ([]Drama, error)
 	for _, route := range routes {
 		route := route
 		go func() {
-			dramas, err := d.fetchHongguoRoute(ctx, route.path, route.name)
+			dramas, err := p.fetchHongguoRoute(ctx, route.path, route.name)
 			results <- routeResult{dramas: dramas, err: err}
 		}()
 	}
@@ -73,15 +73,15 @@ func (d *Downloader) fetchHongguoWebDramas(ctx context.Context) ([]Drama, error)
 	return out, errors.Join(failures...)
 }
 
-func (d *Downloader) fetchHongguoRoute(ctx context.Context, route, category string) ([]Drama, error) {
-	pages := d.cfg.MaxPagesPerSort
+func (p *hongguoProvider) fetchHongguoRoute(ctx context.Context, route, category string) ([]Drama, error) {
+	pages := p.host.MaxPages()
 	if pages < 1 {
 		pages = 1
 	}
 	var dramas []Drama
 	seen := map[string]bool{}
 	for page := 1; page <= pages; page++ {
-		items, totalPages, err := d.fetchHongguoCategoryPage(ctx, route+"?page="+strconv.Itoa(page), category)
+		items, totalPages, err := p.fetchHongguoCategoryPage(ctx, route+"?page="+strconv.Itoa(page), category)
 		if err != nil {
 			return dramas, fmt.Errorf("%s: %w", category, err)
 		}
@@ -107,8 +107,8 @@ func (d *Downloader) fetchHongguoRoute(ctx context.Context, route, category stri
 	return dramas, nil
 }
 
-func (d *Downloader) fetchHongguoCategoryPage(ctx context.Context, route, category string) ([]Drama, int, error) {
-	body, err := d.fetchProviderText(ctx, hongguoBaseURL+"/category/"+route, hongguoBaseURL+"/")
+func (p *hongguoProvider) fetchHongguoCategoryPage(ctx context.Context, route, category string) ([]Drama, int, error) {
+	body, err := p.text(ctx, hongguoBaseURL+"/category/"+route, hongguoBaseURL+"/")
 	if err != nil {
 		return nil, 0, err
 	}
@@ -128,27 +128,27 @@ func (d *Downloader) fetchHongguoCategoryPage(ctx context.Context, route, catego
 	return out, pages, nil
 }
 
-func (d *Downloader) fetchHongguoChapters(ctx context.Context, sourceID string) (string, []Chapter, error) {
+func (p *hongguoProvider) fetchHongguoChapters(ctx context.Context, sourceID string) (string, []Chapter, error) {
 	sourceID = strings.TrimPrefix(strings.TrimSpace(sourceID), "hg-series-v1:")
 	if sourceID == "" {
 		return "", nil, fmt.Errorf("empty hongguo sourceID")
 	}
-	entry, appErr := d.hongguoAppDetail(ctx, sourceID)
+	entry, appErr := p.hongguoAppDetail(ctx, sourceID)
 	if appErr == nil {
 		return entry.Drama.DisplayTitle(), append([]Chapter(nil), entry.Chapters...), nil
 	}
 	if ctx.Err() != nil {
 		return "", nil, ctx.Err()
 	}
-	title, chapters, webErr := d.fetchHongguoWebChapters(ctx, sourceID)
+	title, chapters, webErr := p.fetchHongguoWebChapters(ctx, sourceID)
 	if webErr == nil {
 		return title, chapters, nil
 	}
 	return "", nil, fmt.Errorf("App 详情失败: %v；网页详情失败: %w", publicError(appErr), webErr)
 }
 
-func (d *Downloader) fetchHongguoWebChapters(ctx context.Context, sourceID string) (string, []Chapter, error) {
-	body, err := d.fetchProviderText(ctx, hongguoBaseURL+"/detail?series_id="+url.QueryEscape(sourceID), hongguoBaseURL+"/")
+func (p *hongguoProvider) fetchHongguoWebChapters(ctx context.Context, sourceID string) (string, []Chapter, error) {
+	body, err := p.text(ctx, hongguoBaseURL+"/detail?series_id="+url.QueryEscape(sourceID), hongguoBaseURL+"/")
 	if err != nil {
 		return "", nil, err
 	}
@@ -189,7 +189,7 @@ func parseRouterData(raw string) map[string]any {
 	return data
 }
 
-func (d *Downloader) resolveHongguoMedia(ctx context.Context, task Task) (ProviderMedia, error) {
+func (p *hongguoProvider) resolveHongguoMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	source, seriesID, ok := splitProviderDramaID(task.DramaID)
 	if !ok || source != sourceHongguo {
 		return ProviderMedia{}, fmt.Errorf("红果章节缺少剧 ID，请刷新剧库后重新加入队列")
@@ -198,14 +198,14 @@ func (d *Downloader) resolveHongguoMedia(ctx context.Context, task Task) (Provid
 	if !hongguoNumericID.MatchString(videoID) || !hongguoNumericID.MatchString(seriesID) {
 		return ProviderMedia{}, fmt.Errorf("红果章节 ID 无效，请重新获取章节")
 	}
-	media, nativeErr := d.resolveHongguoAppMedia(ctx, videoID)
+	media, nativeErr := p.resolveHongguoAppMedia(ctx, videoID)
 	if nativeErr == nil {
 		return media, nil
 	}
 	if err := ctx.Err(); err != nil {
 		return ProviderMedia{}, err
 	}
-	media, pageErr := d.resolveHongguoWebMedia(ctx, seriesID, videoID)
+	media, pageErr := p.resolveHongguoWebMedia(ctx, seriesID, videoID)
 	if pageErr == nil {
 		return media, nil
 	}
@@ -215,9 +215,9 @@ func (d *Downloader) resolveHongguoMedia(ctx context.Context, task Task) (Provid
 	return ProviderMedia{}, fmt.Errorf("红果 App 取流失败：%v；网页取流失败：%w", publicError(nativeErr), publicError(pageErr))
 }
 
-func (d *Downloader) resolveHongguoWebMedia(ctx context.Context, seriesID, videoID string) (ProviderMedia, error) {
+func (p *hongguoProvider) resolveHongguoWebMedia(ctx context.Context, seriesID, videoID string) (ProviderMedia, error) {
 	pageURL := hongguoBaseURL + "/player/" + url.PathEscape(seriesID) + "/" + url.PathEscape(videoID)
-	body, err := d.fetchProviderText(ctx, pageURL, hongguoBaseURL+"/")
+	body, err := p.text(ctx, pageURL, hongguoBaseURL+"/")
 	if err != nil {
 		return ProviderMedia{}, err
 	}
@@ -231,7 +231,7 @@ func (d *Downloader) resolveHongguoWebMedia(ctx context.Context, seriesID, video
 		return ProviderMedia{}, fmt.Errorf("红果该集未提供公开播放地址，可能需要登录或 App 授权；不会将试看集冒充该集下载")
 	}
 	duration, _ := strconv.ParseFloat(mapString(info, "duration"), 64)
-	media := ProviderMedia{URL: addresses[0], Referer: d.providerBaseURL(sourceHongguo) + "/", Duration: time.Duration(duration * float64(time.Second))}
+	media := ProviderMedia{URL: addresses[0], Referer: hongguoBaseURL + "/", Duration: time.Duration(duration * float64(time.Second))}
 	for _, address := range addresses {
 		variant := media
 		variant.URL, variant.Variants = address, nil

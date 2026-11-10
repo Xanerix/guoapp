@@ -59,18 +59,18 @@ func hongguoSearchKeyword(keyword string) (string, error) {
 	return keyword, nil
 }
 
-func (downloader *Downloader) searchHongguoDramas(ctx context.Context, keyword string) (hongguoSearchEntry, error) {
-	return downloader.searchHongguoDramasProgress(ctx, keyword, nil)
+func (p *hongguoProvider) searchHongguoDramas(ctx context.Context, keyword string) (hongguoSearchEntry, error) {
+	return p.searchHongguoDramasProgress(ctx, keyword, nil)
 }
 
-func (downloader *Downloader) searchHongguoDramasProgress(ctx context.Context, keyword string, progress func(hongguoSearchEntry)) (hongguoSearchEntry, error) {
+func (p *hongguoProvider) searchHongguoDramasProgress(ctx context.Context, keyword string, progress func(hongguoSearchEntry)) (hongguoSearchEntry, error) {
 	keyword, err := hongguoSearchKeyword(keyword)
 	if err != nil {
 		return hongguoSearchEntry{}, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, hongguoSearchTimeout)
 	defer cancel()
-	client := downloader.hongguoClient()
+	client := p.client
 	for {
 		if err := ctx.Err(); err != nil {
 			return hongguoSearchEntry{}, err
@@ -82,7 +82,7 @@ func (downloader *Downloader) searchHongguoDramasProgress(ctx context.Context, k
 		}
 		if pending := client.searchPending[keyword]; pending != nil {
 			client.mu.Unlock()
-			entry, err := downloader.waitHongguoSearch(ctx, pending, progress)
+			entry, err := p.waitHongguoSearch(ctx, pending, progress)
 			if (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)) && ctx.Err() == nil {
 				continue
 			}
@@ -106,7 +106,7 @@ func (downloader *Downloader) searchHongguoDramasProgress(ctx context.Context, k
 				progress(cloneHongguoSearchEntry(entry))
 			}
 		})
-		entry, err := downloader.fetchHongguoSearch(fetchCtx, keyword)
+		entry, err := p.fetchHongguoSearch(fetchCtx, keyword)
 		client.mu.Lock()
 
 		if err == nil && entry.Warning == "" {
@@ -124,8 +124,8 @@ func (downloader *Downloader) searchHongguoDramasProgress(ctx context.Context, k
 	}
 }
 
-func (downloader *Downloader) waitHongguoSearch(ctx context.Context, pending *hongguoSearchCall, progress func(hongguoSearchEntry)) (hongguoSearchEntry, error) {
-	client := downloader.hongguoClient()
+func (p *hongguoProvider) waitHongguoSearch(ctx context.Context, pending *hongguoSearchCall, progress func(hongguoSearchEntry)) (hongguoSearchEntry, error) {
+	client := p.client
 	var revision uint64
 	for {
 		client.mu.Lock()
@@ -150,9 +150,9 @@ func (downloader *Downloader) waitHongguoSearch(ctx context.Context, pending *ho
 	}
 }
 
-func (downloader *Downloader) fetchHongguoSearch(ctx context.Context, keyword string) (hongguoSearchEntry, error) {
+func (p *hongguoProvider) fetchHongguoSearch(ctx context.Context, keyword string) (hongguoSearchEntry, error) {
 
-	names, namesErr := downloader.fetchHongguoSearchNames(ctx, keyword)
+	names, namesErr := p.fetchHongguoSearchNames(ctx, keyword)
 	if err := ctx.Err(); err != nil {
 		if errors.Is(err, context.DeadlineExceeded) && len(names) > 0 {
 			return hongguoSearchEntry{Dramas: names, Total: len(names), Warning: "搜索已到时限，已保留名称匹配结果，可重试"}, nil
@@ -162,7 +162,7 @@ func (downloader *Downloader) fetchHongguoSearch(ctx context.Context, keyword st
 	reportHongguoSearchProgress(ctx, hongguoSearchEntry{Dramas: mergeHongguoSearchDramas([]Drama{}, names)})
 	pageCtx, cancel := context.WithTimeout(ctx, hongguoSearchPageTimeout)
 	defer cancel()
-	page, pageErr := downloader.fetchHongguoSearchPage(pageCtx, keyword, 1)
+	page, pageErr := p.fetchHongguoSearchPage(pageCtx, keyword, 1)
 	if errors.Is(ctx.Err(), context.Canceled) {
 		return hongguoSearchEntry{}, ctx.Err()
 	}
@@ -174,7 +174,7 @@ func (downloader *Downloader) fetchHongguoSearch(ctx context.Context, keyword st
 		entry.Dramas = mergeHongguoSearchDramas(entry.Dramas, batch)
 	}
 	reportHongguoSearchProgress(ctx, entry)
-	seasonsLimited := downloader.completeHongguoSearchSeasons(ctx, keyword, &entry)
+	seasonsLimited := p.completeHongguoSearchSeasons(ctx, keyword, &entry)
 	if errors.Is(ctx.Err(), context.Canceled) {
 		return hongguoSearchEntry{}, ctx.Err()
 	}
@@ -229,8 +229,8 @@ func mergeHongguoSearchDramas(dramas, batch []Drama) []Drama {
 	return dramas
 }
 
-func (downloader *Downloader) fetchHongguoSearchNames(ctx context.Context, keyword string) ([]Drama, error) {
-	records, err := downloader.fetchHongguoSuggestionRecords(ctx, keyword, hongguoSearchNameCount)
+func (p *hongguoProvider) fetchHongguoSearchNames(ctx context.Context, keyword string) ([]Drama, error) {
+	records, err := p.fetchHongguoSuggestionRecords(ctx, keyword, hongguoSearchNameCount)
 	if err != nil {
 		return nil, err
 	}
@@ -283,14 +283,14 @@ func hongguoTitleSearchRank(title, query string) int {
 	}
 }
 
-func (downloader *Downloader) hongguoSearchScore(ctx context.Context, dramaID, title string) string {
+func (p *hongguoProvider) hongguoSearchScore(ctx context.Context, dramaID, title string) string {
 	keyword, err := hongguoSearchKeyword(title)
 	if err != nil {
 		return ""
 	}
 	ctx, cancel := context.WithTimeout(ctx, hongguoSearchPageTimeout)
 	defer cancel()
-	page, err := downloader.fetchHongguoSearchPage(ctx, keyword, 1)
+	page, err := p.fetchHongguoSearchPage(ctx, keyword, 1)
 	if err != nil {
 		return ""
 	}
@@ -302,8 +302,8 @@ func (downloader *Downloader) hongguoSearchScore(ctx context.Context, dramaID, t
 	return ""
 }
 
-func (downloader *Downloader) fetchHongguoSearchPage(ctx context.Context, keyword string, pageNum int) (hongguoSearchEntry, error) {
-	client := downloader.hongguoClient()
+func (p *hongguoProvider) fetchHongguoSearchPage(ctx context.Context, keyword string, pageNum int) (hongguoSearchEntry, error) {
+	client := p.client
 	offset := strconv.Itoa((pageNum - 1) * hongguoSearchPageSize)
 	query := url.Values{"query": {keyword}, "offset": {offset}, "count": {strconv.Itoa(hongguoSearchPageSize)}, "tab_type": {hongguoSearchSeriesTab}}
 	if pageNum > 1 {
@@ -315,7 +315,7 @@ func (downloader *Downloader) fetchHongguoSearchPage(ctx context.Context, keywor
 			query.Set("search_id", searchID)
 		}
 	}
-	result, err := downloader.hongguoAppRequest(ctx, http.MethodGet, hongguoSearchTabPath, query, nil)
+	result, err := p.hongguoAppRequest(ctx, http.MethodGet, hongguoSearchTabPath, query, nil)
 	if err != nil {
 		return hongguoSearchEntry{}, err
 	}

@@ -11,7 +11,15 @@ import (
 	"time"
 )
 
-type hongguoProvider struct{ d *Downloader }
+type hongguoProvider struct {
+	host   Host
+	client *hongguoAppClient
+}
+
+func (p *hongguoProvider) text(ctx context.Context, address, referer string) (string, error) {
+	response, err := p.host.FetchText(ctx, TextRequest{URL: address, Referer: referer})
+	return response.Body, err
+}
 
 var hongguoDescriptor = SourceDescriptor{
 	ID:             sourceHongguo,
@@ -30,7 +38,7 @@ var hongguoDescriptor = SourceDescriptor{
 }
 
 func init() {
-	Register(hongguoDescriptor, func(host Host) Provider { return &hongguoProvider{d: host.(*Downloader)} })
+	Register(hongguoDescriptor, func(host Host) Provider { return &hongguoProvider{host: host, client: newHongguoAppClient()} })
 }
 
 func validHongguoCategory(category string) bool {
@@ -52,11 +60,11 @@ func hongguoGenreCategories() []Category {
 
 func (p *hongguoProvider) Descriptor() SourceDescriptor { return hongguoDescriptor }
 
-func (p *hongguoProvider) BaseURL() string { return firstNonEmpty(p.d.cfg.HongguoURL, hongguoBaseURL) }
+func (p *hongguoProvider) BaseURL() string { return hongguoBaseURL }
 
 func (p *hongguoProvider) Categories(ctx context.Context, force bool) ([]Category, error) {
 	genres := hongguoGenreCategories()
-	tags, err := p.d.fetchHongguoTagCategories(ctx)
+	tags, err := p.fetchHongguoTagCategories(ctx)
 	if err != nil {
 		return genres, errCategoriesIncomplete
 	}
@@ -65,17 +73,17 @@ func (p *hongguoProvider) Categories(ctx context.Context, force bool) ([]Categor
 
 func (p *hongguoProvider) CatalogPage(ctx context.Context, page int, category string) ([]Drama, bool, error) {
 	if strings.HasPrefix(category, hongguoTagPrefix) {
-		return p.d.fetchHongguoTagPage(ctx, category, page)
+		return p.fetchHongguoTagPage(ctx, category, page)
 	}
-	items, err := p.d.fetchHongguoAppCatalogCategory(ctx, category)
-	state := p.d.hongguoCatalogSnapshot()
+	items, err := p.fetchHongguoAppCatalogCategory(ctx, category)
+	state := p.hongguoCatalogSnapshot()
 	hasMore := hongguoCatalogHasMore(state)
 	if category != "" && state != nil {
 		hasMore = !state.Feeds["category:"+category].Exhausted
 	}
 	if len(items) == 0 && err != nil && ctx.Err() == nil && (category == "" || category == "short_play") {
 		var totalPages int
-		items, totalPages, err = p.d.fetchHongguoCategoryPage(ctx, "real-drama?page="+strconv.Itoa(page), "真人剧")
+		items, totalPages, err = p.fetchHongguoCategoryPage(ctx, "real-drama?page="+strconv.Itoa(page), "真人剧")
 		hasMore = page < totalPages
 	}
 	return items, hasMore, err
@@ -85,11 +93,11 @@ func (p *hongguoProvider) SearchWithWarning(ctx context.Context, page int, query
 	var entry hongguoSearchEntry
 	var err error
 	if page == 1 {
-		entry, err = p.d.searchHongguoDramas(ctx, query)
+		entry, err = p.searchHongguoDramas(ctx, query)
 	} else if keyword, keywordErr := hongguoSearchKeyword(query); keywordErr != nil {
 		err = keywordErr
 	} else {
-		entry, err = p.d.fetchHongguoSearchPage(ctx, keyword, page)
+		entry, err = p.fetchHongguoSearchPage(ctx, keyword, page)
 	}
 	if err != nil {
 		return nil, false, "", err
@@ -98,32 +106,32 @@ func (p *hongguoProvider) SearchWithWarning(ctx context.Context, page int, query
 }
 
 func (p *hongguoProvider) Detail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
-	title, chapters, err := p.d.fetchHongguoChapters(ctx, sourceID)
+	title, chapters, err := p.fetchHongguoChapters(ctx, sourceID)
 	if err != nil {
 		return Drama{}, nil, err
 	}
-	raw := p.d.hongguoCachedDrama(Drama{ID: providerDramaID(sourceHongguo, sourceID), Title: title, Source: sourceHongguo})
+	raw := p.hongguoCachedDrama(Drama{ID: providerDramaID(sourceHongguo, sourceID), Title: title, Source: sourceHongguo})
 	return raw, chapters, nil
 }
 
 func (p *hongguoProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	chapter := task.Chapter
 	if strings.HasPrefix(chapter.VideoURL, "hongguo-cenc://") {
-		return p.d.resolveHongguoMedia(ctx, task)
+		return p.resolveHongguoMedia(ctx, task)
 	}
-	media := ProviderMedia{URL: chapter.VideoURL, Referer: firstNonEmpty(chapter.Referer, p.d.providerBaseURL(sourceHongguo)+"/")}
-	return p.d.finishProviderMedia(ctx, media, sourceHongguo)
+	media := ProviderMedia{URL: chapter.VideoURL, Referer: firstNonEmpty(chapter.Referer, hongguoBaseURL+"/")}
+	return p.host.FinishMedia(ctx, media, sourceHongguo)
 }
 
 func (p *hongguoProvider) RankingPage(ctx context.Context, board RankingBoard, page int) (RankingPage, error) {
-	return p.d.fetchHongguoRankingPage(ctx, board, page)
+	return p.fetchHongguoRankingPage(ctx, board, page)
 }
 
 func (p *hongguoProvider) CoverAddress(ctx context.Context, drama LibraryDrama, id string) (string, error) {
 	if !hongguoNumericID.MatchString(id) {
 		return "", errors.New("无效的红果剧集 ID")
 	}
-	result, err := p.d.hongguoAppRequest(ctx, http.MethodPost, "/novel/player/video_detail/v1/", nil, map[string]any{"series_id": id})
+	result, err := p.hongguoAppRequest(ctx, http.MethodPost, "/novel/player/video_detail/v1/", nil, map[string]any{"series_id": id})
 	if err != nil {
 		return "", err
 	}
@@ -143,7 +151,7 @@ func (p *hongguoProvider) ExtraMetadata(ctx context.Context, drama LibraryDrama,
 		return drama, errors.New("红果剧集 ID 无效")
 	}
 	if drama.OnlineDate == "" {
-		body, err := p.d.fetchProviderText(ctx, hongguoBaseURL+"/detail?series_id="+url.QueryEscape(id), hongguoBaseURL+"/")
+		body, err := p.text(ctx, hongguoBaseURL+"/detail?series_id="+url.QueryEscape(id), hongguoBaseURL+"/")
 		if err != nil {
 			return drama, err
 		}
@@ -156,13 +164,13 @@ func (p *hongguoProvider) ExtraMetadata(ctx context.Context, drama LibraryDrama,
 		}
 	}
 	if drama.Score == "" {
-		drama.Score = nativeDramaScore(p.d.hongguoSearchScore(ctx, drama.ID, drama.Title))
+		drama.Score = nativeDramaScore(p.hongguoSearchScore(ctx, drama.ID, drama.Title))
 	}
 	return drama, ctx.Err()
 }
 
 func (p *hongguoProvider) CatalogState() json.RawMessage {
-	body, err := json.Marshal(p.d.hongguoCatalogSnapshot())
+	body, err := json.Marshal(p.hongguoCatalogSnapshot())
 	if err != nil {
 		return nil
 	}
@@ -174,7 +182,7 @@ func (p *hongguoProvider) RestoreCatalogState(raw json.RawMessage) {
 	if len(raw) == 0 || json.Unmarshal(raw, &state) != nil {
 		return
 	}
-	p.d.restoreHongguoCatalog(&state)
+	p.restoreHongguoCatalog(&state)
 }
 
 func hongguoCoverAddress(values ...string) string {
@@ -195,7 +203,7 @@ func hongguoCoverAddress(values ...string) string {
 }
 
 func (p *hongguoProvider) Suggestions(ctx context.Context, query string) ([]string, error) {
-	items, err := p.d.hongguoSearchSuggestions(ctx, query)
+	items, err := p.hongguoSearchSuggestions(ctx, query)
 	names := make([]string, 0, len(items))
 	for _, item := range items {
 		names = append(names, item.Name)
@@ -208,17 +216,17 @@ func (p *hongguoProvider) DanmakuIDs(task Task) (string, string, bool) {
 }
 
 func (p *hongguoProvider) Danmaku(ctx context.Context, series, video string, startMS, durationMS int64) (DanmakuPage, error) {
-	return p.d.hongguoDanmaku(ctx, series, video, startMS, durationMS)
+	return p.hongguoDanmaku(ctx, series, video, startMS, durationMS)
 }
 
 func (p *hongguoProvider) Devices(ctx context.Context, register bool) (bool, error) {
-	client := p.d.hongguoClient()
+	client := p.client
 	if register {
 		client.deviceMu.Lock()
 		client.registerPausedUntil = time.Time{}
 		client.deviceMu.Unlock()
 		for _, helper := range []bool{false, true} {
-			if err := p.d.ensureHongguoDevice(ctx, helper, ""); err != nil {
+			if err := p.ensureHongguoDevice(ctx, helper, ""); err != nil {
 				return false, err
 			}
 		}
@@ -249,7 +257,7 @@ func (p *hongguoProvider) Recommendations(ctx context.Context, genre string, cur
 	if err != nil {
 		return RecommendationPage{}, err
 	}
-	page, err := p.d.fetchHongguoRecommendations(ctx, query)
+	page, err := p.fetchHongguoRecommendations(ctx, query)
 	if err != nil {
 		return RecommendationPage{}, err
 	}

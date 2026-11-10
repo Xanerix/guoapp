@@ -20,7 +20,6 @@ type Config struct {
 	PageSize        int
 	Retries         int
 	InsecureTLS     bool
-	HongguoURL      string
 }
 
 type Downloader struct {
@@ -36,8 +35,6 @@ type Downloader struct {
 	providers       map[string]Provider
 	limiter         *requestLimiter
 	proxyRouter     *proxyRouter
-	hongguoOnce     sync.Once
-	hongguo         *hongguoAppClient
 	directOnce      sync.Once
 	direct          *http.Client
 	diagnostics     *diagnosticLog

@@ -36,7 +36,7 @@ func hongguoPlaybackIDs(task Task) (string, string, bool) {
 	return seriesID, videoID, hongguoNumericID.MatchString(seriesID) && hongguoNumericID.MatchString(videoID)
 }
 
-func (d *Downloader) hongguoDanmaku(ctx context.Context, seriesID, videoID string, start, duration int64) (DanmakuPage, error) {
+func (p *hongguoProvider) hongguoDanmaku(ctx context.Context, seriesID, videoID string, start, duration int64) (DanmakuPage, error) {
 	if err := ctx.Err(); err != nil {
 		return DanmakuPage{}, err
 	}
@@ -44,7 +44,7 @@ func (d *Downloader) hongguoDanmaku(ctx context.Context, seriesID, videoID strin
 		return DanmakuPage{}, errors.New("弹幕请求参数无效")
 	}
 	key := fmt.Sprintf("%s:%s:%d:%d", seriesID, videoID, start, duration)
-	client := d.hongguoClient()
+	client := p.client
 	client.mu.Lock()
 	if entry, found := client.danmaku[key]; found && time.Now().Before(entry.expires) {
 		client.mu.Unlock()
@@ -57,7 +57,7 @@ func (d *Downloader) hongguoDanmaku(ctx context.Context, seriesID, videoID strin
 			return DanmakuPage{}, ctx.Err()
 		case <-pending.done:
 			if ctx.Err() == nil && (errors.Is(pending.entry.err, context.Canceled) || errors.Is(pending.entry.err, context.DeadlineExceeded)) {
-				return d.hongguoDanmaku(ctx, seriesID, videoID, start, duration)
+				return p.hongguoDanmaku(ctx, seriesID, videoID, start, duration)
 			}
 			return cloneDanmakuPage(pending.entry.page), pending.entry.err
 		}
@@ -79,7 +79,7 @@ func (d *Downloader) hongguoDanmaku(ctx context.Context, seriesID, videoID strin
 		"comment_type": 20, "sort": 1, "count": 90, "cursor": "", "aid": 8662, "compliance_status": 0,
 		"business_param": map[string]any{"book_id": seriesID, "start_offset_time": start, "playlet_item_duration": duration, "need_danmaku_guide_type": []int{1, 3, 4, 2}},
 	}
-	result, err := d.hongguoAppRequest(ctx, http.MethodPost, "/novel/commentapi/comment/list/"+videoID+"/v1/", nil, body)
+	result, err := p.hongguoAppRequest(ctx, http.MethodPost, "/novel/commentapi/comment/list/"+videoID+"/v1/", nil, body)
 	var page DanmakuPage
 	if err == nil {
 		page, err = parseHongguoDanmaku(result, videoID, start, duration)

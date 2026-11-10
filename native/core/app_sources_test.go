@@ -30,7 +30,7 @@ func sourceFixtureDownloader(t *testing.T, transport sourceFixtureTransport) *Do
 }
 
 func registerHongguoFixtureDevices(d *Downloader) {
-	state := &d.hongguoClient().state
+	state := &hongguoFixtureProvider(d).client.state
 	state.Registered, state.HelperDeviceID, state.HelperInstallID, state.HelperRegistered = true, "424242", "4242429", true
 }
 

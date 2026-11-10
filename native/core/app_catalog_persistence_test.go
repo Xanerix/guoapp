@@ -94,9 +94,9 @@ func TestNativeHongguoCursorRestartsPerCatalog(t *testing.T) {
 			t.Fatal("could not save the initial catalogs", err, result.Warning)
 		}
 	}
-	expected, _ := json.Marshal(engine.downloader.hongguoCatalogSnapshot())
+	expected, _ := json.Marshal(hongguoFixtureProvider(engine.downloader).hongguoCatalogSnapshot())
 	engine = reopenCatalogEngine(t, engine.directory, transport)
-	restored, _ := json.Marshal(engine.downloader.hongguoCatalogSnapshot())
+	restored, _ := json.Marshal(hongguoFixtureProvider(engine.downloader).hongguoCatalogSnapshot())
 	if !bytes.Equal(expected, restored) {
 		t.Fatal("restart lost cursor fields, signatures or device state")
 	}
@@ -132,7 +132,7 @@ func TestNativeHongguoCursorRestartsPerCatalog(t *testing.T) {
 	if _, err := engine.nativeCatalog(context.Background(), nativeInput{Source: sourceHongguo, Page: 1, Force: true}); err != nil {
 		t.Fatal(err)
 	}
-	if engine.downloader.hongguoCatalogSnapshot().Feeds["short_play"].Offset != 36 {
+	if hongguoFixtureProvider(engine.downloader).hongguoCatalogSnapshot().Feeds["short_play"].Offset != 36 {
 		t.Fatal("refreshing an unchanged head reset the saved continuation")
 	}
 }
@@ -167,7 +167,7 @@ func TestNativeHongguoCursorRecoversSessionsAfterRestart(t *testing.T) {
 				t.Fatal(err, result.Warning)
 			}
 			if scenario == "expired" {
-				client := engine.downloader.hongguoClient()
+				client := hongguoFixtureProvider(engine.downloader).client
 				client.mu.Lock()
 				cursor := client.state.Feeds["category:ai_series"]
 				cursor.UpdatedAt = time.Now().Add(-time.Hour)
@@ -194,7 +194,7 @@ func TestNativeHongguoCursorRecoversSessionsAfterRestart(t *testing.T) {
 				t.Fatal("session recovery was not bounded", calls)
 			}
 			restarted := reopenCatalogEngine(t, engine.directory, transport)
-			cursor := restarted.downloader.hongguoCatalogSnapshot().Feeds["category:ai_series"]
+			cursor := hongguoFixtureProvider(restarted.downloader).hongguoCatalogSnapshot().Feeds["category:ai_series"]
 			if cursor.Offset != 36 || cursor.SessionID != "new-session" || len(restarted.catalogs["hongguo|ai_series"]) != 3 {
 				t.Fatal("recovered items and cursor were not saved together")
 			}
@@ -224,7 +224,7 @@ func TestNativeHongguoStalledCursorKeepsPartialItems(t *testing.T) {
 	}
 	restarted := reopenCatalogEngine(t, engine.directory, transport)
 	cached := restarted.nativeCached("hongguo|ai_series")
-	cursor := restarted.downloader.hongguoCatalogSnapshot().Feeds["category:ai_series"]
+	cursor := hongguoFixtureProvider(restarted.downloader).hongguoCatalogSnapshot().Feeds["category:ai_series"]
 	if cursor.Offset != 18 || len(cached.Items) != 2 || cached.Fresh || cached.Warning == "" {
 		t.Fatal("restart lost the last valid cursor, partial data or failure warning")
 	}
@@ -335,14 +335,14 @@ func TestNativeCatalogSaveFailureRetriesWithoutAdvancing(t *testing.T) {
 		t.Fatal(err)
 	}
 	restarted := reopenCatalogEngine(t, engine.directory, transport)
-	if cursor := restarted.downloader.hongguoCatalogSnapshot().Feeds["category:short_play"]; cursor.Offset != 18 || len(restarted.catalogs["hongguo|short_play"]) != 2 {
+	if cursor := hongguoFixtureProvider(restarted.downloader).hongguoCatalogSnapshot().Feeds["category:short_play"]; cursor.Offset != 18 || len(restarted.catalogs["hongguo|short_play"]) != 2 {
 		t.Fatal("restart resumed an offset whose data had not been saved")
 	}
 	if retried, err := engine.retryCatalogSave(); !retried || err != nil || len(offsets) != 2 {
 		t.Fatal("save retry failed or issued network requests", retried, err)
 	}
 	restarted = reopenCatalogEngine(t, engine.directory, transport)
-	if len(restarted.catalogs["hongguo|short_play"]) != 3 || restarted.downloader.hongguoCatalogSnapshot().Feeds["category:short_play"].Offset != 36 {
+	if len(restarted.catalogs["hongguo|short_play"]) != 3 || hongguoFixtureProvider(restarted.downloader).hongguoCatalogSnapshot().Feeds["category:short_play"].Offset != 36 {
 		t.Fatal("retry did not persist pending items with their cursor")
 	}
 	if result, err := restarted.nativeCatalog(context.Background(), input); err != nil || result.Warning != "" || !reflect.DeepEqual(offsets, []int{0, 18, 36}) {
@@ -415,7 +415,7 @@ func TestNativeCatalogMetadataSaveExcludesInFlightCursor(t *testing.T) {
 	}
 	engine.saveDetailMetadata(LibraryDrama{ID: "hongguo:1000", Source: sourceHongguo, Title: "补齐名称"})
 	restarted := reopenCatalogEngine(t, engine.directory, transport)
-	if cursor := restarted.downloader.hongguoCatalogSnapshot().Feeds["short_play"]; cursor.Offset != 18 {
+	if cursor := hongguoFixtureProvider(restarted.downloader).hongguoCatalogSnapshot().Feeds["short_play"]; cursor.Offset != 18 {
 		t.Error("an unrelated metadata write persisted an uncommitted feed cursor")
 	}
 	if len(restarted.catalogs[sourceHongguo]) != 3 {
@@ -426,7 +426,7 @@ func TestNativeCatalogMetadataSaveExcludesInFlightCursor(t *testing.T) {
 		t.Fatal(err)
 	}
 	restarted = reopenCatalogEngine(t, engine.directory, transport)
-	if restarted.downloader.hongguoCatalogSnapshot().Feeds["short_play"].Offset != 36 || len(restarted.catalogs[sourceHongguo]) != 6 {
+	if hongguoFixtureProvider(restarted.downloader).hongguoCatalogSnapshot().Feeds["short_play"].Offset != 36 || len(restarted.catalogs[sourceHongguo]) != 6 {
 		t.Fatal("completed page was not saved with its cursor")
 	}
 }

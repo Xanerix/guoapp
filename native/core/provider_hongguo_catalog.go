@@ -24,11 +24,11 @@ var hongguoAppGenres = []struct {
 
 type libraryUpdateKey struct{}
 
-func (downloader *Downloader) fetchHongguoAppCatalog(ctx context.Context) ([]Drama, error) {
-	return downloader.fetchHongguoAppCatalogCategory(ctx, "")
+func (p *hongguoProvider) fetchHongguoAppCatalog(ctx context.Context) ([]Drama, error) {
+	return p.fetchHongguoAppCatalogCategory(ctx, "")
 }
 
-func (downloader *Downloader) fetchHongguoAppCatalogCategory(ctx context.Context, category string) ([]Drama, error) {
+func (p *hongguoProvider) fetchHongguoAppCatalogCategory(ctx context.Context, category string) ([]Drama, error) {
 	genres := hongguoAppGenres
 	if category != "" {
 		genres = nil
@@ -47,14 +47,14 @@ func (downloader *Downloader) fetchHongguoAppCatalogCategory(ctx context.Context
 		}
 		return key
 	}
-	client := downloader.hongguoClient()
+	client := p.client
 	client.catalogMu.Lock()
 	defer client.catalogMu.Unlock()
 	more, _ := ctx.Value(libraryMoreKey{}).(bool)
 	update, _ := ctx.Value(libraryUpdateKey{}).(bool)
 	known, _ := ctx.Value(libraryKnownKey{}).(map[string]bool)
-	state := downloader.hongguoCatalogSnapshot()
-	pageLimit := downloader.cfg.MaxPagesPerSort
+	state := p.hongguoCatalogSnapshot()
+	pageLimit := p.host.MaxPages()
 	if pageLimit < 1 {
 		pageLimit = defaultConfig().MaxPagesPerSort
 	}
@@ -123,7 +123,7 @@ func (downloader *Downloader) fetchHongguoAppCatalogCategory(ctx context.Context
 			var pageErr error
 			newItems := 0
 			for attempt := 0; attempt < 2; attempt++ {
-				result, err := downloader.hongguoAppRequest(ctx, http.MethodPost, "/reading/distribution/category/landpage/v/", nil, payload)
+				result, err := p.hongguoAppRequest(ctx, http.MethodPost, "/reading/distribution/category/landpage/v/", nil, payload)
 				retryable := err == nil || cursor.SessionID != ""
 				items = nil
 				if err == nil {

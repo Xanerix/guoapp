@@ -33,20 +33,20 @@ func hongguoDeviceFixture(t *testing.T, rejected map[string]bool, registerFails 
 		return sourceFixtureResponse(request, http.StatusOK, `{"code":0,"data":{}}`), nil
 	})
 	d.cfg.Retries = 2
-	client := d.hongguoClient()
+	client := hongguoFixtureProvider(d).client
 	client.state.DeviceID, client.state.InstallID, client.state.Registered = "7", "8", false
 	return d, &requests
 }
 
 func TestHongguoSignedRequestRegistersDeviceFirst(t *testing.T) {
 	d, requests := hongguoDeviceFixture(t, nil, false)
-	if _, err := d.hongguoAppRequest(context.Background(), http.MethodPost, "/novel/player/video_detail/v1/", nil, map[string]any{}); err != nil {
+	if _, err := hongguoFixtureProvider(d).hongguoAppRequest(context.Background(), http.MethodPost, "/novel/player/video_detail/v1/", nil, map[string]any{}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := d.hongguoAppRequest(context.Background(), http.MethodGet, hongguoBookmallTabPath, nil, nil); err != nil {
+	if _, err := hongguoFixtureProvider(d).hongguoAppRequest(context.Background(), http.MethodGet, hongguoBookmallTabPath, nil, nil); err != nil {
 		t.Fatal(err)
 	}
-	state := d.hongguoCatalogSnapshot()
+	state := hongguoFixtureProvider(d).hongguoCatalogSnapshot()
 	if !state.Registered || state.DeviceID != "1001" || state.InstallID != "10019" {
 		t.Fatal("registered device was not kept", state)
 	}
@@ -57,10 +57,10 @@ func TestHongguoSignedRequestRegistersDeviceFirst(t *testing.T) {
 
 func TestHongguoRejectedDeviceIsReplacedAndRetried(t *testing.T) {
 	d, requests := hongguoDeviceFixture(t, map[string]bool{"1001": true, "1002": true}, false)
-	if _, err := d.hongguoAppRequest(context.Background(), http.MethodPost, "/novel/player/video_detail/v1/", nil, map[string]any{}); err != nil {
+	if _, err := hongguoFixtureProvider(d).hongguoAppRequest(context.Background(), http.MethodPost, "/novel/player/video_detail/v1/", nil, map[string]any{}); err != nil {
 		t.Fatal(err)
 	}
-	if state := d.hongguoCatalogSnapshot(); state.DeviceID != "1003" || !state.Registered {
+	if state := hongguoFixtureProvider(d).hongguoCatalogSnapshot(); state.DeviceID != "1003" || !state.Registered {
 		t.Fatal("rejected device was not replaced", state)
 	}
 	want := []string{"register", "detail@1001", "register", "detail@1002", "register", "detail@1003"}
@@ -78,10 +78,10 @@ func TestHongguoRejectedDeviceIsReplacedAndRetried(t *testing.T) {
 func TestHongguoTabRejectionKeepsDevice(t *testing.T) {
 	d, requests := hongguoDeviceFixture(t, map[string]bool{"7": true}, false)
 	d.cfg.Retries = 1
-	if _, err := d.hongguoAppRequest(context.Background(), http.MethodGet, hongguoBookmallTabPath, nil, nil); err == nil {
+	if _, err := hongguoFixtureProvider(d).hongguoAppRequest(context.Background(), http.MethodGet, hongguoBookmallTabPath, nil, nil); err == nil {
 		t.Fatal("empty tab response became a success")
 	}
-	if state := d.hongguoCatalogSnapshot(); state.DeviceID != "7" || state.Registered {
+	if state := hongguoFixtureProvider(d).hongguoCatalogSnapshot(); state.DeviceID != "7" || state.Registered {
 		t.Fatal("unsigned tab request changed the device", state)
 	}
 	if got := *requests; len(got) != 1 || got[0] != "detail@7" {
@@ -92,17 +92,17 @@ func TestHongguoTabRejectionKeepsDevice(t *testing.T) {
 func TestHongguoRegisterFailurePausesAndKeepsOldDevice(t *testing.T) {
 	d, requests := hongguoDeviceFixture(t, nil, true)
 	for range 2 {
-		if _, err := d.hongguoAppRequest(context.Background(), http.MethodPost, "/novel/player/video_detail/v1/", nil, map[string]any{}); err != nil {
+		if _, err := hongguoFixtureProvider(d).hongguoAppRequest(context.Background(), http.MethodPost, "/novel/player/video_detail/v1/", nil, map[string]any{}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if state := d.hongguoCatalogSnapshot(); state.DeviceID != "7" || state.Registered {
+	if state := hongguoFixtureProvider(d).hongguoCatalogSnapshot(); state.DeviceID != "7" || state.Registered {
 		t.Fatal("failed registration changed the device", state)
 	}
 	if got := *requests; len(got) != 3 || got[0] != "register" || got[1] != "detail@7" || got[2] != "detail@7" {
 		t.Fatal("registration was not paused after failure", got)
 	}
-	if err := d.ensureHongguoDevice(context.Background(), false, ""); err == nil || !strings.Contains(err.Error(), "未返回设备号") {
+	if err := hongguoFixtureProvider(d).ensureHongguoDevice(context.Background(), false, ""); err == nil || !strings.Contains(err.Error(), "未返回设备号") {
 		t.Fatal("paused registration hid the rejection reason", err)
 	}
 }
@@ -119,15 +119,20 @@ func TestHongguoRegisterNetworkFailureRetriesNextRequest(t *testing.T) {
 		}
 		return sourceFixtureResponse(request, http.StatusOK, `{"code":0,"data":{}}`), nil
 	})
-	client := d.hongguoClient()
+	client := hongguoFixtureProvider(d).client
 	client.state.DeviceID, client.state.InstallID, client.state.Registered = "7", "8", false
-	if err := d.ensureHongguoDevice(context.Background(), false, ""); err == nil {
+	if err := hongguoFixtureProvider(d).ensureHongguoDevice(context.Background(), false, ""); err == nil {
 		t.Fatal("network failure registered a device")
 	}
-	if err := d.ensureHongguoDevice(context.Background(), false, ""); err != nil {
+	if err := hongguoFixtureProvider(d).ensureHongguoDevice(context.Background(), false, ""); err != nil {
 		t.Fatal("network failure paused registration", err)
 	}
-	if state := d.hongguoCatalogSnapshot(); registers != 2 || state.DeviceID != "1001" || !state.Registered {
+	if state := hongguoFixtureProvider(d).hongguoCatalogSnapshot(); registers != 2 || state.DeviceID != "1001" || !state.Registered {
 		t.Fatal("registration was not retried", registers, state)
 	}
+}
+
+func hongguoFixtureProvider(d *Downloader) *hongguoProvider {
+	p, _ := d.provider(sourceHongguo)
+	return p.(*hongguoProvider)
 }

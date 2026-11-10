@@ -128,7 +128,7 @@ func TestHongguoDanmakuCacheAndConcurrentRequests(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			page, err := d.hongguoDanmaku(context.Background(), danmakuTestSeries, danmakuTestVideo, 0, 160000)
+			page, err := hongguoFixtureProvider(d).hongguoDanmaku(context.Background(), danmakuTestSeries, danmakuTestVideo, 0, 160000)
 			if err == nil && (len(page.Items) != 1 || page.Items[0].Text != "原弹幕") {
 				err = errors.New("wrong shared page")
 			}
@@ -141,7 +141,7 @@ func TestHongguoDanmakuCacheAndConcurrentRequests(t *testing.T) {
 	<-started
 	canceled, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := d.hongguoDanmaku(canceled, danmakuTestSeries, danmakuTestVideo, 0, 160000); !errors.Is(err, context.Canceled) {
+	if _, err := hongguoFixtureProvider(d).hongguoDanmaku(canceled, danmakuTestSeries, danmakuTestVideo, 0, 160000); !errors.Is(err, context.Canceled) {
 		t.Error("a waiting reader could not cancel")
 	}
 	close(release)
@@ -155,14 +155,14 @@ func TestHongguoDanmakuCacheAndConcurrentRequests(t *testing.T) {
 	if calls.Load() != 1 {
 		t.Fatal("concurrent identical windows were not coalesced")
 	}
-	page, err := d.hongguoDanmaku(context.Background(), danmakuTestSeries, danmakuTestVideo, 0, 160000)
+	page, err := hongguoFixtureProvider(d).hongguoDanmaku(context.Background(), danmakuTestSeries, danmakuTestVideo, 0, 160000)
 	if err != nil || page.Items[0].Text != "原弹幕" || calls.Load() != 1 {
 		t.Fatal("cache was not isolated from callers")
 	}
-	if _, err := d.hongguoDanmaku(context.Background(), danmakuTestSeries, danmakuTestVideo, 30000, 160000); err != nil || calls.Load() != 2 {
+	if _, err := hongguoFixtureProvider(d).hongguoDanmaku(context.Background(), danmakuTestSeries, danmakuTestVideo, 30000, 160000); err != nil || calls.Load() != 2 {
 		t.Fatal("next window reused the wrong cached page")
 	}
-	if _, err := d.hongguoAppRequest(context.Background(), http.MethodPost, "/novel/player/video_detail/v1/", nil, map[string]string{"series_id": danmakuTestSeries}); err != nil {
+	if _, err := hongguoFixtureProvider(d).hongguoAppRequest(context.Background(), http.MethodPost, "/novel/player/video_detail/v1/", nil, map[string]string{"series_id": danmakuTestSeries}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -180,13 +180,16 @@ func TestHongguoDanmakuCanceledLoadCanBeRetried(t *testing.T) {
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { _, err := d.hongguoDanmaku(ctx, danmakuTestSeries, danmakuTestVideo, 0, 160000); done <- err }()
+	go func() {
+		_, err := hongguoFixtureProvider(d).hongguoDanmaku(ctx, danmakuTestSeries, danmakuTestVideo, 0, 160000)
+		done <- err
+	}()
 	<-started
 	cancel()
 	if err := <-done; !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
-	if _, err := d.hongguoDanmaku(context.Background(), danmakuTestSeries, danmakuTestVideo, 0, 160000); err != nil || calls.Load() != 2 {
+	if _, err := hongguoFixtureProvider(d).hongguoDanmaku(context.Background(), danmakuTestSeries, danmakuTestVideo, 0, 160000); err != nil || calls.Load() != 2 {
 		t.Fatal("canceled optional load poisoned the cache")
 	}
 }

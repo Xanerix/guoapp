@@ -64,14 +64,14 @@ func (query hongguoRecommendationQuery) validate() error {
 	return nil
 }
 
-func (downloader *Downloader) fetchHongguoRecommendations(ctx context.Context, query hongguoRecommendationQuery) (hongguoRecommendationPage, error) {
+func (p *hongguoProvider) fetchHongguoRecommendations(ctx context.Context, query hongguoRecommendationQuery) (hongguoRecommendationPage, error) {
 	page := hongguoRecommendationPage{Dramas: []Drama{}}
 	if err := query.validate(); err != nil {
 		return page, err
 	}
 	for _, feed := range hongguoRecommendationFeeds {
 		if feed.key == query.Genre {
-			return downloader.fetchHongguoFeedRecommendations(ctx, query, feed.tabType, feed.bottomTab)
+			return p.fetchHongguoFeedRecommendations(ctx, query, feed.tabType, feed.bottomTab)
 		}
 	}
 	scene, category := "", ""
@@ -102,7 +102,7 @@ func (downloader *Downloader) fetchHongguoRecommendations(ctx context.Context, q
 	if query.Offset > 0 {
 		payload["client_req_type"] = 2
 	}
-	result, err := downloader.hongguoAppRequest(ctx, http.MethodPost, "/reading/distribution/category/landpage/v/", nil, payload)
+	result, err := p.hongguoAppRequest(ctx, http.MethodPost, "/reading/distribution/category/landpage/v/", nil, payload)
 	if err != nil {
 		return page, err
 	}
@@ -149,12 +149,12 @@ type hongguoCellPage struct {
 	session string
 }
 
-func (downloader *Downloader) fetchHongguoCellPage(ctx context.Context, page hongguoRecommendationPage, tabType string, offset int) (hongguoCellPage, error) {
+func (p *hongguoProvider) fetchHongguoCellPage(ctx context.Context, page hongguoRecommendationPage, tabType string, offset int) (hongguoCellPage, error) {
 	extra := url.Values{
 		"cell_id": {page.CellID}, "change_type": {"0"}, "offset": {strconv.Itoa(offset)}, "limit": {"10"},
 		"session_id": {page.SessionID}, "tab_type": {tabType}, "client_req_type": {"2"}, "show_type": {page.ShowType},
 	}
-	result, err := downloader.hongguoAppRequest(ctx, http.MethodGet, hongguoBookmallCellChangePath, extra, nil)
+	result, err := p.hongguoAppRequest(ctx, http.MethodGet, hongguoBookmallCellChangePath, extra, nil)
 	if err != nil {
 		return hongguoCellPage{}, err
 	}
@@ -167,7 +167,7 @@ func (downloader *Downloader) fetchHongguoCellPage(ctx context.Context, page hon
 	return hongguoCellPage{cards: anyList(nestedMap(data, "cell_view")["cell_data"]), next: next, hasMore: hasMore, session: mapString(data, "session_id")}, nil
 }
 
-func (downloader *Downloader) fetchHongguoFeedRecommendations(ctx context.Context, query hongguoRecommendationQuery, tabType, bottomTab string) (hongguoRecommendationPage, error) {
+func (p *hongguoProvider) fetchHongguoFeedRecommendations(ctx context.Context, query hongguoRecommendationQuery, tabType, bottomTab string) (hongguoRecommendationPage, error) {
 	seen := make(map[string]bool, len(query.Seen))
 	for _, id := range query.Seen {
 		seen[strings.TrimPrefix(id, "hongguo:")] = true
@@ -183,9 +183,9 @@ func (downloader *Downloader) fetchHongguoFeedRecommendations(ctx context.Contex
 			helperDone := make(chan struct{})
 			go func(page hongguoRecommendationPage) {
 				defer close(helperDone)
-				helperPage, helperErr = downloader.fetchHongguoCellPage(context.WithValue(ctx, hongguoHelperDeviceKey{}, true), page, tabType, helperOffset)
+				helperPage, helperErr = p.fetchHongguoCellPage(context.WithValue(ctx, hongguoHelperDeviceKey{}, true), page, tabType, helperOffset)
 			}(page)
-			primary, err := downloader.fetchHongguoCellPage(ctx, page, tabType, page.NextOffset)
+			primary, err := p.fetchHongguoCellPage(ctx, page, tabType, page.NextOffset)
 			<-helperDone
 			if err != nil {
 				return hongguoRecommendationPage{}, err
@@ -212,7 +212,7 @@ func (downloader *Downloader) fetchHongguoFeedRecommendations(ctx context.Contex
 				extra.Set("session_id", page.SessionID)
 				extra.Set("client_req_type", "2")
 			}
-			result, err := downloader.hongguoAppRequest(ctx, http.MethodGet, hongguoBookmallTabPath, extra, nil)
+			result, err := p.hongguoAppRequest(ctx, http.MethodGet, hongguoBookmallTabPath, extra, nil)
 			if err != nil {
 				return hongguoRecommendationPage{}, err
 			}

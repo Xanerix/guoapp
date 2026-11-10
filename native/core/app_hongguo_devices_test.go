@@ -39,7 +39,7 @@ func TestHongguoDevicesRegisterBothAndPersist(t *testing.T) {
 	if !hongguoDevicesReady(t, engine, true) || registers != 2 {
 		t.Fatal("both devices were not registered", registers)
 	}
-	state := engine.downloader.hongguoCatalogSnapshot()
+	state := hongguoFixtureProvider(engine.downloader).hongguoCatalogSnapshot()
 	if state.DeviceID != "1001" || state.HelperDeviceID != "1002" || !state.Registered || !state.HelperRegistered {
 		t.Fatal("registered devices were not kept", state)
 	}
@@ -47,7 +47,7 @@ func TestHongguoDevicesRegisterBothAndPersist(t *testing.T) {
 	if !hongguoDevicesReady(t, restarted, false) || registers != 2 {
 		t.Fatal("registered devices were not restored after restart", registers)
 	}
-	if restored := restarted.downloader.hongguoCatalogSnapshot(); restored.DeviceID != "1001" || restored.HelperDeviceID != "1002" {
+	if restored := hongguoFixtureProvider(restarted.downloader).hongguoCatalogSnapshot(); restored.DeviceID != "1001" || restored.HelperDeviceID != "1002" {
 		t.Fatal("restart changed the registered devices", restored)
 	}
 }
@@ -55,7 +55,7 @@ func TestHongguoDevicesRegisterBothAndPersist(t *testing.T) {
 func TestHongguoDevicesUpgradeRegistersOnlyHelper(t *testing.T) {
 	registers := 0
 	engine := reopenCatalogEngine(t, t.TempDir(), hongguoRegistrationTransport(&registers))
-	client := engine.downloader.hongguoClient()
+	client := hongguoFixtureProvider(engine.downloader).client
 	client.state.DeviceID, client.state.InstallID, client.state.Registered = "7", "8", true
 	if hongguoDevicesReady(t, engine, false) {
 		t.Fatal("an unregistered helper device was reported ready")
@@ -63,7 +63,7 @@ func TestHongguoDevicesUpgradeRegistersOnlyHelper(t *testing.T) {
 	if !hongguoDevicesReady(t, engine, true) || registers != 1 {
 		t.Fatal("upgrade did not register only the helper device", registers)
 	}
-	if state := engine.downloader.hongguoCatalogSnapshot(); state.DeviceID != "7" || state.HelperDeviceID != "1001" {
+	if state := hongguoFixtureProvider(engine.downloader).hongguoCatalogSnapshot(); state.DeviceID != "7" || state.HelperDeviceID != "1001" {
 		t.Fatal("upgrade replaced the registered primary device", state)
 	}
 }
@@ -71,7 +71,7 @@ func TestHongguoDevicesUpgradeRegistersOnlyHelper(t *testing.T) {
 func TestHongguoDevicesExplicitRetryIgnoresPause(t *testing.T) {
 	registers := 0
 	engine := reopenCatalogEngine(t, t.TempDir(), hongguoRegistrationTransport(&registers))
-	client := engine.downloader.hongguoClient()
+	client := hongguoFixtureProvider(engine.downloader).client
 	client.registerPausedUntil, client.registerPauseErr = time.Now().Add(time.Hour), errors.New("红果设备注册未返回设备号")
 	if !hongguoDevicesReady(t, engine, true) || registers != 2 {
 		t.Fatal("explicit registration stayed paused", registers)

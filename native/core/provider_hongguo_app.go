@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -60,19 +59,16 @@ type hongguoAppClient struct {
 	tagCursors          map[string]hongguoTagCursor
 }
 
-func (downloader *Downloader) hongguoClient() *hongguoAppClient {
-	downloader.hongguoOnce.Do(func() {
-		downloader.hongguo = &hongguoAppClient{
-			baseURL: hongguoAppBaseURL,
-			state: hongguoCatalogState{Version: 1, DeviceID: newHongguoDeviceID(), InstallID: newHongguoDeviceID(),
-				HelperDeviceID: newHongguoDeviceID(), HelperInstallID: newHongguoDeviceID(), Feeds: map[string]hongguoCatalogCursor{}},
-			details: map[string]hongguoDetailEntry{}, pending: map[string]*hongguoDetailCall{},
-			searches: map[string]hongguoSearchEntry{}, searchPending: map[string]*hongguoSearchCall{}, searchIDs: map[string]string{},
-			suggestions: map[string]hongguoSuggestionEntry{}, suggestPending: map[string]*hongguoSuggestionCall{},
-			tagCursors: map[string]hongguoTagCursor{},
-		}
-	})
-	return downloader.hongguo
+func newHongguoAppClient() *hongguoAppClient {
+	return &hongguoAppClient{
+		baseURL: hongguoAppBaseURL,
+		state: hongguoCatalogState{Version: 1, DeviceID: newHongguoDeviceID(), InstallID: newHongguoDeviceID(),
+			HelperDeviceID: newHongguoDeviceID(), HelperInstallID: newHongguoDeviceID(), Feeds: map[string]hongguoCatalogCursor{}},
+		details: map[string]hongguoDetailEntry{}, pending: map[string]*hongguoDetailCall{},
+		searches: map[string]hongguoSearchEntry{}, searchPending: map[string]*hongguoSearchCall{}, searchIDs: map[string]string{},
+		suggestions: map[string]hongguoSuggestionEntry{}, suggestPending: map[string]*hongguoSuggestionCall{},
+		tagCursors: map[string]hongguoTagCursor{},
+	}
 }
 
 func cloneHongguoCatalogState(state *hongguoCatalogState) *hongguoCatalogState {
@@ -87,7 +83,7 @@ func cloneHongguoCatalogState(state *hongguoCatalogState) *hongguoCatalogState {
 	return &cloned
 }
 
-func (downloader *Downloader) restoreHongguoCatalog(state *hongguoCatalogState) {
+func (p *hongguoProvider) restoreHongguoCatalog(state *hongguoCatalogState) {
 	if state == nil || state.Version != 1 || !hongguoNumericID.MatchString(state.DeviceID) || !hongguoNumericID.MatchString(state.InstallID) {
 		return
 	}
@@ -104,7 +100,7 @@ func (downloader *Downloader) restoreHongguoCatalog(state *hongguoCatalogState) 
 			delete(cloned.Feeds, name)
 		}
 	}
-	client := downloader.hongguoClient()
+	client := p.client
 	client.catalogMu.Lock()
 	defer client.catalogMu.Unlock()
 	client.mu.Lock()
@@ -114,8 +110,8 @@ func (downloader *Downloader) restoreHongguoCatalog(state *hongguoCatalogState) 
 	}
 }
 
-func (downloader *Downloader) hongguoCatalogSnapshot() *hongguoCatalogState {
-	client := downloader.hongguoClient()
+func (p *hongguoProvider) hongguoCatalogSnapshot() *hongguoCatalogState {
+	client := p.client
 	client.mu.Lock()
 	defer client.mu.Unlock()
 	return cloneHongguoCatalogState(&client.state)
@@ -151,14 +147,15 @@ func hongguoAppQuery(deviceID, installID string) url.Values {
 	}
 }
 
-func (downloader *Downloader) hongguoAppRequest(ctx context.Context, method, path string, extra url.Values, payload any) (map[string]any, error) {
-	client := downloader.hongguoClient()
+func (p *hongguoProvider) hongguoAppRequest(ctx context.Context, method, path string, extra url.Values, payload any) (map[string]any, error) {
+	client := p.client
 	comment, _ := ctx.Value(hongguoCommentKey{}).(bool)
 	helper, _ := ctx.Value(hongguoHelperDeviceKey{}).(bool)
 	signed := !comment && path != hongguoBookmallTabPath
+	lane := ""
 	var registerErr error
 	if signed {
-		registerErr = downloader.ensureHongguoDevice(ctx, helper, "")
+		registerErr = p.ensureHongguoDevice(ctx, helper, "")
 	}
 	client.mu.Lock()
 	base := client.baseURL
@@ -168,7 +165,7 @@ func (downloader *Downloader) hongguoAppRequest(ctx context.Context, method, pat
 		if deviceID == "" || !signed {
 			return nil, errors.New("红果辅助设备不可用")
 		}
-		ctx = context.WithValue(ctx, requestLaneKey{}, "hongguo-helper")
+		lane = "hongguo-helper"
 	}
 	query := hongguoAppQuery(deviceID, installID)
 	for key, values := range extra {
@@ -182,7 +179,7 @@ func (downloader *Downloader) hongguoAppRequest(ctx context.Context, method, pat
 			return nil, err
 		}
 	}
-	attempts := downloader.cfg.Retries
+	attempts := p.host.Retries()
 	if attempts < 1 {
 		attempts = 1
 	}
@@ -199,36 +196,15 @@ func (downloader *Downloader) hongguoAppRequest(ctx context.Context, method, pat
 				return nil, ctx.Err()
 			}
 		}
-		request, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(base, "/")+path, bytes.NewReader(body))
-		if err != nil {
-			return nil, err
-		}
-		request.Header.Set("User-Agent", hongguoAppUserAgent)
-		request.Header.Set("Accept", "application/json")
-		request.Header.Set("X-XS-From-Web", "0")
-		request.Header.Set("Sdk-Version", "2")
+		address := strings.TrimRight(base, "/") + path
 		var commentNonce hongguoCommentNonce
 		if comment {
 			commentNonce, err = newHongguoCommentNonce()
 			if err != nil {
 				return nil, errors.New("无法准备红果文字请求")
 			}
-			request.Header.Set("Comment-Source", "601")
-			request.Header.Set("Server-Channel", "1000")
 		}
-		if payload != nil {
-			request.Header.Set("Content-Type", "application/json; charset=utf-8")
-		}
-		response, err := downloader.doPreparedCatalogRequest(request, 20*time.Second, func(prepared *http.Request) {
-			now := time.Now()
-			query.Set("_rticket", strconv.FormatInt(now.UnixMilli(), 10))
-			prepared.URL.RawQuery = query.Encode()
-			if comment {
-				signHongguoCommentRequest(prepared, commentNonce, now)
-			} else if signed {
-				signHongguoPlayerRequest(prepared, body, now)
-			}
-		})
+		ticket, err := p.host.Reserve(ctx, address, lane)
 		if err != nil {
 			lastErr = err
 			var backoff *requestBackoff
@@ -237,15 +213,49 @@ func (downloader *Downloader) hongguoAppRequest(ctx context.Context, method, pat
 			}
 			continue
 		}
-		content, readErr := io.ReadAll(io.LimitReader(response.Body, providerMaxBodyBytes+1))
-		response.Body.Close()
-		if readErr != nil {
-			lastErr = readErr
+		now := time.Now()
+		query.Set("_rticket", strconv.FormatInt(now.UnixMilli(), 10))
+		prepared, err := http.NewRequest(method, address+"?"+query.Encode(), nil)
+		if err != nil {
+			return nil, err
+		}
+		prepared.Header.Set("User-Agent", hongguoAppUserAgent)
+		prepared.Header.Set("Accept", "application/json")
+		prepared.Header.Set("X-XS-From-Web", "0")
+		prepared.Header.Set("Sdk-Version", "2")
+		if comment {
+			prepared.Header.Set("Comment-Source", "601")
+			prepared.Header.Set("Server-Channel", "1000")
+			signHongguoCommentRequest(prepared, commentNonce, now)
+		} else if signed {
+			signHongguoPlayerRequest(prepared, body, now)
+		}
+		if payload != nil {
+			prepared.Header.Set("Content-Type", "application/json; charset=utf-8")
+		}
+		header := make(map[string]string, len(prepared.Header))
+		for name := range prepared.Header {
+			header[name] = prepared.Header.Get(name)
+		}
+		response, err := p.host.Fetch(ctx, HTTPRequest{
+			Label: "红果", Method: method, URL: prepared.URL.String(), Header: header, Body: body, Ticket: ticket,
+			Limit: providerMaxBodyBytes, Timeout: 20 * time.Second, FollowRedirects: true, AnyStatus: true,
+		})
+		if response.Oversized {
+			return nil, errors.New("红果 App 接口未返回有效数据")
+		}
+		if err != nil {
+			lastErr = err
+			var backoff *requestBackoff
+			if errors.As(err, &backoff) || ctx.Err() != nil {
+				return nil, err
+			}
 			continue
 		}
-		if response.StatusCode != http.StatusOK {
-			lastErr = fmt.Errorf("红果 App 接口 HTTP %d", response.StatusCode)
-			if response.StatusCode >= 400 && response.StatusCode < 500 {
+		content := response.Body
+		if response.Status != http.StatusOK {
+			lastErr = fmt.Errorf("红果 App 接口 HTTP %d", response.Status)
+			if response.Status >= 400 && response.Status < 500 {
 				return nil, lastErr
 			}
 			continue
@@ -253,7 +263,7 @@ func (downloader *Downloader) hongguoAppRequest(ctx context.Context, method, pat
 		if len(content) == 0 {
 			lastErr = errors.New("红果 App 接口未返回有效数据")
 			if signed && rotations < hongguoDeviceRotations {
-				if registerErr = downloader.ensureHongguoDevice(ctx, helper, deviceID); registerErr == nil {
+				if registerErr = p.ensureHongguoDevice(ctx, helper, deviceID); registerErr == nil {
 					rotations++
 					deviceID, installID, _ = client.device(helper)
 					query.Set("device_id", deviceID)
@@ -265,9 +275,6 @@ func (downloader *Downloader) hongguoAppRequest(ctx context.Context, method, pat
 				lastErr = fmt.Errorf("红果 App 接口未返回有效数据（设备注册失败：%v）", registerErr)
 			}
 			continue
-		}
-		if len(content) > providerMaxBodyBytes {
-			return nil, errors.New("红果 App 接口未返回有效数据")
 		}
 		var result map[string]any
 		decoder := json.NewDecoder(bytes.NewReader(content))

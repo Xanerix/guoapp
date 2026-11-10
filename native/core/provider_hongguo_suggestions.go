@@ -45,14 +45,14 @@ type hongguoSuggestionCall struct {
 	err   error
 }
 
-func (d *Downloader) hongguoSearchSuggestions(ctx context.Context, query string) ([]hongguoSearchSuggestion, error) {
+func (p *hongguoProvider) hongguoSearchSuggestions(ctx context.Context, query string) ([]hongguoSearchSuggestion, error) {
 	query, err := hongguoSearchKeyword(query)
 	if err != nil {
 		return nil, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, hongguoSuggestionTimeout)
 	defer cancel()
-	client := d.hongguoClient()
+	client := p.client
 	for {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -84,7 +84,7 @@ func (d *Downloader) hongguoSearchSuggestions(ctx context.Context, query string)
 		client.suggestPending[query] = pending
 		client.mu.Unlock()
 
-		items, err := d.fetchHongguoSearchSuggestions(ctx, query)
+		items, err := p.fetchHongguoSearchSuggestions(ctx, query)
 		client.mu.Lock()
 		if err == nil {
 			now := time.Now()
@@ -109,8 +109,8 @@ func (d *Downloader) hongguoSearchSuggestions(ctx context.Context, query string)
 	}
 }
 
-func (d *Downloader) fetchHongguoSearchSuggestions(ctx context.Context, query string) ([]hongguoSearchSuggestion, error) {
-	records, err := d.fetchHongguoSuggestionRecords(ctx, query, hongguoSuggestionLimit)
+func (p *hongguoProvider) fetchHongguoSearchSuggestions(ctx context.Context, query string) ([]hongguoSearchSuggestion, error) {
+	records, err := p.fetchHongguoSuggestionRecords(ctx, query, hongguoSuggestionLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -137,34 +137,22 @@ func (d *Downloader) fetchHongguoSearchSuggestions(ctx context.Context, query st
 	return items, nil
 }
 
-func (d *Downloader) fetchHongguoSuggestionRecords(ctx context.Context, query string, count int) ([]hongguoSuggestionRecord, error) {
+func (p *hongguoProvider) fetchHongguoSuggestionRecords(ctx context.Context, query string, count int) ([]hongguoSuggestionRecord, error) {
 	ctx, cancel := context.WithTimeout(ctx, hongguoSuggestionTimeout)
 	defer cancel()
 	params := url.Values{"app_id": {"8662"}, "query": {query}, "count": {strconv.Itoa(count)}}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, hongguoBaseURL+"/incent_resource/suggestion?"+params.Encode(), nil)
-	if err != nil {
-		return nil, err
-	}
-	request.Header.Set("User-Agent", userAgent)
-	request.Header.Set("Referer", hongguoBaseURL+"/")
-	request.Header.Set("Accept", "application/json")
-	request.Header.Set("Accept-Language", "zh-CN,zh;q=0.9")
-
-	response, err := d.doCatalogRequestWithTimeout(request, hongguoSuggestionTimeout)
-	if err != nil {
-		return nil, err
-	}
-	defer response.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(response.Body, hongguoSuggestionBodyLimit+1))
-	if err != nil {
-		return nil, err
-	}
-	if len(body) > hongguoSuggestionBodyLimit {
+	response, err := p.host.Fetch(ctx, HTTPRequest{
+		Label: "红果搜索联想", Method: http.MethodGet, URL: hongguoBaseURL + "/incent_resource/suggestion?" + params.Encode(),
+		Limit: hongguoSuggestionBodyLimit, Timeout: hongguoSuggestionTimeout, FollowRedirects: true,
+		Header: map[string]string{"User-Agent": userAgent, "Referer": hongguoBaseURL + "/", "Accept": "application/json", "Accept-Language": "zh-CN,zh;q=0.9"},
+	})
+	if response.Oversized {
 		return nil, errors.New("红果搜索联想响应过大")
 	}
-	if response.StatusCode != http.StatusOK || catalogResponseBlockReason(response, body) != "" {
-		return nil, d.catalogResponseError(request, response, body)
+	if err != nil {
+		return nil, err
 	}
+	body := response.Body
 	var result struct {
 		Items []hongguoSuggestionRecord `json:"suggest_list"`
 		Data  struct {

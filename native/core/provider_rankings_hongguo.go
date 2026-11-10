@@ -15,7 +15,7 @@ import (
 
 var hongguoRankingMetric = regexp.MustCompile(`^[0-9]+(?:\.[0-9]+)?[万亿]?热度$`)
 
-func (d *Downloader) fetchHongguoRankingPage(ctx context.Context, board RankingBoard, page int) (RankingPage, error) {
+func (p *hongguoProvider) fetchHongguoRankingPage(ctx context.Context, board RankingBoard, page int) (RankingPage, error) {
 	ctx, cancel := context.WithTimeout(ctx, 18*time.Second)
 	defer cancel()
 	var lastErr error
@@ -29,20 +29,16 @@ func (d *Downloader) fetchHongguoRankingPage(ctx context.Context, board RankingB
 				return RankingPage{}, ctx.Err()
 			}
 		}
-		base := d.providerBaseURL(sourceHongguo)
+		base := hongguoBaseURL
 		address := base + "/rank/" + board.path
 		if page > 1 {
 			address += "?page=" + strconv.Itoa(page)
 		}
-		requestCtx := ctx
-		if attempt > 0 {
-			requestCtx = context.WithValue(ctx, providerTextNoCacheKey{}, true)
-		}
-		body, err := d.fetchProviderText(requestCtx, address, base+"/")
+		response, err := p.host.FetchText(ctx, TextRequest{URL: address, Referer: base + "/", NoCache: attempt > 0})
 		if err != nil {
 			return RankingPage{}, err
 		}
-		result, err := parseHongguoRanking(body, board, page)
+		result, err := parseHongguoRanking(response.Body, board, page)
 		if err == nil {
 			return result, nil
 		}

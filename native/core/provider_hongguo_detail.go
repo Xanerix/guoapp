@@ -22,11 +22,11 @@ type hongguoDetailCall struct {
 	err   error
 }
 
-func (downloader *Downloader) hongguoAppDetail(ctx context.Context, seriesID string) (hongguoDetailEntry, error) {
+func (p *hongguoProvider) hongguoAppDetail(ctx context.Context, seriesID string) (hongguoDetailEntry, error) {
 	if !hongguoNumericID.MatchString(seriesID) {
 		return hongguoDetailEntry{}, errors.New("红果剧集 ID 无效")
 	}
-	client := downloader.hongguoClient()
+	client := p.client
 	client.mu.Lock()
 	if cached, found := client.details[seriesID]; found && time.Now().Before(cached.ExpiresAt) {
 		client.mu.Unlock()
@@ -39,7 +39,7 @@ func (downloader *Downloader) hongguoAppDetail(ctx context.Context, seriesID str
 			return hongguoDetailEntry{}, ctx.Err()
 		case <-pending.done:
 			if (errors.Is(pending.err, context.Canceled) || errors.Is(pending.err, context.DeadlineExceeded)) && ctx.Err() == nil {
-				return downloader.hongguoAppDetail(ctx, seriesID)
+				return p.hongguoAppDetail(ctx, seriesID)
 			}
 			return pending.entry, pending.err
 		}
@@ -47,7 +47,7 @@ func (downloader *Downloader) hongguoAppDetail(ctx context.Context, seriesID str
 	pending := &hongguoDetailCall{done: make(chan struct{})}
 	client.pending[seriesID] = pending
 	client.mu.Unlock()
-	result, err := downloader.hongguoAppRequest(ctx, http.MethodPost, "/novel/player/video_detail/v1/", nil, map[string]any{"series_id": seriesID})
+	result, err := p.hongguoAppRequest(ctx, http.MethodPost, "/novel/player/video_detail/v1/", nil, map[string]any{"series_id": seriesID})
 	var entry hongguoDetailEntry
 	if err == nil {
 		entry, err = parseHongguoAppDetail(result, seriesID)
@@ -116,12 +116,12 @@ func parseHongguoAppDetail(result map[string]any, seriesID string) (hongguoDetai
 	return entry, nil
 }
 
-func (downloader *Downloader) hongguoCachedDrama(drama Drama) Drama {
+func (p *hongguoProvider) hongguoCachedDrama(drama Drama) Drama {
 	source, seriesID, valid := splitProviderDramaID(drama.ID)
 	if !valid || source != sourceHongguo {
 		return drama
 	}
-	client := downloader.hongguoClient()
+	client := p.client
 	client.mu.Lock()
 	defer client.mu.Unlock()
 	if cached, found := client.details[seriesID]; found && time.Now().Before(cached.ExpiresAt) {

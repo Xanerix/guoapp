@@ -55,7 +55,9 @@ type HTTPResponse struct {
 }
 
 type Host interface {
-	Reserve(ctx context.Context, address string) (ticket uint64, err error)
+	Reserve(ctx context.Context, address, lane string) (ticket uint64, err error)
+	Retries() int
+	MaxPages() int
 	Fetch(ctx context.Context, request HTTPRequest) (HTTPResponse, error)
 	BaseURL(source string) string
 	PreferredSite(source string) string
@@ -270,8 +272,15 @@ const providerTimeout = 12 * time.Second
 
 const reservationLifetime = time.Minute
 
-func (d *Downloader) Reserve(ctx context.Context, address string) (uint64, error) {
+func (d *Downloader) Retries() int { return d.cfg.Retries }
+
+func (d *Downloader) MaxPages() int { return d.cfg.MaxPagesPerSort }
+
+func (d *Downloader) Reserve(ctx context.Context, address, lane string) (uint64, error) {
 	release := func() {}
+	if lane != "" {
+		ctx = context.WithValue(ctx, requestLaneKey{}, lane)
+	}
 	if d.limiter != nil {
 		request, err := http.NewRequestWithContext(ctx, http.MethodGet, address, nil)
 		if err != nil {

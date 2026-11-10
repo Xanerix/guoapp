@@ -313,7 +313,7 @@ func (c *huangdouAPIClient) callOnce(ctx context.Context, path string, data map[
 	}
 	body := append(append([]byte{}, iv...), cipherText...)
 	address := strings.TrimRight(c.host, "/") + "/api" + path
-	ticket, err := c.p.host.Reserve(ctx, address)
+	ticket, err := c.p.host.Reserve(ctx, address, "")
 	if err != nil {
 		return err
 	}

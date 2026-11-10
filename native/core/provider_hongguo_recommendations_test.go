@@ -22,7 +22,7 @@ func TestHongguoAppRequestRetriesEmptyBody(t *testing.T) {
 	})
 	engine := sourceFixtureEngine(t, transport)
 	engine.downloader.cfg.Retries = 2
-	if _, err := engine.downloader.hongguoAppRequest(context.Background(), http.MethodGet, "/reading/bookapi/bookmall/tab/v1/", nil, nil); err != nil || calls != 2 {
+	if _, err := hongguoFixtureProvider(engine.downloader).hongguoAppRequest(context.Background(), http.MethodGet, "/reading/bookapi/bookmall/tab/v1/", nil, nil); err != nil || calls != 2 {
 		t.Fatal("empty body was not retried", err, calls)
 	}
 }
@@ -77,8 +77,8 @@ func TestHongguoFeedRecommendationsContinueDoubleColCell(t *testing.T) {
 	if err != nil || len(last.Items) != 4 || last.HasMore || last.Items[2].Title != "合成推荐 9003" || last.Items[3].Title != "合成推荐 9004" {
 		t.Fatal("paired pages were not merged in order", err, last.Items, last.HasMore)
 	}
-	primary, _, _ := engine.downloader.hongguoClient().device(false)
-	helper, _, _ := engine.downloader.hongguoClient().device(true)
+	primary, _, _ := hongguoFixtureProvider(engine.downloader).client.device(false)
+	helper, _, _ := hongguoFixtureProvider(engine.downloader).client.device(true)
 	slices.Sort(requests[1:3])
 	slices.Sort(requests[3:5])
 	want := []string{

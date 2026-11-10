@@ -193,7 +193,7 @@ func (series *hongguoSearchSeries) nextQuery(attempted map[string]bool) string {
 	return ""
 }
 
-func (downloader *Downloader) completeHongguoSearchSeasons(ctx context.Context, keyword string, entry *hongguoSearchEntry) bool {
+func (p *hongguoProvider) completeHongguoSearchSeasons(ctx context.Context, keyword string, entry *hongguoSearchEntry) bool {
 	groups := hongguoSearchSeriesGroups(keyword, entry.Dramas)
 	if len(groups) == 0 {
 		return false
@@ -217,7 +217,7 @@ func (downloader *Downloader) completeHongguoSearchSeasons(ctx context.Context, 
 			}
 			attempted[query] = true
 			requests++
-			names, err := downloader.fetchHongguoSearchNames(ctx, query)
+			names, err := p.fetchHongguoSearchNames(ctx, query)
 			if err != nil {
 				return true
 			}
