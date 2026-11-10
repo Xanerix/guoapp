@@ -16,7 +16,7 @@ func TestNativeBuildAuthorization(t *testing.T) {
 	for _, source := range []string{sourceHongguo, sourceHuangdou, sourceHuangguoVideo, sourceHuangguoAI, sourceCloudFront, sourceDSD, "unknown"} {
 		allowed := source == sourceHongguo || allSourcesFlavor() && source != "unknown"
 		for _, action := range []string{"catalog", "cached", "detail", "followCheck", "cover", "resolve", "enqueueDownloads", "localPlayback"} {
-			input := nativeInput{Action: action, Source: source, Drama: nativeDrama{ID: source + ":123", Source: source}}
+			input := nativeInput{Action: action, Source: source, Drama: LibraryDrama{ID: source + ":123", Source: source}}
 			err := nativeAuthorizeInput(input)
 			if (err == nil) != allowed {
 				t.Fatalf("%s %s: allowed=%v, error=%v", action, source, allowed, err)
@@ -24,9 +24,9 @@ func TestNativeBuildAuthorization(t *testing.T) {
 		}
 	}
 	for _, input := range []nativeInput{
-		{Action: "resolve", Drama: nativeDrama{ID: "huangdou:123", Source: sourceHongguo}},
-		{Action: "resolve", Drama: nativeDrama{ID: "hongguo:123", Source: sourceHongguo}, Chapter: Chapter{Source: sourceHuangdou}},
-		{Action: "resolve", Drama: nativeDrama{ID: "hongguo:123", Source: sourceHongguo}, Chapter: Chapter{ID: "huangdou:123:1"}},
+		{Action: "resolve", Drama: LibraryDrama{ID: "huangdou:123", Source: sourceHongguo}},
+		{Action: "resolve", Drama: LibraryDrama{ID: "hongguo:123", Source: sourceHongguo}, Chapter: Chapter{Source: sourceHuangdou}},
+		{Action: "resolve", Drama: LibraryDrama{ID: "hongguo:123", Source: sourceHongguo}, Chapter: Chapter{ID: "huangdou:123:1"}},
 	} {
 		if !errors.Is(nativeAuthorizeInput(input), errNativeBuildSource) {
 			t.Fatal("mismatched source passed native authorization")
@@ -44,7 +44,7 @@ func TestNativeBuildPreservesForeignDownloadRecordsAndRestrictsScheduling(t *tes
 	manager := downloadTestManager(t)
 	records := []*nativeDownloadRecord{}
 	for index, source := range []string{sourceHongguo, sourceHuangdou, sourceHuangguoVideo, sourceHuangguoAI, sourceCloudFront, sourceDSD} {
-		drama := nativeDrama{ID: source + ":123", Source: source, Title: "合成下载"}
+		drama := LibraryDrama{ID: source + ":123", Source: source, Title: "合成下载"}
 		record := &nativeDownloadRecord{nativeDownloadJob: nativeDownloadJob{
 			ID: nativeDownloadID(drama.ID, 1), Drama: drama, Index: 1,
 			Chapter: Chapter{ID: "1", Source: source, CurrentEpisode: json.RawMessage("1")}, State: "queued", Created: int64(index),

@@ -567,3 +567,5 @@ func (p *guipianProvider) Detail(ctx context.Context, sourceID string) (Drama, [
 func (p *guipianProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	return p.resolveGuipianMedia(ctx, task)
 }
+
+const sourceGuipian = "guipian"

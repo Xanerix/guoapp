@@ -621,3 +621,5 @@ func (p *dSDProvider) Detail(ctx context.Context, sourceID string) (Drama, []Cha
 func (p *dSDProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	return p.resolveDSDMedia(ctx, task)
 }
+
+const sourceDSD = "dsd"

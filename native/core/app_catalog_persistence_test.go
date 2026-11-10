@@ -240,9 +240,9 @@ func TestNativeCatalogPreservesLargeLibraryAndPage501(t *testing.T) {
 		requested = target.Query().Get("page")
 		return sourceFixtureResponse(request, 200, `{"status":1,"data":[{"id":"6001","title":"第6001部"}]}`), nil
 	})
-	items := make([]nativeDrama, 6000)
+	items := make([]LibraryDrama, 6000)
 	for index := range items {
-		items[index] = nativeDrama{ID: fmt.Sprintf("huangguoai:%d", index+1), Source: sourceHuangguoAI, Title: "合成目录"}
+		items[index] = LibraryDrama{ID: fmt.Sprintf("huangguoai:%d", index+1), Source: sourceHuangguoAI, Title: "合成目录"}
 	}
 	key := nativeCatalogKey(sourceHuangguoAI, "ai-duanju")
 	if err := engine.saveCatalogCache(key, &nativeCatalogResult{Items: items, Page: 500, HasMore: true}); err != nil {
@@ -255,7 +255,7 @@ func TestNativeCatalogPreservesLargeLibraryAndPage501(t *testing.T) {
 		t.Fatal("catalog silently clamped the requested page", requested)
 	}
 	if err := engine.saveCatalogCache(nativeCatalogKey(sourceHuangguoAI, "ai-manju"), &nativeCatalogResult{
-		Items: []nativeDrama{{ID: "huangguoai:6001", Source: sourceHuangguoAI, Title: "第6001部"}, {ID: "huangguoai:6002", Source: sourceHuangguoAI, Title: "第6002部"}},
+		Items: []LibraryDrama{{ID: "huangguoai:6001", Source: sourceHuangguoAI, Title: "第6001部"}, {ID: "huangguoai:6002", Source: sourceHuangguoAI, Title: "第6002部"}},
 		Page:  1,
 	}); err != nil {
 		t.Fatal(err)
@@ -271,11 +271,11 @@ func TestNativeCatalogLoadTrimsOversizedLegacyLists(t *testing.T) {
 	engine := sourceFixtureEngine(t, func(request *http.Request) (*http.Response, error) {
 		return nil, errors.New("network forbidden")
 	})
-	items := make([]nativeDrama, nativeCatalogMaxItems+500)
+	items := make([]LibraryDrama, nativeCatalogMaxItems+500)
 	for index := range items {
-		items[index] = nativeDrama{ID: fmt.Sprintf("hongguo:%d", index+1), Source: sourceHongguo, Title: "合成目录"}
+		items[index] = LibraryDrama{ID: fmt.Sprintf("hongguo:%d", index+1), Source: sourceHongguo, Title: "合成目录"}
 	}
-	body, err := json.Marshal(nativeCatalogDisk{Version: 3, Catalogs: map[string][]nativeDrama{sourceHongguo: items},
+	body, err := json.Marshal(nativeCatalogDisk{Version: 3, Catalogs: map[string][]LibraryDrama{sourceHongguo: items},
 		States: map[string]nativeCatalogState{sourceHongguo: {Page: 400, HasMore: true}}})
 	if err != nil {
 		t.Fatal(err)
@@ -356,12 +356,12 @@ func TestNativeCatalogSizeLimitPreservesPreviousFile(t *testing.T) {
 		requests.Add(1)
 		return nil, errors.New("network forbidden")
 	})
-	if err := engine.saveCatalogCache(sourceHongguo, &nativeCatalogResult{Items: []nativeDrama{{ID: "hongguo:1", Title: "已保存"}}, Page: 1, HasMore: true}); err != nil {
+	if err := engine.saveCatalogCache(sourceHongguo, &nativeCatalogResult{Items: []LibraryDrama{{ID: "hongguo:1", Title: "已保存"}}, Page: 1, HasMore: true}); err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(engine.directory, "catalogs.json")
 	before, _ := os.ReadFile(path)
-	result := nativeCatalogResult{Items: []nativeDrama{{ID: "hongguo:2", Title: "未保存", Description: strings.Repeat("x", nativeCatalogMaxBytes)}}, Page: 2, HasMore: true}
+	result := nativeCatalogResult{Items: []LibraryDrama{{ID: "hongguo:2", Title: "未保存", Description: strings.Repeat("x", nativeCatalogMaxBytes)}}, Page: 2, HasMore: true}
 	err := engine.saveCatalogCache(sourceHongguo, &result)
 	if !errors.Is(err, errNativeCatalogLimit) || result.Fresh || !strings.Contains(result.Warning, "上限") {
 		t.Fatal("oversized data was silently accepted", err, result.Warning)
@@ -413,7 +413,7 @@ func TestNativeCatalogMetadataSaveExcludesInFlightCursor(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("catalog never reached the in-flight checkpoint")
 	}
-	engine.saveDetailMetadata(nativeDrama{ID: "hongguo:1000", Source: sourceHongguo, Title: "补齐名称"})
+	engine.saveDetailMetadata(LibraryDrama{ID: "hongguo:1000", Source: sourceHongguo, Title: "补齐名称"})
 	restarted := reopenCatalogEngine(t, engine.directory, transport)
 	if cursor := restarted.downloader.hongguoCatalogSnapshot().Feeds["short_play"]; cursor.Offset != 18 {
 		t.Error("an unrelated metadata write persisted an uncommitted feed cursor")

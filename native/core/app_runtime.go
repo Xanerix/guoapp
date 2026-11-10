@@ -15,22 +15,21 @@ import (
 )
 
 type Config struct {
-	dataDir          string
-	MaxPagesPerSort  int
-	PageSize         int
-	Retries          int
-	InsecureTLS      bool
-	HuangguoAIURL    string
-	HuangguoVideoURL string
-	HuangdouURL      string
-	HongguoURL       string
-	Token            string
-	AESKeyHex        string
-	InterfaceKey     string
-	ParamKey         string
-	ParamIV          string
-	APIBase          string
-	CDNURL           string
+	dataDir         string
+	MaxPagesPerSort int
+	PageSize        int
+	Retries         int
+	InsecureTLS     bool
+	HuangguoAIURL   string
+	HuangdouURL     string
+	HongguoURL      string
+	Token           string
+	AESKeyHex       string
+	InterfaceKey    string
+	ParamKey        string
+	ParamIV         string
+	APIBase         string
+	CDNURL          string
 }
 
 type Downloader struct {
@@ -61,7 +60,7 @@ type Downloader struct {
 
 func defaultConfig() Config { return Config{MaxPagesPerSort: 50, PageSize: 30, Retries: 2} }
 
-type nativeDrama struct {
+type LibraryDrama struct {
 	MetadataSchema int      `json:"metadataSchema"`
 	ID             string   `json:"id"`
 	Source         string   `json:"source"`
@@ -99,7 +98,7 @@ type nativeInput struct {
 	Page            int                     `json:"page"`
 	Query           string                  `json:"query"`
 	Category        string                  `json:"category"`
-	Drama           nativeDrama             `json:"drama"`
+	Drama           LibraryDrama            `json:"drama"`
 	Chapter         Chapter                 `json:"chapter"`
 	Index           int                     `json:"index"`
 	Quality         int                     `json:"quality"`
@@ -112,12 +111,12 @@ type nativeInput struct {
 }
 
 type nativeCatalogResult struct {
-	Items       []nativeDrama `json:"items"`
-	HasMore     bool          `json:"hasMore"`
-	Page        int           `json:"page"`
-	Warning     string        `json:"warning,omitempty"`
-	LocalSearch bool          `json:"localSearch"`
-	Fresh       bool          `json:"fresh"`
+	Items       []LibraryDrama `json:"items"`
+	HasMore     bool           `json:"hasMore"`
+	Page        int            `json:"page"`
+	Warning     string         `json:"warning,omitempty"`
+	LocalSearch bool           `json:"localSearch"`
+	Fresh       bool           `json:"fresh"`
 	saveError   error
 }
 
@@ -148,7 +147,7 @@ type nativeEngine struct {
 	directory        string
 	defaultDownloads string
 	mu               sync.Mutex
-	catalogs         map[string][]nativeDrama
+	catalogs         map[string][]LibraryDrama
 	catalogStates    map[string]nativeCatalogState
 	categoryOptions  map[string][]Category
 	providerStates   map[string]json.RawMessage
@@ -195,7 +194,7 @@ func nativeText(value any) string {
 	return ""
 }
 
-func nativeNormalize(drama Drama) nativeDrama {
+func nativeNormalize(drama Drama) LibraryDrama {
 	cover := ""
 	for _, value := range []any{drama.Cover, drama.CoverURL, drama.CoverURLSnake, drama.Image, drama.ImageURL, drama.ImageURLSnake, drama.Img, drama.Pic, drama.Picture, drama.Poster, drama.Thumb, drama.Thumbnail} {
 		candidate := nativeText(value)
@@ -214,7 +213,7 @@ func nativeNormalize(drama Drama) nativeDrama {
 		}
 	}
 	source, sourceID, _ := splitProviderDramaID(drama.ID)
-	return nativeDrama{MetadataSchema: 1, ID: drama.ID, Source: source, SourceID: sourceID, Title: drama.DisplayTitle(),
+	return LibraryDrama{MetadataSchema: 1, ID: drama.ID, Source: source, SourceID: sourceID, Title: drama.DisplayTitle(),
 		Description: firstNonEmpty(drama.Desc, drama.Intro), Cover: cover, Episodes: episodes,
 		Category: nativeDramaCategory(drama), VIP: drama.VIP,
 		Heat: drama.Heat, Views: drama.Views, OnlineDate: providerReleaseDate(drama.OnlineDate), Score: nativeDramaScore(drama.Score),
@@ -270,7 +269,7 @@ func newNativeEngine(directory, downloads string) (*nativeEngine, error) {
 			}
 			return nil
 		}}
-	engine := &nativeEngine{downloader: d, directory: directory, defaultDownloads: nativeDefaultDownloads(directory), catalogs: map[string][]nativeDrama{}, catalogStates: map[string]nativeCatalogState{}}
+	engine := &nativeEngine{downloader: d, directory: directory, defaultDownloads: nativeDefaultDownloads(directory), catalogs: map[string][]LibraryDrama{}, catalogStates: map[string]nativeCatalogState{}}
 	if filepath.IsAbs(downloads) {
 		engine.defaultDownloads = filepath.Clean(downloads)
 	}
@@ -495,7 +494,7 @@ func (engine *nativeEngine) nativeCatalog(ctx context.Context, input nativeInput
 		}
 	}
 	d := engine.downloader
-	result := nativeCatalogResult{Items: []nativeDrama{}, Page: page}
+	result := nativeCatalogResult{Items: []LibraryDrama{}, Page: page}
 	registered, hasProvider := d.provider(source)
 	if searcher, ok := registered.(WarningSearcher); ok && query != "" {
 		items, more, warning, err := searcher.SearchWithWarning(ctx, page, query)
@@ -521,7 +520,7 @@ func (engine *nativeEngine) nativeCatalog(ctx context.Context, input nativeInput
 	}
 	if query != "" {
 		engine.mu.Lock()
-		items := append([]nativeDrama{}, engine.catalogs[source]...)
+		items := append([]LibraryDrama{}, engine.catalogs[source]...)
 		engine.mu.Unlock()
 		for _, item := range items {
 			text := nativeSearchText(item.Title + " " + item.Description + " " + strings.Join(item.Tags, " "))
@@ -585,7 +584,7 @@ func (engine *nativeEngine) nativeCatalog(ctx context.Context, input nativeInput
 	return result, nil
 }
 
-func (engine *nativeEngine) nativeDetail(ctx context.Context, drama nativeDrama) (any, error) {
+func (engine *nativeEngine) nativeDetail(ctx context.Context, drama LibraryDrama) (any, error) {
 	source, sourceID, valid := splitProviderDramaID(drama.ID)
 	if !valid {
 		return nil, errors.New("剧集信息无效，请刷新剧库")

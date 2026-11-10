@@ -558,3 +558,5 @@ func (p *heitaoProvider) Detail(ctx context.Context, sourceID string) (Drama, []
 func (p *heitaoProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	return p.resolveHeitaoMedia(ctx, task)
 }
+
+const sourceHeitao = "heitao"

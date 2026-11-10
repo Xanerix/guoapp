@@ -25,7 +25,7 @@ func storageFixture(t *testing.T) (*nativeEngine, string) {
 		t.Fatal(err)
 	}
 	manager.jobs[id] = &nativeDownloadRecord{nativeDownloadJob: nativeDownloadJob{
-		ID: id, Index: 1, Drama: nativeDrama{ID: "hongguo:70001", Source: "hongguo"},
+		ID: id, Index: 1, Drama: LibraryDrama{ID: "hongguo:70001", Source: "hongguo"},
 		State: "completed", Bytes: 15}, File: "media.mp4"}
 	if err := manager.saveLocked(); err != nil {
 		t.Fatal(err)

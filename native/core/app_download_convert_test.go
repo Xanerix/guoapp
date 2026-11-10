@@ -23,7 +23,7 @@ func copyConversion(t *testing.T, manager *nativeDownloads, work nativeDownloadC
 	}
 }
 
-func convertingFixture(t *testing.T, manager *nativeDownloads, drama nativeDrama, index int, bySource bool) string {
+func convertingFixture(t *testing.T, manager *nativeDownloads, drama LibraryDrama, index int, bySource bool) string {
 	t.Helper()
 	id := nativeDownloadID(drama.ID, index)
 	record := &nativeDownloadRecord{nativeDownloadJob: nativeDownloadJob{ID: id, Index: index, Drama: drama,
@@ -65,9 +65,9 @@ func convertFixture(t *testing.T, manager *nativeDownloads, id string) string {
 
 func TestNativeDownloadConversionNamesFoldersByDrama(t *testing.T) {
 	manager := downloadTestManager(t)
-	first := nativeDrama{ID: "hongguo:801", Source: "hongguo", Title: " 甲:剧/名? "}
-	twin := nativeDrama{ID: "hongguo:802", Source: "hongguo", Title: "甲:剧/名?"}
-	device := nativeDrama{ID: "hongguo:803", Source: "hongguo", Title: "con.剧"}
+	first := LibraryDrama{ID: "hongguo:801", Source: "hongguo", Title: " 甲:剧/名? "}
+	twin := LibraryDrama{ID: "hongguo:802", Source: "hongguo", Title: "甲:剧/名?"}
+	device := LibraryDrama{ID: "hongguo:803", Source: "hongguo", Title: "con.剧"}
 	one := convertingFixture(t, manager, first, 1, false)
 	two := convertingFixture(t, manager, first, 2, false)
 	other := convertingFixture(t, manager, twin, 1, false)
@@ -109,7 +109,7 @@ func TestNativeDownloadConversionNamesFoldersByDrama(t *testing.T) {
 
 func TestNativeDownloadConversionRejectsUnsafeOutput(t *testing.T) {
 	manager := downloadTestManager(t)
-	drama := nativeDrama{ID: "hongguo:804", Source: "hongguo", Title: "样本"}
+	drama := LibraryDrama{ID: "hongguo:804", Source: "hongguo", Title: "样本"}
 	id := nativeDownloadID(drama.ID, 1)
 	for _, output := range []string{"../样本/第1集.mp4", "样本/第2集.mp4", "huangdou/样本/第1集.mp4", "a/b/c/第1集.mp4", "样本./第1集.mp4", "NUL/第1集.mp4"} {
 		records := []nativeDownloadRecord{{nativeDownloadJob: nativeDownloadJob{ID: id, Index: 1, Drama: drama,
@@ -128,7 +128,7 @@ func TestNativeDownloadConversionRejectsUnsafeOutput(t *testing.T) {
 
 func TestNativeDownloadConversionFailureRetryAndRemoval(t *testing.T) {
 	manager := downloadTestManager(t)
-	drama := nativeDrama{ID: "hongguo:805", Source: "hongguo", Title: "样本"}
+	drama := LibraryDrama{ID: "hongguo:805", Source: "hongguo", Title: "样本"}
 	id := convertingFixture(t, manager, drama, 1, false)
 	if _, found, err := manager.localPlan(drama.ID, 1); found || err != nil {
 		t.Fatal("converting episode must fall back to online playback")

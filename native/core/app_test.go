@@ -43,7 +43,7 @@ func TestNativeBoundaryRejectsInvalidInput(t *testing.T) {
 	if _, err := engine.nativeCatalog(context.Background(), nativeInput{Source: "invalid"}); err == nil {
 		t.Fatal("invalid source accepted")
 	}
-	if _, err := engine.nativeDetail(context.Background(), nativeDrama{ID: "invalid"}); err == nil {
+	if _, err := engine.nativeDetail(context.Background(), LibraryDrama{ID: "invalid"}); err == nil {
 		t.Fatal("invalid drama accepted")
 	}
 }

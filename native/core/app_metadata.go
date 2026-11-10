@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func (engine *nativeEngine) nativeNeedsExtraMetadata(drama nativeDrama) bool {
+func (engine *nativeEngine) nativeNeedsExtraMetadata(drama LibraryDrama) bool {
 	if p, ok := engine.downloader.provider(drama.Source); ok {
 		enricher, ok := p.(MetadataEnricher)
 		return ok && enricher.NeedsExtraMetadata(drama)
@@ -14,7 +14,7 @@ func (engine *nativeEngine) nativeNeedsExtraMetadata(drama nativeDrama) bool {
 	return false
 }
 
-func (engine *nativeEngine) nativeExtraMetadata(ctx context.Context, drama nativeDrama) (nativeDrama, error) {
+func (engine *nativeEngine) nativeExtraMetadata(ctx context.Context, drama LibraryDrama) (LibraryDrama, error) {
 	source, id, valid := splitProviderDramaID(drama.ID)
 	if !valid {
 		return drama, errors.New("剧集信息无效")
@@ -31,7 +31,7 @@ func (engine *nativeEngine) nativeExtraMetadata(ctx context.Context, drama nativ
 	return p.(MetadataEnricher).ExtraMetadata(ctx, drama, id)
 }
 
-func (engine *nativeEngine) nativeFollowCheck(ctx context.Context, drama nativeDrama) (any, error) {
+func (engine *nativeEngine) nativeFollowCheck(ctx context.Context, drama LibraryDrama) (any, error) {
 	ctx, cancel := context.WithTimeout(context.WithValue(ctx, backgroundCatalogKey{}, true), 20*time.Second)
 	defer cancel()
 	result, err := engine.nativeDetail(ctx, drama)
@@ -41,7 +41,7 @@ func (engine *nativeEngine) nativeFollowCheck(ctx context.Context, drama nativeD
 	return map[string]any{"drama": result.(map[string]any)["drama"]}, nil
 }
 
-func (engine *nativeEngine) nativeMetadata(ctx context.Context, drama nativeDrama) (any, error) {
+func (engine *nativeEngine) nativeMetadata(ctx context.Context, drama LibraryDrama) (any, error) {
 	fresh, err := engine.nativeExtraMetadata(ctx, drama)
 	if err != nil {
 		return nil, err

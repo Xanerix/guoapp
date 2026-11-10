@@ -611,7 +611,7 @@ func (p *huangdouProvider) RankingPage(ctx context.Context, board RankingBoard, 
 	return parseHuangdouRanking(decoded, page)
 }
 
-func (p *huangdouProvider) CoverAddress(ctx context.Context, drama nativeDrama, id string) (string, error) {
+func (p *huangdouProvider) CoverAddress(ctx context.Context, drama LibraryDrama, id string) (string, error) {
 	row, err := p.d.huangdouDetail(ctx, id)
 	if err != nil {
 		return "", err
@@ -636,11 +636,11 @@ func (p *huangdouProvider) CoverReferer(address string) string {
 	return host + "/home"
 }
 
-func (p *huangdouProvider) NeedsExtraMetadata(drama nativeDrama) bool {
+func (p *huangdouProvider) NeedsExtraMetadata(drama LibraryDrama) bool {
 	return drama.Heat == "" || drama.VIP == nil
 }
 
-func (p *huangdouProvider) ExtraMetadata(ctx context.Context, drama nativeDrama, id string) (nativeDrama, error) {
+func (p *huangdouProvider) ExtraMetadata(ctx context.Context, drama LibraryDrama, id string) (LibraryDrama, error) {
 	row, err := p.d.huangdouDetail(ctx, id)
 	if err != nil {
 		return drama, err
@@ -666,3 +666,5 @@ func (p *huangdouProvider) ExtraMetadata(ctx context.Context, drama nativeDrama,
 	}
 	return drama, ctx.Err()
 }
+
+const sourceHuangdou = "huangdou"

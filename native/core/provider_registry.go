@@ -113,7 +113,7 @@ type Ranker interface {
 }
 
 type CoverResolver interface {
-	CoverAddress(ctx context.Context, drama nativeDrama, sourceID string) (string, error)
+	CoverAddress(ctx context.Context, drama LibraryDrama, sourceID string) (string, error)
 }
 
 type CoverRefererProvider interface {
@@ -121,8 +121,8 @@ type CoverRefererProvider interface {
 }
 
 type MetadataEnricher interface {
-	NeedsExtraMetadata(drama nativeDrama) bool
-	ExtraMetadata(ctx context.Context, drama nativeDrama, sourceID string) (nativeDrama, error)
+	NeedsExtraMetadata(drama LibraryDrama) bool
+	ExtraMetadata(ctx context.Context, drama LibraryDrama, sourceID string) (LibraryDrama, error)
 }
 
 var errCategoriesIncomplete = errors.New("categories incomplete")

@@ -55,7 +55,7 @@ func TestNativeCoverDecryptsAndPersistsAcrossRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	drama := nativeDrama{ID: "huangguoai:1", Source: sourceHuangguoAI, Cover: upstream.URL + "/poster.jpg?signature=%2F%2b%3D&auth_key=fixture"}
+	drama := LibraryDrama{ID: "huangguoai:1", Source: sourceHuangguoAI, Cover: upstream.URL + "/poster.jpg?signature=%2F%2b%3D&auth_key=fixture"}
 	var workers sync.WaitGroup
 	for range 12 {
 		workers.Add(1)
@@ -122,7 +122,7 @@ func TestNativeCoverFormatsFailuresAndOfflineFallback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	drama := nativeDrama{ID: "huangguoai:2", Source: sourceHuangguoAI, Cover: upstream.URL + "/cover"}
+	drama := LibraryDrama{ID: "huangguoai:2", Source: sourceHuangguoAI, Cover: upstream.URL + "/cover"}
 	if _, err := engine.covers.load(context.Background(), drama, false); err == nil || len(engine.covers.entries) != 0 {
 		t.Fatal("invalid cover was cached")
 	}
@@ -170,7 +170,7 @@ func TestNativeCoverRedirectAndBoundedDiskCache(t *testing.T) {
 	}
 	engine.covers.limit = int64(len(plain) * 2)
 	for _, path := range []string{"/redirect", "/second", "/third"} {
-		_, err := engine.covers.load(context.Background(), nativeDrama{Source: sourceHuangguoAI, Cover: upstream.URL + path}, false)
+		_, err := engine.covers.load(context.Background(), LibraryDrama{Source: sourceHuangguoAI, Cover: upstream.URL + path}, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -252,8 +252,8 @@ func TestNativeCatalogCacheFreshnessPagingAndRefresh(t *testing.T) {
 
 func TestNativeCatalogCacheMigratesAndKeepsHongguoCursorItems(t *testing.T) {
 	directory := t.TempDir()
-	old := nativeDrama{ID: "hongguo:101", Title: "原有合成记录"}
-	legacy, _ := json.Marshal(map[string][]nativeDrama{sourceHongguo: {old}})
+	old := LibraryDrama{ID: "hongguo:101", Title: "原有合成记录"}
+	legacy, _ := json.Marshal(map[string][]LibraryDrama{sourceHongguo: {old}})
 	if err := os.WriteFile(filepath.Join(directory, "catalogs.json"), legacy, 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -265,7 +265,7 @@ func TestNativeCatalogCacheMigratesAndKeepsHongguoCursorItems(t *testing.T) {
 		t.Fatal("legacy data was lost or marked as freshly fetched", cached)
 	}
 	engine.catalogStates[sourceHongguo] = nativeCatalogState{Page: 4, HasMore: true}
-	result := nativeCatalogResult{Items: []nativeDrama{{ID: "hongguo:102", Title: "新的合成记录"}}, Page: 1, HasMore: true}
+	result := nativeCatalogResult{Items: []LibraryDrama{{ID: "hongguo:102", Title: "新的合成记录"}}, Page: 1, HasMore: true}
 	engine.saveCatalogCache(sourceHongguo, &result)
 	if result.Page != 4 || len(result.Items) != 2 || result.Items[0].ID != "hongguo:102" || result.Items[1].ID != old.ID {
 		t.Fatal("refresh lost catalog items preceding the saved feed cursor", result)

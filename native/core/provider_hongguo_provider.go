@@ -119,7 +119,7 @@ func (p *hongguoProvider) RankingPage(ctx context.Context, board RankingBoard, p
 	return p.d.fetchHongguoRankingPage(ctx, board, page)
 }
 
-func (p *hongguoProvider) CoverAddress(ctx context.Context, drama nativeDrama, id string) (string, error) {
+func (p *hongguoProvider) CoverAddress(ctx context.Context, drama LibraryDrama, id string) (string, error) {
 	if !hongguoNumericID.MatchString(id) {
 		return "", errors.New("无效的红果剧集 ID")
 	}
@@ -134,11 +134,11 @@ func (p *hongguoProvider) CoverAddress(ctx context.Context, drama nativeDrama, i
 	return hongguoCoverAddress(mapString(row, "series_cover", "cover")), nil
 }
 
-func (p *hongguoProvider) NeedsExtraMetadata(drama nativeDrama) bool {
+func (p *hongguoProvider) NeedsExtraMetadata(drama LibraryDrama) bool {
 	return drama.OnlineDate == "" || drama.Score == ""
 }
 
-func (p *hongguoProvider) ExtraMetadata(ctx context.Context, drama nativeDrama, id string) (nativeDrama, error) {
+func (p *hongguoProvider) ExtraMetadata(ctx context.Context, drama LibraryDrama, id string) (LibraryDrama, error) {
 	if !hongguoNumericID.MatchString(id) {
 		return drama, errors.New("红果剧集 ID 无效")
 	}
@@ -260,3 +260,5 @@ func (p *hongguoProvider) Recommendations(ctx context.Context, genre string, cur
 	next, err := json.Marshal(hongguoRecommendationQuery{Genre: genre, Offset: page.NextOffset, SessionID: session, CellID: page.CellID, ShowType: page.ShowType})
 	return RecommendationPage{Dramas: page.Dramas, Cursor: next, HasMore: page.HasMore}, err
 }
+
+const sourceHongguo = "hongguo"

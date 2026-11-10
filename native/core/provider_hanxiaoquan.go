@@ -473,3 +473,5 @@ func (p *hanxiaoquanProvider) Detail(ctx context.Context, sourceID string) (Dram
 func (p *hanxiaoquanProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	return p.resolveHanxiaoquanMedia(ctx, task)
 }
+
+const sourceHanxiaoquan = "hanxiaoquan"

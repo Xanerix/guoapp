@@ -400,3 +400,5 @@ func (p *huangjuProvider) ResolveMedia(ctx context.Context, task Task) (Provider
 func validHuangjuCategory(category string) bool {
 	return category == huangjuNewestCategory || validHuangjuID(category) && !strings.HasPrefix(category, "@")
 }
+
+const sourceHuangju = "huangju"

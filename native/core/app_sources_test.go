@@ -60,9 +60,9 @@ func TestSourceUpdatesPreservePagesOtherSourcesAndMetadata(t *testing.T) {
 		}
 		return sourceFixtureResponse(request, 200, fmt.Sprintf(`{"status":1,"data":[{"id":%q,"title":"合成短剧","desc":"完整资料","totalEpisode":2}]}`, id)), nil
 	})
-	engine.catalogs[sourceHuangguoAI] = []nativeDrama{{ID: "huangguoai:old", Source: sourceHuangguoAI, Title: "原有短剧", Description: "保留资料", Episodes: 2}}
+	engine.catalogs[sourceHuangguoAI] = []LibraryDrama{{ID: "huangguoai:old", Source: sourceHuangguoAI, Title: "原有短剧", Description: "保留资料", Episodes: 2}}
 	engine.catalogStates[sourceHuangguoAI] = nativeCatalogState{Page: 2, HasMore: true}
-	engine.catalogs[sourceHongguo] = []nativeDrama{{ID: "hongguo:1", Source: sourceHongguo, Title: "其他站源"}}
+	engine.catalogs[sourceHongguo] = []LibraryDrama{{ID: "hongguo:1", Source: sourceHongguo, Title: "其他站源"}}
 	for _, page := range []int{1, 3} {
 		if _, err := engine.nativeCatalog(context.Background(), nativeInput{Source: sourceHuangguoAI, Page: page, Force: true}); err != nil {
 			t.Fatal(err)
@@ -75,7 +75,7 @@ func TestSourceUpdatesPreservePagesOtherSourcesAndMetadata(t *testing.T) {
 	if len(engine.nativeCached(sourceHongguo).Items) != 1 {
 		t.Fatal("updated another source")
 	}
-	engine.saveCatalogCache(sourceHuangguoAI, &nativeCatalogResult{Items: []nativeDrama{{ID: "huangguoai:old", Title: "新名称"}}, Page: 1, HasMore: true})
+	engine.saveCatalogCache(sourceHuangguoAI, &nativeCatalogResult{Items: []LibraryDrama{{ID: "huangguoai:old", Title: "新名称"}}, Page: 1, HasMore: true})
 	page = engine.nativeCached(sourceHuangguoAI)
 	if page.Page != 3 || page.HasMore || len(page.Items) != 3 || page.Items[0].Description != "保留资料" {
 		t.Fatal("head refresh discarded cached metadata or pagination", page)

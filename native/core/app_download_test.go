@@ -30,7 +30,7 @@ func downloadTestManager(t *testing.T) *nativeDownloads {
 }
 
 func downloadTestInput(count int) nativeInput {
-	input := nativeInput{Drama: nativeDrama{ID: "hongguo:100", Source: "hongguo", Title: "合成下载测试"}, Quality: 1080}
+	input := nativeInput{Drama: LibraryDrama{ID: "hongguo:100", Source: "hongguo", Title: "合成下载测试"}, Quality: 1080}
 	for index := 1; index <= count; index++ {
 		input.Entries = append(input.Entries, nativeDownloadEpisode{Index: index,
 			Chapter: Chapter{ID: strconv.Itoa(index), CurrentEpisode: json.RawMessage(strconv.Itoa(index))}})
@@ -529,7 +529,7 @@ func TestNativeDownloadHLSRejectsLiveAndUnsupportedEncryption(t *testing.T) {
 
 func TestNativeDownloadsSnapshotSinceSkipsUnchangedJobs(t *testing.T) {
 	manager := downloadTestManager(t)
-	drama := nativeDrama{ID: "hongguo:806", Source: "hongguo", Title: "样本"}
+	drama := LibraryDrama{ID: "hongguo:806", Source: "hongguo", Title: "样本"}
 	id := nativeDownloadID(drama.ID, 1)
 	manager.mu.Lock()
 	manager.jobs[id] = &nativeDownloadRecord{nativeDownloadJob: nativeDownloadJob{ID: id, Index: 1, Drama: drama, State: "paused"}}

@@ -389,3 +389,5 @@ func (p *jinguoDuanjuProvider) Detail(ctx context.Context, sourceID string) (Dra
 func (p *jinguoDuanjuProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	return p.resolveJinguoDuanjuMedia(ctx, task)
 }
+
+const sourceJinguoDuanju = "jinguoduanju"

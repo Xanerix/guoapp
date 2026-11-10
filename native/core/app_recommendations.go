@@ -108,8 +108,8 @@ func (engine *nativeEngine) nativeRecommendations(ctx context.Context, input nat
 	for _, drama := range previous {
 		seen[drama.ID] = true
 	}
-	fresh := make([]nativeDrama, 0, len(page.Dramas))
-	known := make(map[string]nativeDrama, len(engine.catalogs[source]))
+	fresh := make([]LibraryDrama, 0, len(page.Dramas))
+	known := make(map[string]LibraryDrama, len(engine.catalogs[source]))
 	for _, drama := range engine.catalogs[source] {
 		known[drama.ID] = drama
 	}
@@ -139,7 +139,7 @@ func (engine *nativeEngine) nativeRecommendations(ctx context.Context, input nat
 	engine.catalogs[source] = mergeNativeCatalog(engine.catalogs[source], fresh)
 	engine.commitProviderStateLocked(source)
 	engine.catalogStates[key] = nativeCatalogState{UpdatedAt: time.Now(), Page: state.Page, HasMore: state.HasMore}
-	result := nativeCatalogResult{Items: append([]nativeDrama{}, items...), Page: state.Page, HasMore: state.HasMore, Fresh: true}
+	result := nativeCatalogResult{Items: append([]LibraryDrama{}, items...), Page: state.Page, HasMore: state.HasMore, Fresh: true}
 	if err := engine.writeCatalogDiskLocked(); err != nil {
 		result.Fresh, result.Warning, result.saveError = false, err.Error(), err
 	}

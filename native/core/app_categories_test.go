@@ -49,7 +49,7 @@ func TestNativeCategoryPaginationStaysIndependent(t *testing.T) {
 	if len(engine.nativeCached(sourceHuangguoAI).Items) != 49 {
 		t.Fatal("source management lost categorized titles")
 	}
-	restored := &nativeEngine{directory: engine.directory, catalogs: map[string][]nativeDrama{}, catalogStates: map[string]nativeCatalogState{}}
+	restored := &nativeEngine{directory: engine.directory, catalogs: map[string][]LibraryDrama{}, catalogStates: map[string]nativeCatalogState{}}
 	restored.loadCatalogCache()
 	if restored.nativeCached(nativeCatalogKey(sourceHuangguoAI, "ai-duanju")).Page != 2 {
 		t.Fatal("category position was not persisted")

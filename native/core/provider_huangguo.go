@@ -1,69 +1,38 @@
 package core
 
 import (
-	"bytes"
 	"context"
-	"crypto/sha256"
 
-	"encoding/json"
 	"errors"
 	"fmt"
 	"html"
-	"io"
-	"net/http"
 	"net/url"
 
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 )
 
-const (
-	sourceHuangguoAI    = "huangguoai"
-	sourceHuangguoVideo = "huangguo-video"
-	sourceHuangdou      = "huangdou"
-	sourceHongguo       = "hongguo"
-	sourceHuangju       = "huangju"
-	sourceYeguo         = "yeguo"
-	sourceJinguoDuanju  = "jinguoduanju"
-	sourceJinguo        = "jinguo"
-	sourceDSD           = "dsd"
-	sourceCloudFront    = "cloudfront"
-	sourceSorani        = "sorani"
-	sourceGuipian       = "guipian"
-	sourceHanxiaoquan   = "hanxiaoquan"
-	sourceHeitao        = "heitao"
-	sourceBeabox        = "beabox"
+const sourceHuangguoVideo = "huangguo-video"
 
-	providerMaxBodyBytes = 20 * 1024 * 1024
-	providerTimeout      = 12 * time.Second
-)
+var huangguoVideoBaseURL = "https://huangguo.video"
 
-var (
-	huangguoAIBaseURL       = "https://huangguoai.com"
-	huangguoAIBaseMirrors   = []string{"https://huangguoai.com", "https://thu.lbvrhyir.cc", "https://pku.xxbgwypx.cc", "https://ttvoij.ediayikma.cc", "https://thu.ediayikma.cc", "https://pku.ediayikma.cc", "https://fdu.ediayikma.cc", "https://thu.agdkczeyx.cc"}
-	huangguoAIMirrorDomains = []string{"lbvrhyir.cc", "xxbgwypx.cc", "ediayikma.cc", "agdkczeyx.cc"}
-	huangguoVideoBaseURL    = "https://huangguo.video"
+var reVideoCard = regexp.MustCompile(`(?is)<article\b[^>]*class=["'][^"']*\bvideo-card\b[^"']*["'][^>]*>.*?</article>`)
 
-	huangguoAISlugs = []string{"recommend", "newest", "ai-duanju", "ai-manju", "ai-huanlian", "ai-mogai", "ranks/hot"}
+var reVideoCardMeta = regexp.MustCompile(`(?is)<p\b[^>]*class=["'][^"']*\bfont-mono-meta\b[^"']*["'][^>]*>(.*?)</p>`)
 
-	reVideoCard       = regexp.MustCompile(`(?is)<article\b[^>]*class=["'][^"']*\bvideo-card\b[^"']*["'][^>]*>.*?</article>`)
-	reVideoCardMeta   = regexp.MustCompile(`(?is)<p\b[^>]*class=["'][^"']*\bfont-mono-meta\b[^"']*["'][^>]*>(.*?)</p>`)
-	reVideoDetailMeta = regexp.MustCompile(`(?is)</h1>.*?<p\b[^>]*class=["'][^"']*\bfont-mono-meta\b[^"']*["'][^>]*>(.*?)</p>`)
-	reAnyArticle      = regexp.MustCompile(`(?is)<article\b[^>]*>.*?</article>`)
-	reHuangguoLink    = regexp.MustCompile(`(?is)<a\b[^>]*href=["']([^"']*/(?:series|video)/([^"'/?#]+)[^"']*)["'][^>]*>.*?</a>`)
-	reTitleTag        = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
-	reH1Tag           = regexp.MustCompile(`(?is)<h1[^>]*>(.*?)</h1>`)
-	reDescMeta        = regexp.MustCompile(`(?is)<meta\b[^>]*(?:name|property)=["'](?:description|og:description)["'][^>]*content=["']([^"']+)["'][^>]*>`)
-	reEpisodeNumber   = regexp.MustCompile(`(?i)(?:第\s*0*(\d+)\s*(?:集|话|期)|(?:更新至|共|全)\s*0*(\d+)\s*(?:集|话|期)|(?:episode|ep)\s*#?\s*0*(\d+))`)
-	reResolution      = regexp.MustCompile(`(?i)RESOLUTION\s*=\s*(\d+)x(\d+)`)
-	reBandwidth       = regexp.MustCompile(`(?i)(?:AVERAGE-)?BANDWIDTH\s*=\s*(\d+)`)
-	reDataHLS         = regexp.MustCompile(`(?is)data-hls=["']([^"']+)["']`)
-	reDateText        = regexp.MustCompile(`\d{4}-\d{1,2}-\d{1,2}`)
-	reViewsText       = regexp.MustCompile(`(?i)[0-9]+(?:\.[0-9]+)?\s*[w万]?\s*次播放`)
-)
+var reVideoDetailMeta = regexp.MustCompile(`(?is)</h1>.*?<p\b[^>]*class=["'][^"']*\bfont-mono-meta\b[^"']*["'][^>]*>(.*?)</p>`)
+
+var reAnyArticle = regexp.MustCompile(`(?is)<article\b[^>]*>.*?</article>`)
+
+var reHuangguoLink = regexp.MustCompile(`(?is)<a\b[^>]*href=["']([^"']*/(?:series|video)/([^"'/?#]+)[^"']*)["'][^>]*>.*?</a>`)
+
+var reResolution = regexp.MustCompile(`(?i)RESOLUTION\s*=\s*(\d+)x(\d+)`)
+
+var reBandwidth = regexp.MustCompile(`(?i)(?:AVERAGE-)?BANDWIDTH\s*=\s*(\d+)`)
+
+var reDataHLS = regexp.MustCompile(`(?is)data-hls=["']([^"']+)["']`)
 
 type providerEpisode struct {
 	Key   string
@@ -73,101 +42,7 @@ type providerEpisode struct {
 	HLS   string
 }
 
-func mergeDramaMetadata(base, extra Drama) Drama {
-	if base.VIP == nil && extra.VIP != nil {
-		value := *extra.VIP
-		base.VIP = &value
-	}
-	if extra.SortMetadata != nil && (base.SortMetadata == nil || extra.SortMetadata.CheckedAt.After(base.SortMetadata.CheckedAt)) {
-		base.SortMetadata = extra.SortMetadata
-	}
-	if strings.TrimSpace(base.ID) == "" {
-		base.ID = extra.ID
-	}
-	if strings.TrimSpace(base.Source) == "" {
-		base.Source = extra.Source
-	}
-	if strings.TrimSpace(base.SourceID) == "" {
-		base.SourceID = extra.SourceID
-	}
-	if strings.TrimSpace(base.Title) == "" {
-		base.Title = extra.Title
-	}
-	if strings.TrimSpace(base.Name) == "" {
-		base.Name = extra.Name
-	}
-	if strings.TrimSpace(base.Desc) == "" {
-		base.Desc = extra.Desc
-	}
-	if strings.TrimSpace(base.Intro) == "" {
-		base.Intro = extra.Intro
-	}
-	if coverPathFromAny(base.Cover) == "" {
-		base.Cover = extra.Cover
-	}
-	if coverPathFromAny(base.CoverURL) == "" {
-		base.CoverURL = extra.CoverURL
-	}
-	if valueEmpty(base.TotalEpisode) {
-		base.TotalEpisode = extra.TotalEpisode
-	}
-	if valueEmpty(base.EpisodeCount) {
-		base.EpisodeCount = extra.EpisodeCount
-	}
-	if strings.TrimSpace(base.ChannelName) == "" {
-		base.ChannelName = extra.ChannelName
-	}
-	if strings.TrimSpace(base.CategoryName) == "" || (base.CategoryName == "首页" && extra.CategoryName != "") {
-		base.CategoryName = extra.CategoryName
-	}
-	if strings.TrimSpace(base.Remark) == "" || base.Remark == "在线观看" {
-		base.Remark = extra.Remark
-	}
-	if strings.TrimSpace(base.Score) == "" {
-		base.Score = extra.Score
-	}
-	if strings.TrimSpace(base.Views) == "" {
-		base.Views = extra.Views
-	}
-	if strings.TrimSpace(base.Heat) == "" {
-		base.Heat = extra.Heat
-	}
-	if strings.TrimSpace(base.OnlineDate) == "" {
-		base.OnlineDate = extra.OnlineDate
-	}
-	if len(base.Tags) == 0 {
-		base.Tags = extra.Tags
-	}
-	if base.ReleaseStatus == "" || base.ReleaseStatus == "unknown" {
-		base.ReleaseStatus = extra.ReleaseStatus
-	}
-	if dramaProvider(base) == sourceHuangguoAI && base.ID == extra.ID {
-		_, sourceID, _ := splitProviderDramaID(base.ID)
-		if title := firstHuangguoTitle(sourceID, base.Title, base.Name, extra.Title, extra.Name); title != "" {
-			base.Title, base.Name = title, title
-		}
-	}
-	return base
-}
-
-func valueEmpty(v any) bool {
-	if v == nil {
-		return true
-	}
-	s := strings.TrimSpace(fmt.Sprint(v))
-	return s == "" || s == "0" || s == "<nil>"
-}
-
-func (d *Downloader) GetHuangguoChapters(ctx context.Context, source, sourceID string) (string, []Chapter, error) {
-	p, ok := d.provider(source)
-	if !ok {
-		return "", nil, fmt.Errorf("unsupported provider source: %s", source)
-	}
-	drama, chapters, err := p.Detail(ctx, sourceID)
-	return drama.DisplayTitle(), chapters, err
-}
-
-func (d *Downloader) fetchHuangguoVideoDetail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
+func (p *huangguoVideoProvider) fetchHuangguoVideoDetail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
 	sourceID = strings.Trim(strings.TrimSpace(sourceID), "/")
 	if sourceID == "" {
 		return Drama{}, nil, fmt.Errorf("empty huangguo-video sourceID")
@@ -177,7 +52,7 @@ func (d *Downloader) fetchHuangguoVideoDetail(ctx context.Context, sourceID stri
 		detailPath = "series/" + detailPath
 	}
 	detailURL := strings.TrimRight(huangguoVideoBaseURL, "/") + "/" + detailPath
-	body, err := d.fetchProviderText(ctx, detailURL, huangguoVideoBaseURL+"/")
+	body, err := p.text(ctx, detailURL, huangguoVideoBaseURL+"/")
 	if err != nil {
 		return Drama{}, nil, err
 	}
@@ -215,275 +90,6 @@ func (d *Downloader) fetchHuangguoVideoDetail(ctx context.Context, sourceID stri
 	}
 	sortProviderChapters(chapters)
 	return drama, uniqueChapters(chapters), nil
-}
-
-func (d *Downloader) fetchProviderText(ctx context.Context, rawURL, referer string) (string, error) {
-	return d.fetchProviderRequest(ctx, rawURL, referer, nil)
-}
-
-func (d *Downloader) fetchProviderRequest(ctx context.Context, rawURL, referer string, payload []byte) (string, error) {
-	retries := d.cfg.Retries
-	if retries <= 0 {
-		retries = 3
-	}
-	if referer == "" {
-		referer = rawURL
-	}
-	candidates := d.providerURLCandidates(rawURL)
-	var lastErr error
-	tried := 0
-	for _, candidate := range candidates {
-		if err := ctx.Err(); err != nil {
-			return "", err
-		}
-		attempts := retries
-		if len(candidates) > 1 {
-			attempts = 1
-		}
-		for attempt := 1; attempt <= attempts; attempt++ {
-			tried++
-			if attempt > 1 {
-				select {
-				case <-time.After(time.Duration(attempt) * time.Second):
-				case <-ctx.Done():
-					return "", ctx.Err()
-				}
-			}
-			timeout := providerTimeout
-			if len(candidates) > 1 {
-				timeout = 5 * time.Second
-			}
-			method, requestBody := http.MethodGet, io.Reader(nil)
-			if payload != nil {
-				method, requestBody = http.MethodPost, bytes.NewReader(payload)
-			}
-			req, err := http.NewRequestWithContext(ctx, method, candidate, requestBody)
-			if err != nil {
-				return "", err
-			}
-			if payload != nil {
-				req.Header.Set("Content-Type", "application/json")
-				req.Header.Set("Accept", "application/json")
-			}
-			req.Header.Set("User-Agent", userAgent)
-			if agent, ok := ctx.Value(providerTextUserAgentKey{}).(string); ok && agent != "" {
-				req.Header.Set("User-Agent", agent)
-			}
-			if providerSourceForURL(rawURL) != "" {
-				req.Header.Set("Referer", providerRefererForURL(candidate, referer))
-			} else {
-				req.Header.Set("Referer", referer)
-			}
-			req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9")
-			if cookie, ok := ctx.Value(providerTextCookieKey{}).(string); ok && cookie != "" {
-				req.Header.Set("Cookie", cookie)
-			}
-			if noCache, _ := ctx.Value(providerTextNoCacheKey{}).(bool); noCache {
-				req.Header.Set("Cache-Control", "no-cache")
-			}
-			resp, err := d.doCatalogRequestWithTimeout(req, timeout)
-			if err != nil {
-				lastErr = err
-				var backoff *requestBackoff
-				if errors.As(err, &backoff) {
-					break
-				}
-				continue
-			}
-			body, readErr := io.ReadAll(io.LimitReader(resp.Body, providerMaxBodyBytes+1))
-			closeErr := resp.Body.Close()
-			if readErr != nil {
-				lastErr = readErr
-				continue
-			}
-			if closeErr != nil {
-				lastErr = closeErr
-				continue
-			}
-			if len(body) > providerMaxBodyBytes {
-				lastErr = fmt.Errorf("response exceeds %d bytes", providerMaxBodyBytes)
-				continue
-			}
-			if resp.StatusCode < 200 || resp.StatusCode >= 300 || catalogResponseBlockReason(resp, body) != "" {
-				lastErr = d.catalogResponseError(req, resp, body)
-				if catalogResponseBlockReason(resp, body) != "" || resp.StatusCode >= 400 && resp.StatusCode < 500 && resp.StatusCode != 408 {
-					break
-				}
-				continue
-			}
-			if source := providerSourceForURL(rawURL); source != "" {
-				effectiveURL := req.URL
-				if resp.Request != nil {
-					effectiveURL = resp.Request.URL
-				}
-				d.providerMu.Lock()
-				d.providerHosts[source] = effectiveURL.Scheme + "://" + effectiveURL.Host
-				d.providerMu.Unlock()
-			}
-			rememberPlaybackResponseURL(ctx, rawURL, resp)
-			return string(body), nil
-		}
-	}
-	if len(candidates) > 1 && lastErr != nil {
-		return "", fmt.Errorf("黄果来源请求失败：已尝试 %d 个域名，最后错误：%w", tried, lastErr)
-	}
-	return "", lastErr
-}
-
-func providerURLCandidates(rawURL string) []string {
-	u, err := url.Parse(rawURL)
-	if err != nil || u.Hostname() != "huangguoai.com" {
-		return []string{rawURL}
-	}
-	out := make([]string, 0, len(huangguoAIBaseMirrors)+8)
-	seen := map[string]bool{}
-	add := func(candidate string) {
-		if candidate == "" || seen[candidate] {
-			return
-		}
-		seen[candidate] = true
-		out = append(out, candidate)
-	}
-	for i, mirror := range huangguoAIBaseMirrors {
-		if i == 1 {
-			for _, generated := range generatedHuangguoAIMirrors(rawURL, 8) {
-				add(rehostProviderURL(u, generated))
-			}
-		}
-		add(rehostProviderURL(u, mirror))
-	}
-	if len(out) == 0 {
-		return []string{rawURL}
-	}
-	return out
-}
-
-func rehostProviderURL(u *url.URL, mirror string) string {
-	mu, err := url.Parse(mirror)
-	if err != nil || mu.Host == "" {
-		return ""
-	}
-	copyURL := *u
-	copyURL.Scheme = mu.Scheme
-	copyURL.Host = mu.Host
-	return copyURL.String()
-}
-
-func generatedHuangguoAIMirrors(seed string, n int) []string {
-	if n <= 0 {
-		return nil
-	}
-	out := make([]string, 0, n)
-	seen := map[string]bool{}
-	for i := 0; len(out) < n && i < n*4; i++ {
-		sum := sha256.Sum256([]byte(fmt.Sprintf("%s:%d", seed, i)))
-		hexText := fmt.Sprintf("%x", sum[:])
-		sub := strings.TrimLeft(hexText[:6], "0123456789")
-		if len(sub) < 4 {
-			sub = hexText[6:12]
-		}
-		if len(sub) > 6 {
-			sub = sub[:6]
-		}
-		if len(sub) < 3 || seen[sub] {
-			continue
-		}
-		seen[sub] = true
-		out = append(out, "https://"+sub+"."+huangguoAIMirrorDomains[len(out)%len(huangguoAIMirrorDomains)])
-	}
-	return out
-}
-
-func providerRefererForURL(candidate, fallback string) string {
-	target, err := url.Parse(candidate)
-	previous, previousErr := url.Parse(fallback)
-	if err != nil || target.Host == "" || previousErr != nil || previous.Host == "" {
-		return fallback
-	}
-	if source := providerSourceForURL(fallback); source != "" && (source == providerSourceForURL(candidate) || providerSourceForURL(candidate) == "") {
-		previous.Scheme, previous.Host = target.Scheme, target.Host
-	}
-	previous.Fragment = ""
-	return previous.String()
-}
-
-func parseHuangguoAIJSONCards(raw []byte, pageURL, category string) []Drama {
-	var decoded any
-	if err := json.Unmarshal(raw, &decoded); err != nil {
-		return nil
-	}
-	seen := map[string]bool{}
-	var out []Drama
-	var walk func(any)
-	walk = func(v any) {
-		switch x := v.(type) {
-		case []any:
-			for _, item := range x {
-				walk(item)
-			}
-		case map[string]any:
-			if dr, ok := dramaFromAIMap(x, pageURL, category); ok {
-				if !seen[dr.SourceID] {
-					seen[dr.SourceID] = true
-					out = append(out, dr)
-				}
-				return
-			}
-			for _, child := range x {
-				walk(child)
-			}
-		}
-	}
-	walk(decoded)
-	return out
-}
-
-func dramaFromAIMap(m map[string]any, pageURL, category string) (Drama, bool) {
-	sourceID := firstNonEmpty(mapString(m, "id"), mapString(m, "videoId"), mapString(m, "video_id"), mapString(m, "vid"), mapString(m, "slug"))
-	if sourceID == "" {
-		for _, v := range m {
-			if s, ok := v.(string); ok {
-				if id := detailIDFromString(s); id != "" {
-					sourceID = id
-					break
-				}
-			}
-		}
-	}
-	if detailID := detailIDFromString(sourceID); detailID != "" {
-		sourceID = detailID
-	}
-	sourceID = cleanID(sourceID)
-	if sourceID == "" {
-		return Drama{}, false
-	}
-	title := firstNonEmpty(mapString(m, "title"), mapString(m, "name"), mapString(m, "videoTitle"), mapString(m, "video_title"), mapString(m, "videoName"), mapString(m, "video_name"))
-	if huangguoTitleNeedsRepair(title, sourceID) {
-		return Drama{}, false
-	}
-	cover := resolveProviderURL(pageURL, firstNonEmpty(mapString(m, "cover"), mapString(m, "coverUrl"), mapString(m, "cover_url"), mapString(m, "coverImage"), mapString(m, "cover_image"), mapString(m, "image"), mapString(m, "imageUrl"), mapString(m, "thumbnail"), mapString(m, "poster"), mapString(m, "posterUrl")))
-	desc := firstNonEmpty(mapString(m, "desc"), mapString(m, "description"), mapString(m, "intro"), mapString(m, "summary"))
-	eps := huangguoMapEpisodes(m)
-	status := ""
-	switch strings.ToLower(mapString(m, "is_finished")) {
-	case "true", "1":
-		status = "finished"
-	case "false", "0":
-		status = "ongoing"
-	}
-	remark := firstNonEmpty(mapString(m, "vod_remarks"), mapString(m, "remark"), mapString(m, "remarks"))
-	if remark == "" && eps != "" {
-		if status == "finished" {
-			remark = "全" + eps + "集"
-		} else {
-			remark = "更新至 " + eps + " 集"
-		}
-	}
-	score := firstNonEmpty(mapString(m, "score"), mapString(m, "rating"))
-	views := normalizeViews(firstNonEmpty(mapString(m, "views"), mapString(m, "view_count"), mapString(m, "viewCount"), mapString(m, "view_num"), mapString(m, "viewNum"), mapString(m, "views_text"), mapString(m, "view_count_text"), mapString(m, "play_count"), mapString(m, "playCount"), mapString(m, "play_num"), mapString(m, "playNum"), mapString(m, "play_count_text"), mapString(m, "hits"), mapString(m, "hit_count"), mapString(m, "plays"), mapString(m, "play")))
-	online := providerReleaseDate(firstNonEmpty(mapString(m, "onlineDate"), mapString(m, "online_date"), mapString(m, "online_time"), mapString(m, "onlineTime"), mapString(m, "publish_date"), mapString(m, "publishDate"), mapString(m, "publish_time"), mapString(m, "publishTime"), mapString(m, "release_date"), mapString(m, "releaseDate")))
-	tags := mapStringSlice(m, "tags", "tag", "categories", "category")
-	return Drama{ID: providerDramaID(sourceHuangguoAI, sourceID), Source: sourceHuangguoAI, SourceID: sourceID, Title: title, Name: title, Desc: desc, Intro: desc, Cover: cover, CoverURL: cover, TotalEpisode: eps, EpisodeCount: eps, CategoryName: category, ChannelName: "huangguoai.com", Remark: remark, Score: score, Views: views, OnlineDate: online, Tags: tags, ReleaseStatus: status}, true
 }
 
 func parseHuangguoVideoCards(rawHTML, pageURL string) []Drama {
@@ -586,52 +192,6 @@ func sortProviderEpisodes(episodes []providerEpisode) {
 	})
 }
 
-func sortProviderChapters(chapters []Chapter) {
-	sort.SliceStable(chapters, func(i, j int) bool {
-		ei := chapterEpisodeNumber(chapters[i], i+1)
-		ej := chapterEpisodeNumber(chapters[j], j+1)
-		if ei != ej {
-			return ei < ej
-		}
-		return chapters[i].ID < chapters[j].ID
-	})
-}
-
-func chapterEpisodeNumber(ch Chapter, fallback int) int {
-	if len(ch.CurrentEpisode) > 0 && string(ch.CurrentEpisode) != "null" {
-		var n int
-		if err := json.Unmarshal(ch.CurrentEpisode, &n); err == nil && n > 0 {
-			return n
-		}
-		var s string
-		if err := json.Unmarshal(ch.CurrentEpisode, &s); err == nil {
-			return episodeIndex(s, fallback)
-		}
-	}
-	return episodeIndex(ch.Title, fallback)
-}
-
-func rawEpisode(n int) json.RawMessage {
-	if n <= 0 {
-		n = 1
-	}
-	return json.RawMessage(strconv.Itoa(n))
-}
-
-func episodeIndex(s string, fallback int) int {
-	if m := reEpisodeNumber.FindStringSubmatch(s); len(m) > 1 {
-		for _, group := range m[1:] {
-			if group == "" {
-				continue
-			}
-			if n, err := strconv.Atoi(group); err == nil && n > 0 {
-				return n
-			}
-		}
-	}
-	return fallback
-}
-
 func nextUnusedEpisodeIndex(preferred int, used map[int]bool) int {
 	if preferred <= 0 {
 		preferred = 1
@@ -690,40 +250,6 @@ func cleanID(s string) string {
 	return s
 }
 
-func extractPageTitle(rawHTML string) string {
-	if m := reH1Tag.FindStringSubmatch(rawHTML); len(m) > 1 {
-		if t := cleanText(m[1]); t != "" {
-			return t
-		}
-	}
-	if m := regexp.MustCompile(`(?is)<meta\b[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["'][^>]*>`).FindStringSubmatch(rawHTML); len(m) > 1 {
-		if t := strings.TrimSpace(html.UnescapeString(m[1])); t != "" {
-			return t
-		}
-	}
-	if m := reTitleTag.FindStringSubmatch(rawHTML); len(m) > 1 {
-		return cleanText(m[1])
-	}
-	return ""
-}
-
-func extractDescription(rawHTML string) string {
-	if m := reDescMeta.FindStringSubmatch(rawHTML); len(m) > 1 {
-		return strings.TrimSpace(html.UnescapeString(m[1]))
-	}
-	return ""
-}
-
-func extractAttr(block string, names ...string) string {
-	for _, name := range names {
-		re := regexp.MustCompile(`(?is)\b` + regexp.QuoteMeta(name) + `\s*=\s*["']([^"']+)["']`)
-		if m := re.FindStringSubmatch(block); len(m) > 1 {
-			return strings.TrimSpace(html.UnescapeString(m[1]))
-		}
-	}
-	return ""
-}
-
 func extractByClassText(raw, className string) string {
 	if className == "" {
 		return ""
@@ -733,81 +259,6 @@ func extractByClassText(raw, className string) string {
 		return cleanText(m[1])
 	}
 	return ""
-}
-
-func firstMatchText(re *regexp.Regexp, raw string) string {
-	if m := re.FindString(raw); m != "" {
-		return strings.TrimSpace(m)
-	}
-	return ""
-}
-
-func extractTags(raw string) []string {
-	re := regexp.MustCompile(`(?is)<[^>]+class=["'][^"']*hg-tag[^"']*["'][^>]*>(.*?)</[^>]+>`)
-	seen := map[string]bool{}
-	var out []string
-	for _, m := range re.FindAllStringSubmatch(raw, -1) {
-		if len(m) < 2 {
-			continue
-		}
-		v := cleanText(m[1])
-		if v != "" && !seen[v] {
-			seen[v] = true
-			out = append(out, v)
-		}
-	}
-	return out
-}
-
-func normalizeDate(s string) string {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return ""
-	}
-	matches := reDateText.FindAllString(s, -1)
-	for _, m := range matches {
-		parts := strings.Split(m, "-")
-		if len(parts) != 3 {
-			continue
-		}
-		y, yErr := strconv.Atoi(parts[0])
-		mo, moErr := strconv.Atoi(parts[1])
-		d, dErr := strconv.Atoi(parts[2])
-		if yErr == nil && moErr == nil && dErr == nil && y >= 2000 && y <= 2100 && mo >= 1 && mo <= 12 && d >= 1 && d <= 31 {
-			return fmt.Sprintf("%04d-%02d-%02d", y, mo, d)
-		}
-	}
-	return ""
-}
-
-func normalizeViews(s string) string {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return ""
-	}
-	if strings.Contains(s, "次播放") {
-		return s
-	}
-	if strings.ContainsAny(strings.ToLower(s), "w万") {
-		return s + "次播放"
-	}
-	n, err := strconv.ParseFloat(s, 64)
-	if err != nil {
-		return s
-	}
-	if n <= 0 {
-		return ""
-	}
-	return strconv.FormatFloat(n, 'f', -1, 64) + "次播放"
-}
-
-func cleanText(s string) string {
-	s = regexp.MustCompile(`(?is)<script\b.*?</script>`).ReplaceAllString(s, " ")
-	s = regexp.MustCompile(`(?is)<style\b.*?</style>`).ReplaceAllString(s, " ")
-	s = regexp.MustCompile(`(?is)<[^>]+>`).ReplaceAllString(s, " ")
-	s = html.UnescapeString(s)
-	s = spaceChars.ReplaceAllString(s, " ")
-	return strings.TrimSpace(s)
 }
 
 func contextBlock(s string, start, end, padding int) string {
@@ -826,75 +277,6 @@ func contextBlock(s string, start, end, padding int) string {
 		hi = len(s)
 	}
 	return s[lo:hi]
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if strings.TrimSpace(v) != "" {
-			return strings.TrimSpace(v)
-		}
-	}
-	return ""
-}
-
-func mapString(m map[string]any, keys ...string) string {
-	for _, key := range keys {
-		if v, ok := m[key]; ok {
-			switch x := v.(type) {
-			case string:
-				if text := strings.TrimSpace(x); text != "" {
-					return text
-				}
-			case bool:
-				return strconv.FormatBool(x)
-			case float64:
-				if x == float64(int64(x)) {
-					return strconv.FormatInt(int64(x), 10)
-				}
-				return strconv.FormatFloat(x, 'f', -1, 64)
-			case int:
-				return strconv.Itoa(x)
-			case json.Number:
-				return x.String()
-			}
-		}
-	}
-	return ""
-}
-
-func mapStringSlice(m map[string]any, keys ...string) []string {
-	seen := map[string]bool{}
-	var out []string
-	add := func(s string) {
-		s = strings.TrimSpace(s)
-		if s != "" && !seen[s] {
-			seen[s] = true
-			out = append(out, s)
-		}
-	}
-	for _, key := range keys {
-		v, ok := m[key]
-		if !ok {
-			continue
-		}
-		switch x := v.(type) {
-		case string:
-			for _, part := range strings.FieldsFunc(x, func(r rune) bool { return r == ',' || r == '/' || r == '，' || r == '、' }) {
-				add(part)
-			}
-		case []any:
-			for _, item := range x {
-				if row, ok := item.(map[string]any); ok {
-					if name := mapString(row, "name", "title", "label", "tag"); name != "" {
-						add(name)
-					}
-					continue
-				}
-				add(fmt.Sprint(item))
-			}
-		}
-	}
-	return out
 }
 
 func extractClosestAttr(raw string, start, end int, names ...string) string {
@@ -927,59 +309,15 @@ func titleNearDetail(raw, sourceID string) string {
 	return extractByClassText(contextBlock(raw, idx, idx+len(needle), 1800), "hg-drama-card__title")
 }
 
-func resolveProviderURL(baseURL, ref string) string {
-	ref = strings.TrimSpace(html.UnescapeString(ref))
-	if ref == "" {
-		return ""
-	}
-	ref = strings.ReplaceAll(ref, `\/`, `/`)
-	if strings.HasPrefix(ref, "//") {
-		return "https:" + ref
-	}
-	u, err := url.Parse(ref)
-	if err != nil {
-		return ref
-	}
-	if u.IsAbs() {
-		if u.Scheme == "http" {
-			u.Scheme = "https"
-		}
-		return u.String()
-	}
-	base, err := url.Parse(baseURL)
-	if err != nil {
-		return ref
-	}
-	resolved := base.ResolveReference(u)
-	if resolved.Scheme == "http" {
-		resolved.Scheme = "https"
-	}
-	return resolved.String()
+type huangguoVideoProvider struct {
+	host Host
+	site string
 }
 
-func normalizeProviderMediaURL(pageURL, raw string) string {
-	raw = strings.TrimSpace(html.UnescapeString(raw))
-	raw = strings.Trim(raw, " \t\r\n\"'")
-	if raw == "" {
-		return ""
-	}
-	if unquoted, err := strconv.Unquote("\"" + strings.ReplaceAll(raw, "\"", "\\\"") + "\""); err == nil {
-		raw = unquoted
-	}
-	raw = strings.ReplaceAll(raw, `\/`, `/`)
-	resolved := resolveProviderURL(pageURL, raw)
-	if !strings.Contains(strings.ToLower(resolved), ".m3u8") && !strings.Contains(strings.ToLower(resolved), ".mp4") {
-		return ""
-	}
-	return resolved
+func (p *huangguoVideoProvider) text(ctx context.Context, address, referer string) (string, error) {
+	response, err := p.host.FetchText(ctx, TextRequest{URL: address, Referer: referer})
+	return response.Body, err
 }
-
-func isProviderHTTPMediaURL(raw string) bool {
-	parsed, err := url.Parse(strings.TrimSpace(raw))
-	return err == nil && (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Hostname() != "" && parsed.User == nil
-}
-
-type huangguoVideoProvider struct{ d *Downloader }
 
 var huangguoVideoDescriptor = SourceDescriptor{
 	ID:          sourceHuangguoVideo,
@@ -998,18 +336,18 @@ var huangguoVideoDescriptor = SourceDescriptor{
 }
 
 func init() {
-	Register(huangguoVideoDescriptor, func(host Host) Provider { return &huangguoVideoProvider{d: host.(*Downloader)} })
+	Register(huangguoVideoDescriptor, func(host Host) Provider { return &huangguoVideoProvider{host: host, site: huangguoVideoBaseURL} })
 }
 
 func (p *huangguoVideoProvider) Descriptor() SourceDescriptor { return huangguoVideoDescriptor }
 
 func (p *huangguoVideoProvider) BaseURL() string {
-	return firstNonEmpty(p.d.cfg.HuangguoVideoURL, huangguoVideoBaseURL)
+	return p.site
 }
 
 func (p *huangguoVideoProvider) Categories(ctx context.Context, force bool) ([]Category, error) {
-	address := p.d.providerBaseURL(sourceHuangguoVideo) + "/videos"
-	body, err := p.d.fetchProviderText(ctx, address, p.d.providerBaseURL(sourceHuangguoVideo)+"/")
+	address := p.site + "/videos"
+	body, err := p.text(ctx, address, p.site+"/")
 	if err != nil {
 		return nil, err
 	}
@@ -1017,11 +355,11 @@ func (p *huangguoVideoProvider) Categories(ctx context.Context, force bool) ([]C
 }
 
 func (p *huangguoVideoProvider) CatalogPage(ctx context.Context, page int, category string) ([]Drama, bool, error) {
-	address := fmt.Sprintf("%s/videos?page=%d", p.d.providerBaseURL(sourceHuangguoVideo), page)
+	address := fmt.Sprintf("%s/videos?page=%d", p.site, page)
 	if category != "" {
 		address += "&category=" + url.QueryEscape(category)
 	}
-	body, err := p.d.fetchProviderText(ctx, address, p.d.providerBaseURL(sourceHuangguoVideo)+"/")
+	body, err := p.text(ctx, address, p.site+"/")
 	if err != nil {
 		return nil, false, err
 	}
@@ -1030,7 +368,7 @@ func (p *huangguoVideoProvider) CatalogPage(ctx context.Context, page int, categ
 }
 
 func (p *huangguoVideoProvider) Detail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
-	return p.d.fetchHuangguoVideoDetail(ctx, sourceID)
+	return p.fetchHuangguoVideoDetail(ctx, sourceID)
 }
 
 func (p *huangguoVideoProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
@@ -1054,25 +392,19 @@ func (p *huangguoVideoProvider) ResolveMedia(ctx context.Context, task Task) (Pr
 			}
 		}
 	}
-	media := ProviderMedia{URL: chapter.VideoURL, Referer: firstNonEmpty(chapter.Referer, p.d.providerBaseURL(sourceHuangguoVideo)+"/")}
+	media := ProviderMedia{URL: chapter.VideoURL, Referer: firstNonEmpty(chapter.Referer, p.site+"/")}
 	if chapter.PageURL != "" {
-		responses := &playbackResponseURLs{}
-		pageContext := context.WithValue(ctx, playbackResponseURLsKey{}, responses)
-		body, err := p.d.fetchProviderText(pageContext, chapter.PageURL, media.Referer)
+		response, err := p.host.FetchText(ctx, TextRequest{URL: chapter.PageURL, Referer: media.Referer})
 		if err != nil {
 			return ProviderMedia{}, err
 		}
-		pageURL := chapter.PageURL
-		if actual, ok := responses.values.Load(chapter.PageURL); ok {
-			pageURL = actual.(string)
-		}
-		media.URL = parseDataHLS(body, pageURL)
-		media.Referer = pageURL
+		media.URL = parseDataHLS(response.Body, response.URL)
+		media.Referer = response.URL
 	}
-	return p.d.finishProviderMedia(ctx, media, sourceHuangguoVideo)
+	return p.host.FinishMedia(ctx, media, sourceHuangguoVideo)
 }
 
-func (p *huangguoVideoProvider) CoverAddress(ctx context.Context, drama nativeDrama, id string) (string, error) {
+func (p *huangguoVideoProvider) CoverAddress(ctx context.Context, drama LibraryDrama, id string) (string, error) {
 	parts := strings.Split(id, "/")
 	if len(parts) == 1 {
 		parts = []string{"series", id}
@@ -1080,9 +412,9 @@ func (p *huangguoVideoProvider) CoverAddress(ctx context.Context, drama nativeDr
 	if len(parts) != 2 || (parts[0] != "series" && parts[0] != "video") || !rankingSourceID.MatchString(parts[1]) {
 		return "", errors.New("无效的黄果剧集 ID")
 	}
-	base := p.d.providerBaseURL(sourceHuangguoVideo)
+	base := p.site
 	pageURL := base + "/" + parts[0] + "/" + url.PathEscape(parts[1])
-	body, err := p.d.fetchProviderText(ctx, pageURL, base+"/")
+	body, err := p.text(ctx, pageURL, base+"/")
 	if err != nil {
 		return "", err
 	}
@@ -1091,6 +423,7 @@ func (p *huangguoVideoProvider) CoverAddress(ctx context.Context, drama nativeDr
 }
 
 var categoryAnchorPattern = regexp.MustCompile(`(?is)<a\b([^>]*)>(.*?)</a>`)
+
 var categoryTextPattern = regexp.MustCompile(`(?s)<[^>]*>`)
 
 func parseHuangguoVideoCategories(body string) []Category {

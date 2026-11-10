@@ -48,7 +48,7 @@ func TestLegacyCoverAddressesAndSyntheticPayloads(t *testing.T) {
 				}
 				return sourceFixtureResponse(request, 200, string(xor)), nil
 			})
-			drama := nativeDrama{ID: "cloudfront:synthetic", Source: sourceCloudFront, Cover: sample.input}
+			drama := LibraryDrama{ID: "cloudfront:synthetic", Source: sourceCloudFront, Cover: sample.input}
 			path, err := engine.covers.load(context.Background(), drama, false)
 			if err != nil {
 				t.Fatal(err)

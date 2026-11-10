@@ -33,7 +33,7 @@ func legacyCoverURL(value any) string {
 	return "https://zzzznnn.lkkwip.cn/" + address
 }
 
-func repairLegacyCoverURL(drama nativeDrama) string {
+func repairLegacyCoverURL(drama LibraryDrama) string {
 	if sourceFromDramaID(drama.ID) != sourceCloudFront && drama.Source != sourceCloudFront {
 		return drama.Cover
 	}

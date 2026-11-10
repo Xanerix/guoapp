@@ -96,7 +96,7 @@ func validNativeCoverURL(address *url.URL) bool {
 	return address != nil && (address.Scheme == "https" || address.Scheme == "http") && address.Hostname() != "" && address.User == nil
 }
 
-func (cache *nativeCoverCache) loadAddress(ctx context.Context, drama nativeDrama, force bool) (string, error) {
+func (cache *nativeCoverCache) loadAddress(ctx context.Context, drama LibraryDrama, force bool) (string, error) {
 	drama.Cover = repairLegacyCoverURL(drama)
 	address, err := url.Parse(drama.Cover)
 	if err != nil || !validNativeCoverURL(address) {
@@ -148,7 +148,7 @@ func (cache *nativeCoverCache) loadAddress(ctx context.Context, drama nativeDram
 	}
 }
 
-func (cache *nativeCoverCache) fetch(key string, drama nativeDrama, referer, fallback string, call *nativeCoverCall) {
+func (cache *nativeCoverCache) fetch(key string, drama LibraryDrama, referer, fallback string, call *nativeCoverCall) {
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 	defer cancel()
 	var data []byte

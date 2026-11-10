@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -293,4 +294,155 @@ func (d *Downloader) fetchHuangguoAICatalogPage(ctx context.Context, page int, c
 		}
 	}
 	return items, more, errors.Join(failures...)
+}
+
+var huangguoAIBaseURL = "https://huangguoai.com"
+
+var huangguoAIBaseMirrors = []string{"https://huangguoai.com", "https://thu.lbvrhyir.cc", "https://pku.xxbgwypx.cc", "https://ttvoij.ediayikma.cc", "https://thu.ediayikma.cc", "https://pku.ediayikma.cc", "https://fdu.ediayikma.cc", "https://thu.agdkczeyx.cc"}
+
+var huangguoAIMirrorDomains = []string{"lbvrhyir.cc", "xxbgwypx.cc", "ediayikma.cc", "agdkczeyx.cc"}
+
+var huangguoAISlugs = []string{"recommend", "newest", "ai-duanju", "ai-manju", "ai-huanlian", "ai-mogai", "ranks/hot"}
+
+func providerURLCandidates(rawURL string) []string {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Hostname() != "huangguoai.com" {
+		return []string{rawURL}
+	}
+	out := make([]string, 0, len(huangguoAIBaseMirrors)+8)
+	seen := map[string]bool{}
+	add := func(candidate string) {
+		if candidate == "" || seen[candidate] {
+			return
+		}
+		seen[candidate] = true
+		out = append(out, candidate)
+	}
+	for i, mirror := range huangguoAIBaseMirrors {
+		if i == 1 {
+			for _, generated := range generatedHuangguoAIMirrors(rawURL, 8) {
+				add(rehostProviderURL(u, generated))
+			}
+		}
+		add(rehostProviderURL(u, mirror))
+	}
+	if len(out) == 0 {
+		return []string{rawURL}
+	}
+	return out
+}
+
+func generatedHuangguoAIMirrors(seed string, n int) []string {
+	if n <= 0 {
+		return nil
+	}
+	out := make([]string, 0, n)
+	seen := map[string]bool{}
+	for i := 0; len(out) < n && i < n*4; i++ {
+		sum := sha256.Sum256([]byte(fmt.Sprintf("%s:%d", seed, i)))
+		hexText := fmt.Sprintf("%x", sum[:])
+		sub := strings.TrimLeft(hexText[:6], "0123456789")
+		if len(sub) < 4 {
+			sub = hexText[6:12]
+		}
+		if len(sub) > 6 {
+			sub = sub[:6]
+		}
+		if len(sub) < 3 || seen[sub] {
+			continue
+		}
+		seen[sub] = true
+		out = append(out, "https://"+sub+"."+huangguoAIMirrorDomains[len(out)%len(huangguoAIMirrorDomains)])
+	}
+	return out
+}
+
+func parseHuangguoAIJSONCards(raw []byte, pageURL, category string) []Drama {
+	var decoded any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var out []Drama
+	var walk func(any)
+	walk = func(v any) {
+		switch x := v.(type) {
+		case []any:
+			for _, item := range x {
+				walk(item)
+			}
+		case map[string]any:
+			if dr, ok := dramaFromAIMap(x, pageURL, category); ok {
+				if !seen[dr.SourceID] {
+					seen[dr.SourceID] = true
+					out = append(out, dr)
+				}
+				return
+			}
+			for _, child := range x {
+				walk(child)
+			}
+		}
+	}
+	walk(decoded)
+	return out
+}
+
+func dramaFromAIMap(m map[string]any, pageURL, category string) (Drama, bool) {
+	sourceID := firstNonEmpty(mapString(m, "id"), mapString(m, "videoId"), mapString(m, "video_id"), mapString(m, "vid"), mapString(m, "slug"))
+	if sourceID == "" {
+		for _, v := range m {
+			if s, ok := v.(string); ok {
+				if id := detailIDFromString(s); id != "" {
+					sourceID = id
+					break
+				}
+			}
+		}
+	}
+	if detailID := detailIDFromString(sourceID); detailID != "" {
+		sourceID = detailID
+	}
+	sourceID = cleanID(sourceID)
+	if sourceID == "" {
+		return Drama{}, false
+	}
+	title := firstNonEmpty(mapString(m, "title"), mapString(m, "name"), mapString(m, "videoTitle"), mapString(m, "video_title"), mapString(m, "videoName"), mapString(m, "video_name"))
+	if huangguoTitleNeedsRepair(title, sourceID) {
+		return Drama{}, false
+	}
+	cover := resolveProviderURL(pageURL, firstNonEmpty(mapString(m, "cover"), mapString(m, "coverUrl"), mapString(m, "cover_url"), mapString(m, "coverImage"), mapString(m, "cover_image"), mapString(m, "image"), mapString(m, "imageUrl"), mapString(m, "thumbnail"), mapString(m, "poster"), mapString(m, "posterUrl")))
+	desc := firstNonEmpty(mapString(m, "desc"), mapString(m, "description"), mapString(m, "intro"), mapString(m, "summary"))
+	eps := huangguoMapEpisodes(m)
+	status := ""
+	switch strings.ToLower(mapString(m, "is_finished")) {
+	case "true", "1":
+		status = "finished"
+	case "false", "0":
+		status = "ongoing"
+	}
+	remark := firstNonEmpty(mapString(m, "vod_remarks"), mapString(m, "remark"), mapString(m, "remarks"))
+	if remark == "" && eps != "" {
+		if status == "finished" {
+			remark = "全" + eps + "集"
+		} else {
+			remark = "更新至 " + eps + " 集"
+		}
+	}
+	score := firstNonEmpty(mapString(m, "score"), mapString(m, "rating"))
+	views := normalizeViews(firstNonEmpty(mapString(m, "views"), mapString(m, "view_count"), mapString(m, "viewCount"), mapString(m, "view_num"), mapString(m, "viewNum"), mapString(m, "views_text"), mapString(m, "view_count_text"), mapString(m, "play_count"), mapString(m, "playCount"), mapString(m, "play_num"), mapString(m, "playNum"), mapString(m, "play_count_text"), mapString(m, "hits"), mapString(m, "hit_count"), mapString(m, "plays"), mapString(m, "play")))
+	online := providerReleaseDate(firstNonEmpty(mapString(m, "onlineDate"), mapString(m, "online_date"), mapString(m, "online_time"), mapString(m, "onlineTime"), mapString(m, "publish_date"), mapString(m, "publishDate"), mapString(m, "publish_time"), mapString(m, "publishTime"), mapString(m, "release_date"), mapString(m, "releaseDate")))
+	tags := mapStringSlice(m, "tags", "tag", "categories", "category")
+	return Drama{ID: providerDramaID(sourceHuangguoAI, sourceID), Source: sourceHuangguoAI, SourceID: sourceID, Title: title, Name: title, Desc: desc, Intro: desc, Cover: cover, CoverURL: cover, TotalEpisode: eps, EpisodeCount: eps, CategoryName: category, ChannelName: "huangguoai.com", Remark: remark, Score: score, Views: views, OnlineDate: online, Tags: tags, ReleaseStatus: status}, true
+}
+
+const sourceHuangguoAI = "huangguoai"
+
+func isHuangguoAIMirrorHost(host string) bool {
+	for _, domain := range huangguoAIMirrorDomains {
+		if strings.HasSuffix(host, "."+domain) {
+			return true
+		}
+	}
+	return false
 }

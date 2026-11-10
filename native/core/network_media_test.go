@@ -63,7 +63,9 @@ func TestHuangguoMediaUsesBrowserSessionPageRefererAndPreviewToken(t *testing.T)
 	server.StartTLS()
 	defer server.Close()
 	d := sourceFixtureDownloader(t, nil)
-	d.cfg.HuangguoVideoURL, d.cfg.InsecureTLS = server.URL, true
+	d.cfg.InsecureTLS = true
+	huangguoVideo, _ := d.provider(sourceHuangguoVideo)
+	huangguoVideo.(*huangguoVideoProvider).site = server.URL
 	d.proxyRouter = &proxyRouter{}
 	d.client.Transport = newHuangguoBrowserTransport(http.DefaultTransport, d)
 	t.Cleanup(d.client.CloseIdleConnections)
@@ -101,7 +103,7 @@ func TestHuangguoMediaUsesBrowserSessionPageRefererAndPreviewToken(t *testing.T)
 	manager := newNativeDownloads(engine)
 	engine.downloads = manager
 	t.Cleanup(manager.close)
-	job := nativeDownloadJob{ID: "synthetic-job", Drama: nativeDrama{ID: task.DramaID, Source: sourceHuangguoVideo}, Index: 1}
+	job := nativeDownloadJob{ID: "synthetic-job", Drama: LibraryDrama{ID: task.DramaID, Source: sourceHuangguoVideo}, Index: 1}
 	result, err := manager.transferMedia(context.Background(), job, media)
 	if err != nil || result.file != "index.m3u8" {
 		t.Fatal("download did not reuse media chain", err)

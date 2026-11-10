@@ -18,7 +18,7 @@ type nativeCoverRepair struct {
 	retryAt time.Time
 }
 
-func (cache *nativeCoverCache) load(ctx context.Context, drama nativeDrama, force bool) (string, error) {
+func (cache *nativeCoverCache) load(ctx context.Context, drama LibraryDrama, force bool) (string, error) {
 	cache.mu.Lock()
 	if repair := cache.repairs[drama.ID]; repair != nil && repair.address != "" {
 		drama.Cover = repair.address
@@ -36,7 +36,7 @@ func (cache *nativeCoverCache) load(ctx context.Context, drama nativeDrama, forc
 	return cache.loadAddress(ctx, drama, force)
 }
 
-func (cache *nativeCoverCache) repair(ctx context.Context, drama nativeDrama, force bool) (string, error) {
+func (cache *nativeCoverCache) repair(ctx context.Context, drama LibraryDrama, force bool) (string, error) {
 	cache.mu.Lock()
 	if previous := cache.repairs[drama.ID]; previous != nil {
 		if previous.retryAt.IsZero() {
@@ -86,7 +86,7 @@ func (cache *nativeCoverCache) repair(ctx context.Context, drama nativeDrama, fo
 	return address, err
 }
 
-func (engine *nativeEngine) loadCover(ctx context.Context, drama nativeDrama, force bool) (map[string]any, error) {
+func (engine *nativeEngine) loadCover(ctx context.Context, drama LibraryDrama, force bool) (map[string]any, error) {
 	engine.mu.Lock()
 	for _, cached := range engine.catalogs[drama.Source] {
 		if cached.ID == drama.ID && drama.Cover == "" && cached.Cover != "" {
@@ -138,7 +138,7 @@ func (engine *nativeEngine) saveCoverAddress(id, address string) {
 	}
 }
 
-func (engine *nativeEngine) prepareCover(ctx context.Context, drama nativeDrama) (any, error) {
+func (engine *nativeEngine) prepareCover(ctx context.Context, drama LibraryDrama) (any, error) {
 	result, err := engine.loadCover(ctx, drama, false)
 	if err != nil {
 		return nil, err

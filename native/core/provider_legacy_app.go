@@ -204,7 +204,7 @@ func (p *legacyProvider) ResolveMedia(ctx context.Context, task Task) (ProviderM
 	return p.d.resolveLegacyMedia(ctx, task)
 }
 
-func (p *legacyProvider) CoverAddress(ctx context.Context, drama nativeDrama, id string) (string, error) {
+func (p *legacyProvider) CoverAddress(ctx context.Context, drama LibraryDrama, id string) (string, error) {
 	if !rankingSourceID.MatchString(id) {
 		return "", errors.New("无效的黄果剧集 ID")
 	}
@@ -229,3 +229,5 @@ func (p *legacyProvider) CoverReferer(address string) string {
 	}
 	return p.d.providerBaseURL(sourceCloudFront) + "/"
 }
+
+const sourceCloudFront = "cloudfront"

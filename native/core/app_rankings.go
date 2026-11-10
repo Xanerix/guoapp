@@ -70,14 +70,14 @@ func (engine *nativeEngine) nativeRanking(ctx context.Context, input nativeInput
 		return nil, err
 	}
 	type item struct {
-		Rank   int         `json:"rank"`
-		Drama  nativeDrama `json:"drama"`
-		Metric string      `json:"metric,omitempty"`
+		Rank   int          `json:"rank"`
+		Drama  LibraryDrama `json:"drama"`
+		Metric string       `json:"metric,omitempty"`
 	}
 	items := make([]item, 0, len(page.Items))
 	engine.mu.Lock()
 	defer engine.mu.Unlock()
-	library := map[string]nativeDrama{}
+	library := map[string]LibraryDrama{}
 	for _, drama := range engine.catalogs[board.Source] {
 		library[drama.ID] = drama
 	}

@@ -311,3 +311,5 @@ func (p *jinguoProvider) Detail(ctx context.Context, sourceID string) (Drama, []
 func (p *jinguoProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	return p.resolveJinguoMedia(ctx, task)
 }
+
+const sourceJinguo = "jinguo"

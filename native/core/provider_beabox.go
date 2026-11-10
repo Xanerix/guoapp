@@ -762,3 +762,5 @@ func (p *beaboxProvider) Detail(ctx context.Context, sourceID string) (Drama, []
 func (p *beaboxProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	return p.resolveBeaboxMedia(ctx, task)
 }
+
+const sourceBeabox = "beabox"

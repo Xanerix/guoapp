@@ -364,3 +364,5 @@ func (p *yeguoProvider) Detail(ctx context.Context, sourceID string) (Drama, []C
 func (p *yeguoProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	return p.resolveYeguoMedia(ctx, task)
 }
+
+const sourceYeguo = "yeguo"

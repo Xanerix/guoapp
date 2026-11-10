@@ -23,21 +23,21 @@ type nativeDownloadEpisode struct {
 }
 
 type nativeDownloadJob struct {
-	ID            string      `json:"id"`
-	Drama         nativeDrama `json:"drama"`
-	Chapter       Chapter     `json:"chapter"`
-	Index         int         `json:"index"`
-	Quality       int         `json:"quality"`
-	ActualQuality int         `json:"actualQuality"`
-	State         string      `json:"state"`
-	Archived      bool        `json:"archived,omitempty"`
-	Folder        string      `json:"folder,omitempty"`
-	Bytes         int64       `json:"bytes"`
-	Total         int64       `json:"total"`
-	Progress      float64     `json:"progress"`
-	Error         string      `json:"error,omitempty"`
-	Created       int64       `json:"created"`
-	Revision      int64       `json:"revision,omitempty"`
+	ID            string       `json:"id"`
+	Drama         LibraryDrama `json:"drama"`
+	Chapter       Chapter      `json:"chapter"`
+	Index         int          `json:"index"`
+	Quality       int          `json:"quality"`
+	ActualQuality int          `json:"actualQuality"`
+	State         string       `json:"state"`
+	Archived      bool         `json:"archived,omitempty"`
+	Folder        string       `json:"folder,omitempty"`
+	Bytes         int64        `json:"bytes"`
+	Total         int64        `json:"total"`
+	Progress      float64      `json:"progress"`
+	Error         string       `json:"error,omitempty"`
+	Created       int64        `json:"created"`
+	Revision      int64        `json:"revision,omitempty"`
 }
 
 type nativeDownloadRecord struct {
@@ -534,7 +534,7 @@ func (manager *nativeDownloads) transfer(ctx context.Context, job nativeDownload
 }
 
 func (manager *nativeDownloads) localPlan(drama string, index int) (nativePlan, bool, error) {
-	if !nativeDramaAvailable(nativeDrama{ID: drama}) {
+	if !nativeDramaAvailable(LibraryDrama{ID: drama}) {
 		return nativePlan{}, false, errNativeBuildSource
 	}
 	manager.mu.Lock()

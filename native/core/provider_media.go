@@ -1,8 +1,12 @@
 package core
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -43,15 +47,6 @@ func providerSourceForURL(raw string) string {
 		return id
 	}
 	return ""
-}
-
-func isHuangguoAIMirrorHost(host string) bool {
-	for _, domain := range huangguoAIMirrorDomains {
-		if strings.HasSuffix(host, "."+domain) {
-			return true
-		}
-	}
-	return false
 }
 
 func (d *Downloader) providerURLCandidates(raw string) []string {
@@ -116,4 +111,150 @@ func (d *Downloader) finishProviderMedia(ctx context.Context, media ProviderMedi
 		media.URL = finalURL
 	}
 	return media, nil
+}
+
+func (d *Downloader) fetchProviderText(ctx context.Context, rawURL, referer string) (string, error) {
+	return d.fetchProviderRequest(ctx, rawURL, referer, nil)
+}
+
+func (d *Downloader) fetchProviderRequest(ctx context.Context, rawURL, referer string, payload []byte) (string, error) {
+	retries := d.cfg.Retries
+	if retries <= 0 {
+		retries = 3
+	}
+	if referer == "" {
+		referer = rawURL
+	}
+	candidates := d.providerURLCandidates(rawURL)
+	var lastErr error
+	tried := 0
+	for _, candidate := range candidates {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+		attempts := retries
+		if len(candidates) > 1 {
+			attempts = 1
+		}
+		for attempt := 1; attempt <= attempts; attempt++ {
+			tried++
+			if attempt > 1 {
+				select {
+				case <-time.After(time.Duration(attempt) * time.Second):
+				case <-ctx.Done():
+					return "", ctx.Err()
+				}
+			}
+			timeout := providerTimeout
+			if len(candidates) > 1 {
+				timeout = 5 * time.Second
+			}
+			method, requestBody := http.MethodGet, io.Reader(nil)
+			if payload != nil {
+				method, requestBody = http.MethodPost, bytes.NewReader(payload)
+			}
+			req, err := http.NewRequestWithContext(ctx, method, candidate, requestBody)
+			if err != nil {
+				return "", err
+			}
+			if payload != nil {
+				req.Header.Set("Content-Type", "application/json")
+				req.Header.Set("Accept", "application/json")
+			}
+			req.Header.Set("User-Agent", userAgent)
+			if agent, ok := ctx.Value(providerTextUserAgentKey{}).(string); ok && agent != "" {
+				req.Header.Set("User-Agent", agent)
+			}
+			if providerSourceForURL(rawURL) != "" {
+				req.Header.Set("Referer", providerRefererForURL(candidate, referer))
+			} else {
+				req.Header.Set("Referer", referer)
+			}
+			req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9")
+			if cookie, ok := ctx.Value(providerTextCookieKey{}).(string); ok && cookie != "" {
+				req.Header.Set("Cookie", cookie)
+			}
+			if noCache, _ := ctx.Value(providerTextNoCacheKey{}).(bool); noCache {
+				req.Header.Set("Cache-Control", "no-cache")
+			}
+			resp, err := d.doCatalogRequestWithTimeout(req, timeout)
+			if err != nil {
+				lastErr = err
+				var backoff *requestBackoff
+				if errors.As(err, &backoff) {
+					break
+				}
+				continue
+			}
+			body, readErr := io.ReadAll(io.LimitReader(resp.Body, providerMaxBodyBytes+1))
+			closeErr := resp.Body.Close()
+			if readErr != nil {
+				lastErr = readErr
+				continue
+			}
+			if closeErr != nil {
+				lastErr = closeErr
+				continue
+			}
+			if len(body) > providerMaxBodyBytes {
+				lastErr = fmt.Errorf("response exceeds %d bytes", providerMaxBodyBytes)
+				continue
+			}
+			if resp.StatusCode < 200 || resp.StatusCode >= 300 || catalogResponseBlockReason(resp, body) != "" {
+				lastErr = d.catalogResponseError(req, resp, body)
+				if catalogResponseBlockReason(resp, body) != "" || resp.StatusCode >= 400 && resp.StatusCode < 500 && resp.StatusCode != 408 {
+					break
+				}
+				continue
+			}
+			if source := providerSourceForURL(rawURL); source != "" {
+				effectiveURL := req.URL
+				if resp.Request != nil {
+					effectiveURL = resp.Request.URL
+				}
+				d.providerMu.Lock()
+				d.providerHosts[source] = effectiveURL.Scheme + "://" + effectiveURL.Host
+				d.providerMu.Unlock()
+			}
+			rememberPlaybackResponseURL(ctx, rawURL, resp)
+			return string(body), nil
+		}
+	}
+	if len(candidates) > 1 && lastErr != nil {
+		return "", fmt.Errorf("黄果来源请求失败：已尝试 %d 个域名，最后错误：%w", tried, lastErr)
+	}
+	return "", lastErr
+}
+
+func rehostProviderURL(u *url.URL, mirror string) string {
+	mu, err := url.Parse(mirror)
+	if err != nil || mu.Host == "" {
+		return ""
+	}
+	copyURL := *u
+	copyURL.Scheme = mu.Scheme
+	copyURL.Host = mu.Host
+	return copyURL.String()
+}
+
+func providerRefererForURL(candidate, fallback string) string {
+	target, err := url.Parse(candidate)
+	previous, previousErr := url.Parse(fallback)
+	if err != nil || target.Host == "" || previousErr != nil || previous.Host == "" {
+		return fallback
+	}
+	if source := providerSourceForURL(fallback); source != "" && (source == providerSourceForURL(candidate) || providerSourceForURL(candidate) == "") {
+		previous.Scheme, previous.Host = target.Scheme, target.Host
+	}
+	previous.Fragment = ""
+	return previous.String()
+}
+
+func (d *Downloader) GetHuangguoChapters(ctx context.Context, source, sourceID string) (string, []Chapter, error) {
+	p, ok := d.provider(source)
+	if !ok {
+		return "", nil, fmt.Errorf("unsupported provider source: %s", source)
+	}
+	drama, chapters, err := p.Detail(ctx, sourceID)
+	return drama.DisplayTitle(), chapters, err
 }

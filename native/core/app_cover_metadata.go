@@ -10,7 +10,7 @@ import (
 
 var coverMetaTag = regexp.MustCompile(`(?is)<meta\b[^>]*>`)
 
-func (d *Downloader) nativeCoverAddress(ctx context.Context, drama nativeDrama) (string, error) {
+func (d *Downloader) nativeCoverAddress(ctx context.Context, drama LibraryDrama) (string, error) {
 	source, id, valid := splitProviderDramaID(drama.ID)
 	if !valid {
 		return "", errors.New("无效的剧集 ID")

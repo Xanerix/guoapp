@@ -25,13 +25,13 @@ func TestNativeCategoryAliasesAndDetailPersistence(t *testing.T) {
 		t.Fatal("source name became a category")
 	}
 	engine := sourceFixtureEngine(t, func(request *http.Request) (*http.Response, error) { return nil, errors.New("network forbidden") })
-	drama := nativeDrama{ID: "hongguo:100", Source: sourceHongguo, Title: "旧名称", Category: "旧分类"}
-	engine.catalogs[sourceHongguo] = []nativeDrama{drama}
-	engine.catalogs["hongguo|short_play"] = []nativeDrama{drama}
+	drama := LibraryDrama{ID: "hongguo:100", Source: sourceHongguo, Title: "旧名称", Category: "旧分类"}
+	engine.catalogs[sourceHongguo] = []LibraryDrama{drama}
+	engine.catalogs["hongguo|short_play"] = []LibraryDrama{drama}
 	engine.categoryOptions = map[string][]Category{sourceHuangguoVideo: {{ID: "2", Name: "合成分类"}}}
 	drama.Title, drama.Category = "新名称", "新分类"
 	engine.saveDetailMetadata(drama)
-	restored := &nativeEngine{directory: engine.directory, catalogs: map[string][]nativeDrama{}, catalogStates: map[string]nativeCatalogState{}}
+	restored := &nativeEngine{directory: engine.directory, catalogs: map[string][]LibraryDrama{}, catalogStates: map[string]nativeCatalogState{}}
 	restored.loadCatalogCache()
 	for _, key := range []string{sourceHongguo, "hongguo|short_play"} {
 		if restored.catalogs[key][0].Category != "新分类" || restored.catalogs[key][0].Title != "新名称" {
@@ -113,7 +113,7 @@ func TestNativeHEICPreparationUsesBoundedSyntheticData(t *testing.T) {
 		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(bytes.NewReader(data)), Request: request}, nil
 	})
 	engine.covers = newNativeCoverCache(engine.directory, engine.downloader)
-	result, err := engine.prepareCover(context.Background(), nativeDrama{ID: "hongguo:100", Source: sourceHongguo, Cover: "https://cover.example.test/synthetic.img"})
+	result, err := engine.prepareCover(context.Background(), LibraryDrama{ID: "hongguo:100", Source: sourceHongguo, Cover: "https://cover.example.test/synthetic.img"})
 	if err != nil {
 		t.Fatal(err)
 	}

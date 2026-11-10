@@ -59,6 +59,7 @@ type Host interface {
 	LoadState(name string) ([]byte, error)
 	SaveState(name string, data []byte) error
 	PrepareWebMedia(ctx context.Context, media ProviderMedia, sourceName string) (ProviderMedia, error)
+	FinishMedia(ctx context.Context, media ProviderMedia, source string) (ProviderMedia, error)
 }
 
 func (d *Downloader) FetchText(ctx context.Context, request TextRequest) (TextResponse, error) {
@@ -86,6 +87,10 @@ func (d *Downloader) FetchText(ctx context.Context, request TextRequest) (TextRe
 
 func (d *Downloader) PrepareWebMedia(ctx context.Context, media ProviderMedia, sourceName string) (ProviderMedia, error) {
 	return d.prepareWebProviderMedia(ctx, media, sourceName)
+}
+
+func (d *Downloader) FinishMedia(ctx context.Context, media ProviderMedia, source string) (ProviderMedia, error) {
+	return d.finishProviderMedia(ctx, media, source)
 }
 
 func (d *Downloader) FetchPlaylist(ctx context.Context, address, referer string, credentials *MediaCredentials) (string, string, error) {
@@ -246,3 +251,7 @@ func (d *Downloader) directClient() *http.Client {
 	})
 	return d.direct
 }
+
+const providerMaxBodyBytes = 20 * 1024 * 1024
+
+const providerTimeout = 12 * time.Second

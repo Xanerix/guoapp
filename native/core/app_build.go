@@ -28,13 +28,13 @@ func nativeSourceAvailable(source string) bool {
 	return activeFlavor.sources == nil || slices.Contains(activeFlavor.sources, source)
 }
 
-func nativeDramaAvailable(drama nativeDrama) bool {
+func nativeDramaAvailable(drama LibraryDrama) bool {
 	source, _, valid := splitProviderDramaID(drama.ID)
 	return valid && nativeSourceAvailable(source) &&
 		(drama.Source == "" || canonicalProviderSource(drama.Source) == source)
 }
 
-func nativeChapterAvailable(drama nativeDrama, chapter Chapter) bool {
+func nativeChapterAvailable(drama LibraryDrama, chapter Chapter) bool {
 	if !nativeDramaAvailable(drama) {
 		return false
 	}
