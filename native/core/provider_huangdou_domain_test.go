@@ -45,12 +45,19 @@ func (s *huangdouStubTransport) seenDeadlines() []time.Duration {
 
 func newHuangdouStubDownloader(cfg Config, respond func(*http.Request) (*http.Response, error)) (*Downloader, *huangdouStubTransport) {
 	stub := &huangdouStubTransport{respond: respond}
-	return &Downloader{
+	d := &Downloader{
 		cfg:           cfg,
 		client:        &http.Client{Transport: stub},
 		limiter:       newRequestLimiter(3, 0),
 		providerHosts: map[string]string{},
-	}, stub
+	}
+	huangdouFixtureProvider(d).retries = cfg.Retries
+	return d, stub
+}
+
+func huangdouFixtureProvider(d *Downloader) *huangdouProvider {
+	p, _ := d.provider(sourceHuangdou)
+	return p.(*huangdouProvider)
 }
 
 func huangdouBusinessErrorResponse() *http.Response {
@@ -131,7 +138,7 @@ func TestHuangdouCallWalksWholePool(t *testing.T) {
 	d, stub := newHuangdouStubDownloader(Config{Retries: 2}, func(*http.Request) (*http.Response, error) {
 		return nil, fmt.Errorf("dial tcp: DNS 解析失败")
 	})
-	client := newHuangdouAPIClient(d)
+	client := newHuangdouAPIClient(huangdouFixtureProvider(d))
 	var out any
 	start := time.Now()
 	err := client.call(context.Background(), "/drama/list", map[string]any{}, &out)
@@ -175,10 +182,11 @@ func TestHuangdouCallWalksWholePool(t *testing.T) {
 }
 
 func TestHuangdouCallKeepsConfiguredHost(t *testing.T) {
-	d, stub := newHuangdouStubDownloader(Config{Retries: 2, HuangdouURL: "https://ferncider.cc"}, func(*http.Request) (*http.Response, error) {
+	d, stub := newHuangdouStubDownloader(Config{Retries: 2}, func(*http.Request) (*http.Response, error) {
 		return nil, fmt.Errorf("boom")
 	})
-	client := newHuangdouAPIClient(d)
+	huangdouFixtureProvider(d).configured = "https://ferncider.cc"
+	client := newHuangdouAPIClient(huangdouFixtureProvider(d))
 	var out any
 	err := client.call(context.Background(), "/drama/list", map[string]any{}, &out)
 	if err == nil {
@@ -197,7 +205,7 @@ func TestHuangdouCallStopsOnBusinessError(t *testing.T) {
 	d, stub := newHuangdouStubDownloader(Config{Retries: 2}, func(*http.Request) (*http.Response, error) {
 		return huangdouBusinessErrorResponse(), nil
 	})
-	client := newHuangdouAPIClient(d)
+	client := newHuangdouAPIClient(huangdouFixtureProvider(d))
 	var out any
 	err := client.call(context.Background(), "/drama/play", map[string]any{}, &out)
 	var apiErr *huangdouAPIError
@@ -226,7 +234,7 @@ func TestHuangdouCallKeepsBusinessErrorAfterRotate(t *testing.T) {
 		}
 		return huangdouBusinessErrorResponse(), nil
 	})
-	client := newHuangdouAPIClient(d)
+	client := newHuangdouAPIClient(huangdouFixtureProvider(d))
 	var out any
 	err := client.call(context.Background(), "/drama/play", map[string]any{}, &out)
 	var apiErr *huangdouAPIError
@@ -245,7 +253,7 @@ func TestHuangdouCallRespectsContextCancel(t *testing.T) {
 	d, stub := newHuangdouStubDownloader(Config{Retries: 2}, func(*http.Request) (*http.Response, error) {
 		return nil, fmt.Errorf("dial tcp: i/o timeout")
 	})
-	client := newHuangdouAPIClient(d)
+	client := newHuangdouAPIClient(huangdouFixtureProvider(d))
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	var out any
@@ -259,7 +267,7 @@ func TestHuangdouCallRespectsContextCancel(t *testing.T) {
 }
 
 func TestHuangdouAttemptTimeoutSplitsBudget(t *testing.T) {
-	client := &huangdouAPIClient{d: &Downloader{cfg: defaultConfig()}}
+	client := &huangdouAPIClient{}
 	if got := client.attemptTimeout(context.Background(), 1, huangdouAttemptTimeout); got != huangdouAttemptTimeout {
 		t.Fatalf("没有 deadline 时应回到给定上限: %v", got)
 	}
@@ -285,7 +293,7 @@ func TestHuangdouCallSharesTightBudget(t *testing.T) {
 	d, stub := newHuangdouStubDownloader(Config{Retries: 2}, func(*http.Request) (*http.Response, error) {
 		return nil, fmt.Errorf("dial tcp: DNS 解析失败")
 	})
-	client := newHuangdouAPIClient(d)
+	client := newHuangdouAPIClient(huangdouFixtureProvider(d))
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 	defer cancel()
 	var out any

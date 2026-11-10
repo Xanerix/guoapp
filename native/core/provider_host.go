@@ -43,6 +43,7 @@ type HTTPRequest struct {
 	FollowRedirects  bool
 	AnyStatus        bool
 	Direct           bool
+	Ticket           uint64
 }
 
 type HTTPResponse struct {
@@ -53,7 +54,10 @@ type HTTPResponse struct {
 }
 
 type Host interface {
+	Reserve(ctx context.Context, address string) (ticket uint64, err error)
 	Fetch(ctx context.Context, request HTTPRequest) (HTTPResponse, error)
+	PreferredSite(source string) string
+	RememberSite(source, site string)
 	FetchText(ctx context.Context, request TextRequest) (TextResponse, error)
 	FetchPlaylist(ctx context.Context, address, referer string, credentials *MediaCredentials) (playlist, finalURL string, err error)
 	LoadState(name string) ([]byte, error)
@@ -124,7 +128,13 @@ func (d *Downloader) Fetch(ctx context.Context, input HTTPRequest) (HTTPResponse
 	for name, value := range input.Header {
 		request.Header.Set(name, value)
 	}
-	if d.limiter != nil {
+	if input.Ticket != 0 {
+		release, reserved := d.takeReservation(input.Ticket)
+		if !reserved {
+			return HTTPResponse{}, errors.New("站源请求名额已失效")
+		}
+		defer release()
+	} else if d.limiter != nil {
 		release, err := d.limiter.acquire(ctx, request)
 		if err != nil {
 			return HTTPResponse{}, err
@@ -255,3 +265,55 @@ func (d *Downloader) directClient() *http.Client {
 const providerMaxBodyBytes = 20 * 1024 * 1024
 
 const providerTimeout = 12 * time.Second
+
+const reservationLifetime = time.Minute
+
+func (d *Downloader) Reserve(ctx context.Context, address string) (uint64, error) {
+	release := func() {}
+	if d.limiter != nil {
+		request, err := http.NewRequestWithContext(ctx, http.MethodGet, address, nil)
+		if err != nil {
+			return 0, err
+		}
+		if release, err = d.limiter.acquire(ctx, request); err != nil {
+			return 0, err
+		}
+	}
+	d.reserveMu.Lock()
+	d.reserveNext++
+	ticket := d.reserveNext
+	if d.reservations == nil {
+		d.reservations = map[uint64]func(){}
+	}
+	d.reservations[ticket] = release
+	d.reserveMu.Unlock()
+	time.AfterFunc(reservationLifetime, func() {
+		if release, reserved := d.takeReservation(ticket); reserved {
+			release()
+		}
+	})
+	return ticket, nil
+}
+
+func (d *Downloader) takeReservation(ticket uint64) (func(), bool) {
+	d.reserveMu.Lock()
+	defer d.reserveMu.Unlock()
+	release, reserved := d.reservations[ticket]
+	delete(d.reservations, ticket)
+	return release, reserved
+}
+
+func (d *Downloader) PreferredSite(source string) string {
+	d.providerMu.Lock()
+	defer d.providerMu.Unlock()
+	return d.providerHosts[source]
+}
+
+func (d *Downloader) RememberSite(source, site string) {
+	d.providerMu.Lock()
+	defer d.providerMu.Unlock()
+	if d.providerHosts == nil {
+		d.providerHosts = map[string]string{}
+	}
+	d.providerHosts[source] = site
+}
