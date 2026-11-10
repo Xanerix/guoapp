@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"sync"
@@ -18,6 +19,7 @@ type SourceDescriptor struct {
 	AllowEmptyCatalog  bool
 	NoHostRotation     bool
 	KeepDetailEpisodes bool
+	ContinuousFeed     bool
 	ValidCategory      func(category string) bool
 	Rankings           []rankingBoard
 }
@@ -37,6 +39,19 @@ type Sited interface {
 type Searcher interface {
 	Search(ctx context.Context, page int, query string) ([]Drama, bool, error)
 }
+
+type WarningSearcher interface {
+	SearchWithWarning(ctx context.Context, page int, query string) ([]Drama, bool, string, error)
+}
+
+type CatalogStateful interface {
+	CatalogState() json.RawMessage
+	RestoreCatalogState(raw json.RawMessage)
+}
+
+type libraryMoreKey struct{}
+
+type libraryKnownKey struct{}
 
 type Ranker interface {
 	RankingPage(ctx context.Context, board rankingBoard, page int) (rankingPage, error)

@@ -117,7 +117,7 @@ func (engine *nativeEngine) nativeRecommendations(ctx context.Context, input nat
 	engine.recommendations[genre] = state
 	engine.catalogs[key] = items
 	engine.catalogs[sourceHongguo] = mergeNativeCatalog(engine.catalogs[sourceHongguo], fresh)
-	engine.hongguoCatalog = engine.downloader.hongguoCatalogSnapshot()
+	engine.commitProviderStateLocked(sourceHongguo)
 	engine.catalogStates[key] = nativeCatalogState{UpdatedAt: time.Now(), Page: state.Page, HasMore: state.HasMore}
 	result := nativeCatalogResult{Items: append([]nativeDrama{}, items...), Page: state.Page, HasMore: state.HasMore, Fresh: true}
 	if err := engine.writeCatalogDiskLocked(); err != nil {

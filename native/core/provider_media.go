@@ -30,14 +30,7 @@ func (d *Downloader) providerBaseURL(source string) string {
 		}
 		return strings.TrimRight(descriptor.BaseURL, "/")
 	}
-	var configured, fallback string
-	switch source {
-	case sourceHongguo:
-		configured, fallback = d.cfg.HongguoURL, hongguoBaseURL
-	default:
-		fallback = "https://d2pypzndaqisk.cloudfront.net"
-	}
-	return strings.TrimRight(firstNonEmpty(configured, fallback), "/")
+	return "https://d2pypzndaqisk.cloudfront.net"
 }
 
 func providerSourceForURL(raw string) string {
@@ -49,12 +42,7 @@ func providerSourceForURL(raw string) string {
 	if id, ok := registeredSource(host); ok {
 		return id
 	}
-	switch {
-	case host == "hongguoduanju.com" || host == "www.hongguoduanju.com":
-		return sourceHongguo
-	default:
-		return ""
-	}
+	return ""
 }
 
 func isHuangguoAIMirrorHost(host string) bool {
@@ -101,14 +89,11 @@ func (d *Downloader) resolveProviderMedia(ctx context.Context, task Task) (provi
 	if chapter.Source == "" {
 		chapter.Source = sourceFromDramaID(task.DramaID)
 	}
-	if p, ok := d.provider(chapter.Source); ok {
-		return p.ResolveMedia(ctx, task)
+	p, ok := d.provider(chapter.Source)
+	if !ok {
+		return providerMedia{}, fmt.Errorf("unsupported provider source: %s", chapter.Source)
 	}
-	if strings.HasPrefix(chapter.VideoURL, "hongguo-cenc://") {
-		return d.resolveHongguoMedia(ctx, task)
-	}
-	media := providerMedia{URL: chapter.VideoURL, Referer: firstNonEmpty(chapter.Referer, d.providerBaseURL(chapter.Source)+"/")}
-	return d.finishProviderMedia(ctx, media, chapter.Source)
+	return p.ResolveMedia(ctx, task)
 }
 
 func (d *Downloader) finishProviderMedia(ctx context.Context, media providerMedia, source string) (providerMedia, error) {

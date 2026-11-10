@@ -21,7 +21,7 @@ func (engine *nativeEngine) hongguoDevices(ctx context.Context, register bool) (
 			}
 		}
 		engine.mu.Lock()
-		engine.hongguoCatalog = downloader.hongguoCatalogSnapshot()
+		engine.commitProviderStateLocked(sourceHongguo)
 		err := engine.writeCatalogDiskLocked()
 		engine.mu.Unlock()
 		if err != nil {

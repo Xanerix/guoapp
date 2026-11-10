@@ -91,16 +91,8 @@ func splitProviderDramaID(id string) (source, sourceID string, ok bool) {
 }
 
 func isHuangguoProviderSource(source string) bool {
-	source = canonicalProviderSource(source)
-	if _, ok := registeredDescriptor(source); ok {
-		return true
-	}
-	switch source {
-	case sourceHongguo:
-		return true
-	default:
-		return false
-	}
+	_, ok := registeredDescriptor(canonicalProviderSource(source))
+	return ok
 }
 
 func canonicalProviderSource(source string) string {
@@ -108,12 +100,7 @@ func canonicalProviderSource(source string) string {
 	if id, ok := registeredSource(trimmed); ok {
 		return id
 	}
-	switch trimmed {
-	case "hongguo", "hongguoduanju.com":
-		return sourceHongguo
-	default:
-		return strings.TrimSpace(source)
-	}
+	return strings.TrimSpace(source)
 }
 
 func mergeDramaMetadata(base, extra Drama) Drama {
@@ -202,16 +189,12 @@ func valueEmpty(v any) bool {
 }
 
 func (d *Downloader) GetHuangguoChapters(ctx context.Context, source, sourceID string) (string, []Chapter, error) {
-	if p, ok := d.provider(source); ok {
-		drama, chapters, err := p.Detail(ctx, sourceID)
-		return drama.DisplayTitle(), chapters, err
-	}
-	switch canonicalProviderSource(source) {
-	case sourceHongguo:
-		return d.fetchHongguoChapters(ctx, sourceID)
-	default:
+	p, ok := d.provider(source)
+	if !ok {
 		return "", nil, fmt.Errorf("unsupported provider source: %s", source)
 	}
+	drama, chapters, err := p.Detail(ctx, sourceID)
+	return drama.DisplayTitle(), chapters, err
 }
 
 func (d *Downloader) fetchHuangguoVideoDetail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {

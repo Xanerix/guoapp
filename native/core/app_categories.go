@@ -42,28 +42,12 @@ func validNativeCategory(source, category string) bool {
 	if descriptor, ok := registeredDescriptor(source); ok {
 		return descriptor.ValidCategory != nil && descriptor.ValidCategory(category)
 	}
-	switch source {
-	case sourceHongguo:
-		for _, genre := range hongguoAppGenres {
-			if category == genre.key {
-				return true
-			}
-		}
-		return hongguoTagPattern.MatchString(category)
-	}
 	return false
 }
 
 func (engine *nativeEngine) nativeCategories(ctx context.Context, source string, force bool) ([]nativeCategory, error) {
 	source = canonicalProviderSource(source)
 	all := []nativeCategory{{Name: "全部"}}
-	switch source {
-	case sourceHongguo:
-		for _, genre := range hongguoAppGenres {
-			all = append(all, nativeCategory{ID: genre.key, Name: genre.name})
-		}
-		return engine.hongguoCategories(ctx, all, force), nil
-	}
 	engine.mu.Lock()
 	cached := append([]nativeCategory{}, engine.categoryOptions[source]...)
 	engine.mu.Unlock()
@@ -88,25 +72,6 @@ func (engine *nativeEngine) nativeCategories(ctx context.Context, source string,
 	}
 	engine.rememberCategories(source, all)
 	return all, nil
-}
-
-func (engine *nativeEngine) hongguoCategories(ctx context.Context, genres []nativeCategory, force bool) []nativeCategory {
-	engine.mu.Lock()
-	cached := append([]nativeCategory{}, engine.categoryOptions[sourceHongguo]...)
-	engine.mu.Unlock()
-	if len(cached) > len(genres) && !force {
-		return cached
-	}
-	tags, err := engine.downloader.fetchHongguoTagCategories(ctx)
-	if err != nil {
-		if len(cached) > len(genres) {
-			return cached
-		}
-		return genres
-	}
-	all := append(genres, tags...)
-	engine.rememberCategories(sourceHongguo, all)
-	return all
 }
 
 func (engine *nativeEngine) rememberCategories(source string, all []nativeCategory) {

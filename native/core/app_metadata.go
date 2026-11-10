@@ -3,7 +3,6 @@ package core
 import (
 	"context"
 	"errors"
-	"net/url"
 	"time"
 )
 
@@ -12,7 +11,7 @@ func (engine *nativeEngine) nativeNeedsExtraMetadata(drama nativeDrama) bool {
 		enricher, ok := p.(MetadataEnricher)
 		return ok && enricher.NeedsExtraMetadata(drama)
 	}
-	return drama.Source == sourceHongguo && (drama.OnlineDate == "" || drama.Score == "")
+	return false
 }
 
 func (engine *nativeEngine) nativeExtraMetadata(ctx context.Context, drama nativeDrama) (nativeDrama, error) {
@@ -25,33 +24,11 @@ func (engine *nativeEngine) nativeExtraMetadata(ctx context.Context, drama nativ
 	}
 	ctx, cancel := context.WithTimeout(context.WithValue(ctx, backgroundCatalogKey{}, true), 15*time.Second)
 	defer cancel()
-	if p, ok := engine.downloader.provider(source); ok {
-		return p.(MetadataEnricher).ExtraMetadata(ctx, drama, id)
+	p, ok := engine.downloader.provider(source)
+	if !ok {
+		return drama, errors.New("请选择有效站源")
 	}
-	var raw Drama
-	switch source {
-	case sourceHongguo:
-		if !hongguoNumericID.MatchString(id) {
-			return drama, errors.New("红果剧集 ID 无效")
-		}
-		if drama.OnlineDate == "" {
-			body, err := engine.downloader.fetchProviderText(ctx, hongguoBaseURL+"/detail?series_id="+url.QueryEscape(id), hongguoBaseURL+"/")
-			if err != nil {
-				return drama, err
-			}
-			raw, err = parseHongguoSortDetail(body, id)
-			if err != nil {
-				return drama, err
-			}
-		}
-	}
-	if raw.ID == drama.ID {
-		drama = mergeNativeDrama(drama, nativeNormalize(raw))
-	}
-	if source == sourceHongguo && drama.Score == "" {
-		drama.Score = nativeDramaScore(engine.downloader.hongguoSearchScore(ctx, drama.ID, drama.Title))
-	}
-	return drama, ctx.Err()
+	return p.(MetadataEnricher).ExtraMetadata(ctx, drama, id)
 }
 
 func (engine *nativeEngine) nativeFollowCheck(ctx context.Context, drama nativeDrama) (any, error) {

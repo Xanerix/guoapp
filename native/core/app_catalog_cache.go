@@ -23,8 +23,50 @@ type nativeCatalogDisk struct {
 	Catalogs        map[string][]nativeDrama             `json:"catalogs"`
 	States          map[string]nativeCatalogState        `json:"states"`
 	Categories      map[string][]nativeCategory          `json:"categories,omitempty"`
-	HongguoApp      *hongguoCatalogState                 `json:"hongguoApp,omitempty"`
+	HongguoApp      json.RawMessage                      `json:"hongguoApp,omitempty"`
+	ProviderStates  map[string]json.RawMessage           `json:"providerStates,omitempty"`
 	Recommendations map[string]nativeRecommendationState `json:"recommendations,omitempty"`
+}
+
+func (engine *nativeEngine) commitProviderStateLocked(source string) {
+	source, _, _ = strings.Cut(source, "|")
+	p, ok := engine.downloader.provider(source)
+	if !ok {
+		return
+	}
+	stateful, ok := p.(CatalogStateful)
+	if !ok {
+		return
+	}
+	if engine.providerStates == nil {
+		engine.providerStates = map[string]json.RawMessage{}
+	}
+	if raw := stateful.CatalogState(); len(raw) > 0 {
+		engine.providerStates[p.Descriptor().ID] = raw
+	} else {
+		delete(engine.providerStates, p.Descriptor().ID)
+	}
+}
+
+func (engine *nativeEngine) restoreProviderStates(disk nativeCatalogDisk) {
+	if engine.downloader == nil {
+		return
+	}
+	states := disk.ProviderStates
+	if _, ok := states["hongguo"]; !ok && len(disk.HongguoApp) > 0 {
+		if states == nil {
+			states = map[string]json.RawMessage{}
+		}
+		states["hongguo"] = disk.HongguoApp
+	}
+	for source, raw := range states {
+		if p, ok := engine.downloader.provider(source); ok {
+			if stateful, ok := p.(CatalogStateful); ok {
+				stateful.RestoreCatalogState(raw)
+				engine.commitProviderStateLocked(source)
+			}
+		}
+	}
 }
 
 func (engine *nativeEngine) loadCatalogCache() {
@@ -58,13 +100,7 @@ func (engine *nativeEngine) loadCatalogCache() {
 				engine.recommendations[genre] = state
 			}
 		}
-		engine.hongguoCatalog = cloneHongguoCatalogState(disk.HongguoApp)
-		if engine.downloader != nil {
-			engine.downloader.restoreHongguoCatalog(disk.HongguoApp)
-			if disk.HongguoApp != nil {
-				engine.hongguoCatalog = engine.downloader.hongguoCatalogSnapshot()
-			}
-		}
+		engine.restoreProviderStates(disk)
 		return
 	}
 	var legacy map[string][]nativeDrama
@@ -223,7 +259,8 @@ func (engine *nativeEngine) saveCatalogCache(source string, result *nativeCatalo
 			}
 			result.Items = items
 			result.Page = max(1, state.Page)
-			if source != sourceHongguo && state.Page > 1 {
+			descriptor, _ := registeredDescriptor(source)
+			if !descriptor.ContinuousFeed && state.Page > 1 {
 				result.HasMore = state.HasMore
 			}
 		}
@@ -234,9 +271,7 @@ func (engine *nativeEngine) saveCatalogCache(source string, result *nativeCatalo
 		}
 	}
 	engine.catalogs[source] = items
-	if result.hongguo != nil {
-		engine.hongguoCatalog = cloneHongguoCatalogState(result.hongguo)
-	}
+	engine.commitProviderStateLocked(source)
 	if result.Warning != "" {
 		result.Page = max(1, state.Page)
 		result.HasMore = true
@@ -262,7 +297,7 @@ func (engine *nativeEngine) saveCatalogCache(source string, result *nativeCatalo
 
 func (engine *nativeEngine) writeCatalogDiskLocked() error {
 	trimNativeCatalogs(engine.catalogs)
-	body, err := json.Marshal(nativeCatalogDisk{Version: 3, Catalogs: engine.catalogs, States: engine.catalogStates, Categories: engine.categoryOptions, HongguoApp: engine.hongguoCatalog, Recommendations: engine.recommendations})
+	body, err := json.Marshal(nativeCatalogDisk{Version: 3, Catalogs: engine.catalogs, States: engine.catalogStates, Categories: engine.categoryOptions, ProviderStates: engine.providerStates, Recommendations: engine.recommendations})
 	if err == nil && len(body) > nativeCatalogMaxBytes {
 		err = errNativeCatalogLimit
 	}

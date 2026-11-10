@@ -22,11 +22,7 @@ var hongguoAppGenres = []struct {
 	{key: "ai_series", scene: "ai_series", name: "AI剧"},
 }
 
-type libraryMoreKey struct{}
-
 type libraryUpdateKey struct{}
-
-type libraryKnownKey struct{}
 
 func (downloader *Downloader) fetchHongguoAppCatalog(ctx context.Context) ([]Drama, error) {
 	return downloader.fetchHongguoAppCatalogCategory(ctx, "")

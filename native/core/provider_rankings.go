@@ -20,13 +20,6 @@ type rankingBoard struct {
 	upstreamKey string
 }
 
-var legacyRankingBoards = []rankingBoard{
-	{ID: "hongguo-hot", Source: sourceHongguo, Name: "总热播榜", Description: "红果观看、互动等综合热度；每日更新。", path: "hot-drama", upstreamKey: "hongguo"},
-	{ID: "hongguo-real", Source: sourceHongguo, Name: "真人剧榜", Description: "红果真人剧热播榜；每日更新。", path: "hot-real-drama", upstreamKey: "real"},
-	{ID: "hongguo-comic", Source: sourceHongguo, Name: "漫剧榜", Description: "红果漫剧热播榜；每日更新。", path: "hot-comic-drama", upstreamKey: "comic"},
-	{ID: "hongguo-ai", Source: sourceHongguo, Name: "AI剧榜", Description: "红果 AI 剧热播榜；每日更新。", path: "hot-ai-drama", upstreamKey: "ai"},
-}
-
 type rankingItem struct {
 	Rank   int    `json:"rank"`
 	Drama  Drama  `json:"drama"`
@@ -58,7 +51,7 @@ type rankingCache struct {
 }
 
 func allRankingBoards() []rankingBoard {
-	boards := append([]rankingBoard(nil), legacyRankingBoards...)
+	var boards []rankingBoard
 	for _, descriptor := range registeredDescriptors() {
 		boards = append(boards, descriptor.Rankings...)
 	}
@@ -149,10 +142,5 @@ func (d *Downloader) fetchRankingPage(ctx context.Context, board rankingBoard, p
 			return ranker.RankingPage(ctx, board, page)
 		}
 	}
-	switch board.Source {
-	case sourceHongguo:
-		return d.fetchHongguoRankingPage(ctx, board, page)
-	default:
-		return rankingPage{}, fmt.Errorf("不支持的榜单站源 %s", board.Source)
-	}
+	return rankingPage{}, fmt.Errorf("不支持的榜单站源 %s", board.Source)
 }

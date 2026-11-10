@@ -167,10 +167,14 @@ func TestNativeHongguoCursorRecoversSessionsAfterRestart(t *testing.T) {
 				t.Fatal(err, result.Warning)
 			}
 			if scenario == "expired" {
-				engine.mu.Lock()
-				cursor := engine.hongguoCatalog.Feeds["category:ai_series"]
+				client := engine.downloader.hongguoClient()
+				client.mu.Lock()
+				cursor := client.state.Feeds["category:ai_series"]
 				cursor.UpdatedAt = time.Now().Add(-time.Hour)
-				engine.hongguoCatalog.Feeds["category:ai_series"] = cursor
+				client.state.Feeds["category:ai_series"] = cursor
+				client.mu.Unlock()
+				engine.mu.Lock()
+				engine.commitProviderStateLocked(sourceHongguo)
 				err := engine.writeCatalogDiskLocked()
 				engine.mu.Unlock()
 				if err != nil {

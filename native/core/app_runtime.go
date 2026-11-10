@@ -141,7 +141,6 @@ type nativeCatalogResult struct {
 	Warning     string        `json:"warning,omitempty"`
 	LocalSearch bool          `json:"localSearch"`
 	Fresh       bool          `json:"fresh"`
-	hongguo     *hongguoCatalogState
 	saveError   error
 }
 
@@ -175,7 +174,7 @@ type nativeEngine struct {
 	catalogs         map[string][]nativeDrama
 	catalogStates    map[string]nativeCatalogState
 	categoryOptions  map[string][]nativeCategory
-	hongguoCatalog   *hongguoCatalogState
+	providerStates   map[string]json.RawMessage
 	recommendations  map[string]nativeRecommendationState
 	catalogSaveError error
 	covers           *nativeCoverCache
@@ -520,6 +519,17 @@ func (engine *nativeEngine) nativeCatalog(ctx context.Context, input nativeInput
 	d := engine.downloader
 	result := nativeCatalogResult{Items: []nativeDrama{}, Page: page}
 	registered, hasProvider := d.provider(source)
+	if searcher, ok := registered.(WarningSearcher); ok && query != "" {
+		items, more, warning, err := searcher.SearchWithWarning(ctx, page, query)
+		if err != nil {
+			return result, err
+		}
+		for _, drama := range items {
+			result.Items = append(result.Items, nativeNormalize(drama))
+		}
+		result.Warning, result.HasMore = warning, more
+		return result, nil
+	}
 	if searcher, ok := registered.(Searcher); ok && query != "" {
 		items, more, err := searcher.Search(ctx, page, query)
 		if err != nil {
@@ -529,25 +539,6 @@ func (engine *nativeEngine) nativeCatalog(ctx context.Context, input nativeInput
 			result.Items = append(result.Items, nativeNormalize(drama))
 		}
 		result.HasMore = more
-		return result, nil
-	}
-	if query != "" && source == sourceHongguo {
-		var entry hongguoSearchEntry
-		var err error
-		if page == 1 {
-			entry, err = d.searchHongguoDramas(ctx, query)
-		} else if keyword, keywordErr := hongguoSearchKeyword(query); keywordErr != nil {
-			err = keywordErr
-		} else {
-			entry, err = d.fetchHongguoSearchPage(ctx, keyword, page)
-		}
-		if err != nil {
-			return result, err
-		}
-		for _, drama := range entry.Dramas {
-			result.Items = append(result.Items, nativeNormalize(drama))
-		}
-		result.Warning, result.HasMore = entry.Warning, entry.HasMore
 		return result, nil
 	}
 	if query != "" {
@@ -577,17 +568,12 @@ func (engine *nativeEngine) nativeCatalog(ctx context.Context, input nativeInput
 	}
 	var items []Drama
 	var err error
-	allowEmptyCatalog := false
-	if hasProvider {
-		allowEmptyCatalog = registered.Descriptor().AllowEmptyCatalog
-		items, result.HasMore, err = registered.CatalogPage(ctx, page, category)
+	if !hasProvider {
+		return result, errors.New("请选择有效站源")
 	}
-	switch source {
-	case sourceHongguo:
-		if strings.HasPrefix(category, hongguoTagPrefix) {
-			items, result.HasMore, err = d.fetchHongguoTagPage(ctx, category, page)
-			break
-		}
+	descriptor := registered.Descriptor()
+	allowEmptyCatalog := descriptor.AllowEmptyCatalog
+	if descriptor.ContinuousFeed {
 		engine.mu.Lock()
 		known := make(map[string]bool, len(engine.catalogs[cacheKey]))
 		for _, drama := range engine.catalogs[cacheKey] {
@@ -598,19 +584,8 @@ func (engine *nativeEngine) nativeCatalog(ctx context.Context, input nativeInput
 		if page > 1 {
 			ctx = context.WithValue(ctx, libraryMoreKey{}, true)
 		}
-		items, err = d.fetchHongguoAppCatalogCategory(ctx, category)
-		state := d.hongguoCatalogSnapshot()
-		result.hongguo = state
-		result.HasMore = hongguoCatalogHasMore(state)
-		if category != "" && state != nil {
-			result.HasMore = !state.Feeds["category:"+category].Exhausted
-		}
-		if len(items) == 0 && err != nil && ctx.Err() == nil && (category == "" || category == "short_play") {
-			var totalPages int
-			items, totalPages, err = d.fetchHongguoCategoryPage(ctx, "real-drama?page="+strconv.Itoa(page), "真人剧")
-			result.HasMore = page < totalPages
-		}
 	}
+	items, result.HasMore, err = registered.CatalogPage(ctx, page, category)
 	if err != nil && len(items) == 0 {
 		return result, err
 	}
@@ -637,35 +612,22 @@ func (engine *nativeEngine) nativeDetail(ctx context.Context, drama nativeDrama)
 	if !valid {
 		return nil, errors.New("剧集信息无效，请刷新剧库")
 	}
-	var title string
-	var raw Drama
-	var chapters []Chapter
-	var err error
-	keepDetailEpisodes := false
-	if p, ok := engine.downloader.provider(source); ok {
-		raw, chapters, err = p.Detail(ctx, sourceID)
-		keepDetailEpisodes = p.Descriptor().KeepDetailEpisodes
-	} else {
-		title, chapters, err = engine.downloader.GetHuangguoChapters(ctx, source, sourceID)
+	p, ok := engine.downloader.provider(source)
+	if !ok {
+		return nil, errors.New("请选择有效站源")
 	}
+	raw, chapters, err := p.Detail(ctx, sourceID)
 	if err != nil {
 		return nil, err
 	}
 	if len(chapters) == 0 {
 		return nil, errors.New("该剧暂时没有可播放的分集")
 	}
-	if title != "" && title != "短剧" {
-		drama.Title = title
-	}
 	if raw.ID == drama.ID {
 		drama = mergeNativeDrama(drama, nativeNormalize(raw))
 	}
-	if source == sourceHongguo {
-		raw := engine.downloader.hongguoCachedDrama(Drama{ID: drama.ID, Title: drama.Title, Source: source})
-		drama = mergeNativeDrama(drama, nativeNormalize(raw))
-	}
 	drama.Source, drama.SourceID, drama.Episodes = source, sourceID, len(chapters)
-	if keepDetailEpisodes {
+	if p.Descriptor().KeepDetailEpisodes {
 		drama.Episodes = max(drama.Episodes, nativeNormalize(raw).Episodes)
 	}
 	warning := ""
