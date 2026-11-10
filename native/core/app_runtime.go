@@ -185,6 +185,8 @@ type nativeEngine struct {
 	covers           *nativeCoverCache
 	stream           *nativeStreamServer
 	streamMu         sync.Mutex
+	seasonDateMu     sync.Mutex
+	seasonDates      map[string]seasonDateEntry
 	playbacks        map[string]nativePlaybackChoice
 	playbackMu       sync.Mutex
 	playbackSequence int64

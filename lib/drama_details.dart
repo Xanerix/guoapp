@@ -100,7 +100,7 @@ class DramaDetails extends ChangeNotifier {
     try {
       final seasons = await repository
           .seasons(_drama)
-          .timeout(const Duration(seconds: 6));
+          .timeout(const Duration(seconds: 20));
       if (!_current(generation) || seasons.length <= 1) return;
       _seasons = seasons;
       _notify();
