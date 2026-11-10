@@ -23,7 +23,7 @@ func providerMediaContext(ctx context.Context, credentials *MediaCredentials) co
 	return context.WithValue(ctx, MediaCredentialsKey{}, credentials)
 }
 
-func providerMediaOrigin(address *url.URL) string {
+func ProviderMediaOrigin(address *url.URL) string {
 	if address == nil {
 		return ""
 	}
@@ -43,10 +43,10 @@ func (credentials *MediaCredentials) apply(request *http.Request) error {
 	if credentials.Referer != "" {
 		request.Header.Set("Referer", credentials.Referer)
 		if address, err := url.Parse(credentials.Referer); err == nil {
-			request.Header.Set("Origin", providerMediaOrigin(address))
+			request.Header.Set("Origin", ProviderMediaOrigin(address))
 		}
 	}
-	if providerMediaOrigin(request.URL) == credentials.Origin {
+	if ProviderMediaOrigin(request.URL) == credentials.Origin {
 		if !credentials.Expires.IsZero() && !time.Now().Before(credentials.Expires) {
 			return errors.New("播放凭证已过期，请重新解析播放")
 		}

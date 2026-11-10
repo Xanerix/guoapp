@@ -43,7 +43,7 @@ func dsdRouteParameters(pageURL, reference string) (string, map[string]string, b
 		return "", nil, false
 	}
 	address = page.ResolveReference(address)
-	if address.User != nil || providerMediaOrigin(address) != providerMediaOrigin(page) {
+	if address.User != nil || ProviderMediaOrigin(address) != ProviderMediaOrigin(page) {
 		return "", nil, false
 	}
 	path := strings.TrimPrefix(address.Path, "/index.php")
@@ -71,10 +71,10 @@ func dsdRouteParameters(pageURL, reference string) (string, map[string]string, b
 func parseDSDCategories(document *html.Node, pageURL string) ([]Category, error) {
 	var categories []Category
 	seen := map[string]bool{}
-	for _, anchor := range providerHTMLNodes(document, func(node *html.Node) bool { return node.Data == "a" }) {
-		action, values, valid := dsdRouteParameters(pageURL, providerHTMLAttr(anchor, "href"))
-		id, name := values["id"], providerHTMLText(anchor)
-		if !valid || action != "type" || !webProviderNumericID.MatchString(id) || seen[id] || name == "" || len([]rune(name)) > 48 {
+	for _, anchor := range ProviderHTMLNodes(document, func(node *html.Node) bool { return node.Data == "a" }) {
+		action, values, valid := dsdRouteParameters(pageURL, ProviderHTMLAttr(anchor, "href"))
+		id, name := values["id"], ProviderHTMLText(anchor)
+		if !valid || action != "type" || !WebProviderNumericID.MatchString(id) || seen[id] || name == "" || len([]rune(name)) > 48 {
 			continue
 		}
 		seen[id] = true
@@ -96,7 +96,7 @@ func (p *dSDProvider) fetchDSDCategories(ctx context.Context, force bool) ([]Cat
 	}
 	state.mu.Unlock()
 	site := p.site
-	document, address, err := fetchHostPage(ctx, p.host, site+"/", site+"/", dsdUserAgent)
+	document, address, err := FetchHostPage(ctx, p.host, site+"/", site+"/", dsdUserAgent)
 	if err != nil {
 		return nil, err
 	}
@@ -114,28 +114,28 @@ func (p *dSDProvider) fetchDSDCategories(ctx context.Context, force bool) ([]Cat
 }
 
 func dsdCardCover(card *html.Node, pageURL string) string {
-	images := providerHTMLNodes(card, func(node *html.Node) bool { return node.Data == "img" })
+	images := ProviderHTMLNodes(card, func(node *html.Node) bool { return node.Data == "img" })
 	for _, image := range images {
 		for _, attribute := range []string{"data-src", "data-original"} {
-			if address := providerCoverAddress(providerHTMLAttr(image, attribute), pageURL); address != "" {
+			if address := ProviderCoverAddress(ProviderHTMLAttr(image, attribute), pageURL); address != "" {
 				return address
 			}
 		}
 	}
-	for _, node := range providerHTMLNodes(card, func(node *html.Node) bool {
-		return node == card || providerHTMLClass(node, "img-bg") || providerHTMLClass(node, "surface-img") ||
-			providerHTMLClass(node, "openVip") || providerHTMLClass(node, "video-before-ad")
+	for _, node := range ProviderHTMLNodes(card, func(node *html.Node) bool {
+		return node == card || ProviderHTMLClass(node, "img-bg") || ProviderHTMLClass(node, "surface-img") ||
+			ProviderHTMLClass(node, "openVip") || ProviderHTMLClass(node, "video-before-ad")
 	}) {
-		if match := dsdBackgroundURL.FindStringSubmatch(providerHTMLAttr(node, "style")); len(match) > 1 {
-			if address := providerCoverAddress(strings.TrimSpace(match[1]), pageURL); address != "" {
+		if match := dsdBackgroundURL.FindStringSubmatch(ProviderHTMLAttr(node, "style")); len(match) > 1 {
+			if address := ProviderCoverAddress(strings.TrimSpace(match[1]), pageURL); address != "" {
 				return address
 			}
 		}
 	}
 	for _, image := range images {
-		raw := providerHTMLAttr(image, "src")
+		raw := ProviderHTMLAttr(image, "src")
 		if strings.HasPrefix(raw, "/video") || strings.Contains(raw, "/upload") {
-			if address := providerCoverAddress(raw, pageURL); address != "" {
+			if address := ProviderCoverAddress(raw, pageURL); address != "" {
 				return address
 			}
 		}
@@ -146,18 +146,18 @@ func dsdCardCover(card *html.Node, pageURL string) string {
 func parseDSDCards(document *html.Node, pageURL, category string) ([]Drama, error) {
 	items := []Drama{}
 	seen := map[string]bool{}
-	for _, card := range providerHTMLNodes(document, func(node *html.Node) bool {
-		return node.Data == "a" && (providerHTMLClass(node, "video-item") || providerHTMLClass(node, "video-surface"))
+	for _, card := range ProviderHTMLNodes(document, func(node *html.Node) bool {
+		return node.Data == "a" && (ProviderHTMLClass(node, "video-item") || ProviderHTMLClass(node, "video-surface"))
 	}) {
-		action, values, valid := dsdRouteParameters(pageURL, providerHTMLAttr(card, "href"))
+		action, values, valid := dsdRouteParameters(pageURL, ProviderHTMLAttr(card, "href"))
 		id := values["id"]
-		if !valid || action != "play" && action != "detail" || !webProviderNumericID.MatchString(id) || seen[id] {
+		if !valid || action != "play" && action != "detail" || !WebProviderNumericID.MatchString(id) || seen[id] {
 			continue
 		}
-		title := firstNonEmpty(providerHTMLText(providerHTMLFirstClass(card, "video-desc", "surface-title", "video-title", "title")), providerHTMLAttr(card, "title"))
+		title := FirstNonEmpty(ProviderHTMLText(ProviderHTMLFirstClass(card, "video-desc", "surface-title", "video-title", "title")), ProviderHTMLAttr(card, "title"))
 		if title == "" {
-			for _, image := range providerHTMLNodes(card, func(node *html.Node) bool { return node.Data == "img" }) {
-				if title = strings.TrimSpace(providerHTMLAttr(image, "alt")); title != "" {
+			for _, image := range ProviderHTMLNodes(card, func(node *html.Node) bool { return node.Data == "img" }) {
+				if title = strings.TrimSpace(ProviderHTMLAttr(image, "alt")); title != "" {
 					break
 				}
 			}
@@ -167,11 +167,11 @@ func parseDSDCards(document *html.Node, pageURL, category string) ([]Drama, erro
 		}
 		seen[id] = true
 		cover := dsdCardCover(card, pageURL)
-		views := strings.TrimSuffix(providerHTMLText(providerHTMLFirstClass(card, "video-item-tag-hits", "counts")), "次")
-		drama := Drama{ID: providerDramaID(sourceDSD, id), Source: sourceDSD, SourceID: id,
-			Title: truncate(title, 1024), Name: truncate(title, 1024), Cover: cover, CoverURL: cover,
-			CategoryName: firstNonEmpty(category, "视频"), ChannelName: "帝果", Views: views}
-		if providerHTMLFirstClass(card, "video-item-tag-is-vip", "vip-tag") != nil {
+		views := strings.TrimSuffix(ProviderHTMLText(ProviderHTMLFirstClass(card, "video-item-tag-hits", "counts")), "次")
+		drama := Drama{ID: ProviderDramaID(sourceDSD, id), Source: sourceDSD, SourceID: id,
+			Title: Truncate(title, 1024), Name: Truncate(title, 1024), Cover: cover, CoverURL: cover,
+			CategoryName: FirstNonEmpty(category, "视频"), ChannelName: "帝果", Views: views}
+		if ProviderHTMLFirstClass(card, "video-item-tag-is-vip", "vip-tag") != nil {
 			vip := true
 			drama.VIP = &vip
 		}
@@ -184,7 +184,7 @@ func parseDSDCards(document *html.Node, pageURL, category string) ([]Drama, erro
 }
 
 func dsdPagination(document *html.Node, pageURL, category, query string, page int) (int, error) {
-	pagination := providerHTMLFirstClass(document, "el-pagination", "pagination", "mac_pages")
+	pagination := ProviderHTMLFirstClass(document, "el-pagination", "pagination", "mac_pages")
 	if pagination == nil {
 		if page != 1 {
 			return 0, errors.New("帝果未返回请求页码，请重试")
@@ -192,10 +192,10 @@ func dsdPagination(document *html.Node, pageURL, category, query string, page in
 		return 1, nil
 	}
 	activePage := 0
-	for _, node := range providerHTMLNodes(pagination, func(node *html.Node) bool {
-		return providerHTMLClass(node, "active") && providerHTMLClass(node, "number") || providerHTMLClass(node, "page-current")
+	for _, node := range ProviderHTMLNodes(pagination, func(node *html.Node) bool {
+		return ProviderHTMLClass(node, "active") && ProviderHTMLClass(node, "number") || ProviderHTMLClass(node, "page-current")
 	}) {
-		if current, valid := webProviderInteger(providerHTMLText(node), 1000000); valid {
+		if current, valid := WebProviderInteger(ProviderHTMLText(node), 1000000); valid {
 			activePage = current
 			break
 		}
@@ -204,8 +204,8 @@ func dsdPagination(document *html.Node, pageURL, category, query string, page in
 		return 0, errors.New("帝果返回的页码与请求不符")
 	}
 	pages := page
-	for _, anchor := range providerHTMLNodes(pagination, func(node *html.Node) bool { return node.Data == "a" }) {
-		action, parameters, valid := dsdRouteParameters(pageURL, providerHTMLAttr(anchor, "href"))
+	for _, anchor := range ProviderHTMLNodes(pagination, func(node *html.Node) bool { return node.Data == "a" }) {
+		action, parameters, valid := dsdRouteParameters(pageURL, ProviderHTMLAttr(anchor, "href"))
 		if !valid {
 			continue
 		}
@@ -216,7 +216,7 @@ func dsdPagination(document *html.Node, pageURL, category, query string, page in
 		} else if (action != "type" && action != "show") || parameters["id"] != category {
 			continue
 		}
-		if value, valid := webProviderInteger(parameters["page"], 1000000); valid {
+		if value, valid := WebProviderInteger(parameters["page"], 1000000); valid {
 			pages = max(pages, value)
 		}
 	}
@@ -249,7 +249,7 @@ func (p *dSDProvider) fetchDSDPage(ctx context.Context, page int, category Categ
 	if query != "" {
 		address = site + "/index.php/vod/search.html?" + url.Values{"wd": {query}, "page": {strconv.Itoa(page)}}.Encode()
 	}
-	document, address, err := fetchHostPage(ctx, p.host, address, site+"/", dsdUserAgent)
+	document, address, err := FetchHostPage(ctx, p.host, address, site+"/", dsdUserAgent)
 	if err != nil {
 		return nil, false, err
 	}
@@ -257,7 +257,7 @@ func (p *dSDProvider) fetchDSDPage(ctx context.Context, page int, category Categ
 	if err != nil {
 		return nil, false, err
 	}
-	if len(items) == 0 && providerHTMLFirstClass(document, "video-contaner", "nvyou-wrap", "van-list", "search-page", "lists") == nil {
+	if len(items) == 0 && ProviderHTMLFirstClass(document, "video-contaner", "nvyou-wrap", "van-list", "search-page", "lists") == nil {
 		return nil, false, errors.New("帝果未返回内容列表，页面可能已变化")
 	}
 	pages, err := dsdPagination(document, address, category.ID, query, page)
@@ -280,7 +280,7 @@ func (p *dSDProvider) fetchDSDPage(ctx context.Context, page int, category Categ
 }
 
 func (p *dSDProvider) fetchDSDCatalogPage(ctx context.Context, page int, category, query string) ([]Drama, bool, error) {
-	if page < 1 || page > 1000000 || len(query) > 1024 || category != "" && !webProviderNumericID.MatchString(category) {
+	if page < 1 || page > 1000000 || len(query) > 1024 || category != "" && !WebProviderNumericID.MatchString(category) {
 		return nil, false, errors.New("帝果目录查询参数无效")
 	}
 	if query != "" {
@@ -344,4 +344,4 @@ func (p *dSDProvider) fetchDSDCatalogPage(ctx context.Context, page int, categor
 	return items, hasMore, errors.Join(failures...)
 }
 
-func validDSDCategory(category string) bool { return webProviderNumericID.MatchString(category) }
+func validDSDCategory(category string) bool { return WebProviderNumericID.MatchString(category) }

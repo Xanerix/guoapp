@@ -207,7 +207,7 @@ func (p *hongguoProvider) hongguoAppRequest(ctx context.Context, method, path st
 		ticket, err := p.host.Reserve(ctx, address, lane)
 		if err != nil {
 			lastErr = err
-			var backoff *requestBackoff
+			var backoff *RequestBackoff
 			if errors.As(err, &backoff) || ctx.Err() != nil {
 				return nil, err
 			}
@@ -239,14 +239,14 @@ func (p *hongguoProvider) hongguoAppRequest(ctx context.Context, method, path st
 		}
 		response, err := p.host.Fetch(ctx, HTTPRequest{
 			Label: "红果", Method: method, URL: prepared.URL.String(), Header: header, Body: body, Ticket: ticket,
-			Limit: providerMaxBodyBytes, Timeout: 20 * time.Second, FollowRedirects: true, AnyStatus: true,
+			Limit: ProviderMaxBodyBytes, Timeout: 20 * time.Second, FollowRedirects: true, AnyStatus: true,
 		})
 		if response.Oversized {
 			return nil, errors.New("红果 App 接口未返回有效数据")
 		}
 		if err != nil {
 			lastErr = err
-			var backoff *requestBackoff
+			var backoff *RequestBackoff
 			if errors.As(err, &backoff) || ctx.Err() != nil {
 				return nil, err
 			}
@@ -282,9 +282,9 @@ func (p *hongguoProvider) hongguoAppRequest(ctx context.Context, method, path st
 		if err := decoder.Decode(&result); err != nil || result == nil {
 			return nil, errors.New("红果 App 接口返回格式异常")
 		}
-		code := firstNonEmpty(mapString(result, "code", "Code", "status_code"), mapString(nestedMap(result, "BaseResp"), "StatusCode"))
+		code := FirstNonEmpty(MapString(result, "code", "Code", "status_code"), MapString(nestedMap(result, "BaseResp"), "StatusCode"))
 		if code != "" && code != "0" {
-			return nil, fmt.Errorf("红果 App 接口暂不可用（%s）", truncate(code, 20))
+			return nil, fmt.Errorf("红果 App 接口暂不可用（%s）", Truncate(code, 20))
 		}
 		return result, nil
 	}

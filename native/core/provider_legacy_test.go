@@ -49,7 +49,7 @@ func legacyFixtureLogin(t *testing.T, request *http.Request) {
 	}
 	block, _ := aes.NewCipher([]byte(fixtureLegacyProtocol.ParamKey))
 	cipher.NewCBCDecrypter(block, []byte(fixtureLegacyProtocol.ParamIV)).CryptBlocks(encrypted, encrypted)
-	plain, err := pkcs7Unpad(encrypted, 16)
+	plain, err := Pkcs7Unpad(encrypted, 16)
 	var fields struct {
 		Device string `json:"devID"`
 		System string `json:"sysType"`

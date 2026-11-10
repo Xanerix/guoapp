@@ -9,7 +9,7 @@ import (
 )
 
 func rankingMergedFixture(board RankingBoard, page int, rows []map[string]any) string {
-	key := "rank_" + board.path + "/page"
+	key := "rank_" + board.Path + "/page"
 	base := rankingFixture(board, page, rows)
 	base = strings.Split(base, "</script>")[0] + "</script>"
 	content, _ := json.Marshal(map[string]any{"isSuccess": true, "rankList": rows, "pagination": map[string]int{"pageNum": page, "totalPages": 2}})

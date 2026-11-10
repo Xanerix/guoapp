@@ -54,13 +54,13 @@ func (p *hongguoProvider) fetchHongguoTagCategories(ctx context.Context) ([]Cate
 	seen := map[string]bool{}
 	for _, value := range anyList(nestedMap(result, "data", "selector")["rows"]) {
 		row, _ := value.(map[string]any)
-		if mapString(row, "type") != "dialog_bottom" {
+		if MapString(row, "type") != "dialog_bottom" {
 			continue
 		}
 		for _, value := range anyList(row["items"]) {
 			item, _ := value.(map[string]any)
-			id := hongguoTagPrefix + mapString(item, "selector_item_id")
-			name := strings.TrimSpace(mapString(item, "show_name"))
+			id := hongguoTagPrefix + MapString(item, "selector_item_id")
+			name := strings.TrimSpace(MapString(item, "show_name"))
 			if name == "" || seen[id] || !hongguoTagPattern.MatchString(id) {
 				continue
 			}
@@ -102,12 +102,12 @@ func (p *hongguoProvider) fetchHongguoTagPage(ctx context.Context, category stri
 		return nil, false, errors.New("红果题材未返回可识别的剧集")
 	}
 	more, _ := data["has_more"].(bool)
-	next, parseErr := strconv.Atoi(mapString(data, "offset"))
+	next, parseErr := strconv.Atoi(MapString(data, "offset"))
 	if parseErr != nil || next <= cursor.offset {
 		next, more = cursor.offset+len(rows), more && len(rows) > 0
 	}
 	client.mu.Lock()
-	client.tagCursors[category] = hongguoTagCursor{page: page, offset: next, session: mapString(data, "session_id")}
+	client.tagCursors[category] = hongguoTagCursor{page: page, offset: next, session: MapString(data, "session_id")}
 	client.mu.Unlock()
 	return dramas, more, nil
 }

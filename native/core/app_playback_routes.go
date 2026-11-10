@@ -25,7 +25,7 @@ func nativePlaybackChoices(media ProviderMedia, quality int) nativePlaybackChoic
 	seen := map[string]bool{}
 	qualities := map[int]bool{}
 	for _, option := range append([]ProviderMedia{media}, media.Variants...) {
-		if !isProviderHTTPMediaURL(option.URL) {
+		if !IsProviderHTTPMediaURL(option.URL) {
 			continue
 		}
 		identity := option.URL + "\x00" + option.Referer + "\x00" + hex.EncodeToString(option.CENCKey) + "\x00" + hex.EncodeToString(option.HLSKey)
@@ -65,7 +65,7 @@ func (engine *nativeEngine) nativeOpenPlayback(ctx context.Context, choice nativ
 	}
 	media := choice.media[choice.index]
 	var err error
-	if !isProviderHTTPMediaURL(media.URL) {
+	if !IsProviderHTTPMediaURL(media.URL) {
 		return nativePlan{}, errors.New("站源未返回有效的播放地址")
 	}
 	tokenBytes := make([]byte, 24)
@@ -74,7 +74,7 @@ func (engine *nativeEngine) nativeOpenPlayback(ctx context.Context, choice nativ
 	}
 	plan := nativePlan{
 		DanmakuID: choice.danmakuVideo,
-		URL:       media.URL, Headers: map[string]string{"User-Agent": userAgent, "Referer": media.Referer},
+		URL:       media.URL, Headers: map[string]string{"User-Agent": UserAgent, "Referer": media.Referer},
 		Key: hex.EncodeToString(media.CENCKey), Quality: media.Quality, Qualities: choice.qualities,
 		RouteIndex: choice.index, RouteCount: len(choice.media), Session: hex.EncodeToString(tokenBytes),
 	}

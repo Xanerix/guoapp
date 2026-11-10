@@ -65,7 +65,7 @@ func TestProviderSourceParsesTextFixturesAndRejectsMismatchedIdentity(t *testing
 }
 
 func TestYeguoDomainAliasesAndDefaultEndpoint(t *testing.T) {
-	if got := (&Downloader{cfg: defaultConfig()}).providerBaseURL(sourceYeguo); got != "https://attract.vgbyziuz.cc" {
+	if got := (&Downloader{cfg: DefaultConfig()}).providerBaseURL(sourceYeguo); got != "https://attract.vgbyziuz.cc" {
 		t.Fatalf("unexpected default yeguo endpoint: %s", got)
 	}
 	for _, address := range []string{
@@ -81,7 +81,7 @@ func TestYeguoDomainAliasesAndDefaultEndpoint(t *testing.T) {
 		"https://ygdj7.com/",
 		"https://ygdj15.com/",
 	} {
-		if got := providerSourceForURL(address); got != sourceYeguo {
+		if got := ProviderSourceForURL(address); got != sourceYeguo {
 			t.Fatalf("yeguo domain was not recognized: %s -> %s", address, got)
 		}
 	}
@@ -172,7 +172,7 @@ func TestHuangjuPlaybackUsesSignedCookiesForPlaylist(t *testing.T) {
 	defer server.Close()
 	mediaURL = server.URL + "/media.m3u8"
 	d := &Downloader{client: server.Client(), limiter: newRequestLimiter(3, 0), providerHosts: map[string]string{}}
-	media, err := huangjuFixtureProvider(d, server.URL, "https://huangju.test").resolveHuangjuMedia(context.Background(), Task{DramaID: providerDramaID(sourceHuangju, "sample-77"), Chapter: Chapter{ID: providerChapterID(sourceHuangju, "sample-77", "episode-1")}})
+	media, err := huangjuFixtureProvider(d, server.URL, "https://huangju.test").resolveHuangjuMedia(context.Background(), Task{DramaID: ProviderDramaID(sourceHuangju, "sample-77"), Chapter: Chapter{ID: ProviderChapterID(sourceHuangju, "sample-77", "episode-1")}})
 	if err != nil || !sawCookie || media.Playlist == "" || !strings.HasPrefix(media.Playlist, "#EXTM3U") {
 		t.Fatalf("huangju playback was not resolved through signed playlist: %+v %v", media, err)
 	}

@@ -182,7 +182,7 @@ func (client *jinguoDuanjuAPIClient) accessToken(ctx context.Context) (string, e
 	token := ""
 	if err == nil {
 		row, _ := decoded.(map[string]any)
-		token = mapString(row, "token")
+		token = MapString(row, "token")
 		if token == "" || len(token) > 8192 || strings.IndexFunc(token, func(r rune) bool { return r <= 32 || r >= 127 }) >= 0 {
 			token = ""
 			err = errors.New("禁果短剧未返回有效的访问授权")
@@ -256,7 +256,7 @@ func (client *jinguoDuanjuAPIClient) rememberBase(base string) {
 
 func (client *jinguoDuanjuAPIClient) requestBase(ctx context.Context, base, method, route string, query url.Values, body []byte, token string, retryAuth bool, limit int64) (any, error) {
 	parsed, err := url.Parse(base)
-	if err != nil || !isProviderHTTPMediaURL(base) || parsed.User != nil {
+	if err != nil || !IsProviderHTTPMediaURL(base) || parsed.User != nil {
 		return nil, errors.New("禁果短剧接口地址无效")
 	}
 	address := strings.TrimRight(base, "/") + route
@@ -305,7 +305,7 @@ func jinguoDuanjuErrorMessage(data []byte) string {
 	if json.Unmarshal(data, &row) != nil {
 		return ""
 	}
-	message := mapString(row, "message", "msg", "tip")
+	message := MapString(row, "message", "msg", "tip")
 	if message == "" || len([]rune(message)) > 180 || strings.ContainsAny(message, "\r\n") {
 		return ""
 	}

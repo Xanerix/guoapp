@@ -15,7 +15,7 @@ import (
 const legacyFrontendURL = "https://d2pypzndaqisk.cloudfront.net"
 
 var apiFallbackHosts = []string{
-	defaultAPIBase,
+	DefaultAPIBase,
 	"https://d18ka9rqpfd3lo.cloudfront.net",
 	"https://d37n0wjehmw08f.cloudfront.net",
 }
@@ -26,9 +26,9 @@ func (p *legacyProvider) apiEndpoint(ctx context.Context) (string, error) {
 	if p.apiBase != "" {
 		return p.apiBase, nil
 	}
-	configured := strings.TrimRight(firstNonEmpty(p.cfg.APIBase, defaultAPIBase), "/")
+	configured := strings.TrimRight(FirstNonEmpty(p.cfg.APIBase, DefaultAPIBase), "/")
 	parsed, err := url.Parse(configured)
-	if err != nil || !isProviderHTTPMediaURL(configured) {
+	if err != nil || !IsProviderHTTPMediaURL(configured) {
 		return "", errors.New("API 地址无效")
 	}
 	if !strings.HasSuffix(strings.ToLower(parsed.Hostname()), ".cloudfront.net") {
@@ -62,7 +62,7 @@ func (p *legacyProvider) apiEndpoint(ctx context.Context) (string, error) {
 			return candidate, nil
 		}
 	}
-	return "", fmt.Errorf("黄果原 API 的候选域名均不可用: %w", publicError(lastErr))
+	return "", fmt.Errorf("黄果原 API 的候选域名均不可用: %w", PublicError(lastErr))
 }
 
 func (p *legacyProvider) resetAPIEndpoint(failed string) {
@@ -79,7 +79,7 @@ func (p *legacyProvider) resetAPIEndpoint(failed string) {
 
 func (p *legacyProvider) probeAPIHost(ctx context.Context, host string) error {
 	response, err := p.host.Fetch(ctx, HTTPRequest{
-		Label: "黄果", Method: http.MethodGet, URL: host + "/api/app/ping/check", Header: map[string]string{"User-Agent": userAgent},
+		Label: "黄果", Method: http.MethodGet, URL: host + "/api/app/ping/check", Header: map[string]string{"User-Agent": UserAgent},
 		Limit: 64 * 1024, Timeout: 4 * time.Second, FollowRedirects: true, AnyStatus: true,
 	})
 	if err != nil {
@@ -116,7 +116,7 @@ func (p *legacyProvider) fetchLegacyFrontendScript(ctx context.Context) (string,
 		if !strings.Contains(script[1], "/main-") || !strings.HasSuffix(script[1], ".js") {
 			continue
 		}
-		assetURL := resolveProviderURL(legacyFrontendURL+"/", script[1])
+		assetURL := ResolveProviderURL(legacyFrontendURL+"/", script[1])
 		asset, err := url.Parse(assetURL)
 		if err != nil || asset.Hostname() != "d2pypzndaqisk.cloudfront.net" {
 			continue

@@ -7,7 +7,7 @@ import (
 )
 
 func (engine *nativeEngine) nativeDanmaku(ctx context.Context, input nativeInput) (DanmakuPage, error) {
-	if input.StartMS < 0 || input.DurationMS <= input.StartMS || input.DurationMS > danmakuMaxDurationMS {
+	if input.StartMS < 0 || input.DurationMS <= input.StartMS || input.DurationMS > DanmakuMaxDurationMS {
 		return DanmakuPage{}, errors.New("弹幕时间范围无效")
 	}
 	engine.mu.Lock()
@@ -40,4 +40,4 @@ func (engine *nativeEngine) nativeDanmaku(ctx context.Context, input nativeInput
 	return page, ctx.Err()
 }
 
-const danmakuMaxDurationMS = 24 * 60 * 60 * 1000
+const DanmakuMaxDurationMS = 24 * 60 * 60 * 1000

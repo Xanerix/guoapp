@@ -9,7 +9,7 @@ import (
 func huangdouVIPFlag(item map[string]any) *bool {
 	var known *bool
 	for _, key := range []string{"is_vip", "isVip"} {
-		value := strings.ToLower(mapString(item, key))
+		value := strings.ToLower(MapString(item, key))
 		if value == "true" || value == "1" || value == "y" {
 			result := true
 			return &result
@@ -19,7 +19,7 @@ func huangdouVIPFlag(item map[string]any) *bool {
 			known = &result
 		}
 	}
-	switch strings.ToLower(mapString(item, "pay_type")) {
+	switch strings.ToLower(MapString(item, "pay_type")) {
 	case "vip":
 		result := true
 		return &result
@@ -34,7 +34,7 @@ func huangdouVIPFlag(item map[string]any) *bool {
 		}
 	}
 	for _, episode := range huangdouList(item["episodes"]) {
-		if strings.EqualFold(mapString(episode, "type"), "vip") {
+		if strings.EqualFold(MapString(episode, "type"), "vip") {
 			result := true
 			return &result
 		}
@@ -55,7 +55,7 @@ func huangdouVIPEpisodes(item map[string]any) []int {
 }
 
 func huangdouEpisodeVIP(detail, episode map[string]any, seq int) bool {
-	switch strings.ToLower(mapString(episode, "type")) {
+	switch strings.ToLower(MapString(episode, "type")) {
 	case "vip":
 		return true
 	case "free":
@@ -69,8 +69,8 @@ func huangdouEpisodeVIP(detail, episode map[string]any, seq int) bool {
 	if flag := huangdouVIPFlag(episode); flag != nil {
 		return *flag
 	}
-	if strings.EqualFold(mapString(detail, "pay_type"), "vip") {
-		free, err := strconv.Atoi(mapString(detail, "free_episodes"))
+	if strings.EqualFold(MapString(detail, "pay_type"), "vip") {
+		free, err := strconv.Atoi(MapString(detail, "free_episodes"))
 		return err == nil && free >= 0 && seq > free
 	}
 	return false

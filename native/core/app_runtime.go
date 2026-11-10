@@ -40,7 +40,7 @@ type Downloader struct {
 	diagnostics   *diagnosticLog
 }
 
-func defaultConfig() Config { return Config{MaxPagesPerSort: 50, PageSize: 30, Retries: 2} }
+func DefaultConfig() Config { return Config{MaxPagesPerSort: 50, PageSize: 30, Retries: 2} }
 
 type LibraryDrama struct {
 	MetadataSchema int      `json:"metadataSchema"`
@@ -150,19 +150,19 @@ var nativeState struct {
 	engine *nativeEngine
 }
 
-func nativeText(value any) string {
+func NativeText(value any) string {
 	switch v := value.(type) {
 	case string:
 		return strings.TrimSpace(v)
 	case map[string]any:
 		for _, key := range []string{"url", "src", "cover", "image", "pic"} {
-			if text := nativeText(v[key]); text != "" {
+			if text := NativeText(v[key]); text != "" {
 				return text
 			}
 		}
 	case []any:
 		for _, entry := range v {
-			if text := nativeText(entry); text != "" {
+			if text := NativeText(entry); text != "" {
 				return text
 			}
 		}
@@ -176,33 +176,33 @@ func nativeText(value any) string {
 	return ""
 }
 
-func nativeNormalize(drama Drama) LibraryDrama {
+func NativeNormalize(drama Drama) LibraryDrama {
 	cover := ""
 	for _, value := range []any{drama.Cover, drama.CoverURL, drama.CoverURLSnake, drama.Image, drama.ImageURL, drama.ImageURLSnake, drama.Img, drama.Pic, drama.Picture, drama.Poster, drama.Thumb, drama.Thumbnail} {
-		candidate := nativeText(value)
+		candidate := NativeText(value)
 		if strings.HasPrefix(candidate, "//") {
 			candidate = "https:" + candidate
 		}
-		if isProviderHTTPMediaURL(candidate) {
+		if IsProviderHTTPMediaURL(candidate) {
 			cover = candidate
 			break
 		}
 	}
 	episodes := 0
 	for _, value := range []any{drama.TotalEpisode, drama.TotalEpisodeSnake, drama.EpisodeCount, drama.EpisodeCountSnake, drama.ChapterCount, drama.ChapterCountSnake, drama.Total, drama.Episodes} {
-		if count, _ := strconv.Atoi(nativeText(value)); count > episodes {
+		if count, _ := strconv.Atoi(NativeText(value)); count > episodes {
 			episodes = count
 		}
 	}
-	source, sourceID, _ := splitProviderDramaID(drama.ID)
+	source, sourceID, _ := SplitProviderDramaID(drama.ID)
 	return LibraryDrama{MetadataSchema: 1, ID: drama.ID, Source: source, SourceID: sourceID, Title: drama.DisplayTitle(),
-		Description: firstNonEmpty(drama.Desc, drama.Intro), Cover: cover, Episodes: episodes,
+		Description: FirstNonEmpty(drama.Desc, drama.Intro), Cover: cover, Episodes: episodes,
 		Category: nativeDramaCategory(drama), VIP: drama.VIP,
-		Heat: drama.Heat, Views: drama.Views, OnlineDate: providerReleaseDate(drama.OnlineDate), Score: nativeDramaScore(drama.Score),
+		Heat: drama.Heat, Views: drama.Views, OnlineDate: ProviderReleaseDate(drama.OnlineDate), Score: NativeDramaScore(drama.Score),
 		Tags: append([]string(nil), drama.Tags...), ReleaseStatus: drama.ReleaseStatus, Badge: drama.Badge}
 }
 
-func nativeDramaScore(score string) string {
+func NativeDramaScore(score string) string {
 	score = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(score), "评分"), "分"))
 	value, err := strconv.ParseFloat(score, 64)
 	if err != nil || !(value > 0 && value <= 10) {
@@ -212,7 +212,7 @@ func nativeDramaScore(score string) string {
 }
 
 func nativeDramaCategory(drama Drama) string {
-	category := firstNonEmpty(drama.CategoryName, drama.CategoryNameSnake, drama.TypeName, drama.TypeNameSnake, drama.SortName, drama.SortNameSnake, drama.Category)
+	category := FirstNonEmpty(drama.CategoryName, drama.CategoryNameSnake, drama.TypeName, drama.TypeNameSnake, drama.SortName, drama.SortNameSnake, drama.Category)
 	if category != "" {
 		return category
 	}
@@ -230,7 +230,7 @@ func newNativeEngine(directory, downloads string) (*nativeEngine, error) {
 	if err := os.MkdirAll(directory, 0700); err != nil {
 		return nil, err
 	}
-	cfg := defaultConfig()
+	cfg := DefaultConfig()
 	cfg.dataDir = directory
 	router := &proxyRouter{}
 	d := &Downloader{cfg: cfg, providerHosts: map[string]string{}, proxyRouter: router,
@@ -276,14 +276,14 @@ func NativeRequest(raw string) (result string) {
 	data, err := nativeDispatch(input)
 	envelope := map[string]any{"ok": err == nil}
 	if err != nil {
-		envelope["error"] = publicError(err).Error()
+		envelope["error"] = PublicError(err).Error()
 		if errors.Is(err, errNativeLocalFile) {
 			envelope["code"] = "local_media"
 		}
 		if errors.Is(err, ErrSourceLogin) {
 			envelope["code"] = "source_login"
 		}
-		var backoff *requestBackoff
+		var backoff *RequestBackoff
 		if errors.As(err, &backoff) {
 			envelope["code"] = "source_blocked"
 			envelope["retryAt"] = backoff.until
@@ -405,7 +405,7 @@ func nativeDispatch(input nativeInput) (any, error) {
 	case "catalog":
 		return engine.nativeCatalog(ctx, input)
 	case "cached":
-		if !validNativeCategory(canonicalProviderSource(input.Source), input.Category) {
+		if !ValidNativeCategory(canonicalProviderSource(input.Source), input.Category) {
 			return nil, errors.New("内容分类无效")
 		}
 		return engine.nativeCached(nativeCatalogKey(input.Source, input.Category)), nil
@@ -453,7 +453,7 @@ func (engine *nativeEngine) nativeCatalog(ctx context.Context, input nativeInput
 		return nativeCatalogResult{}, errors.New("请选择有效站源")
 	}
 	category := strings.TrimSpace(input.Category)
-	if !validNativeCategory(source, category) {
+	if !ValidNativeCategory(source, category) {
 		return nativeCatalogResult{}, errors.New("内容分类无效")
 	}
 	cacheKey := nativeCatalogKey(source, category)
@@ -484,7 +484,7 @@ func (engine *nativeEngine) nativeCatalog(ctx context.Context, input nativeInput
 			return result, err
 		}
 		for _, drama := range items {
-			result.Items = append(result.Items, nativeNormalize(drama))
+			result.Items = append(result.Items, NativeNormalize(drama))
 		}
 		result.Warning, result.HasMore = warning, more
 		return result, nil
@@ -495,7 +495,7 @@ func (engine *nativeEngine) nativeCatalog(ctx context.Context, input nativeInput
 			return result, err
 		}
 		for _, drama := range items {
-			result.Items = append(result.Items, nativeNormalize(drama))
+			result.Items = append(result.Items, NativeNormalize(drama))
 		}
 		result.HasMore = more
 		return result, nil
@@ -505,10 +505,10 @@ func (engine *nativeEngine) nativeCatalog(ctx context.Context, input nativeInput
 		items := append([]LibraryDrama{}, engine.catalogs[source]...)
 		engine.mu.Unlock()
 		for _, item := range items {
-			text := nativeSearchText(item.Title + " " + item.Description + " " + strings.Join(item.Tags, " "))
+			text := NativeSearchText(item.Title + " " + item.Description + " " + strings.Join(item.Tags, " "))
 			matches := true
 			for _, word := range strings.Fields(query) {
-				matches = matches && strings.Contains(text, nativeSearchText(word))
+				matches = matches && strings.Contains(text, NativeSearchText(word))
 			}
 			if matches {
 				result.Items = append(result.Items, item)
@@ -539,9 +539,9 @@ func (engine *nativeEngine) nativeCatalog(ctx context.Context, input nativeInput
 			known[drama.ID] = true
 		}
 		engine.mu.Unlock()
-		ctx = context.WithValue(ctx, libraryKnownKey{}, known)
+		ctx = context.WithValue(ctx, LibraryKnownKey{}, known)
 		if page > 1 {
-			ctx = context.WithValue(ctx, libraryMoreKey{}, true)
+			ctx = context.WithValue(ctx, LibraryMoreKey{}, true)
 		}
 	}
 	items, result.HasMore, err = registered.CatalogPage(ctx, page, category)
@@ -552,7 +552,7 @@ func (engine *nativeEngine) nativeCatalog(ctx context.Context, input nativeInput
 		return result, errors.New("站源暂未返回剧集，请稍后刷新")
 	}
 	if err != nil {
-		result.Warning = publicError(err).Error()
+		result.Warning = PublicError(err).Error()
 	}
 	seen := map[string]bool{}
 	for _, drama := range items {
@@ -560,14 +560,14 @@ func (engine *nativeEngine) nativeCatalog(ctx context.Context, input nativeInput
 			continue
 		}
 		seen[drama.ID] = true
-		result.Items = append(result.Items, nativeNormalize(drama))
+		result.Items = append(result.Items, NativeNormalize(drama))
 	}
 	engine.saveCatalogCache(cacheKey, &result)
 	return result, nil
 }
 
 func (engine *nativeEngine) nativeDetail(ctx context.Context, drama LibraryDrama) (any, error) {
-	source, sourceID, valid := splitProviderDramaID(drama.ID)
+	source, sourceID, valid := SplitProviderDramaID(drama.ID)
 	if !valid {
 		return nil, errors.New("剧集信息无效，请刷新剧库")
 	}
@@ -583,11 +583,11 @@ func (engine *nativeEngine) nativeDetail(ctx context.Context, drama LibraryDrama
 		return nil, errors.New("该剧暂时没有可播放的分集")
 	}
 	if raw.ID == drama.ID {
-		drama = mergeNativeDrama(drama, nativeNormalize(raw))
+		drama = MergeNativeDrama(drama, NativeNormalize(raw))
 	}
 	drama.Source, drama.SourceID, drama.Episodes = source, sourceID, len(chapters)
 	if p.Descriptor().KeepDetailEpisodes {
-		drama.Episodes = max(drama.Episodes, nativeNormalize(raw).Episodes)
+		drama.Episodes = max(drama.Episodes, NativeNormalize(raw).Episodes)
 	}
 	warning := ""
 	if err := engine.saveDetailMetadata(drama); err != nil {
@@ -597,7 +597,7 @@ func (engine *nativeEngine) nativeDetail(ctx context.Context, drama LibraryDrama
 }
 
 func (engine *nativeEngine) nativeResolve(ctx context.Context, input nativeInput) (nativePlan, error) {
-	if _, _, valid := splitProviderDramaID(input.Drama.ID); !valid {
+	if _, _, valid := SplitProviderDramaID(input.Drama.ID); !valid {
 		return nativePlan{}, errors.New("剧集信息无效")
 	}
 	if !input.Force && engine.downloads != nil {
@@ -611,7 +611,7 @@ func (engine *nativeEngine) nativeResolve(ctx context.Context, input nativeInput
 		return nativePlan{}, err
 	}
 	choice := nativePlaybackChoices(media, input.Quality)
-	if p, ok := engine.downloader.provider(sourceFromDramaID(task.DramaID)); ok {
+	if p, ok := engine.downloader.provider(SourceFromDramaID(task.DramaID)); ok {
 		if danmaku, ok := p.(DanmakuProvider); ok {
 			if series, video, valid := danmaku.DanmakuIDs(task); valid {
 				choice.danmakuSource, choice.danmakuSeries, choice.danmakuVideo = p.Descriptor().ID, series, video

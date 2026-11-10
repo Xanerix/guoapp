@@ -89,8 +89,8 @@ func (detail *detailResponse) UnmarshalJSON(body []byte) error {
 	}
 	detail.Title, detail.Name, detail.Chapters = core.Title, core.Name, core.Chapters
 	detail.Drama = Drama{
-		ID: mapString(fields, "id"), Title: core.Title, Name: core.Name,
-		Desc: mapString(fields, "desc", "description", "summary"), Intro: mapString(fields, "intro"),
+		ID: MapString(fields, "id"), Title: core.Title, Name: core.Name,
+		Desc: MapString(fields, "desc", "description", "summary"), Intro: MapString(fields, "intro"),
 		Cover: fields["cover"], CoverURL: fields["coverUrl"], CoverURLSnake: fields["cover_url"],
 		Image: fields["image"], ImageURL: fields["imageUrl"], ImageURLSnake: fields["image_url"],
 		Img: fields["img"], Pic: fields["pic"], Picture: fields["picture"], Poster: fields["poster"],
@@ -99,16 +99,16 @@ func (detail *detailResponse) UnmarshalJSON(body []byte) error {
 		EpisodeCount: fields["episodeCount"], EpisodeCountSnake: fields["episode_count"],
 		ChapterCount: fields["chapterCount"], ChapterCountSnake: fields["chapter_count"],
 		Total: fields["total"], Episodes: fields["episodes"],
-		CategoryName: mapString(fields, "categoryName", "category_name", "typeName", "type_name", "sortName", "sort_name", "category"),
-		Heat:         mapString(fields, "heat"), Views: mapString(fields, "views", "play_count"),
-		OnlineDate: mapString(fields, "onlineDate", "online_date", "issue_date"),
-		Tags:       mapStringSlice(fields, "tags"), ReleaseStatus: mapString(fields, "releaseStatus", "release_status"),
+		CategoryName: MapString(fields, "categoryName", "category_name", "typeName", "type_name", "sortName", "sort_name", "category"),
+		Heat:         MapString(fields, "heat"), Views: MapString(fields, "views", "play_count"),
+		OnlineDate: MapString(fields, "onlineDate", "online_date", "issue_date"),
+		Tags:       MapStringSlice(fields, "tags"), ReleaseStatus: MapString(fields, "releaseStatus", "release_status"),
 	}
 	if value, known := fields["vip"].(bool); known {
 		detail.Drama.VIP = &value
 	}
 	if detail.Drama.ReleaseStatus == "" {
-		detail.Drama.ReleaseStatus = releaseStatusFromRemark(mapString(fields, "remark"))
+		detail.Drama.ReleaseStatus = ReleaseStatusFromRemark(MapString(fields, "remark"))
 	}
 	return nil
 }
@@ -166,7 +166,7 @@ func decryptResponse(dataStr string, interfaceKey []byte) ([]byte, error) {
 	}
 	plain := make([]byte, len(g))
 	cipher.NewCBCDecrypter(block, p).CryptBlocks(plain, g)
-	return pkcs7Unpad(plain, block.BlockSize())
+	return Pkcs7Unpad(plain, block.BlockSize())
 }
 
 func (p *legacyProvider) fetchAPI(ctx context.Context, apiPath string, params any, out any) error {
@@ -242,10 +242,10 @@ func (p *legacyProvider) legacyRequest(ctx context.Context, method, apiPath stri
 		header := map[string]string{
 			"Accept":       "application/json",
 			"temp":         "test",
-			"X-User-Agent": access.userAgent(),
+			"X-User-Agent": access.UserAgent(),
 			"Origin":       legacyFrontendURL,
 			"Referer":      legacyFrontendURL + "/",
-			"User-Agent":   userAgent,
+			"User-Agent":   UserAgent,
 		}
 		if access.Token != "" {
 			header["Authorization"] = access.Token
@@ -253,14 +253,14 @@ func (p *legacyProvider) legacyRequest(ctx context.Context, method, apiPath stri
 		if requestBody != nil {
 			header["Content-Type"] = "application/json"
 		}
-		response, err := p.host.Fetch(ctx, HTTPRequest{Label: "黄果", Method: method, URL: base + fullPath, Header: header, Body: requestBody, Limit: providerMaxBodyBytes, Timeout: providerTimeout, FollowRedirects: true})
+		response, err := p.host.Fetch(ctx, HTTPRequest{Label: "黄果", Method: method, URL: base + fullPath, Header: header, Body: requestBody, Limit: ProviderMaxBodyBytes, Timeout: ProviderTimeout, FollowRedirects: true})
 		if err != nil {
 			lastErr = err
 			switch {
 			case response.Oversized:
 				return nil, errors.New("API 响应过大")
 			case response.Status == 0:
-				var backoff *requestBackoff
+				var backoff *RequestBackoff
 				if errors.As(err, &backoff) || ctx.Err() != nil {
 					return nil, lastErr
 				}
@@ -279,11 +279,11 @@ func (p *legacyProvider) legacyRequest(ctx context.Context, method, apiPath stri
 			continue
 		}
 		if code := strings.Trim(string(env.Code), `"`); code != "" && code != "null" && code != "200" && code != "0" {
-			message := firstNonEmpty(env.Msg, "请检查访问配置或刷新登录凭证")
+			message := FirstNonEmpty(env.Msg, "请检查访问配置或刷新登录凭证")
 			if access.Token != "" {
 				message = strings.ReplaceAll(message, access.Token, "[已隐藏]")
 			}
-			return nil, &legacyAPIError{code: truncate(code, 20), message: truncate(message, 160)}
+			return nil, &legacyAPIError{code: Truncate(code, 20), message: Truncate(message, 160)}
 		}
 		payload := env.Data
 		if apiHashEnabled(env.Hash) && len(env.Data) > 0 {

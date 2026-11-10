@@ -144,7 +144,7 @@ func (p *hongguoProvider) fetchHongguoSuggestionRecords(ctx context.Context, que
 	response, err := p.host.Fetch(ctx, HTTPRequest{
 		Label: "红果搜索联想", Method: http.MethodGet, URL: hongguoBaseURL + "/incent_resource/suggestion?" + params.Encode(),
 		Limit: hongguoSuggestionBodyLimit, Timeout: hongguoSuggestionTimeout, FollowRedirects: true,
-		Header: map[string]string{"User-Agent": userAgent, "Referer": hongguoBaseURL + "/", "Accept": "application/json", "Accept-Language": "zh-CN,zh;q=0.9"},
+		Header: map[string]string{"User-Agent": UserAgent, "Referer": hongguoBaseURL + "/", "Accept": "application/json", "Accept-Language": "zh-CN,zh;q=0.9"},
 	})
 	if response.Oversized {
 		return nil, errors.New("红果搜索联想响应过大")

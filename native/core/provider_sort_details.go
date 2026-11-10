@@ -14,7 +14,7 @@ func providerTimestampDate(value string) string {
 	if stamp > 100_000_000_000 {
 		stamp /= 1000
 	}
-	date := time.Unix(stamp, 0).In(providerChinaTime)
+	date := time.Unix(stamp, 0).In(ProviderChinaTime)
 	if date.Year() < 2000 || date.Year() > 2100 {
 		return ""
 	}

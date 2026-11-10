@@ -29,7 +29,7 @@ func nativeSourceAvailable(source string) bool {
 }
 
 func nativeDramaAvailable(drama LibraryDrama) bool {
-	source, _, valid := splitProviderDramaID(drama.ID)
+	source, _, valid := SplitProviderDramaID(drama.ID)
 	return valid && nativeSourceAvailable(source) &&
 		(drama.Source == "" || canonicalProviderSource(drama.Source) == source)
 }
@@ -38,11 +38,11 @@ func nativeChapterAvailable(drama LibraryDrama, chapter Chapter) bool {
 	if !nativeDramaAvailable(drama) {
 		return false
 	}
-	source, _, _ := splitProviderDramaID(drama.ID)
+	source, _, _ := SplitProviderDramaID(drama.ID)
 	if chapter.Source != "" && canonicalProviderSource(chapter.Source) != source {
 		return false
 	}
-	if chapterSource, _, valid := splitProviderDramaID(chapter.ID); valid && chapterSource != source {
+	if chapterSource, _, valid := SplitProviderDramaID(chapter.ID); valid && chapterSource != source {
 		return false
 	}
 	return true

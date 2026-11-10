@@ -197,7 +197,7 @@ func (p *beaboxProvider) beaboxFetch(ctx context.Context, method, address, refer
 		header["Content-Type"] = "application/json"
 		header["Accept"] = "application/json"
 	}
-	response, err := p.host.Fetch(ctx, HTTPRequest{Label: "笔盒", Method: method, URL: address, Header: header, Body: payload, Limit: providerMaxBodyBytes, Timeout: providerTimeout, FollowRedirects: true, AnyStatus: true})
+	response, err := p.host.Fetch(ctx, HTTPRequest{Label: "笔盒", Method: method, URL: address, Header: header, Body: payload, Limit: ProviderMaxBodyBytes, Timeout: ProviderTimeout, FollowRedirects: true, AnyStatus: true})
 	if err != nil {
 		return 0, nil, err
 	}
@@ -307,8 +307,8 @@ func parseBeaboxEnvelope(data []byte) (map[string]any, error) {
 }
 
 func beaboxEnvelopeData(envelope map[string]any) (any, error) {
-	if code, ok := webProviderInteger(envelope["code"], 1000000); !ok || code != 200 {
-		message := truncate(cleanText(mapString(envelope, "msg")), 180)
+	if code, ok := WebProviderInteger(envelope["code"], 1000000); !ok || code != 200 {
+		message := Truncate(CleanText(MapString(envelope, "msg")), 180)
 		if message == "" {
 			message = "请稍后重试"
 		}
@@ -348,7 +348,7 @@ func beaboxDecodeData(encoded string) (any, error) {
 	}
 	plain := make([]byte, len(raw)-aes.BlockSize)
 	cipher.NewCBCDecrypter(block, raw[:aes.BlockSize]).CryptBlocks(plain, raw[aes.BlockSize:])
-	plain, err = pkcs7Unpad(plain, aes.BlockSize)
+	plain, err = Pkcs7Unpad(plain, aes.BlockSize)
 	if err != nil {
 		return nil, errors.New("笔盒接口数据解码失败")
 	}
@@ -372,17 +372,17 @@ func decodeBeaboxJSON(data []byte) (any, error) {
 func beaboxCleanText(value string) string {
 	value = html.UnescapeString(html.UnescapeString(value))
 	value = beaboxEmExpr.ReplaceAllString(value, "")
-	return cleanText(value)
+	return CleanText(value)
 }
 
 func beaboxDramaFromMap(row map[string]any, site, fallbackCategory string) (Drama, error) {
-	id := strings.TrimSpace(mapString(row, "vodId"))
-	title := truncate(beaboxCleanText(mapString(row, "vodName")), 512)
+	id := strings.TrimSpace(MapString(row, "vodId"))
+	title := Truncate(beaboxCleanText(MapString(row, "vodName")), 512)
 	if !validBeaboxID(id) || title == "" {
 		return Drama{}, errors.New("笔盒视频资料不完整")
 	}
-	cover := providerCoverAddress(row["vodPic"], site+"/")
-	heat := mapString(row, "heatValue")
+	cover := ProviderCoverAddress(row["vodPic"], site+"/")
+	heat := MapString(row, "heatValue")
 	if heat == "0" {
 		heat = ""
 	}
@@ -392,7 +392,7 @@ func beaboxDramaFromMap(row map[string]any, site, fallbackCategory string) (Dram
 		category = tags[0]
 	}
 	return Drama{
-		ID: providerDramaID(sourceBeabox, id), Source: sourceBeabox, SourceID: id,
+		ID: ProviderDramaID(sourceBeabox, id), Source: sourceBeabox, SourceID: id,
 		Title: title, Name: title, Cover: cover, CoverURL: cover,
 		CategoryName: category, ChannelName: "笔盒", Tags: tags,
 		Heat: heat, OnlineDate: beaboxTime(row["vodTime"]),
@@ -402,7 +402,7 @@ func beaboxDramaFromMap(row map[string]any, site, fallbackCategory string) (Dram
 func beaboxTags(row map[string]any) []string {
 	var tags []string
 	seen := map[string]bool{}
-	for _, value := range mapStringSlice(row, "vodClass") {
+	for _, value := range MapStringSlice(row, "vodClass") {
 		tag := strings.TrimSpace(beaboxCleanText(value))
 		if tag == "" || len([]rune(tag)) > 48 || seen[tag] {
 			continue
@@ -417,7 +417,7 @@ func beaboxTags(row map[string]any) []string {
 }
 
 func beaboxTime(value any) string {
-	seconds, err := strconv.ParseInt(nativeText(value), 10, 64)
+	seconds, err := strconv.ParseInt(NativeText(value), 10, 64)
 	if err != nil || seconds < 946684800 || seconds > 4102444800 {
 		return ""
 	}
@@ -435,7 +435,7 @@ func (p *beaboxProvider) fetchBeaboxCategories(ctx context.Context) ([]Category,
 	}
 	var categories []Category
 	seen := map[string]bool{}
-	for _, name := range strings.Split(mapString(config, "home_tags"), ",") {
+	for _, name := range strings.Split(MapString(config, "home_tags"), ",") {
 		name = strings.TrimSpace(name)
 		id := beaboxTagPrefix + name
 		if name == "" || len([]rune(name)) > 24 || seen[id] || !validBeaboxCategory(id) {
@@ -487,7 +487,7 @@ func (p *beaboxProvider) fetchBeaboxCatalogPage(ctx context.Context, page int, c
 	if len(rows) > 500 {
 		return nil, false, errors.New("笔盒目录格式无效")
 	}
-	totalPages, pagesValid := webProviderInteger(payload["totalPages"], 1000000)
+	totalPages, pagesValid := WebProviderInteger(payload["totalPages"], 1000000)
 	hasMore := len(rows) >= beaboxPageSize
 	if pagesValid {
 		hasMore = page < totalPages
@@ -598,7 +598,7 @@ func beaboxEntryAt(row map[string]any, group string, index int) (map[string]any,
 }
 
 func beaboxEntryPlayable(entry map[string]any) bool {
-	return strings.TrimSpace(firstNonEmpty(mapString(entry, "url"), mapString(entry, "playUrl"))) != ""
+	return strings.TrimSpace(FirstNonEmpty(MapString(entry, "url"), MapString(entry, "playUrl"))) != ""
 }
 
 func beaboxEntryNeedsParse(entry, row map[string]any) bool {
@@ -628,13 +628,13 @@ func beaboxChapters(row map[string]any, site, sourceID string) []Chapter {
 			continue
 		}
 		key := best.name + ":" + strconv.Itoa(index)
-		title := strings.TrimSpace(beaboxCleanText(mapString(entry, "flag")))
+		title := strings.TrimSpace(beaboxCleanText(MapString(entry, "flag")))
 		if title == "" {
 			title = fmt.Sprintf("第 %d 集", len(chapters)+1)
 		}
 		chapters = append(chapters, Chapter{
-			ID: providerChapterID(sourceBeabox, sourceID, key), Source: sourceBeabox,
-			Title: truncate(title, 128), CurrentEpisode: rawEpisode(len(chapters) + 1),
+			ID: ProviderChapterID(sourceBeabox, sourceID, key), Source: sourceBeabox,
+			Title: Truncate(title, 128), CurrentEpisode: RawEpisode(len(chapters) + 1),
 			VideoURL: "beabox-play://" + key,
 			PageURL:  site + "/vods/" + url.PathEscape(sourceID), Referer: site + "/",
 		})
@@ -651,7 +651,7 @@ func (p *beaboxProvider) fetchBeaboxDetail(ctx context.Context, sourceID string)
 		return Drama{}, nil, err
 	}
 	row, valid := value.(map[string]any)
-	if !valid || strings.TrimSpace(mapString(row, "vodId")) != sourceID {
+	if !valid || strings.TrimSpace(MapString(row, "vodId")) != sourceID {
 		return Drama{}, nil, errors.New("笔盒详情与请求视频不符")
 	}
 	drama, err := beaboxDramaFromMap(row, site, "")
@@ -667,8 +667,8 @@ func (p *beaboxProvider) fetchBeaboxDetail(ctx context.Context, sourceID string)
 }
 
 func (p *beaboxProvider) resolveBeaboxMedia(ctx context.Context, task Task) (ProviderMedia, error) {
-	source, sourceID, valid := splitProviderDramaID(task.DramaID)
-	prefix := providerChapterID(sourceBeabox, sourceID, "")
+	source, sourceID, valid := SplitProviderDramaID(task.DramaID)
+	prefix := ProviderChapterID(sourceBeabox, sourceID, "")
 	if !valid || source != sourceBeabox || !validBeaboxID(sourceID) || !strings.HasPrefix(task.Chapter.ID, prefix) {
 		return ProviderMedia{}, errors.New("笔盒播放信息无效，请刷新详情")
 	}
@@ -694,19 +694,19 @@ func (p *beaboxProvider) resolveBeaboxMedia(ctx context.Context, task Task) (Pro
 	if !found {
 		return ProviderMedia{}, errors.New("笔盒分集已变化，请刷新详情")
 	}
-	address := firstNonEmpty(mapString(entry, "url"), mapString(entry, "playUrl"))
+	address := FirstNonEmpty(MapString(entry, "url"), MapString(entry, "playUrl"))
 	if beaboxEntryNeedsParse(entry, row) {
 		parsed, _, err := p.beaboxCall(ctx, "/vod/parse-url", nil, map[string]any{
-			"playerFrom": strings.TrimSpace(mapString(entry, "from")),
-			"playUrl":    strings.TrimSpace(mapString(entry, "playUrl")),
+			"playerFrom": strings.TrimSpace(MapString(entry, "from")),
+			"playUrl":    strings.TrimSpace(MapString(entry, "playUrl")),
 		})
 		if err != nil {
 			return ProviderMedia{}, err
 		}
 		payload, _ := parsed.(map[string]any)
-		address = mapString(payload, "url")
+		address = MapString(payload, "url")
 	}
-	if !isProviderHTTPMediaURL(address) {
+	if !IsProviderHTTPMediaURL(address) {
 		return ProviderMedia{}, errors.New("笔盒未返回有效播放地址，请刷新详情后重试")
 	}
 	return p.host.PrepareWebMedia(ctx, ProviderMedia{URL: address, Referer: site + "/"}, "笔盒")
@@ -741,7 +741,7 @@ func init() {
 
 func (p *beaboxProvider) Descriptor() SourceDescriptor { return beaboxDescriptor }
 
-func (p *beaboxProvider) BaseURL() string { return firstNonEmpty(p.configured, beaboxBaseURL) }
+func (p *beaboxProvider) BaseURL() string { return FirstNonEmpty(p.configured, beaboxBaseURL) }
 
 func (p *beaboxProvider) Categories(ctx context.Context, force bool) ([]Category, error) {
 	return p.fetchBeaboxCategories(ctx)

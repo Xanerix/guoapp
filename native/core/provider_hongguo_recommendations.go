@@ -109,7 +109,7 @@ func (p *hongguoProvider) fetchHongguoRecommendations(ctx context.Context, query
 	data := nestedMap(result, "data")
 	rows, valid := data["video_data"].([]any)
 	hasMore, paginationOK := data["has_more"].(bool)
-	next, parseErr := strconv.Atoi(mapString(data, "next_offset"))
+	next, parseErr := strconv.Atoi(MapString(data, "next_offset"))
 	if !valid || !paginationOK || hasMore && parseErr != nil {
 		return page, errors.New("红果推荐数据格式异常，已保留上次位置")
 	}
@@ -132,7 +132,7 @@ func (p *hongguoProvider) fetchHongguoRecommendations(ctx context.Context, query
 	if hasMore && (next <= query.Offset || next > 1_000_000 || len(page.Dramas) == 0) {
 		return hongguoRecommendationPage{}, errors.New("红果推荐分页未前进，可重试或重新获取")
 	}
-	page.NextOffset, page.HasMore, page.SessionID = next, hasMore, mapString(data, "session_id")
+	page.NextOffset, page.HasMore, page.SessionID = next, hasMore, MapString(data, "session_id")
 	if !hasMore && (next < query.Offset || next > 1_000_000) {
 		page.NextOffset = query.Offset
 	}
@@ -160,11 +160,11 @@ func (p *hongguoProvider) fetchHongguoCellPage(ctx context.Context, page hongguo
 	}
 	data := nestedMap(result, "data")
 	hasMore, paginationOK := data["has_more"].(bool)
-	next, parseErr := strconv.Atoi(mapString(data, "next_offset"))
+	next, parseErr := strconv.Atoi(MapString(data, "next_offset"))
 	if !paginationOK || hasMore && (parseErr != nil || next <= offset) {
 		return hongguoCellPage{}, errors.New("红果推荐数据格式异常，已保留上次位置")
 	}
-	return hongguoCellPage{cards: anyList(nestedMap(data, "cell_view")["cell_data"]), next: next, hasMore: hasMore, session: mapString(data, "session_id")}, nil
+	return hongguoCellPage{cards: anyList(nestedMap(data, "cell_view")["cell_data"]), next: next, hasMore: hasMore, session: MapString(data, "session_id")}, nil
 }
 
 func (p *hongguoProvider) fetchHongguoFeedRecommendations(ctx context.Context, query hongguoRecommendationQuery, tabType, bottomTab string) (hongguoRecommendationPage, error) {
@@ -191,7 +191,7 @@ func (p *hongguoProvider) fetchHongguoFeedRecommendations(ctx context.Context, q
 				return hongguoRecommendationPage{}, err
 			}
 			cards = primary.cards
-			page.HasMore, page.SessionID = primary.hasMore, firstNonEmpty(primary.session, page.SessionID)
+			page.HasMore, page.SessionID = primary.hasMore, FirstNonEmpty(primary.session, page.SessionID)
 			if primary.hasMore {
 				page.NextOffset = primary.next
 			}
@@ -218,7 +218,7 @@ func (p *hongguoProvider) fetchHongguoFeedRecommendations(ctx context.Context, q
 			}
 			var tab map[string]any
 			for _, item := range anyList(nestedMap(result, "data")["tab_item"]) {
-				if row, _ := item.(map[string]any); mapString(row, "tab_type") == tabType {
+				if row, _ := item.(map[string]any); MapString(row, "tab_type") == tabType {
 					tab = row
 				}
 			}
@@ -226,14 +226,14 @@ func (p *hongguoProvider) fetchHongguoFeedRecommendations(ctx context.Context, q
 				return hongguoRecommendationPage{}, errors.New("红果推荐数据格式异常，已保留上次位置")
 			}
 			if page.SessionID == "" {
-				page.SessionID = mapString(tab, "session_id")
+				page.SessionID = MapString(tab, "session_id")
 			}
 			page.NextOffset++
 			for _, cell := range anyList(tab["cell_data"]) {
 				cellMap, _ := cell.(map[string]any)
 				cards = append(cards, anyList(cellMap["cell_data"])...)
-				id, next := mapString(cellMap, "cell_id"), mapString(cellMap, "next_offset")
-				if offset, err := strconv.Atoi(next); err == nil && offset > 0 && mapString(cellMap, "show_type") == hongguoDoubleColFeedShowType && hongguoNumericID.MatchString(id) {
+				id, next := MapString(cellMap, "cell_id"), MapString(cellMap, "next_offset")
+				if offset, err := strconv.Atoi(next); err == nil && offset > 0 && MapString(cellMap, "show_type") == hongguoDoubleColFeedShowType && hongguoNumericID.MatchString(id) {
 					page.CellID, page.ShowType, page.NextOffset = id, hongguoDoubleColFeedShowType, offset
 				}
 			}

@@ -41,7 +41,7 @@ func (manager *nativeDownloads) transferMedia(ctx context.Context, job nativeDow
 	ctx = providerMediaContext(ctx, media.Credentials)
 	bundle := nativeDownloadBundle{quality: media.Quality, playlists: map[string][]byte{}}
 	parsed, err := url.Parse(media.URL)
-	if err != nil || !isProviderHTTPMediaURL(media.URL) {
+	if err != nil || !IsProviderHTTPMediaURL(media.URL) {
 		return nativeDownloadResult{}, errors.New("下载地址无效")
 	}
 	hls := media.Playlist != "" || strings.HasSuffix(strings.ToLower(parsed.Path), ".m3u8")
@@ -174,7 +174,7 @@ func (manager *nativeDownloads) downloadFile(ctx context.Context, address, refer
 }
 
 func (manager *nativeDownloads) downloadFileAttempt(ctx context.Context, address, referer, target string, key bool, offset int64, old nativeDownloadFileState, progress func(int64, int64)) (int64, bool, error) {
-	if !isProviderHTTPMediaURL(address) {
+	if !IsProviderHTTPMediaURL(address) {
 		return 0, false, errors.New("媒体下载地址无效")
 	}
 	requestCtx, cancel := context.WithCancel(ctx)
@@ -185,7 +185,7 @@ func (manager *nativeDownloads) downloadFileAttempt(ctx context.Context, address
 	if err != nil {
 		return 0, false, err
 	}
-	request.Header.Set("User-Agent", userAgent)
+	request.Header.Set("User-Agent", UserAgent)
 	request.Header.Set("Referer", referer)
 	request.Header.Set("Accept-Encoding", "identity")
 	if offset > 0 {

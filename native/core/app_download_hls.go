@@ -171,7 +171,7 @@ func (manager *nativeDownloads) downloadBundle(ctx context.Context, media Provid
 				if err != nil || len(data) != 16 {
 					return "", errors.New("内嵌视频密钥无效")
 				}
-			} else if !isProviderHTTPMediaURL(resolved) {
+			} else if !IsProviderHTTPMediaURL(resolved) {
 				return "", errors.New("分片地址不支持下载")
 			}
 			extension := strings.ToLower(path.Ext(relative.Path))

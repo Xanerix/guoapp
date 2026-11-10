@@ -37,7 +37,7 @@ func TestHuangguoAILinesCoverEveryMirrorDomain(t *testing.T) {
 	}
 	for _, candidate := range candidates {
 		parsed, err := url.Parse(candidate)
-		if err != nil || parsed.Path != "/api/edge/request" || providerSourceForURL(candidate) != sourceHuangguoAI {
+		if err != nil || parsed.Path != "/api/edge/request" || ProviderSourceForURL(candidate) != sourceHuangguoAI {
 			t.Fatal("a line was not recognized as huangguoai")
 		}
 	}
@@ -52,7 +52,7 @@ func TestHuangguoAILinesCoverEveryMirrorDomain(t *testing.T) {
 	if len(generated) != len(huangguoAIMirrorDomains) {
 		t.Fatal("generated lines skipped a mirror domain")
 	}
-	if providerSourceForURL("https://evil-lbvrhyir.cc/") != "" || providerSourceForURL("https://lbvrhyir.cc.example.test/") != "" {
+	if ProviderSourceForURL("https://evil-lbvrhyir.cc/") != "" || ProviderSourceForURL("https://lbvrhyir.cc.example.test/") != "" {
 		t.Fatal("an unrelated host was treated as a huangguoai line")
 	}
 }

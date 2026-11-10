@@ -244,7 +244,7 @@ func (client *jinguoAPIClient) requestBase(ctx context.Context, base, method, ro
 		"Accept":       "application/json",
 		"temp":         "test",
 		"X-User-Agent": fmt.Sprintf(jinguoXUserAgent, deviceID),
-		"User-Agent":   userAgent,
+		"User-Agent":   UserAgent,
 	}
 	if token != "" {
 		header["Authorization"] = token
@@ -252,7 +252,7 @@ func (client *jinguoAPIClient) requestBase(ctx context.Context, base, method, ro
 	if body != nil {
 		header["Content-Type"] = "application/json"
 	}
-	response, err := client.host.Fetch(ctx, HTTPRequest{Label: "禁果", Method: method, URL: base + route, Header: header, Body: body, Limit: providerMaxBodyBytes, Timeout: providerTimeout, FollowRedirects: true})
+	response, err := client.host.Fetch(ctx, HTTPRequest{Label: "禁果", Method: method, URL: base + route, Header: header, Body: body, Limit: ProviderMaxBodyBytes, Timeout: ProviderTimeout, FollowRedirects: true})
 	if err != nil {
 		if response.Status == 0 || response.Status >= 500 || response.Blocked {
 			return nil, &jinguoLineError{err}
@@ -265,11 +265,11 @@ func (client *jinguoAPIClient) requestBase(ctx context.Context, base, method, ro
 		return nil, errors.New("禁果返回的数据格式无效")
 	}
 	if code := strings.Trim(string(envelope.Code), `"`); code != "200" {
-		message := firstNonEmpty(envelope.Msg, "未知错误")
+		message := FirstNonEmpty(envelope.Msg, "未知错误")
 		if token != "" {
 			message = strings.ReplaceAll(message, token, "[已隐藏]")
 		}
-		return nil, &jinguoAPIError{code: truncate(code, 20), message: truncate(message, 160)}
+		return nil, &jinguoAPIError{code: Truncate(code, 20), message: Truncate(message, 160)}
 	}
 	payload := envelope.Data
 	if apiHashEnabled(envelope.Hash) && len(payload) > 0 {

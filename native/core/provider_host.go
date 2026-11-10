@@ -119,7 +119,7 @@ func (d *Downloader) Fetch(ctx context.Context, input HTTPRequest) (HTTPResponse
 	if limit <= 0 {
 		limit = 4 << 20
 	}
-	if background, _ := ctx.Value(backgroundCatalogKey{}).(bool); background && (timeout <= 0 || timeout > 8*time.Second) {
+	if background, _ := ctx.Value(BackgroundCatalogKey{}).(bool); background && (timeout <= 0 || timeout > 8*time.Second) {
 		timeout = 8 * time.Second
 	}
 	if timeout > 0 {
@@ -157,11 +157,11 @@ func (d *Downloader) Fetch(ctx context.Context, input HTTPRequest) (HTTPResponse
 	}
 	transport := *base
 	if !input.FollowRedirects {
-		origin := providerMediaOrigin(request.URL)
+		origin := ProviderMediaOrigin(request.URL)
 		transport.Jar = nil
 		previousRedirect := transport.CheckRedirect
 		transport.CheckRedirect = func(next *http.Request, via []*http.Request) error {
-			if len(via) >= 5 || providerMediaOrigin(next.URL) != origin {
+			if len(via) >= 5 || ProviderMediaOrigin(next.URL) != origin {
 				return fmt.Errorf("%s接口重定向地址异常", input.Label)
 			}
 			if previousRedirect != nil {
@@ -172,7 +172,7 @@ func (d *Downloader) Fetch(ctx context.Context, input HTTPRequest) (HTTPResponse
 	}
 	response, err := transport.Do(request)
 	if err != nil {
-		return HTTPResponse{}, fmt.Errorf("%s连接失败：%w", input.Label, publicError(err))
+		return HTTPResponse{}, fmt.Errorf("%s连接失败：%w", input.Label, PublicError(err))
 	}
 	defer response.Body.Close()
 	data, readErr := io.ReadAll(io.LimitReader(response.Body, limit+1))
@@ -272,9 +272,9 @@ func (d *Downloader) directClient() *http.Client {
 	return d.direct
 }
 
-const providerMaxBodyBytes = 20 * 1024 * 1024
+const ProviderMaxBodyBytes = 20 * 1024 * 1024
 
-const providerTimeout = 12 * time.Second
+const ProviderTimeout = 12 * time.Second
 
 const reservationLifetime = time.Minute
 

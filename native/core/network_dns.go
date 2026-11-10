@@ -99,7 +99,7 @@ func (resolver *dnsResolver) query(ctx context.Context, host, subnet string) (dn
 		request.Header.Set("Accept", "application/dns-json")
 		response, err := resolver.client.Do(request)
 		if err != nil {
-			lastErr = publicError(err)
+			lastErr = PublicError(err)
 			continue
 		}
 		var payload struct {

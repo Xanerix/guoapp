@@ -37,7 +37,7 @@ func (d *Downloader) providerBaseURL(source string) string {
 	return "https://d2pypzndaqisk.cloudfront.net"
 }
 
-func providerSourceForURL(raw string) string {
+func ProviderSourceForURL(raw string) string {
 	parsed, err := url.Parse(raw)
 	if err != nil {
 		return ""
@@ -50,7 +50,7 @@ func providerSourceForURL(raw string) string {
 }
 
 func (d *Downloader) providerURLCandidates(raw string) []string {
-	source := providerSourceForURL(raw)
+	source := ProviderSourceForURL(raw)
 	if descriptor, registered := registeredDescriptor(source); source == "" || registered && descriptor.NoHostRotation {
 		return []string{raw}
 	}
@@ -66,10 +66,10 @@ func (d *Downloader) providerURLCandidates(raw string) []string {
 			candidates = append(candidates, candidate)
 		}
 	}
-	add(rehostProviderURL(parsed, preferred))
+	add(RehostProviderURL(parsed, preferred))
 	configured := d.providerBaseURL(source)
-	add(rehostProviderURL(parsed, configured))
-	if providerSourceForURL(configured) == "" {
+	add(RehostProviderURL(parsed, configured))
+	if ProviderSourceForURL(configured) == "" {
 		return candidates
 	}
 	rotated := []string{raw}
@@ -88,7 +88,7 @@ func (d *Downloader) resolveProviderMedia(ctx context.Context, task Task) (Provi
 	chapter := task.Chapter
 	chapter.Source = canonicalProviderSource(chapter.Source)
 	if chapter.Source == "" {
-		chapter.Source = sourceFromDramaID(task.DramaID)
+		chapter.Source = SourceFromDramaID(task.DramaID)
 	}
 	p, ok := d.provider(chapter.Source)
 	if !ok {
@@ -98,7 +98,7 @@ func (d *Downloader) resolveProviderMedia(ctx context.Context, task Task) (Provi
 }
 
 func (d *Downloader) finishProviderMedia(ctx context.Context, media ProviderMedia, source string) (ProviderMedia, error) {
-	if !isProviderHTTPMediaURL(media.URL) {
+	if !IsProviderHTTPMediaURL(media.URL) {
 		return ProviderMedia{}, fmt.Errorf("%s 未返回有效播放地址，请刷新章节或确认站点访问权限", source)
 	}
 	parsed, _ := url.Parse(media.URL)
@@ -110,7 +110,7 @@ func (d *Downloader) finishProviderMedia(ctx context.Context, media ProviderMedi
 		if !strings.HasPrefix(strings.TrimSpace(strings.TrimPrefix(playlist, "\ufeff")), "#EXTM3U") {
 			return ProviderMedia{}, fmt.Errorf("站点未返回有效 M3U8，可能需要登录或链接已失效")
 		}
-		if duration := m3u8Duration(playlist); duration > 0 {
+		if duration := M3u8Duration(playlist); duration > 0 {
 			media.Duration = duration
 		}
 		media.Playlist = playlist
@@ -151,7 +151,7 @@ func (d *Downloader) fetchProviderRequest(ctx context.Context, rawURL, referer s
 					return "", ctx.Err()
 				}
 			}
-			timeout := providerTimeout
+			timeout := ProviderTimeout
 			if len(candidates) > 1 {
 				timeout = 5 * time.Second
 			}
@@ -167,11 +167,11 @@ func (d *Downloader) fetchProviderRequest(ctx context.Context, rawURL, referer s
 				req.Header.Set("Content-Type", "application/json")
 				req.Header.Set("Accept", "application/json")
 			}
-			req.Header.Set("User-Agent", userAgent)
+			req.Header.Set("User-Agent", UserAgent)
 			if agent, ok := ctx.Value(providerTextUserAgentKey{}).(string); ok && agent != "" {
 				req.Header.Set("User-Agent", agent)
 			}
-			if providerSourceForURL(rawURL) != "" {
+			if ProviderSourceForURL(rawURL) != "" {
 				req.Header.Set("Referer", providerRefererForURL(candidate, referer))
 			} else {
 				req.Header.Set("Referer", referer)
@@ -186,13 +186,13 @@ func (d *Downloader) fetchProviderRequest(ctx context.Context, rawURL, referer s
 			resp, err := d.doCatalogRequestWithTimeout(req, timeout)
 			if err != nil {
 				lastErr = err
-				var backoff *requestBackoff
+				var backoff *RequestBackoff
 				if errors.As(err, &backoff) {
 					break
 				}
 				continue
 			}
-			body, readErr := io.ReadAll(io.LimitReader(resp.Body, providerMaxBodyBytes+1))
+			body, readErr := io.ReadAll(io.LimitReader(resp.Body, ProviderMaxBodyBytes+1))
 			closeErr := resp.Body.Close()
 			if readErr != nil {
 				lastErr = readErr
@@ -202,8 +202,8 @@ func (d *Downloader) fetchProviderRequest(ctx context.Context, rawURL, referer s
 				lastErr = closeErr
 				continue
 			}
-			if len(body) > providerMaxBodyBytes {
-				lastErr = fmt.Errorf("response exceeds %d bytes", providerMaxBodyBytes)
+			if len(body) > ProviderMaxBodyBytes {
+				lastErr = fmt.Errorf("response exceeds %d bytes", ProviderMaxBodyBytes)
 				continue
 			}
 			if resp.StatusCode < 200 || resp.StatusCode >= 300 || catalogResponseBlockReason(resp, body) != "" {
@@ -213,7 +213,7 @@ func (d *Downloader) fetchProviderRequest(ctx context.Context, rawURL, referer s
 				}
 				continue
 			}
-			if source := providerSourceForURL(rawURL); source != "" {
+			if source := ProviderSourceForURL(rawURL); source != "" {
 				effectiveURL := req.URL
 				if resp.Request != nil {
 					effectiveURL = resp.Request.URL
@@ -232,7 +232,7 @@ func (d *Downloader) fetchProviderRequest(ctx context.Context, rawURL, referer s
 	return "", lastErr
 }
 
-func rehostProviderURL(u *url.URL, mirror string) string {
+func RehostProviderURL(u *url.URL, mirror string) string {
 	mu, err := url.Parse(mirror)
 	if err != nil || mu.Host == "" {
 		return ""
@@ -249,7 +249,7 @@ func providerRefererForURL(candidate, fallback string) string {
 	if err != nil || target.Host == "" || previousErr != nil || previous.Host == "" {
 		return fallback
 	}
-	if source := providerSourceForURL(fallback); source != "" && (source == providerSourceForURL(candidate) || providerSourceForURL(candidate) == "") {
+	if source := ProviderSourceForURL(fallback); source != "" && (source == ProviderSourceForURL(candidate) || ProviderSourceForURL(candidate) == "") {
 		previous.Scheme, previous.Host = target.Scheme, target.Host
 	}
 	previous.Fragment = ""
@@ -269,7 +269,7 @@ func (d *Downloader) repairCover(drama LibraryDrama) string {
 	if d == nil {
 		return drama.Cover
 	}
-	for _, source := range []string{drama.Source, sourceFromDramaID(drama.ID)} {
+	for _, source := range []string{drama.Source, SourceFromDramaID(drama.ID)} {
 		if p, ok := d.provider(source); ok {
 			if repairer, ok := p.(CoverRepairer); ok {
 				return repairer.RepairCover(drama)

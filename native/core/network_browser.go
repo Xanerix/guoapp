@@ -134,9 +134,9 @@ func huangguoBrowserHeaders(request *http.Request) fhttp.Header {
 		fhttp.HeaderOrderKey:        {"sec-ch-ua", "sec-ch-ua-mobile", "sec-ch-ua-platform", "upgrade-insecure-requests", "user-agent", "accept", "sec-fetch-site", "sec-fetch-mode", "sec-fetch-user", "sec-fetch-dest", "referer", "accept-encoding", "accept-language", "cookie"},
 	}
 	if mode := request.Header.Get("Sec-Fetch-Mode"); mode != "" && mode != "navigate" {
-		headers["accept"] = []string{firstNonEmpty(request.Header.Get("Accept"), "*/*")}
+		headers["accept"] = []string{FirstNonEmpty(request.Header.Get("Accept"), "*/*")}
 		headers["sec-fetch-mode"] = []string{mode}
-		headers["sec-fetch-dest"] = []string{firstNonEmpty(request.Header.Get("Sec-Fetch-Dest"), "empty")}
+		headers["sec-fetch-dest"] = []string{FirstNonEmpty(request.Header.Get("Sec-Fetch-Dest"), "empty")}
 		delete(headers, "upgrade-insecure-requests")
 		delete(headers, "sec-fetch-user")
 	}
@@ -169,7 +169,7 @@ func (transport *huangguoBrowserTransport) RoundTrip(request *http.Request) (*ht
 	}
 	client, err := transport.client(request)
 	if err != nil {
-		return nil, fmt.Errorf("黄果浏览器客户端初始化失败：%w", publicError(err))
+		return nil, fmt.Errorf("黄果浏览器客户端初始化失败：%w", PublicError(err))
 	}
 	upstream, err := fhttp.NewRequestWithContext(request.Context(), request.Method, request.URL.String(), request.Body)
 	if err != nil {
@@ -184,7 +184,7 @@ func (transport *huangguoBrowserTransport) RoundTrip(request *http.Request) (*ht
 		if response != nil && response.Body != nil {
 			response.Body.Close()
 		}
-		return nil, publicError(err)
+		return nil, PublicError(err)
 	}
 	result := &http.Response{
 		Status: response.Status, StatusCode: response.StatusCode,
@@ -206,8 +206,8 @@ func (transport *huangguoBrowserTransport) RoundTrip(request *http.Request) (*ht
 		}
 		transport.record(diagnosticEvent{Event: "network.browser_request", Level: level, Source: transport.source(request.URL),
 			Host: request.URL.Hostname(), HTTPStatus: result.StatusCode, Client: huangguoBrowserProfile,
-			Protocol: result.Proto, CFRay: truncate(result.Header.Get("Cf-Ray"), 128),
-			ResponseType: truncate(result.Header.Get("Content-Type"), 128), Message: "黄果浏览器指纹请求完成"})
+			Protocol: result.Proto, CFRay: Truncate(result.Header.Get("Cf-Ray"), 128),
+			ResponseType: Truncate(result.Header.Get("Content-Type"), 128), Message: "黄果浏览器指纹请求完成"})
 	}
 	return result, nil
 }

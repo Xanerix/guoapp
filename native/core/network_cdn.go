@@ -92,7 +92,7 @@ func (transport *cdnTransport) RoundTrip(request *http.Request) (*http.Response,
 			lastErr = err
 		}
 	}
-	return nil, fmt.Errorf("资源 %s 连接失败（已尝试备用 DNS 地址）: %w", request.URL.Hostname(), publicError(lastErr))
+	return nil, fmt.Errorf("资源 %s 连接失败（已尝试备用 DNS 地址）: %w", request.URL.Hostname(), PublicError(lastErr))
 }
 
 func (transport *cdnTransport) roundTripAddress(request *http.Request, proxyURL *url.URL, routeKey, address string) (*http.Response, error) {

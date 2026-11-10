@@ -64,7 +64,7 @@ func TestHongguoDanmakuPreservesSourceTimeline(t *testing.T) {
 }
 
 func TestHongguoDanmakuRejectsMalformedWindowsAndBoundsText(t *testing.T) {
-	for _, result := range []map[string]any{nil, {"data": map[string]any{"data_list": []any{}}}, danmakuTestResult(0, []any{}), danmakuTestResult(danmakuMaxDurationMS+1, []any{})} {
+	for _, result := range []map[string]any{nil, {"data": map[string]any{"data_list": []any{}}}, danmakuTestResult(0, []any{}), danmakuTestResult(DanmakuMaxDurationMS+1, []any{})} {
 		if _, err := parseHongguoDanmaku(result, danmakuTestVideo, 0, 160000); err == nil {
 			t.Fatal("malformed response became a successful empty page")
 		}
@@ -96,7 +96,7 @@ func TestHongguoDanmakuCacheAndConcurrentRequests(t *testing.T) {
 		if request.URL.Path != "/novel/commentapi/comment/list/"+danmakuTestVideo+"/v1/" || request.Method != http.MethodPost {
 			t.Error("wrong danmaku path")
 		}
-		if request.Context().Value(backgroundCatalogKey{}) != true || request.Header.Get("Comment-Source") != "601" || request.Header.Get("Server-Channel") != "1000" || request.Header.Get("Cookie") != "" {
+		if request.Context().Value(BackgroundCatalogKey{}) != true || request.Header.Get("Comment-Source") != "601" || request.Header.Get("Server-Channel") != "1000" || request.Header.Get("Cookie") != "" {
 			t.Error("danmaku must be anonymous and low priority")
 		}
 		for _, name := range []string{"X-Argus", "X-Ladon", "X-Gorgon", "X-Khronos"} {
@@ -237,7 +237,7 @@ func TestNativeDanmakuUsesPlaybackIdentityAcrossRoutes(t *testing.T) {
 	}
 	for _, bad := range []nativeInput{
 		{PlaybackSession: second.Session, DurationMS: 0},
-		{PlaybackSession: second.Session, DurationMS: danmakuMaxDurationMS + 1},
+		{PlaybackSession: second.Session, DurationMS: DanmakuMaxDurationMS + 1},
 		{PlaybackSession: second.Session, StartMS: -1, DurationMS: 60000},
 		{PlaybackSession: second.Session, StartMS: 60000, DurationMS: 60000},
 	} {

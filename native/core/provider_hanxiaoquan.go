@@ -88,7 +88,7 @@ func hanxiaoquanFixURL(raw string) string {
 		raw = hanxiaoquanSiteBaseURL + raw
 	}
 	parsed, err := url.Parse(raw)
-	if err != nil || !validNativeCoverURL(parsed) {
+	if err != nil || !ValidNativeCoverURL(parsed) {
 		return ""
 	}
 	return parsed.String()
@@ -141,10 +141,10 @@ func parseHanxiaoquanCards(body string) []Drama {
 		}
 		seen[id] = true
 		items = append(items, Drama{
-			ID: providerDramaID(sourceHanxiaoquan, id), Source: sourceHanxiaoquan, SourceID: id,
-			Title: truncate(title, 512), Name: truncate(title, 512),
+			ID: ProviderDramaID(sourceHanxiaoquan, id), Source: sourceHanxiaoquan, SourceID: id,
+			Title: Truncate(title, 512), Name: Truncate(title, 512),
 			Cover: cover, CoverURL: cover, ChannelName: "韩小圈",
-			CategoryName: "韩剧", Remark: truncate(note, 64),
+			CategoryName: "韩剧", Remark: Truncate(note, 64),
 		})
 		if len(items) > 500 {
 			break
@@ -260,10 +260,10 @@ func hanxiaoquanPickPlaylist(body string) (string, []Chapter, error) {
 				epTitle = fmt.Sprintf("第 %d 集", order)
 			}
 			chapters = append(chapters, Chapter{
-				ID:             providerChapterID(sourceHanxiaoquan, "", playURL),
+				ID:             ProviderChapterID(sourceHanxiaoquan, "", playURL),
 				Source:         sourceHanxiaoquan,
-				Title:          truncate(epTitle, 128),
-				CurrentEpisode: rawEpisode(order),
+				Title:          Truncate(epTitle, 128),
+				CurrentEpisode: RawEpisode(order),
 				VideoURL:       "hanxiaoquan-play://" + playURL,
 				PageURL:        playURL,
 				Referer:        hanxiaoquanSiteBaseURL + "/",
@@ -339,12 +339,12 @@ func (p *hanxiaoquanProvider) fetchHanxiaoquanDetail(ctx context.Context, source
 	description = reHanxiaoquanAdText.ReplaceAllString(description, "")
 
 	drama := Drama{
-		ID: providerDramaID(sourceHanxiaoquan, sourceID), Source: sourceHanxiaoquan, SourceID: sourceID,
-		Title: truncate(name, 512), Name: truncate(name, 512),
-		Desc: truncate(description, 12000), Intro: truncate(description, 12000),
+		ID: ProviderDramaID(sourceHanxiaoquan, sourceID), Source: sourceHanxiaoquan, SourceID: sourceID,
+		Title: Truncate(name, 512), Name: Truncate(name, 512),
+		Desc: Truncate(description, 12000), Intro: Truncate(description, 12000),
 		Cover: cover, CoverURL: cover, ChannelName: "韩小圈", CategoryName: "韩剧",
-		Remark:     truncate(firstNonEmpty(fields["更新"], fields["状态"]), 64),
-		OnlineDate: truncate(fields["更新"], 32),
+		Remark:     Truncate(FirstNonEmpty(fields["更新"], fields["状态"]), 64),
+		OnlineDate: Truncate(fields["更新"], 32),
 	}
 	tags := make([]string, 0, 8)
 	seenTag := map[string]bool{}
@@ -359,10 +359,10 @@ func (p *hanxiaoquanProvider) fetchHanxiaoquanDetail(ctx context.Context, source
 		addTag(year + "年")
 	}
 	if director := fields["导演"]; director != "" {
-		addTag("导演 " + truncate(director, 32))
+		addTag("导演 " + Truncate(director, 32))
 	}
 	if actors := fields["主演"]; actors != "" {
-		addTag("主演 " + truncate(actors, 48))
+		addTag("主演 " + Truncate(actors, 48))
 	}
 	drama.Tags = tags
 
@@ -371,15 +371,15 @@ func (p *hanxiaoquanProvider) fetchHanxiaoquanDetail(ctx context.Context, source
 		return Drama{}, nil, err
 	}
 	for index := range chapters {
-		chapters[index].ID = providerChapterID(sourceHanxiaoquan, sourceID, chapters[index].PageURL)
+		chapters[index].ID = ProviderChapterID(sourceHanxiaoquan, sourceID, chapters[index].PageURL)
 	}
 	drama.TotalEpisode, drama.EpisodeCount = len(chapters), len(chapters)
 	return drama, chapters, nil
 }
 
 func (p *hanxiaoquanProvider) resolveHanxiaoquanMedia(ctx context.Context, task Task) (ProviderMedia, error) {
-	source, sourceID, valid := splitProviderDramaID(task.DramaID)
-	prefix := providerChapterID(sourceHanxiaoquan, sourceID, "")
+	source, sourceID, valid := SplitProviderDramaID(task.DramaID)
+	prefix := ProviderChapterID(sourceHanxiaoquan, sourceID, "")
 	if !valid || source != sourceHanxiaoquan || !hanxiaoquanNumericID(sourceID) || !strings.HasPrefix(task.Chapter.ID, prefix) {
 		return ProviderMedia{}, errors.New("韩小圈播放分集信息无效，请刷新详情")
 	}
@@ -407,7 +407,7 @@ func (p *hanxiaoquanProvider) resolveHanxiaoquanMedia(ctx context.Context, task 
 	if strings.HasPrefix(address, "//") {
 		address = "https:" + address
 	}
-	if !isProviderHTTPMediaURL(address) {
+	if !IsProviderHTTPMediaURL(address) {
 		return ProviderMedia{}, errors.New("韩小圈播放地址无效")
 	}
 	parsed, err := url.Parse(address)

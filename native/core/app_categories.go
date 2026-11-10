@@ -19,7 +19,7 @@ func nativeCatalogKey(source, category string) string {
 	return source
 }
 
-func validNativeCategory(source, category string) bool {
+func ValidNativeCategory(source, category string) bool {
 	if category == "" {
 		return true
 	}
@@ -48,7 +48,7 @@ func (engine *nativeEngine) nativeCategories(ctx context.Context, source string,
 	}
 	categories, err := p.Categories(ctx, force)
 	all = append(all, categories...)
-	if errors.Is(err, errCategoriesIncomplete) {
+	if errors.Is(err, ErrCategoriesIncomplete) {
 		return all, nil
 	}
 	if err != nil {

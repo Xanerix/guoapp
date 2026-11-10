@@ -15,14 +15,14 @@ func (engine *nativeEngine) nativeNeedsExtraMetadata(drama LibraryDrama) bool {
 }
 
 func (engine *nativeEngine) nativeExtraMetadata(ctx context.Context, drama LibraryDrama) (LibraryDrama, error) {
-	source, id, valid := splitProviderDramaID(drama.ID)
+	source, id, valid := SplitProviderDramaID(drama.ID)
 	if !valid {
 		return drama, errors.New("剧集信息无效")
 	}
 	if !engine.nativeNeedsExtraMetadata(drama) {
 		return drama, nil
 	}
-	ctx, cancel := context.WithTimeout(context.WithValue(ctx, backgroundCatalogKey{}, true), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.WithValue(ctx, BackgroundCatalogKey{}, true), 15*time.Second)
 	defer cancel()
 	p, ok := engine.downloader.provider(source)
 	if !ok {
@@ -32,7 +32,7 @@ func (engine *nativeEngine) nativeExtraMetadata(ctx context.Context, drama Libra
 }
 
 func (engine *nativeEngine) nativeFollowCheck(ctx context.Context, drama LibraryDrama) (any, error) {
-	ctx, cancel := context.WithTimeout(context.WithValue(ctx, backgroundCatalogKey{}, true), 20*time.Second)
+	ctx, cancel := context.WithTimeout(context.WithValue(ctx, BackgroundCatalogKey{}, true), 20*time.Second)
 	defer cancel()
 	result, err := engine.nativeDetail(ctx, drama)
 	if err != nil {

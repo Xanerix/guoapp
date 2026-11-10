@@ -84,10 +84,10 @@ func (client *yeguoAPIClient) siteURL() string {
 
 func validYeguoSite(raw string) string {
 	address, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || !isProviderHTTPMediaURL(raw) || address.User != nil || address.RawQuery != "" || address.Fragment != "" || address.Host == "" {
+	if err != nil || !IsProviderHTTPMediaURL(raw) || address.User != nil || address.RawQuery != "" || address.Fragment != "" || address.Host == "" {
 		return ""
 	}
-	source := providerSourceForURL(address.String())
+	source := ProviderSourceForURL(address.String())
 	if source != sourceYeguo {
 		return ""
 	}
@@ -247,8 +247,8 @@ func (client *yeguoAPIClient) text(ctx context.Context, address, referer string)
 func yeguoAPIBase(document *html.Node, configured string) (string, error) {
 	base := strings.TrimRight(configured, "/")
 	if base == "" {
-		for _, node := range providerHTMLNodes(document, func(node *html.Node) bool {
-			return node.Data == "script" && providerHTMLAttr(node, "id") == "__NUXT_DATA__"
+		for _, node := range ProviderHTMLNodes(document, func(node *html.Node) bool {
+			return node.Data == "script" && ProviderHTMLAttr(node, "id") == "__NUXT_DATA__"
 		}) {
 			if node.FirstChild == nil {
 				continue
@@ -277,7 +277,7 @@ func yeguoAPIBase(document *html.Node, configured string) (string, error) {
 
 func yeguoValidAPIBase(base string) (string, error) {
 	address, err := url.Parse(base)
-	if err != nil || !isProviderHTTPMediaURL(base) || address.User != nil || address.RawQuery != "" || address.Fragment != "" {
+	if err != nil || !IsProviderHTTPMediaURL(base) || address.User != nil || address.RawQuery != "" || address.Fragment != "" {
 		return "", errors.New("野果页面未提供有效的接口入口")
 	}
 	return strings.TrimRight(base, "/"), nil
@@ -318,7 +318,7 @@ func yeguoScriptURL(base, reference string) string {
 		return ""
 	}
 	address = page.ResolveReference(address)
-	if address.User != nil || providerMediaOrigin(address) != providerMediaOrigin(page) ||
+	if address.User != nil || ProviderMediaOrigin(address) != ProviderMediaOrigin(page) ||
 		!strings.HasPrefix(address.Path, "/_nuxt/") || !strings.HasSuffix(address.Path, ".js") {
 		return ""
 	}
@@ -392,18 +392,18 @@ func (client *yeguoAPIClient) discoverConfiguration(ctx context.Context) (*yeguo
 }
 
 func (client *yeguoAPIClient) discoverConfigurationAt(ctx context.Context, site string) (*yeguoAccess, error) {
-	document, pageURL, err := fetchHostPage(ctx, client.host, site+"/", site+"/", "")
+	document, pageURL, err := FetchHostPage(ctx, client.host, site+"/", site+"/", "")
 	if err != nil {
 		return nil, err
 	}
 	apiBase, baseErr := yeguoAPIBase(document, client.configuredAPI)
 	pageAddress, _ := url.Parse(pageURL)
-	origin := providerMediaOrigin(pageAddress)
+	origin := ProviderMediaOrigin(pageAddress)
 	entry := ""
-	for _, script := range providerHTMLNodes(document, func(node *html.Node) bool {
-		return node.Data == "script" && providerHTMLAttr(node, "type") == "module"
+	for _, script := range ProviderHTMLNodes(document, func(node *html.Node) bool {
+		return node.Data == "script" && ProviderHTMLAttr(node, "type") == "module"
 	}) {
-		if entry = yeguoScriptURL(pageURL, providerHTMLAttr(script, "src")); entry != "" {
+		if entry = yeguoScriptURL(pageURL, ProviderHTMLAttr(script, "src")); entry != "" {
 			break
 		}
 	}
@@ -442,7 +442,7 @@ func (client *yeguoAPIClient) discoverConfigurationAt(ctx context.Context, site 
 		body, err := client.text(ctx, address, pageURL)
 		if err != nil {
 			lastErr = err
-			var backoff *requestBackoff
+			var backoff *RequestBackoff
 			if errors.As(err, &backoff) || ctx.Err() != nil {
 				return nil, err
 			}
@@ -515,7 +515,7 @@ func decodeYeguoResponse(body []byte, access *yeguoAccess) (map[string]any, erro
 	if err != nil {
 		return nil, err
 	}
-	if signature := mapString(envelope, "sign"); signature != "" {
+	if signature := MapString(envelope, "sign"); signature != "" {
 		expected, err := yeguoResponseSignature(envelope, access.signKey)
 		if err != nil || subtle.ConstantTimeCompare([]byte(expected), []byte(strings.ToLower(signature))) != 1 {
 			return nil, errYeguoDecode
@@ -535,7 +535,7 @@ func decodeYeguoResponse(body []byte, access *yeguoAccess) (map[string]any, erro
 		}
 		plain := make([]byte, len(ciphertext))
 		cipher.NewCBCDecrypter(block, access.iv).CryptBlocks(plain, ciphertext)
-		plain, err = pkcs7Unpad(plain, aes.BlockSize)
+		plain, err = Pkcs7Unpad(plain, aes.BlockSize)
 		if err != nil {
 			return nil, errYeguoDecode
 		}
@@ -566,9 +566,9 @@ func (client *yeguoAPIClient) call(ctx context.Context, route string, parameters
 		} else {
 			requestBody = []byte(values.Encode())
 		}
-		site := firstNonEmpty(access.site, client.site, yeguoBaseURL)
+		site := FirstNonEmpty(access.site, client.site, yeguoBaseURL)
 		header := map[string]string{
-			"User-Agent": userAgent,
+			"User-Agent": UserAgent,
 			"Accept":     "application/json, text/plain, */*",
 			"Origin":     site,
 			"Referer":    site + "/",
@@ -593,11 +593,11 @@ func (client *yeguoAPIClient) call(ctx context.Context, route string, parameters
 		if err != nil {
 			return nil, err
 		}
-		if mapString(payload, "status") != "1" {
-			if mapString(payload, "status") == "-1" {
+		if MapString(payload, "status") != "1" {
+			if MapString(payload, "status") == "-1" {
 				return nil, errors.New("野果当前内容需要站源授权")
 			}
-			return nil, fmt.Errorf("野果请求未完成：%s", firstNonEmpty(truncate(cleanText(mapString(payload, "msg")), 180), "请稍后重试"))
+			return nil, fmt.Errorf("野果请求未完成：%s", FirstNonEmpty(Truncate(CleanText(MapString(payload, "msg")), 180), "请稍后重试"))
 		}
 		data, valid := payload["data"].(map[string]any)
 		if !valid {

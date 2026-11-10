@@ -71,7 +71,7 @@ func TestBeaboxPayloadDecryptsHexEnvelope(t *testing.T) {
 		t.Fatal(err)
 	}
 	row, valid := payload.(map[string]any)
-	if !valid || mapString(row, "total") != "2" {
+	if !valid || MapString(row, "total") != "2" {
 		t.Fatalf("beabox encrypted payload not decoded: %+v", payload)
 	}
 	failed, err := parseBeaboxEnvelope([]byte(`{"code":403,"msg":"no auth","data":""}`))

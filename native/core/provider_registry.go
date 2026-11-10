@@ -78,9 +78,9 @@ type CatalogStateful interface {
 	RestoreCatalogState(raw json.RawMessage)
 }
 
-type libraryMoreKey struct{}
+type LibraryMoreKey struct{}
 
-type libraryKnownKey struct{}
+type LibraryKnownKey struct{}
 
 type Suggester interface {
 	Suggestions(ctx context.Context, query string) ([]string, error)
@@ -141,7 +141,7 @@ type MetadataEnricher interface {
 	ExtraMetadata(ctx context.Context, drama LibraryDrama, sourceID string) (LibraryDrama, error)
 }
 
-var errCategoriesIncomplete = errors.New("categories incomplete")
+var ErrCategoriesIncomplete = errors.New("categories incomplete")
 
 type ProviderFactory func(host Host) Provider
 
@@ -231,15 +231,15 @@ func (d *Downloader) provider(source string) (Provider, bool) {
 	return p, true
 }
 
-func providerDramaID(source, sourceID string) string {
+func ProviderDramaID(source, sourceID string) string {
 	return source + ":" + strings.TrimSpace(sourceID)
 }
 
-func providerChapterID(source, sourceID, chapterKey string) string {
+func ProviderChapterID(source, sourceID, chapterKey string) string {
 	return source + ":" + strings.TrimSpace(sourceID) + ":" + strings.TrimSpace(chapterKey)
 }
 
-func splitProviderDramaID(id string) (source, sourceID string, ok bool) {
+func SplitProviderDramaID(id string) (source, sourceID string, ok bool) {
 	source, sourceID, ok = strings.Cut(strings.TrimSpace(id), ":")
 	source = canonicalProviderSource(source)
 	if !ok || strings.TrimSpace(sourceID) == "" || !registeredProviderSource(source) {

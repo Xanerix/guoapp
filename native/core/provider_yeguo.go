@@ -15,7 +15,7 @@ var yeguoFilterFields = []string{"theme", "setting", "background", "time", "reco
 
 func validYeguoCategory(category string) bool {
 	field, value, valid := strings.Cut(category, ":")
-	if !valid || !webProviderNumericID.MatchString(value) {
+	if !valid || !WebProviderNumericID.MatchString(value) {
 		return false
 	}
 	for _, known := range yeguoFilterFields {
@@ -30,7 +30,7 @@ func yeguoFlag(value any) (bool, bool) {
 	if flag, valid := value.(bool); valid {
 		return flag, true
 	}
-	switch nativeText(value) {
+	switch NativeText(value) {
 	case "0", "false":
 		return false, true
 	case "1", "true":
@@ -41,7 +41,7 @@ func yeguoFlag(value any) (bool, bool) {
 
 func firstPresent(values map[string]any, keys ...string) any {
 	for _, key := range keys {
-		if value, ok := values[key]; ok && value != nil && nativeText(value) != "" {
+		if value, ok := values[key]; ok && value != nil && NativeText(value) != "" {
 			return value
 		}
 	}
@@ -67,7 +67,7 @@ func (p *yeguoProvider) fetchYeguoCategories(ctx context.Context) ([]Category, e
 		}
 		for _, option := range options {
 			row, _ := option.(map[string]any)
-			value, name := mapString(row, "value"), mapString(row, "name")
+			value, name := MapString(row, "value"), MapString(row, "name")
 			if value == "0" {
 				continue
 			}
@@ -86,18 +86,18 @@ func (p *yeguoProvider) fetchYeguoCategories(ctx context.Context) ([]Category, e
 }
 
 func yeguoDramaFromMap(row map[string]any, site string) (Drama, error) {
-	id, title := mapString(row, "video_id", "id"), mapString(row, "title")
-	if !webProviderNumericID.MatchString(id) || title == "" {
+	id, title := MapString(row, "video_id", "id"), MapString(row, "title")
+	if !WebProviderNumericID.MatchString(id) || title == "" {
 		return Drama{}, errors.New("野果剧集资料不完整")
 	}
 	episodes := 0
 	for _, key := range []string{"episode_count", "episodes", "total_serial"} {
-		if count, valid := webProviderInteger(row[key], 100000); valid {
+		if count, valid := WebProviderInteger(row[key], 100000); valid {
 			episodes = max(episodes, count)
 		}
 	}
 	status := ""
-	switch mapString(row, "serialize_status") {
+	switch MapString(row, "serialize_status") {
 	case "1":
 		status = "ongoing"
 	case "2":
@@ -116,13 +116,13 @@ func yeguoDramaFromMap(row map[string]any, site string) (Drama, error) {
 			}
 		}
 	}
-	cover := providerCoverAddress(row["cover"], site+"/")
-	description := truncate(mapString(row, "description"), 12000)
-	drama := Drama{ID: providerDramaID(sourceYeguo, id), Source: sourceYeguo, SourceID: id,
-		Title: truncate(title, 512), Name: truncate(title, 512), Desc: description, Intro: description,
+	cover := ProviderCoverAddress(row["cover"], site+"/")
+	description := Truncate(MapString(row, "description"), 12000)
+	drama := Drama{ID: ProviderDramaID(sourceYeguo, id), Source: sourceYeguo, SourceID: id,
+		Title: Truncate(title, 512), Name: Truncate(title, 512), Desc: description, Intro: description,
 		Cover: cover, CoverURL: cover, EpisodeCount: episodes, TotalEpisode: episodes,
-		CategoryName: "短剧", ChannelName: "野果", Views: normalizeViews(mapString(row, "play_count", "play_count_text")),
-		Tags: tags, ReleaseStatus: status, OnlineDate: providerReleaseDate(mapString(row, "published_at", "created_at"))}
+		CategoryName: "短剧", ChannelName: "野果", Views: NormalizeViews(MapString(row, "play_count", "play_count_text")),
+		Tags: tags, ReleaseStatus: status, OnlineDate: ProviderReleaseDate(MapString(row, "published_at", "created_at"))}
 	if vip, known := yeguoFlag(row["is_vip"]); known {
 		drama.VIP = &vip
 	}
@@ -151,14 +151,14 @@ func (p *yeguoProvider) fetchYeguoCatalogPage(ctx context.Context, page int, cat
 	if !valid || len(rows) > 500 {
 		return nil, false, errors.New("野果目录格式无效")
 	}
-	if actualPage, pageValid := webProviderInteger(firstPresent(data, "page", "page_num", "pageNum", "current_page", "currentPage"), 1000000); pageValid && actualPage != page {
+	if actualPage, pageValid := WebProviderInteger(firstPresent(data, "page", "page_num", "pageNum", "current_page", "currentPage"), 1000000); pageValid && actualPage != page {
 		return nil, false, errors.New("野果分页信息无效，请重试")
 	}
-	limit, limitValid := webProviderInteger(firstPresent(data, "limit", "page_size", "pageSize", "per_page", "perPage"), 500)
+	limit, limitValid := WebProviderInteger(firstPresent(data, "limit", "page_size", "pageSize", "per_page", "perPage"), 500)
 	if !limitValid || limit < 1 || limit < len(rows) {
 		limit = len(rows)
 	}
-	total, totalValid := webProviderInteger(firstPresent(data, "total", "total_count", "totalCount"), 100000000)
+	total, totalValid := WebProviderInteger(firstPresent(data, "total", "total_count", "totalCount"), 100000000)
 	if totalValid && total < len(rows) {
 		totalValid = false
 	}
@@ -202,7 +202,7 @@ func yeguoEpisodePage(site, id string, episode int) string {
 }
 
 func (p *yeguoProvider) fetchYeguoDetail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
-	if !webProviderNumericID.MatchString(sourceID) {
+	if !WebProviderNumericID.MatchString(sourceID) {
 		return Drama{}, nil, errors.New("野果剧集 ID 无效")
 	}
 	row, err := p.client.call(ctx, "/api/playlet/detail", url.Values{
@@ -230,15 +230,15 @@ func (p *yeguoProvider) fetchYeguoDetail(ctx context.Context, sourceID string) (
 		if advertisement, _ := yeguoFlag(episode["is_adv"]); advertisement {
 			continue
 		}
-		id := mapString(episode, "id")
-		number, valid := webProviderInteger(episode["sort"], 100000)
-		if !webProviderNumericID.MatchString(id) || !valid || number < 1 || seenIDs[id] || seenNumbers[number] {
+		id := MapString(episode, "id")
+		number, valid := WebProviderInteger(episode["sort"], 100000)
+		if !WebProviderNumericID.MatchString(id) || !valid || number < 1 || seenIDs[id] || seenNumbers[number] {
 			return Drama{}, nil, errors.New("野果分集编号无效或重复，请刷新详情")
 		}
 		seenIDs[id], seenNumbers[number] = true, true
-		title := firstNonEmpty(mapString(episode, "title"), fmt.Sprintf("第 %d 集", number))
-		chapters = append(chapters, Chapter{ID: providerChapterID(sourceYeguo, sourceID, id), Source: sourceYeguo,
-			Title: truncate(title, 256), CurrentEpisode: rawEpisode(number), VideoURL: "yeguo-play://" + id,
+		title := FirstNonEmpty(MapString(episode, "title"), fmt.Sprintf("第 %d 集", number))
+		chapters = append(chapters, Chapter{ID: ProviderChapterID(sourceYeguo, sourceID, id), Source: sourceYeguo,
+			Title: Truncate(title, 256), CurrentEpisode: RawEpisode(number), VideoURL: "yeguo-play://" + id,
 			PageURL: yeguoEpisodePage(site, sourceID, number), Referer: site + "/"})
 	}
 	sort.SliceStable(chapters, func(i, j int) bool {
@@ -254,8 +254,8 @@ func yeguoMediaQuality(resolution string) int {
 	if len(parts) != 2 {
 		return 0
 	}
-	width, widthValid := webProviderInteger(parts[0], 16384)
-	height, heightValid := webProviderInteger(parts[1], 16384)
+	width, widthValid := WebProviderInteger(parts[0], 16384)
+	height, heightValid := WebProviderInteger(parts[1], 16384)
 	if !widthValid || !heightValid || width < 1 || height < 1 {
 		return 0
 	}
@@ -263,13 +263,13 @@ func yeguoMediaQuality(resolution string) int {
 }
 
 func (p *yeguoProvider) resolveYeguoMedia(ctx context.Context, task Task) (ProviderMedia, error) {
-	source, sourceID, valid := splitProviderDramaID(task.DramaID)
-	prefix := providerChapterID(sourceYeguo, sourceID, "")
-	if !valid || source != sourceYeguo || !webProviderNumericID.MatchString(sourceID) || !strings.HasPrefix(task.Chapter.ID, prefix) {
+	source, sourceID, valid := SplitProviderDramaID(task.DramaID)
+	prefix := ProviderChapterID(sourceYeguo, sourceID, "")
+	if !valid || source != sourceYeguo || !WebProviderNumericID.MatchString(sourceID) || !strings.HasPrefix(task.Chapter.ID, prefix) {
 		return ProviderMedia{}, errors.New("野果播放分集信息无效，请刷新详情")
 	}
 	episodeID := strings.TrimPrefix(task.Chapter.ID, prefix)
-	if !webProviderNumericID.MatchString(episodeID) {
+	if !WebProviderNumericID.MatchString(episodeID) {
 		return ProviderMedia{}, errors.New("野果播放分集 ID 无效")
 	}
 	row, err := p.client.call(ctx, "/api/playlet/play", url.Values{
@@ -278,32 +278,32 @@ func (p *yeguoProvider) resolveYeguoMedia(ctx context.Context, task Task) (Provi
 	if err != nil {
 		return ProviderMedia{}, err
 	}
-	if mapString(row, "playlet_id") != sourceID || mapString(row, "id") != episodeID {
+	if MapString(row, "playlet_id") != sourceID || MapString(row, "id") != episodeID {
 		return ProviderMedia{}, errors.New("野果返回的播放地址与请求分集不符")
 	}
 	if advertisement, _ := yeguoFlag(row["is_adv"]); advertisement {
 		return ProviderMedia{}, errors.New("野果未返回该集正片，请重试")
 	}
-	number, valid := webProviderInteger(row["episode_sort"], 100000)
+	number, valid := WebProviderInteger(row["episode_sort"], 100000)
 	if !valid || number < 1 {
 		return ProviderMedia{}, errors.New("野果播放分集编号无效")
 	}
 	referer := yeguoEpisodePage(p.client.siteURL(), sourceID, number)
-	quality := yeguoMediaQuality(mapString(row, "resolution"))
+	quality := yeguoMediaQuality(MapString(row, "resolution"))
 	var options []ProviderMedia
 	seen := map[string]bool{}
 	for _, field := range []string{"video_url", "video_url_h265"} {
-		raw := mapString(row, field)
+		raw := MapString(row, field)
 		if raw == "" {
 			continue
 		}
-		address := resolveProviderURL(referer, raw)
-		if !isProviderHTTPMediaURL(address) || seen[address] {
+		address := ResolveProviderURL(referer, raw)
+		if !IsProviderHTTPMediaURL(address) || seen[address] {
 			continue
 		}
 		seen[address] = true
 		media := ProviderMedia{URL: address, Referer: referer, Quality: quality}
-		if duration, err := strconv.ParseFloat(mapString(row, "episode_duration"), 64); err == nil && duration > 0 && duration <= 604800 {
+		if duration, err := strconv.ParseFloat(MapString(row, "episode_duration"), 64); err == nil && duration > 0 && duration <= 604800 {
 			media.Duration = time.Duration(duration * float64(time.Second))
 		}
 		options = append(options, media)

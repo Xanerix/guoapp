@@ -154,7 +154,7 @@ func TestLegacyPlaybackAndDownloadUseAuthenticatedPlaylistAndSourceKey(t *testin
 	d := sourceFixtureDownloader(t, func(request *http.Request) (*http.Response, error) {
 		switch request.URL.Path {
 		case "/api/app/vid/h5/m3u8/opaque-video":
-			if request.URL.Query().Get("token") != "fixture-session" || request.URL.Query().Get("c") != defaultCDNURL {
+			if request.URL.Query().Get("token") != "fixture-session" || request.URL.Query().Get("c") != DefaultCDNURL {
 				t.Error("legacy playlist lost its own session")
 			}
 			return sourceFixtureResponse(request, 200, "#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI=\"/api/app/vid/sec\"\n#EXTINF:4,\nsegment.ts\n#EXT-X-ENDLIST\n"), nil

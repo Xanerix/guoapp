@@ -90,10 +90,10 @@ func (p *huangguoVideoProvider) fetchHuangguoVideoDetail(ctx context.Context, so
 		if key == "" {
 			key = strconv.Itoa(idx)
 		}
-		chapters = append(chapters, Chapter{ID: providerChapterID(sourceHuangguoVideo, sourceID, key), Source: sourceHuangguoVideo, Title: chapterTitle, VideoURL: hlsURL, PageURL: ep.URL, CurrentEpisode: rawEpisode(idx)})
+		chapters = append(chapters, Chapter{ID: ProviderChapterID(sourceHuangguoVideo, sourceID, key), Source: sourceHuangguoVideo, Title: chapterTitle, VideoURL: hlsURL, PageURL: ep.URL, CurrentEpisode: RawEpisode(idx)})
 	}
-	sortProviderChapters(chapters)
-	return drama, uniqueChapters(chapters), nil
+	SortProviderChapters(chapters)
+	return drama, UniqueChapters(chapters), nil
 }
 
 func parseHuangguoVideoCards(rawHTML, pageURL string) []Drama {
@@ -117,20 +117,20 @@ func parseHuangguoVideoCards(rawHTML, pageURL string) []Drama {
 			continue
 		}
 		seen[sourceID] = true
-		title := firstNonEmpty(extractClosestAttr(block, 0, len(block), "title", "alt", "aria-label"), cleanText(block))
-		cover := resolveProviderURL(pageURL, extractClosestAttr(block, 0, len(block), "data-src", "data-original", "src"))
+		title := FirstNonEmpty(extractClosestAttr(block, 0, len(block), "title", "alt", "aria-label"), CleanText(block))
+		cover := ResolveProviderURL(pageURL, extractClosestAttr(block, 0, len(block), "data-src", "data-original", "src"))
 		category := "video"
 		if strings.HasPrefix(path, "series/") {
 			category = "series"
 		}
-		desc := firstNonEmpty(extractClosestAttr(block, 0, len(block), "data-description", "description"), extractDescription(block))
+		desc := FirstNonEmpty(extractClosestAttr(block, 0, len(block), "data-description", "description"), ExtractDescription(block))
 		status := ""
 		if category == "series" {
 			if meta := reVideoCardMeta.FindStringSubmatch(block); len(meta) > 1 {
-				status = releaseStatusFromRemark(cleanText(meta[1]))
+				status = ReleaseStatusFromRemark(CleanText(meta[1]))
 			}
 		}
-		out = append(out, Drama{ID: providerDramaID(sourceHuangguoVideo, sourceID), Source: sourceHuangguoVideo, SourceID: sourceID, Title: title, Name: title, Desc: desc, Intro: desc, Cover: cover, CoverURL: cover, CategoryName: category, ChannelName: "huangguo.video", Remark: firstNonEmpty(extractByClassText(block, "bg-black/55"), extractByClassText(block, "text-gold-dim")), ReleaseStatus: status})
+		out = append(out, Drama{ID: ProviderDramaID(sourceHuangguoVideo, sourceID), Source: sourceHuangguoVideo, SourceID: sourceID, Title: title, Name: title, Desc: desc, Intro: desc, Cover: cover, CoverURL: cover, CategoryName: category, ChannelName: "huangguo.video", Remark: FirstNonEmpty(extractByClassText(block, "bg-black/55"), extractByClassText(block, "text-gold-dim")), ReleaseStatus: status})
 	}
 	return out
 }
@@ -152,9 +152,9 @@ func parseHuangguoVideoEpisodes(rawHTML, pageURL string) []providerEpisode {
 		if key == "" || !strings.HasPrefix(path, "video/") {
 			continue
 		}
-		fullURL := resolveProviderURL(pageURL, link[1])
-		title := firstNonEmpty(extractAttr(block, "title"), extractAttr(block, "alt"), cleanText(block))
-		index := episodeIndex(cleanText(block), episodeIndex(title, 0))
+		fullURL := ResolveProviderURL(pageURL, link[1])
+		title := FirstNonEmpty(ExtractAttr(block, "title"), ExtractAttr(block, "alt"), CleanText(block))
+		index := EpisodeIndex(CleanText(block), EpisodeIndex(title, 0))
 		numbered = numbered || index > 0
 		episode := providerEpisode{Key: key, Title: title, URL: fullURL, Index: index, HLS: parseDataHLS(block, pageURL)}
 		if position, found := positions[fullURL]; found {
@@ -182,7 +182,7 @@ func parseHuangguoVideoEpisodes(rawHTML, pageURL string) []providerEpisode {
 
 func parseDataHLS(rawHTML, pageURL string) string {
 	if m := reDataHLS.FindStringSubmatch(rawHTML); len(m) > 1 {
-		return normalizeProviderMediaURL(pageURL, m[1])
+		return NormalizeProviderMediaURL(pageURL, m[1])
 	}
 	return ""
 }
@@ -260,7 +260,7 @@ func extractByClassText(raw, className string) string {
 	}
 	re := regexp.MustCompile(`(?is)<[^>]+class=["'][^"']*` + regexp.QuoteMeta(className) + `[^"']*["'][^>]*>(.*?)</[^>]+>`)
 	if m := re.FindStringSubmatch(raw); len(m) > 1 {
-		return cleanText(m[1])
+		return CleanText(m[1])
 	}
 	return ""
 }
@@ -297,7 +297,7 @@ func extractClosestAttr(raw string, start, end int, names ...string) string {
 		if value == "" {
 			continue
 		}
-		if attr := extractAttr(value, names...); attr != "" {
+		if attr := ExtractAttr(value, names...); attr != "" {
 			return attr
 		}
 	}
@@ -399,13 +399,13 @@ func (p *huangguoVideoProvider) previewToken(ctx context.Context, origin, refere
 
 func (p *huangguoVideoProvider) fetchPreviewToken(ctx context.Context, origin, referer string) (string, time.Time, error) {
 	header := map[string]string{
-		"User-Agent": userAgent, "Referer": referer, "Accept": "application/json", "Accept-Language": "zh-CN,zh;q=0.9",
+		"User-Agent": UserAgent, "Referer": referer, "Accept": "application/json", "Accept-Language": "zh-CN,zh;q=0.9",
 		"Sec-Fetch-Mode": "cors", "Sec-Fetch-Dest": "empty",
 	}
 	if page, err := url.Parse(referer); err == nil && page.Host != "" {
 		header["Origin"] = page.Scheme + "://" + page.Host
 	}
-	response, err := p.host.Fetch(ctx, HTTPRequest{Label: "黄果视频", Method: http.MethodGet, URL: origin + "/api/preview-token", Header: header, Limit: 16 << 10, Timeout: providerTimeout, FollowRedirects: true})
+	response, err := p.host.Fetch(ctx, HTTPRequest{Label: "黄果视频", Method: http.MethodGet, URL: origin + "/api/preview-token", Header: header, Limit: 16 << 10, Timeout: ProviderTimeout, FollowRedirects: true})
 	if err != nil {
 		return "", time.Time{}, err
 	}
@@ -489,7 +489,7 @@ func (p *huangguoVideoProvider) Detail(ctx context.Context, sourceID string) (Dr
 func (p *huangguoVideoProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	chapter := task.Chapter
 	if chapter.PageURL == "" {
-		if _, sourceID, valid := splitProviderDramaID(task.DramaID); valid {
+		if _, sourceID, valid := SplitProviderDramaID(task.DramaID); valid {
 			_, chapters, err := p.Detail(ctx, sourceID)
 			if err != nil {
 				return ProviderMedia{}, fmt.Errorf("刷新旧任务播放地址失败: %w", err)
@@ -507,7 +507,7 @@ func (p *huangguoVideoProvider) ResolveMedia(ctx context.Context, task Task) (Pr
 			}
 		}
 	}
-	media := ProviderMedia{URL: chapter.VideoURL, Referer: firstNonEmpty(chapter.Referer, p.site+"/")}
+	media := ProviderMedia{URL: chapter.VideoURL, Referer: FirstNonEmpty(chapter.Referer, p.site+"/")}
 	if chapter.PageURL != "" {
 		response, err := p.host.FetchText(ctx, TextRequest{URL: chapter.PageURL, Referer: media.Referer})
 		if err != nil {
@@ -534,7 +534,7 @@ func (p *huangguoVideoProvider) CoverAddress(ctx context.Context, drama LibraryD
 		return "", err
 	}
 	fresh, err := parseHuangguoSortDetail(body, pageURL, Drama{ID: drama.ID, Source: sourceHuangguoVideo, SourceID: id})
-	return nativeNormalize(fresh).Cover, err
+	return NativeNormalize(fresh).Cover, err
 }
 
 var categoryAnchorPattern = regexp.MustCompile(`(?is)<a\b([^>]*)>(.*?)</a>`)
@@ -545,14 +545,14 @@ func parseHuangguoVideoCategories(body string) []Category {
 	var categories []Category
 	seen := map[string]bool{}
 	for _, match := range categoryAnchorPattern.FindAllStringSubmatch(body, -1) {
-		href := html.UnescapeString(extractAttr("<a "+match[1]+">", "href"))
+		href := html.UnescapeString(ExtractAttr("<a "+match[1]+">", "href"))
 		address, err := url.Parse(href)
 		if err != nil || address.Path != "" && strings.TrimRight(address.Path, "/") != "/videos" {
 			continue
 		}
 		id := address.Query().Get("category")
 		name := strings.TrimSpace(html.UnescapeString(categoryTextPattern.ReplaceAllString(match[2], "")))
-		if !validNativeCategory(sourceHuangguoVideo, id) || id == "" || seen[id] || name == "" || len([]rune(name)) > 24 {
+		if !ValidNativeCategory(sourceHuangguoVideo, id) || id == "" || seen[id] || name == "" || len([]rune(name)) > 24 {
 			continue
 		}
 		seen[id] = true

@@ -2,4 +2,4 @@ package core
 
 import "time"
 
-const dramaRefreshRetryDelay = 5 * time.Minute
+const DramaRefreshRetryDelay = 5 * time.Minute

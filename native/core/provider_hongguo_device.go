@@ -111,7 +111,7 @@ func (p *hongguoProvider) registerHongguoDevice(ctx context.Context) (string, st
 	if err := decoder.Decode(&result); err != nil {
 		return "", "", hongguoRegisterRejection{errors.New("红果设备注册返回格式异常")}
 	}
-	deviceID, installID := mapString(result, "device_id_str", "device_id"), mapString(result, "install_id_str", "install_id")
+	deviceID, installID := MapString(result, "device_id_str", "device_id"), MapString(result, "install_id_str", "install_id")
 	if !hongguoNumericID.MatchString(deviceID) || !hongguoNumericID.MatchString(installID) || deviceID == "0" || installID == "0" {
 		return "", "", hongguoRegisterRejection{errors.New("红果设备注册未返回设备号")}
 	}

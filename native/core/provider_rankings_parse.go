@@ -36,9 +36,9 @@ type hongguoRankingContent struct {
 
 func parseHongguoRanking(body string, board RankingBoard, page int) (RankingPage, error) {
 	failure := errHongguoRankingFormat
-	loaderKey := "rank_" + board.path + "/page"
+	loaderKey := "rank_" + board.Path + "/page"
 	loader := nestedMap(parseRouterData(body), "loaderData", loaderKey)
-	if len(loader) > 0 && (mapString(loader, "rankKey") != board.upstreamKey || mapString(loader, "pageNum") != strconv.Itoa(page)) {
+	if len(loader) > 0 && (MapString(loader, "rankKey") != board.UpstreamKey || MapString(loader, "pageNum") != strconv.Itoa(page)) {
 		return RankingPage{}, failure
 	}
 	var content hongguoRankingContent
@@ -51,11 +51,11 @@ func parseHongguoRanking(body string, board RankingBoard, page int) (RankingPage
 		content = merged
 	} else {
 		for _, tag := range rankingScriptTags.FindAllString(body, -1) {
-			if extractAttr(tag, "data-fn-name") != "r" || extractAttr(tag, "data-script-src") != "modern-run-router-data-fn" {
+			if ExtractAttr(tag, "data-fn-name") != "r" || ExtractAttr(tag, "data-script-src") != "modern-run-router-data-fn" {
 				continue
 			}
 			var args []json.RawMessage
-			if json.Unmarshal([]byte(extractAttr(tag, "data-fn-args")), &args) != nil || len(args) != 3 {
+			if json.Unmarshal([]byte(ExtractAttr(tag, "data-fn-args")), &args) != nil || len(args) != 3 {
 				continue
 			}
 			var route, field string
@@ -74,17 +74,17 @@ func parseHongguoRanking(body string, board RankingBoard, page int) (RankingPage
 	if content.Pagination.Page != page || content.Pagination.TotalPages < page || content.Pagination.TotalPages > 500 {
 		return RankingPage{}, failure
 	}
-	result := RankingPage{Items: make([]RankingItem, 0, len(content.Rows)), TotalPages: content.Pagination.TotalPages, HasMore: page < content.Pagination.TotalPages, UpdatedText: mapString(loader, "updatedText")}
+	result := RankingPage{Items: make([]RankingItem, 0, len(content.Rows)), TotalPages: content.Pagination.TotalPages, HasMore: page < content.Pagination.TotalPages, UpdatedText: MapString(loader, "updatedText")}
 	seen := map[string]bool{}
 	previous := (page - 1) * 20
 	for _, row := range content.Rows {
-		id := firstNonEmpty(row.SeriesID, row.ID)
+		id := FirstNonEmpty(row.SeriesID, row.ID)
 		if !hongguoNumericID.MatchString(id) || row.ID != "" && row.SeriesID != "" && row.ID != row.SeriesID || strings.TrimSpace(row.Title) == "" || row.Rank <= previous || row.Rank > page*20 || seen[id] {
 			return RankingPage{}, failure
 		}
 		seen[id], previous = true, row.Rank
-		drama := Drama{ID: providerDramaID(sourceHongguo, id), Source: sourceHongguo, SourceID: id, Title: row.Title, Name: row.Title, Desc: row.Description, Intro: row.Description, Tags: row.Tags, Heat: row.Heat, Score: strings.TrimPrefix(row.Score, "评分"), ChannelName: "红果"}
-		if cover := hongguoCoverAddress(coverPathFromAny(row.Cover)); cover != "" {
+		drama := Drama{ID: ProviderDramaID(sourceHongguo, id), Source: sourceHongguo, SourceID: id, Title: row.Title, Name: row.Title, Desc: row.Description, Intro: row.Description, Tags: row.Tags, Heat: row.Heat, Score: strings.TrimPrefix(row.Score, "评分"), ChannelName: "红果"}
+		if cover := hongguoCoverAddress(CoverPathFromAny(row.Cover)); cover != "" {
 			drama.Cover, drama.CoverURL = cover, cover
 		}
 		if len(row.Tags) > 0 {
@@ -114,14 +114,14 @@ func parseHuangdouRanking(decoded any, page int) (RankingPage, error) {
 	seen := map[string]bool{}
 	for index, value := range rows {
 		row, valid := value.(map[string]any)
-		id := strings.TrimPrefix(firstNonEmpty(mapString(row, "id"), mapString(row, "drama_id")), "rp_")
-		title := mapString(row, "name", "title", "t")
+		id := strings.TrimPrefix(FirstNonEmpty(MapString(row, "id"), MapString(row, "drama_id")), "rp_")
+		title := MapString(row, "name", "title", "t")
 		if !valid || !rankingSourceID.MatchString(id) || strings.TrimSpace(title) == "" || seen[id] {
 			return RankingPage{}, errors.New("黄豆榜单包含无效或重复条目")
 		}
 		seen[id] = true
 		drama := huangdouDramaFromMap(row)
-		drama.ID, drama.Source, drama.SourceID = providerDramaID(sourceHuangdou, id), sourceHuangdou, id
+		drama.ID, drama.Source, drama.SourceID = ProviderDramaID(sourceHuangdou, id), sourceHuangdou, id
 		metric := ""
 		if drama.Heat != "" {
 			metric = drama.Heat + "热度"

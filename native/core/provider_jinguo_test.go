@@ -35,7 +35,7 @@ func jinguoFixtureParams(t *testing.T, request *http.Request) map[string]any {
 	}
 	block, _ := aes.NewCipher([]byte(jinguoProtocol.ParamKey))
 	cipher.NewCBCDecrypter(block, []byte(jinguoProtocol.ParamIV)).CryptBlocks(encrypted, encrypted)
-	plain, err := pkcs7Unpad(encrypted, 16)
+	plain, err := Pkcs7Unpad(encrypted, 16)
 	var params map[string]any
 	if err != nil || json.Unmarshal(plain, &params) != nil {
 		t.Errorf("params were not encrypted with the jinguo key")

@@ -17,11 +17,11 @@ func TestNativeCategoryAliasesAndDetailPersistence(t *testing.T) {
 		{CategoryName: "都市"}, {CategoryNameSnake: "都市"}, {TypeName: "都市"}, {TypeNameSnake: "都市"},
 		{SortName: "都市"}, {SortNameSnake: "都市"}, {Category: "都市"},
 	} {
-		if nativeNormalize(drama).Category != "都市" {
+		if NativeNormalize(drama).Category != "都市" {
 			t.Fatal("category alias was dropped")
 		}
 	}
-	if nativeNormalize(Drama{ChannelName: "红果"}).Category != "" {
+	if NativeNormalize(Drama{ChannelName: "红果"}).Category != "" {
 		t.Fatal("source name became a category")
 	}
 	engine := sourceFixtureEngine(t, func(request *http.Request) (*http.Response, error) { return nil, errors.New("network forbidden") })
@@ -128,7 +128,7 @@ func TestNativeCoverMetadataRejectsOtherDramaAndKeepsCurrentHost(t *testing.T) {
 	patch := Drama{ID: "huangguoai:100", Source: sourceHuangguoAI, SourceID: "100"}
 	body := `<script type="application/ld+json">{"@type":"VideoObject","url":"/detail/100/","name":"合成剧目","thumbnailUrl":"https://new-cover.example.test/synthetic.jpg"}</script>`
 	fresh, err := parseHuangguoSortDetail(body, "https://huangguoai.com/detail/100/", patch)
-	if err != nil || nativeNormalize(fresh).Cover != "https://new-cover.example.test/synthetic.jpg" {
+	if err != nil || NativeNormalize(fresh).Cover != "https://new-cover.example.test/synthetic.jpg" {
 		t.Fatal("new image host rejected", err)
 	}
 	if _, err := parseHuangguoSortDetail(strings.ReplaceAll(body, "/detail/100/", "/detail/101/"), "https://huangguoai.com/detail/100/", patch); err == nil {

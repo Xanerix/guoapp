@@ -62,7 +62,7 @@ func TestNativeCategoryDiscoveryUsesSourceLinks(t *testing.T) {
 		t.Fatal("category discovery included unrelated navigation", categories)
 	}
 	for _, source := range []string{sourceHongguo, sourceHuangdou, sourceHuangguoAI, sourceHuangguoVideo, sourceCloudFront} {
-		if validNativeCategory(source, "../other|source") {
+		if ValidNativeCategory(source, "../other|source") {
 			t.Fatal("invalid category entered a cache namespace")
 		}
 		if err := nativeAuthorizeInput(nativeInput{Action: "categories", Source: source}); (err == nil) != nativeSourceAvailable(source) {

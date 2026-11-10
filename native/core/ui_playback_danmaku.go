@@ -27,7 +27,7 @@ type hongguoDanmakuCall struct {
 }
 
 func hongguoPlaybackIDs(task Task) (string, string, bool) {
-	source, seriesID, valid := splitProviderDramaID(task.DramaID)
+	source, seriesID, valid := SplitProviderDramaID(task.DramaID)
 	if !valid || source != sourceHongguo || task.Chapter.Source != sourceHongguo || !strings.HasPrefix(task.Chapter.VideoURL, "hongguo-cenc://") {
 		return "", "", false
 	}
@@ -39,7 +39,7 @@ func (p *hongguoProvider) hongguoDanmaku(ctx context.Context, seriesID, videoID 
 	if err := ctx.Err(); err != nil {
 		return DanmakuPage{}, err
 	}
-	if !hongguoNumericID.MatchString(seriesID) || !hongguoNumericID.MatchString(videoID) || start < 0 || duration <= start || duration > danmakuMaxDurationMS {
+	if !hongguoNumericID.MatchString(seriesID) || !hongguoNumericID.MatchString(videoID) || start < 0 || duration <= start || duration > DanmakuMaxDurationMS {
 		return DanmakuPage{}, errors.New("弹幕请求参数无效")
 	}
 	key := fmt.Sprintf("%s:%s:%d:%d", seriesID, videoID, start, duration)
@@ -71,7 +71,7 @@ func (p *hongguoProvider) hongguoDanmaku(ctx context.Context, seriesID, videoID 
 	pending := &hongguoDanmakuCall{done: make(chan struct{})}
 	client.danmakuPending[key] = pending
 	client.mu.Unlock()
-	ctx = context.WithValue(ctx, backgroundCatalogKey{}, true)
+	ctx = context.WithValue(ctx, BackgroundCatalogKey{}, true)
 	ctx = context.WithValue(ctx, hongguoCommentKey{}, true)
 	body := map[string]any{
 		"comment_source": 601, "server_channel": 1000, "group_id": videoID, "group_type": 30,
@@ -109,15 +109,15 @@ func cloneDanmakuPage(page DanmakuPage) DanmakuPage {
 func parseHongguoDanmaku(result map[string]any, videoID string, start, duration int64) (DanmakuPage, error) {
 	data := nestedMap(result, "data")
 	rows, valid := data["data_list"].([]any)
-	next, err := strconv.ParseInt(mapString(nestedMap(data, "extra"), "next_query_danmaku_list_time"), 10, 64)
-	if !valid || err != nil || next <= start || next > danmakuMaxDurationMS {
+	next, err := strconv.ParseInt(MapString(nestedMap(data, "extra"), "next_query_danmaku_list_time"), 10, 64)
+	if !valid || err != nil || next <= start || next > DanmakuMaxDurationMS {
 		return DanmakuPage{}, errors.New("红果弹幕时间段格式无效")
 	}
 	page := DanmakuPage{EpisodeID: videoID, Items: []DanmakuItem{}, StartMS: start, NextMS: min(next, duration)}
 	var cursor struct {
 		Total int64 `json:"danmaku_count"`
 	}
-	if raw := mapString(nestedMap(data, "common_list_info"), "cursor"); len(raw) <= 8192 && json.Unmarshal([]byte(raw), &cursor) == nil && cursor.Total >= 0 {
+	if raw := MapString(nestedMap(data, "common_list_info"), "cursor"); len(raw) <= 8192 && json.Unmarshal([]byte(raw), &cursor) == nil && cursor.Total >= 0 {
 		page.Total = cursor.Total
 	}
 	seen := map[string]bool{}
@@ -125,17 +125,17 @@ func parseHongguoDanmaku(result map[string]any, videoID string, start, duration 
 		row, _ := raw.(map[string]any)
 		comment := nestedMap(row, "comment")
 		common := nestedMap(comment, "common")
-		if mapString(common, "group_id") != videoID || mapString(common, "status") != "1" {
+		if MapString(common, "group_id") != videoID || MapString(common, "status") != "1" {
 			continue
 		}
-		position, err := strconv.ParseInt(mapString(nestedMap(comment, "expand"), "offset_time"), 10, 64)
+		position, err := strconv.ParseInt(MapString(nestedMap(comment, "expand"), "offset_time"), 10, 64)
 		text := strings.TrimSpace(strings.Map(func(r rune) rune {
 			if unicode.IsControl(r) || r == '\u2028' || r == '\u2029' {
 				return ' '
 			}
 			return r
-		}, mapString(nestedMap(common, "content"), "text")))
-		id := mapString(comment, "comment_id")
+		}, MapString(nestedMap(common, "content"), "text")))
+		id := MapString(comment, "comment_id")
 		if err != nil || position < start || position >= page.NextMS || text == "" || id == "" || len(id) > 120 || seen[id] {
 			continue
 		}

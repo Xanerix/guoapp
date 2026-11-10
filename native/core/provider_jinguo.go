@@ -35,7 +35,7 @@ func (row *jinguoRow) UnmarshalJSON(body []byte) error {
 		return err
 	}
 	row.Drama = detail.Drama
-	row.Drama.Tags = mapStringSlice(map[string]any{"tagNames": names.TagNames}, "tagNames")
+	row.Drama.Tags = MapStringSlice(map[string]any{"tagNames": names.TagNames}, "tagNames")
 	return nil
 }
 
@@ -157,9 +157,9 @@ func jinguoDrama(drama Drama, tabName string) (Drama, bool) {
 		return Drama{}, false
 	}
 	drama.SourceID, drama.Source = drama.ID, sourceJinguo
-	drama.ID = providerDramaID(sourceJinguo, drama.SourceID)
+	drama.ID = ProviderDramaID(sourceJinguo, drama.SourceID)
 	drama.ChannelName = "禁果"
-	drama.CategoryName = firstNonEmpty(drama.CategoryName, tabName)
+	drama.CategoryName = FirstNonEmpty(drama.CategoryName, tabName)
 	covers := []any{drama.Cover, drama.CoverURL, drama.CoverURLSnake, drama.Image, drama.ImageURL, drama.ImageURLSnake, drama.Img, drama.Pic, drama.Picture, drama.Poster, drama.Thumb, drama.Thumbnail}
 	drama.Cover, drama.CoverURL = nil, nil
 	for _, cover := range covers {
@@ -202,15 +202,15 @@ func (p *jinguoProvider) fetchJinguoDetail(ctx context.Context, sourceID string)
 		chapter := row.Chapter
 		chapter.VIP = chapter.VideoURL == "" || row.CanPlay != nil && !*row.CanPlay
 		chapter.Source = sourceJinguo
-		chapter.ID = providerChapterID(sourceJinguo, sourceID, firstNonEmpty(chapter.ID, strconv.Itoa(index+1)))
-		if chapterEpisodeNumber(chapter, 0) <= 0 {
-			chapter.CurrentEpisode = rawEpisode(index + 1)
+		chapter.ID = ProviderChapterID(sourceJinguo, sourceID, FirstNonEmpty(chapter.ID, strconv.Itoa(index+1)))
+		if ChapterEpisodeNumber(chapter, 0) <= 0 {
+			chapter.CurrentEpisode = RawEpisode(index + 1)
 		}
-		chapter.Title = firstNonEmpty(chapter.Title, "第"+chapter.EpisodeString(index+1)+"集")
+		chapter.Title = FirstNonEmpty(chapter.Title, "第"+chapter.EpisodeString(index+1)+"集")
 		chapters = append(chapters, chapter)
 	}
-	chapters = uniqueChapters(chapters)
-	sortProviderChapters(chapters)
+	chapters = UniqueChapters(chapters)
+	SortProviderChapters(chapters)
 	return drama, chapters, nil
 }
 
@@ -252,7 +252,7 @@ func (p *jinguoProvider) resolveJinguoMedia(ctx context.Context, task Task) (Pro
 			err = legacyPlaylistError(err)
 			if err == nil {
 				client.rememberBase(base)
-				return ProviderMedia{URL: finalURL, Playlist: playlist, Referer: referer, Duration: m3u8Duration(playlist)}, nil
+				return ProviderMedia{URL: finalURL, Playlist: playlist, Referer: referer, Duration: M3u8Duration(playlist)}, nil
 			}
 			lastErr = err
 			if expired = jinguoSessionExpired(err); expired || ctx.Err() != nil {

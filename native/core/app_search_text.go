@@ -7,7 +7,7 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
-func nativeSearchText(text string) string {
+func NativeSearchText(text string) string {
 	normalized := strings.Map(func(r rune) rune {
 		if unicode.IsSpace(r) || unicode.IsPunct(r) {
 			return -1

@@ -89,7 +89,7 @@ func (engine *nativeEngine) nativeRecommendations(ctx context.Context, input nat
 			return nativeCatalogResult{}, err
 		}
 		cached.Fresh = false
-		cached.Warning = joinNativeWarnings(cached.Warning, publicError(err).Error())
+		cached.Warning = joinNativeWarnings(cached.Warning, PublicError(err).Error())
 		return cached, nil
 	}
 	if err := ctx.Err(); err != nil {
@@ -114,9 +114,9 @@ func (engine *nativeEngine) nativeRecommendations(ctx context.Context, input nat
 		known[drama.ID] = drama
 	}
 	for _, drama := range page.Dramas {
-		item := nativeNormalize(drama)
+		item := NativeNormalize(drama)
 		if old, exists := known[item.ID]; exists {
-			item = mergeNativeDrama(old, item)
+			item = MergeNativeDrama(old, item)
 		}
 		if !seen[item.ID] {
 			seen[item.ID] = true

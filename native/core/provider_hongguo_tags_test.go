@@ -46,7 +46,7 @@ func TestHongguoTagCategoriesFollowThePanel(t *testing.T) {
 	if panels != 1 {
 		t.Fatal("cached panel was requested again", panels)
 	}
-	if !validNativeCategory(sourceHongguo, "tag:cate_96") || validNativeCategory(sourceHongguo, "tag:is_and_1") || validNativeCategory(sourceHongguo, "cate_96") {
+	if !ValidNativeCategory(sourceHongguo, "tag:cate_96") || ValidNativeCategory(sourceHongguo, "tag:is_and_1") || ValidNativeCategory(sourceHongguo, "cate_96") {
 		t.Fatal("tag category validation is wrong")
 	}
 }

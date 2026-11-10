@@ -37,7 +37,7 @@ func nativeStreamTarget(address string) (string, string) {
 			parts[i] = "[redacted-" + nativeStreamID(part) + "]"
 		}
 	}
-	return parsed.Hostname(), truncate(strings.Join(parts, "/"), 512)
+	return parsed.Hostname(), Truncate(strings.Join(parts, "/"), 512)
 }
 
 func nativeStreamError(err error) string {

@@ -36,7 +36,7 @@ func (d *Downloader) loadRankingCache() {
 		}
 		valid = true
 		for _, item := range page.Items {
-			if sourceFromDramaID(item.Drama.ID) != board.Source || item.Rank < 1 {
+			if SourceFromDramaID(item.Drama.ID) != board.Source || item.Rank < 1 {
 				valid = false
 				break
 			}
@@ -82,9 +82,9 @@ func (engine *nativeEngine) nativeRanking(ctx context.Context, input nativeInput
 		library[drama.ID] = drama
 	}
 	for _, row := range page.Items {
-		drama := nativeNormalize(row.Drama)
+		drama := NativeNormalize(row.Drama)
 		if old, found := library[drama.ID]; found {
-			drama = mergeNativeDrama(old, drama)
+			drama = MergeNativeDrama(old, drama)
 		}
 		items = append(items, item{Rank: row.Rank, Drama: drama, Metric: row.Metric})
 	}

@@ -129,7 +129,7 @@ func (client *huangjuAPIClient) get(ctx context.Context, route string, query url
 
 func (client *huangjuAPIClient) request(ctx context.Context, method, route string, query url.Values, body []byte, token string, retryAuth bool, limit int64) (huangjuAPIResponse, error) {
 	base, err := url.Parse(client.base)
-	if err != nil || !isProviderHTTPMediaURL(client.base) || base.User != nil || base.RawQuery != "" || base.Fragment != "" {
+	if err != nil || !IsProviderHTTPMediaURL(client.base) || base.User != nil || base.RawQuery != "" || base.Fragment != "" {
 		return huangjuAPIResponse{}, errors.New("剧果接口地址无效")
 	}
 	address := client.base + route

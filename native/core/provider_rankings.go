@@ -16,8 +16,8 @@ type RankingBoard struct {
 	Source      string `json:"source"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
-	path        string
-	upstreamKey string
+	Path        string `json:"-"`
+	UpstreamKey string `json:"-"`
 }
 
 type RankingItem struct {

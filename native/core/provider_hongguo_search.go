@@ -237,7 +237,7 @@ func (p *hongguoProvider) fetchHongguoSearchNames(ctx context.Context, keyword s
 	dramas := make([]Drama, 0, len(records))
 	for _, record := range records {
 
-		if record.WordType != "short_play_name" || !hongguoNumericID.MatchString(mapString(record.VideoData, "series_id_str", "series_id")) {
+		if record.WordType != "short_play_name" || !hongguoNumericID.MatchString(MapString(record.VideoData, "series_id_str", "series_id")) {
 			continue
 		}
 		drama := hongguoDramaFromAny(map[string]any{"video_data": record.VideoData, "name": record.Name, "keyword": record.Keyword}, "短剧")
@@ -256,7 +256,7 @@ func cloneHongguoSearchEntry(entry hongguoSearchEntry) hongguoSearchEntry {
 	return entry
 }
 
-func hongguoSearchText(text string) string { return nativeSearchText(text) }
+func hongguoSearchText(text string) string { return NativeSearchText(text) }
 
 func hongguoTitleSearchRank(title, query string) int {
 	words := strings.FieldsFunc(norm.NFKC.String(query), func(r rune) bool { return unicode.IsSpace(r) || unicode.IsPunct(r) })
@@ -321,14 +321,14 @@ func (p *hongguoProvider) fetchHongguoSearchPage(ctx context.Context, keyword st
 	}
 	var tab map[string]any
 	for _, item := range anyList(result["search_tabs"]) {
-		if candidate, _ := item.(map[string]any); mapString(candidate, "tab_type") == hongguoSearchSeriesTab {
+		if candidate, _ := item.(map[string]any); MapString(candidate, "tab_type") == hongguoSearchSeriesTab {
 			tab = candidate
 		}
 	}
 	if tab == nil {
 		return hongguoSearchEntry{}, errors.New("红果搜索未返回有效结果")
 	}
-	if searchID := mapString(tab, "search_id"); pageNum == 1 && searchID != "" {
+	if searchID := MapString(tab, "search_id"); pageNum == 1 && searchID != "" {
 		client.mu.Lock()
 		if len(client.searchIDs) >= 64 {
 			client.searchIDs = map[string]string{}

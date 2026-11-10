@@ -451,7 +451,7 @@ func TestNativeHongguoInteractiveFirstLoadStopsEarly(t *testing.T) {
 		{context.Background(), nativeInput{Source: sourceHongguo, Page: 1}, 3},
 		{context.Background(), nativeInput{Source: sourceHongguo, Category: "short_play", Page: 1}, 3},
 		{context.Background(), nativeInput{Source: sourceHongguo, Category: "short_play", Page: 2}, 3},
-		{context.WithValue(context.Background(), backgroundCatalogKey{}, true), nativeInput{Source: sourceHongguo, Category: "ai_series", Page: 1}, 5},
+		{context.WithValue(context.Background(), BackgroundCatalogKey{}, true), nativeInput{Source: sourceHongguo, Category: "ai_series", Page: 1}, 5},
 	} {
 		calls = 0
 		result, err := engine.nativeCatalog(check.ctx, check.input)

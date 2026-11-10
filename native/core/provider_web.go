@@ -16,14 +16,14 @@ type providerTextUserAgentKey struct{}
 type providerTextNoCacheKey struct{}
 type providerTextCookieKey struct{}
 
-var webProviderNumericID = regexp.MustCompile(`^[1-9][0-9]{0,17}$`)
+var WebProviderNumericID = regexp.MustCompile(`^[1-9][0-9]{0,17}$`)
 
-func webProviderInteger(value any, maximum int) (int, bool) {
-	number, err := strconv.Atoi(nativeText(value))
+func WebProviderInteger(value any, maximum int) (int, bool) {
+	number, err := strconv.Atoi(NativeText(value))
 	return number, err == nil && number >= 0 && number <= maximum
 }
 
-func providerHTMLAttr(node *html.Node, name string) string {
+func ProviderHTMLAttr(node *html.Node, name string) string {
 	if node != nil {
 		for _, attribute := range node.Attr {
 			if attribute.Key == name {
@@ -34,8 +34,8 @@ func providerHTMLAttr(node *html.Node, name string) string {
 	return ""
 }
 
-func providerHTMLClass(node *html.Node, name string) bool {
-	for _, value := range strings.Fields(providerHTMLAttr(node, "class")) {
+func ProviderHTMLClass(node *html.Node, name string) bool {
+	for _, value := range strings.Fields(ProviderHTMLAttr(node, "class")) {
 		if value == name {
 			return true
 		}
@@ -43,7 +43,7 @@ func providerHTMLClass(node *html.Node, name string) bool {
 	return false
 }
 
-func providerHTMLNodes(root *html.Node, match func(*html.Node) bool) []*html.Node {
+func ProviderHTMLNodes(root *html.Node, match func(*html.Node) bool) []*html.Node {
 	var found []*html.Node
 	if root == nil {
 		return found
@@ -62,10 +62,10 @@ func providerHTMLNodes(root *html.Node, match func(*html.Node) bool) []*html.Nod
 	return found
 }
 
-func providerHTMLFirstClass(root *html.Node, names ...string) *html.Node {
+func ProviderHTMLFirstClass(root *html.Node, names ...string) *html.Node {
 	for _, name := range names {
-		matches := providerHTMLNodes(root, func(node *html.Node) bool {
-			return providerHTMLClass(node, name)
+		matches := ProviderHTMLNodes(root, func(node *html.Node) bool {
+			return ProviderHTMLClass(node, name)
 		})
 		if len(matches) > 0 {
 			return matches[0]
@@ -74,9 +74,9 @@ func providerHTMLFirstClass(root *html.Node, names ...string) *html.Node {
 	return nil
 }
 
-func providerHTMLText(root *html.Node) string {
+func ProviderHTMLText(root *html.Node) string {
 	var text strings.Builder
-	for _, node := range providerHTMLNodes(root, func(node *html.Node) bool {
+	for _, node := range ProviderHTMLNodes(root, func(node *html.Node) bool {
 		return node.Type == html.TextNode
 	}) {
 		if node.Parent != nil && (node.Parent.Data == "script" || node.Parent.Data == "style") {
@@ -89,10 +89,10 @@ func providerHTMLText(root *html.Node) string {
 }
 
 func (d *Downloader) fetchProviderPage(ctx context.Context, address, referer, agent string) (*html.Node, string, error) {
-	return fetchHostPage(ctx, d, address, referer, agent)
+	return FetchHostPage(ctx, d, address, referer, agent)
 }
 
-func fetchHostPage(ctx context.Context, host Host, address, referer, agent string) (*html.Node, string, error) {
+func FetchHostPage(ctx context.Context, host Host, address, referer, agent string) (*html.Node, string, error) {
 	response, err := host.FetchText(ctx, TextRequest{URL: address, Referer: referer, UserAgent: agent})
 	if err != nil {
 		return nil, "", err
@@ -106,7 +106,7 @@ func fetchHostPage(ctx context.Context, host Host, address, referer, agent strin
 
 func (d *Downloader) prepareWebProviderMedia(ctx context.Context, media ProviderMedia, sourceName string) (ProviderMedia, error) {
 	address, err := url.Parse(media.URL)
-	if err != nil || !isProviderHTTPMediaURL(media.URL) || address.User != nil {
+	if err != nil || !IsProviderHTTPMediaURL(media.URL) || address.User != nil {
 		return ProviderMedia{}, fmt.Errorf("%s未返回有效播放地址，请刷新详情后重试", sourceName)
 	}
 	if strings.HasSuffix(strings.ToLower(address.Path), ".m3u8") {
@@ -120,7 +120,7 @@ func (d *Downloader) prepareWebProviderMedia(ctx context.Context, media Provider
 		if !strings.HasPrefix(strings.TrimSpace(strings.TrimPrefix(media.Playlist, "\ufeff")), "#EXTM3U") {
 			return ProviderMedia{}, fmt.Errorf("%s播放列表无效，请重新解析播放", sourceName)
 		}
-		if duration := m3u8Duration(media.Playlist); duration > 0 {
+		if duration := M3u8Duration(media.Playlist); duration > 0 {
 			media.Duration = duration
 		}
 	}

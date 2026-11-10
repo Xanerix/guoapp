@@ -188,16 +188,16 @@ func (client *soraniAPIClient) refreshLocked(ctx context.Context) (string, error
 
 func soraniSessionFromLogin(value any, name string) (soraniSession, error) {
 	row, _ := soraniPayload(value).(map[string]any)
-	access, refresh := mapString(row, "token"), mapString(row, "refreshToken")
+	access, refresh := MapString(row, "token"), MapString(row, "refreshToken")
 	if soraniTokenExpiry(access).IsZero() || soraniTokenExpiry(refresh).IsZero() {
 		return soraniSession{}, errors.New("青空次元未返回有效的登录凭证")
 	}
 	if user, ok := row["user"].(map[string]any); ok {
-		if display := mapString(user, "displayName", "username"); display != "" {
+		if display := MapString(user, "displayName", "username"); display != "" {
 			name = display
 		}
 	}
-	return soraniSession{Version: 1, AccessToken: access, RefreshToken: refresh, Name: truncate(name, 64)}, nil
+	return soraniSession{Version: 1, AccessToken: access, RefreshToken: refresh, Name: Truncate(name, 64)}, nil
 }
 
 func (client *soraniAPIClient) captcha(ctx context.Context) (soraniCaptcha, error) {
@@ -207,20 +207,20 @@ func (client *soraniAPIClient) captcha(ctx context.Context) (soraniCaptcha, erro
 		return soraniCaptcha{}, err
 	}
 	row, _ := soraniPayload(value).(map[string]any)
-	if kind := mapString(row, "type"); kind != "SLIDER" {
-		return soraniCaptcha{}, fmt.Errorf("青空次元返回了暂不支持的验证方式（%s），请稍后重试", truncate(kind, 32))
+	if kind := MapString(row, "type"); kind != "SLIDER" {
+		return soraniCaptcha{}, fmt.Errorf("青空次元返回了暂不支持的验证方式（%s），请稍后重试", Truncate(kind, 32))
 	}
 	size := func(key string) int {
-		number, err := strconv.Atoi(nativeText(row[key]))
+		number, err := strconv.Atoi(NativeText(row[key]))
 		if err != nil || number <= 0 || number > 4000 {
 			return 0
 		}
 		return number
 	}
 	captcha := soraniCaptcha{
-		ID:               mapString(row, "id"),
-		BackgroundImage:  mapString(row, "backgroundImage"),
-		TemplateImage:    mapString(row, "templateImage"),
+		ID:               MapString(row, "id"),
+		BackgroundImage:  MapString(row, "backgroundImage"),
+		TemplateImage:    MapString(row, "templateImage"),
 		BackgroundWidth:  size("backgroundImageWidth"),
 		BackgroundHeight: size("backgroundImageHeight"),
 		TemplateWidth:    size("templateImageWidth"),
@@ -269,7 +269,7 @@ func (client *soraniAPIClient) login(ctx context.Context, input soraniAccountInp
 		return soraniAccountStatus{}, err
 	}
 	row, _ := soraniPayload(verified).(map[string]any)
-	captchaToken := mapString(row, "token")
+	captchaToken := MapString(row, "token")
 	if captchaToken == "" || len(captchaToken) > 4096 {
 		return soraniAccountStatus{}, errors.New("安全验证未通过，请重新拖动滑块")
 	}

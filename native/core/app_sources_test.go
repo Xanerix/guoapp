@@ -83,12 +83,12 @@ func TestSourceUpdatesPreservePagesOtherSourcesAndMetadata(t *testing.T) {
 }
 
 func TestSourceBackoffUsesRelativeTimeAndRetainsTypedError(t *testing.T) {
-	backoff := &requestBackoff{host: "huangguo.video", status: 403, until: time.Now().Add(time.Minute)}
+	backoff := &RequestBackoff{host: "huangguo.video", status: 403, until: time.Now().Add(time.Minute)}
 	if !strings.Contains(backoff.Error(), "秒后") || strings.Contains(backoff.Error(), backoff.until.Format("15:04:05")) {
 		t.Fatal("retry time depends on native timezone")
 	}
-	var restored *requestBackoff
-	if !errors.As(publicError(fmt.Errorf("playlist: %w", backoff)), &restored) {
+	var restored *RequestBackoff
+	if !errors.As(PublicError(fmt.Errorf("playlist: %w", backoff)), &restored) {
 		t.Fatal("redaction discarded structured retry time")
 	}
 }

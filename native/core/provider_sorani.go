@@ -52,31 +52,31 @@ func soraniNumericID(value string) bool {
 }
 
 func soraniCover(value any) string {
-	return providerCoverAddress(value, soraniSiteBaseURL+"/")
+	return ProviderCoverAddress(value, soraniSiteBaseURL+"/")
 }
 
 func soraniDramaFromMap(row map[string]any) (Drama, error) {
 	if row == nil {
 		return Drama{}, errors.New("青空次元返回的剧集信息不完整")
 	}
-	id := mapString(row, "id", "videoId")
-	title := mapString(row, "title", "name", "videoTitle")
+	id := MapString(row, "id", "videoId")
+	title := MapString(row, "title", "name", "videoTitle")
 	if !soraniNumericID(id) || strings.TrimSpace(title) == "" {
 		return Drama{}, errors.New("青空次元返回的剧集信息不完整")
 	}
-	description := mapString(row, "summary", "description", "intro", "desc")
+	description := MapString(row, "summary", "description", "intro", "desc")
 	cover := soraniCover(firstAnyValue(row, "cover", "coverLarge", "coverSmall", "coverThumb", "backgroundImage"))
 
 	episodes := 0
 	for _, key := range []string{"episodeCount", "totalEpisode", "episodes", "total"} {
 		if value, ok := row[key]; ok {
-			if count, err := strconv.Atoi(nativeText(value)); err == nil && count > episodes && count <= 100000 {
+			if count, err := strconv.Atoi(NativeText(value)); err == nil && count > episodes && count <= 100000 {
 				episodes = count
 			}
 		}
 	}
 
-	category := mapString(row, "categoryName", "category")
+	category := MapString(row, "categoryName", "category")
 	tags := make([]string, 0, 8)
 	seen := map[string]bool{}
 	addTag := func(value string) {
@@ -87,37 +87,37 @@ func soraniDramaFromMap(row map[string]any) (Drama, error) {
 		seen[value] = true
 		tags = append(tags, value)
 	}
-	if name := mapString(row, "categoryName"); name != "" && name != category {
+	if name := MapString(row, "categoryName"); name != "" && name != category {
 		addTag(name)
 	}
-	for _, value := range mapStringSlice(row, "tags", "tagList", "categoryTags") {
+	for _, value := range MapStringSlice(row, "tags", "tagList", "categoryTags") {
 		addTag(value)
 	}
-	if alias := mapString(row, "alias"); alias != "" {
-		addTag(truncate(alias, 48))
+	if alias := MapString(row, "alias"); alias != "" {
+		addTag(Truncate(alias, 48))
 	}
-	if area := mapString(row, "area"); area != "" {
-		addTag(truncate(area, 48))
+	if area := MapString(row, "area"); area != "" {
+		addTag(Truncate(area, 48))
 	}
-	if year := mapString(row, "year", "publishDate"); year != "" {
+	if year := MapString(row, "year", "publishDate"); year != "" {
 		if digits := leadingYear(year); digits != "" {
 			addTag(digits + "年")
 		}
 	}
-	if actor := mapString(row, "actors", "actor"); actor != "" {
-		addTag("声优 " + truncate(actor, 32))
+	if actor := MapString(row, "actors", "actor"); actor != "" {
+		addTag("声优 " + Truncate(actor, 32))
 	}
 	if category == "" {
 		category = "番剧"
 	}
 	return Drama{
-		ID: providerDramaID(sourceSorani, id), Source: sourceSorani, SourceID: id,
-		Title: truncate(title, 256), Name: truncate(title, 256),
-		Desc: truncate(description, 12000), Intro: truncate(description, 12000),
+		ID: ProviderDramaID(sourceSorani, id), Source: sourceSorani, SourceID: id,
+		Title: Truncate(title, 256), Name: Truncate(title, 256),
+		Desc: Truncate(description, 12000), Intro: Truncate(description, 12000),
 		Cover: cover, CoverURL: cover,
 		TotalEpisode: episodes, EpisodeCount: episodes,
 		Category: category, ChannelName: "青空次元",
-		Tags: tags, Score: mapString(row, "bangumiRating", "score"),
+		Tags: tags, Score: MapString(row, "bangumiRating", "score"),
 	}, nil
 }
 
@@ -141,7 +141,7 @@ func leadingYear(value string) string {
 
 func firstAnyValue(row map[string]any, keys ...string) any {
 	for _, key := range keys {
-		if value, ok := row[key]; ok && nativeText(value) != "" {
+		if value, ok := row[key]; ok && NativeText(value) != "" {
 			return value
 		}
 	}
@@ -214,7 +214,7 @@ func (p *soraniProvider) fetchSoraniCatalogPage(ctx context.Context, page int, c
 	}
 	hasMore := len(rows) >= pageSize
 	if meta, ok := payload.(map[string]any); ok {
-		if total, err := strconv.Atoi(nativeText(meta["total"])); err == nil && total >= 0 && total <= 100000000 {
+		if total, err := strconv.Atoi(NativeText(meta["total"])); err == nil && total >= 0 && total <= 100000000 {
 			hasMore = page*pageSize < total
 		}
 	}
@@ -271,13 +271,13 @@ func (p *soraniProvider) fetchSoraniDetail(ctx context.Context, sourceID string)
 		if enabled, ok := episode["enabled"].(bool); ok && !enabled {
 			continue
 		}
-		episodeID := mapString(episode, "episodeId", "id")
+		episodeID := MapString(episode, "episodeId", "id")
 		if !soraniNumericID(episodeID) || seenIDs[episodeID] {
 			return Drama{}, nil, errors.New("青空次元分集目录包含无效或重复分集")
 		}
 		order := index + 1
 		if episode["episodeOrder"] != nil {
-			if parsed, err := strconv.Atoi(nativeText(episode["episodeOrder"])); err == nil && parsed > 0 && parsed <= 100000 {
+			if parsed, err := strconv.Atoi(NativeText(episode["episodeOrder"])); err == nil && parsed > 0 && parsed <= 100000 {
 				order = parsed
 			}
 		}
@@ -285,13 +285,13 @@ func (p *soraniProvider) fetchSoraniDetail(ctx context.Context, sourceID string)
 			return Drama{}, nil, errors.New("青空次元分集编号重复，请刷新目录")
 		}
 		seenIDs[episodeID], seenOrders[order] = true, true
-		title := mapString(episode, "episodeLabel", "title", "displayTitle")
+		title := MapString(episode, "episodeLabel", "title", "displayTitle")
 		if title == "" {
 			title = fmt.Sprintf("第 %d 集", order)
 		}
 		chapters = append(chapters, Chapter{
-			ID: providerChapterID(sourceSorani, sourceID, episodeID), Source: sourceSorani,
-			Title: truncate(title, 128), CurrentEpisode: json.RawMessage(strconv.Itoa(order)),
+			ID: ProviderChapterID(sourceSorani, sourceID, episodeID), Source: sourceSorani,
+			Title: Truncate(title, 128), CurrentEpisode: json.RawMessage(strconv.Itoa(order)),
 			VideoURL: "sorani-play://" + url.PathEscape(episodeID),
 			Referer:  soraniSiteBaseURL + "/",
 		})
@@ -319,12 +319,12 @@ func (client *soraniAPIClient) play(ctx context.Context, episodeID, lineCode, to
 
 func soraniLoginRejected(row map[string]any) bool {
 	canPlay, ok := row["canPlay"].(bool)
-	return ok && !canPlay && strings.Contains(mapString(row, "message"), "登录")
+	return ok && !canPlay && strings.Contains(MapString(row, "message"), "登录")
 }
 
 func (p *soraniProvider) resolveSoraniMedia(ctx context.Context, task Task) (ProviderMedia, error) {
-	source, sourceID, valid := splitProviderDramaID(task.DramaID)
-	prefix := providerChapterID(sourceSorani, sourceID, "")
+	source, sourceID, valid := SplitProviderDramaID(task.DramaID)
+	prefix := ProviderChapterID(sourceSorani, sourceID, "")
 	if !valid || source != sourceSorani || !soraniNumericID(sourceID) || !strings.HasPrefix(task.Chapter.ID, prefix) {
 		return ProviderMedia{}, errors.New("青空次元播放分集信息无效，请刷新详情")
 	}
@@ -353,19 +353,19 @@ func (p *soraniProvider) resolveSoraniMedia(ctx context.Context, task Task) (Pro
 			return ProviderMedia{}, errSoraniLoginRequired
 		case soraniLoginRejected(row):
 			return ProviderMedia{}, errSoraniLoginExpired
-		case mapString(row, "message") != "":
-			return ProviderMedia{}, errors.New("青空次元：" + truncate(mapString(row, "message"), 120))
+		case MapString(row, "message") != "":
+			return ProviderMedia{}, errors.New("青空次元：" + Truncate(MapString(row, "message"), 120))
 		default:
 			return ProviderMedia{}, errors.New("青空次元该分集暂不可播放")
 		}
 	}
-	address := mapString(row, "playUrl", "url")
+	address := MapString(row, "playUrl", "url")
 	if address == "" {
 		return ProviderMedia{}, fmt.Errorf("青空次元该分集暂无可用播放地址（线路 %s）", lineCode)
 	}
 	media := ProviderMedia{URL: address, Referer: soraniSiteBaseURL + "/"}
 	parsed, err := url.Parse(address)
-	if err != nil || !isProviderHTTPMediaURL(address) {
+	if err != nil || !IsProviderHTTPMediaURL(address) {
 		return ProviderMedia{}, errors.New("青空次元播放地址无效")
 	}
 	if strings.HasSuffix(strings.ToLower(parsed.Path), ".m3u8") {
@@ -377,7 +377,7 @@ func (p *soraniProvider) resolveSoraniMedia(ctx context.Context, task Task) (Pro
 			return ProviderMedia{}, errors.New("青空次元未返回有效 M3U8，链接可能已失效")
 		}
 		media.Playlist, media.URL = playlist, finalURL
-		media.Duration = m3u8Duration(playlist)
+		media.Duration = M3u8Duration(playlist)
 	}
 	return media, nil
 }

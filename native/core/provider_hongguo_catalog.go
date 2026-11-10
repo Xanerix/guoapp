@@ -50,19 +50,19 @@ func (p *hongguoProvider) fetchHongguoAppCatalogCategory(ctx context.Context, ca
 	client := p.client
 	client.catalogMu.Lock()
 	defer client.catalogMu.Unlock()
-	more, _ := ctx.Value(libraryMoreKey{}).(bool)
+	more, _ := ctx.Value(LibraryMoreKey{}).(bool)
 	update, _ := ctx.Value(libraryUpdateKey{}).(bool)
-	known, _ := ctx.Value(libraryKnownKey{}).(map[string]bool)
+	known, _ := ctx.Value(LibraryKnownKey{}).(map[string]bool)
 	state := p.hongguoCatalogSnapshot()
 	pageLimit := p.host.MaxPages()
 	if pageLimit < 1 {
-		pageLimit = defaultConfig().MaxPagesPerSort
+		pageLimit = DefaultConfig().MaxPagesPerSort
 	}
 	if pageLimit > 200 {
 		pageLimit = 200
 	}
 	headLimit := min(pageLimit, 3)
-	if background, _ := ctx.Value(backgroundCatalogKey{}).(bool); !background {
+	if background, _ := ctx.Value(BackgroundCatalogKey{}).(bool); !background {
 		pageLimit = min(pageLimit, max(1, 3/len(genres)))
 	}
 	roundLimit := max(pageLimit, headLimit)
@@ -145,8 +145,8 @@ func (p *hongguoProvider) fetchHongguoAppCatalogCategory(ctx context.Context, ca
 				if err == nil {
 					break
 				}
-				reportLibraryProgress(ctx, sourceHongguo, items, nil, false)
-				var backoff *requestBackoff
+				ReportLibraryProgress(ctx, sourceHongguo, items, nil, false)
+				var backoff *RequestBackoff
 				if attempt > 0 || !retryable || errors.As(err, &backoff) || ctx.Err() != nil {
 					break
 				}
@@ -182,7 +182,7 @@ func (p *hongguoProvider) fetchHongguoAppCatalogCategory(ctx context.Context, ca
 			client.mu.Lock()
 			client.state.Feeds[feedKey(genre.key)] = checkpoint
 			client.mu.Unlock()
-			reportLibraryProgress(ctx, sourceHongguo, items, nil, false)
+			ReportLibraryProgress(ctx, sourceHongguo, items, nil, false)
 		}
 		if !active {
 			break
@@ -214,7 +214,7 @@ func parseHongguoCatalogPage(result map[string]any, cursor hongguoCatalogCursor,
 	if len(rows) > 0 && len(items) == 0 {
 		return items, cursor, errors.New("App 分类未返回可识别的剧集")
 	}
-	next, parseErr := strconv.Atoi(mapString(data, "next_offset"))
+	next, parseErr := strconv.Atoi(MapString(data, "next_offset"))
 	hasMore, paginationOK := data["has_more"].(bool)
 	if !paginationOK || hasMore && parseErr != nil {
 		return items, cursor, errors.New("App 分页标记无效，已保留上次位置")
@@ -234,7 +234,7 @@ func parseHongguoCatalogPage(result map[string]any, cursor hongguoCatalogCursor,
 	if !hasMore && (next < cursor.Offset || next > 1_000_000) {
 		next = cursor.Offset
 	}
-	session := mapString(data, "session_id")
+	session := MapString(data, "session_id")
 	if len(session) > 4096 || strings.ContainsAny(session, "\r\n\x00") {
 		return items, cursor, errors.New("App 分页会话无效，已保留上次位置")
 	}

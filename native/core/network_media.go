@@ -12,7 +12,7 @@ import (
 )
 
 func mediaRequestHeaders(request *http.Request, referer string) {
-	request.Header.Set("User-Agent", userAgent)
+	request.Header.Set("User-Agent", UserAgent)
 	request.Header.Set("Referer", referer)
 	request.Header.Set("Accept", "*/*")
 	request.Header.Set("Accept-Language", "zh-CN,zh;q=0.9")
@@ -68,7 +68,7 @@ func (d *Downloader) doMediaRequestWithClient(request *http.Request, client *htt
 }
 
 func (d *Downloader) fetchMediaPlaylist(ctx context.Context, address, referer string) (string, string, error) {
-	if !isProviderHTTPMediaURL(address) {
+	if !IsProviderHTTPMediaURL(address) {
 		return "", "", errors.New("播放列表地址无效")
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, address, nil)

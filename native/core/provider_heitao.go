@@ -43,7 +43,7 @@ func validHeitaoCategory(category string) bool {
 	if category == "" {
 		return true
 	}
-	return len(category) <= 6 && webProviderNumericID.MatchString(category)
+	return len(category) <= 6 && WebProviderNumericID.MatchString(category)
 }
 
 func heitaoScriptText(node *html.Node) string {
@@ -57,9 +57,9 @@ func heitaoScriptText(node *html.Node) string {
 }
 
 func heitaoSeriesMetadata(document *html.Node) heitaoSeriesMeta {
-	for _, script := range providerHTMLNodes(document, func(node *html.Node) bool {
+	for _, script := range ProviderHTMLNodes(document, func(node *html.Node) bool {
 		return node.Type == html.ElementNode && node.Data == "script" &&
-			strings.Contains(strings.ToLower(providerHTMLAttr(node, "type")), "ld+json")
+			strings.Contains(strings.ToLower(ProviderHTMLAttr(node, "type")), "ld+json")
 	}) {
 		text := heitaoScriptText(script)
 		if text == "" {
@@ -83,8 +83,8 @@ func heitaoSeriesMetadata(document *html.Node) heitaoSeriesMeta {
 }
 
 func heitaoCategoryName(document *html.Node) string {
-	for _, node := range providerHTMLNodes(document, func(node *html.Node) bool { return node.Data == "li" }) {
-		text := strings.TrimSpace(providerHTMLText(node))
+	for _, node := range ProviderHTMLNodes(document, func(node *html.Node) bool { return node.Data == "li" }) {
+		text := strings.TrimSpace(ProviderHTMLText(node))
 		if strings.HasPrefix(text, "分类：") {
 			if name := strings.TrimSpace(strings.TrimPrefix(text, "分类：")); name != "" {
 				return name
@@ -95,14 +95,14 @@ func heitaoCategoryName(document *html.Node) string {
 }
 
 func heitaoTags(document *html.Node) []string {
-	block := providerHTMLFirstClass(document, "detail-tags")
+	block := ProviderHTMLFirstClass(document, "detail-tags")
 	if block == nil {
 		return nil
 	}
 	var tags []string
 	seen := map[string]bool{}
-	for _, anchor := range providerHTMLNodes(block, func(node *html.Node) bool { return node.Data == "a" }) {
-		value := strings.TrimSpace(providerHTMLText(anchor))
+	for _, anchor := range ProviderHTMLNodes(block, func(node *html.Node) bool { return node.Data == "a" }) {
+		value := strings.TrimSpace(ProviderHTMLText(anchor))
 		if value == "" || len([]rune(value)) > 48 || seen[value] {
 			continue
 		}
@@ -129,15 +129,15 @@ func heitaoEpisodeCount(remark string) int {
 
 func (p *heitaoProvider) fetchHeitaoCategories(ctx context.Context) ([]Category, error) {
 	site := heitaoBaseURL
-	document, pageURL, err := fetchHostPage(ctx, p.host, site+"/", site+"/", heitaoUserAgent)
+	document, pageURL, err := FetchHostPage(ctx, p.host, site+"/", site+"/", heitaoUserAgent)
 	if err != nil {
 		return nil, err
 	}
 	var categories []Category
 	seen := map[string]bool{}
-	for _, anchor := range providerHTMLNodes(document, func(node *html.Node) bool { return node.Data == "a" }) {
-		action, values, valid := dsdRouteParameters(pageURL, providerHTMLAttr(anchor, "href"))
-		id, name := values["id"], strings.TrimSpace(providerHTMLText(anchor))
+	for _, anchor := range ProviderHTMLNodes(document, func(node *html.Node) bool { return node.Data == "a" }) {
+		action, values, valid := dsdRouteParameters(pageURL, ProviderHTMLAttr(anchor, "href"))
+		id, name := values["id"], strings.TrimSpace(ProviderHTMLText(anchor))
 		if !valid || action != "type" || !validHeitaoCategory(id) || id == "" || seen[id] || name == "" || len([]rune(name)) > 48 {
 			continue
 		}
@@ -156,34 +156,34 @@ func (p *heitaoProvider) fetchHeitaoCategories(ctx context.Context) ([]Category,
 func parseHeitaoCards(document *html.Node, pageURL string) []Drama {
 	items := []Drama{}
 	seen := map[string]bool{}
-	for _, card := range providerHTMLNodes(document, func(node *html.Node) bool {
-		return node.Data == "a" && providerHTMLClass(node, "thumb")
+	for _, card := range ProviderHTMLNodes(document, func(node *html.Node) bool {
+		return node.Data == "a" && ProviderHTMLClass(node, "thumb")
 	}) {
-		action, values, valid := dsdRouteParameters(pageURL, providerHTMLAttr(card, "href"))
+		action, values, valid := dsdRouteParameters(pageURL, ProviderHTMLAttr(card, "href"))
 		id := values["id"]
-		if !valid || action != "detail" || !webProviderNumericID.MatchString(id) || seen[id] {
+		if !valid || action != "detail" || !WebProviderNumericID.MatchString(id) || seen[id] {
 			continue
 		}
-		title := strings.TrimSpace(providerHTMLAttr(card, "title"))
-		for _, image := range providerHTMLNodes(card, func(node *html.Node) bool { return node.Data == "img" }) {
+		title := strings.TrimSpace(ProviderHTMLAttr(card, "title"))
+		for _, image := range ProviderHTMLNodes(card, func(node *html.Node) bool { return node.Data == "img" }) {
 			if title == "" {
-				title = strings.TrimSpace(providerHTMLAttr(image, "alt"))
+				title = strings.TrimSpace(ProviderHTMLAttr(image, "alt"))
 			}
 			if title != "" {
 				break
 			}
 		}
 		if title == "" {
-			title = strings.TrimSpace(providerHTMLText(card))
+			title = strings.TrimSpace(ProviderHTMLText(card))
 		}
 		if title == "" {
 			continue
 		}
 		seen[id] = true
 		cover := ""
-		for _, image := range providerHTMLNodes(card, func(node *html.Node) bool { return node.Data == "img" }) {
+		for _, image := range ProviderHTMLNodes(card, func(node *html.Node) bool { return node.Data == "img" }) {
 			for _, attribute := range []string{"src", "data-src", "data-original"} {
-				if address := providerCoverAddress(providerHTMLAttr(image, attribute), pageURL); address != "" {
+				if address := ProviderCoverAddress(ProviderHTMLAttr(image, attribute), pageURL); address != "" {
 					cover = address
 					break
 				}
@@ -193,12 +193,12 @@ func parseHeitaoCards(document *html.Node, pageURL string) []Drama {
 			}
 		}
 		remark := ""
-		if label := providerHTMLFirstClass(card, "label"); label != nil {
-			remark = truncate(providerHTMLText(label), 64)
+		if label := ProviderHTMLFirstClass(card, "label"); label != nil {
+			remark = Truncate(ProviderHTMLText(label), 64)
 		}
 		drama := Drama{
-			ID: providerDramaID(sourceHeitao, id), Source: sourceHeitao, SourceID: id,
-			Title: truncate(title, 512), Name: truncate(title, 512),
+			ID: ProviderDramaID(sourceHeitao, id), Source: sourceHeitao, SourceID: id,
+			Title: Truncate(title, 512), Name: Truncate(title, 512),
 			Cover: cover, CoverURL: cover, ChannelName: "黑桃", CategoryName: "短剧", Remark: remark, Badge: remark,
 		}
 		if count := heitaoEpisodeCount(remark); count > 0 {
@@ -214,8 +214,8 @@ func parseHeitaoCards(document *html.Node, pageURL string) []Drama {
 
 func heitaoPageCount(document *html.Node, pageURL, category, query string, page int) int {
 	pages := page
-	for _, anchor := range providerHTMLNodes(document, func(node *html.Node) bool { return node.Data == "a" }) {
-		href, value := providerHTMLAttr(anchor, "href"), ""
+	for _, anchor := range ProviderHTMLNodes(document, func(node *html.Node) bool { return node.Data == "a" }) {
+		href, value := ProviderHTMLAttr(anchor, "href"), ""
 		if query != "" {
 			if match := reHeitaoSearchPage.FindStringSubmatch(href); len(match) == 2 {
 				value = match[1]
@@ -255,7 +255,7 @@ func (p *heitaoProvider) fetchHeitaoCatalogPage(ctx context.Context, page int, c
 	}
 	site := heitaoBaseURL
 	address := heitaoCatalogAddress(site, page, category, query)
-	document, pageURL, err := fetchHostPage(ctx, p.host, address, site+"/", heitaoUserAgent)
+	document, pageURL, err := FetchHostPage(ctx, p.host, address, site+"/", heitaoUserAgent)
 	if err != nil {
 		return nil, false, err
 	}
@@ -272,8 +272,8 @@ func heitaoChapters(document *html.Node, site, sourceID string) []Chapter {
 	}
 	groups := map[int][]heitaoEpisode{}
 	seen := map[string]bool{}
-	for _, anchor := range providerHTMLNodes(document, func(node *html.Node) bool { return node.Data == "a" }) {
-		match := reHeitaoEpisodeHref.FindStringSubmatch(providerHTMLAttr(anchor, "href"))
+	for _, anchor := range ProviderHTMLNodes(document, func(node *html.Node) bool { return node.Data == "a" }) {
+		match := reHeitaoEpisodeHref.FindStringSubmatch(ProviderHTMLAttr(anchor, "href"))
 		if len(match) < 4 || match[1] != sourceID {
 			continue
 		}
@@ -287,7 +287,7 @@ func heitaoChapters(document *html.Node, site, sourceID string) []Chapter {
 			continue
 		}
 		seen[key] = true
-		title := strings.TrimSpace(providerHTMLText(anchor))
+		title := strings.TrimSpace(ProviderHTMLText(anchor))
 		if title == "" {
 			title = fmt.Sprintf("第 %d 集", nid)
 		}
@@ -304,34 +304,34 @@ func heitaoChapters(document *html.Node, site, sourceID string) []Chapter {
 	for _, item := range best {
 		key := fmt.Sprintf("%d:%d", item.sid, item.nid)
 		chapters = append(chapters, Chapter{
-			ID:             providerChapterID(sourceHeitao, sourceID, key),
+			ID:             ProviderChapterID(sourceHeitao, sourceID, key),
 			Source:         sourceHeitao,
-			Title:          truncate(item.title, 128),
-			CurrentEpisode: rawEpisode(item.nid),
+			Title:          Truncate(item.title, 128),
+			CurrentEpisode: RawEpisode(item.nid),
 			VideoURL:       "heitao-player://" + key,
 			PageURL:        fmt.Sprintf("%s/index.php/vod/player/id/%s/nid/%d/sid/%d.html", site, sourceID, item.nid, item.sid),
 			Referer:        site + "/",
 		})
 	}
-	sortProviderChapters(chapters)
+	SortProviderChapters(chapters)
 	return chapters
 }
 
 func (p *heitaoProvider) fetchHeitaoDetail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
-	if !webProviderNumericID.MatchString(sourceID) {
+	if !WebProviderNumericID.MatchString(sourceID) {
 		return Drama{}, nil, errors.New("黑桃视频 ID 无效")
 	}
 	site := heitaoBaseURL
 	address := site + "/index.php/vod/detail/id/" + sourceID + ".html"
-	document, pageURL, err := fetchHostPage(ctx, p.host, address, site+"/", heitaoUserAgent)
+	document, pageURL, err := FetchHostPage(ctx, p.host, address, site+"/", heitaoUserAgent)
 	if err != nil {
 		return Drama{}, nil, err
 	}
 	meta := heitaoSeriesMetadata(document)
 	name := strings.TrimSpace(meta.Name)
 	if name == "" {
-		if heading := providerHTMLFirstClass(document, "title"); heading != nil {
-			name = strings.TrimSpace(providerHTMLText(heading))
+		if heading := ProviderHTMLFirstClass(document, "title"); heading != nil {
+			name = strings.TrimSpace(ProviderHTMLText(heading))
 		}
 	}
 	if name == "" {
@@ -341,24 +341,24 @@ func (p *heitaoProvider) fetchHeitaoDetail(ctx context.Context, sourceID string)
 	if len(chapters) == 0 {
 		return Drama{}, nil, errors.New("黑桃该剧暂无可播放分集")
 	}
-	cover := providerCoverAddress(meta.Image, pageURL)
+	cover := ProviderCoverAddress(meta.Image, pageURL)
 	if cover == "" {
-		if block := providerHTMLFirstClass(document, "albumDetailImg"); block != nil {
-			for _, image := range providerHTMLNodes(block, func(node *html.Node) bool { return node.Data == "img" }) {
-				if address := providerCoverAddress(providerHTMLAttr(image, "src"), pageURL); address != "" {
+		if block := ProviderHTMLFirstClass(document, "albumDetailImg"); block != nil {
+			for _, image := range ProviderHTMLNodes(block, func(node *html.Node) bool { return node.Data == "img" }) {
+				if address := ProviderCoverAddress(ProviderHTMLAttr(image, "src"), pageURL); address != "" {
 					cover = address
 					break
 				}
 			}
 		}
 	}
-	description := truncate(meta.Description, 12000)
+	description := Truncate(meta.Description, 12000)
 	drama := Drama{
-		ID: providerDramaID(sourceHeitao, sourceID), Source: sourceHeitao, SourceID: sourceID,
-		Title: truncate(name, 512), Name: truncate(name, 512),
+		ID: ProviderDramaID(sourceHeitao, sourceID), Source: sourceHeitao, SourceID: sourceID,
+		Title: Truncate(name, 512), Name: Truncate(name, 512),
 		Desc: description, Intro: description,
 		Cover: cover, CoverURL: cover, ChannelName: "黑桃",
-		CategoryName: firstNonEmpty(heitaoCategoryName(document), "短剧"),
+		CategoryName: FirstNonEmpty(heitaoCategoryName(document), "短剧"),
 		Tags:         heitaoTags(document),
 		TotalEpisode: len(chapters), EpisodeCount: len(chapters),
 	}
@@ -475,9 +475,9 @@ func heitaoDecryptMediaURL(raw string, encrypt int) (string, error) {
 }
 
 func (p *heitaoProvider) resolveHeitaoMedia(ctx context.Context, task Task) (ProviderMedia, error) {
-	source, sourceID, valid := splitProviderDramaID(task.DramaID)
-	prefix := providerChapterID(sourceHeitao, sourceID, "")
-	if !valid || source != sourceHeitao || !webProviderNumericID.MatchString(sourceID) || !strings.HasPrefix(task.Chapter.ID, prefix) {
+	source, sourceID, valid := SplitProviderDramaID(task.DramaID)
+	prefix := ProviderChapterID(sourceHeitao, sourceID, "")
+	if !valid || source != sourceHeitao || !WebProviderNumericID.MatchString(sourceID) || !strings.HasPrefix(task.Chapter.ID, prefix) {
 		return ProviderMedia{}, errors.New("黑桃播放分集信息无效，请刷新详情")
 	}
 	sid, nid, ok := heitaoSeparateEpisode(strings.TrimPrefix(task.Chapter.ID, prefix))
@@ -513,8 +513,8 @@ func (p *heitaoProvider) resolveHeitaoMedia(ctx context.Context, task Task) (Pro
 	if err != nil {
 		return ProviderMedia{}, err
 	}
-	address = resolveProviderURL(playerURL, address)
-	if !isProviderHTTPMediaURL(address) {
+	address = ResolveProviderURL(playerURL, address)
+	if !IsProviderHTTPMediaURL(address) {
 		return ProviderMedia{}, errors.New("黑桃播放地址无效")
 	}
 	return p.host.PrepareWebMedia(ctx, ProviderMedia{URL: address, Referer: site + "/"}, "黑桃")

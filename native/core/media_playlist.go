@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func m3u8Duration(raw string) time.Duration {
+func M3u8Duration(raw string) time.Duration {
 	var total time.Duration
 	for _, line := range strings.Split(raw, "\n") {
 		line = strings.TrimSpace(line)

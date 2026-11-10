@@ -4,11 +4,11 @@ import "encoding/json"
 
 func parseHongguoMergeLoader(body, loaderKey string) (hongguoRankingContent, bool) {
 	for _, tag := range rankingScriptTags.FindAllString(body, -1) {
-		if extractAttr(tag, "data-fn-name") != "mergeLoaderData" || extractAttr(tag, "data-script-src") != "modern-run-window-fn" {
+		if ExtractAttr(tag, "data-fn-name") != "mergeLoaderData" || ExtractAttr(tag, "data-script-src") != "modern-run-window-fn" {
 			continue
 		}
 		var args []json.RawMessage
-		if json.Unmarshal([]byte(extractAttr(tag, "data-fn-args")), &args) != nil || len(args) != 2 {
+		if json.Unmarshal([]byte(ExtractAttr(tag, "data-fn-args")), &args) != nil || len(args) != 2 {
 			continue
 		}
 		var route string

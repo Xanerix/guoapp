@@ -6,7 +6,7 @@ import (
 )
 
 func legacyCoverURL(value any) string {
-	address := strings.TrimSpace(coverPathFromAny(value))
+	address := strings.TrimSpace(CoverPathFromAny(value))
 	if address == "" {
 		return ""
 	}
@@ -18,7 +18,7 @@ func legacyCoverURL(value any) string {
 		return ""
 	}
 	if parsed.IsAbs() {
-		if validNativeCoverURL(parsed) {
+		if ValidNativeCoverURL(parsed) {
 			return address
 		}
 		return ""
@@ -34,11 +34,11 @@ func legacyCoverURL(value any) string {
 }
 
 func repairLegacyCoverURL(drama LibraryDrama) string {
-	if sourceFromDramaID(drama.ID) != sourceCloudFront && drama.Source != sourceCloudFront {
+	if SourceFromDramaID(drama.ID) != sourceCloudFront && drama.Source != sourceCloudFront {
 		return drama.Cover
 	}
 	address, err := url.Parse(drama.Cover)
-	media, _ := url.Parse(defaultCDNURL)
+	media, _ := url.Parse(DefaultCDNURL)
 	if err == nil && strings.EqualFold(address.Hostname(), media.Hostname()) {
 		address.Scheme, address.Host = "", ""
 		return legacyCoverURL(address.String())

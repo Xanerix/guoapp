@@ -139,7 +139,7 @@ func guipianFixURL(raw string) string {
 		raw = guipianSiteBaseURL + raw
 	}
 	parsed, err := url.Parse(raw)
-	if err != nil || !validNativeCoverURL(parsed) {
+	if err != nil || !ValidNativeCoverURL(parsed) {
 		return ""
 	}
 	return parsed.String()
@@ -185,10 +185,10 @@ func parseGuipianCards(body string) []Drama {
 			remark = guipianClean(remarkMatch[1])
 		}
 		items = append(items, Drama{
-			ID: providerDramaID(sourceGuipian, id), Source: sourceGuipian, SourceID: id,
-			Title: truncate(title, 512), Name: truncate(title, 512),
+			ID: ProviderDramaID(sourceGuipian, id), Source: sourceGuipian, SourceID: id,
+			Title: Truncate(title, 512), Name: Truncate(title, 512),
 			Cover: cover, CoverURL: cover, ChannelName: "鬼片网",
-			CategoryName: "影视", Remark: truncate(remark, 64),
+			CategoryName: "影视", Remark: Truncate(remark, 64),
 		})
 		if len(items) > 500 {
 			break
@@ -316,10 +316,10 @@ func guipianPickPlaylist(body string) (string, []Chapter, error) {
 				epTitle = fmt.Sprintf("第 %d 集", order)
 			}
 			chapters = append(chapters, Chapter{
-				ID:             providerChapterID(sourceGuipian, "", playURL),
+				ID:             ProviderChapterID(sourceGuipian, "", playURL),
 				Source:         sourceGuipian,
-				Title:          truncate(epTitle, 128),
-				CurrentEpisode: rawEpisode(order),
+				Title:          Truncate(epTitle, 128),
+				CurrentEpisode: RawEpisode(order),
 				VideoURL:       "guipian-play://" + playURL,
 				PageURL:        playURL,
 				Referer:        site + "/",
@@ -400,11 +400,11 @@ func (p *guipianProvider) fetchGuipianDetail(ctx context.Context, sourceID strin
 	actors := guipianActors(body)
 
 	drama := Drama{
-		ID: providerDramaID(sourceGuipian, sourceID), Source: sourceGuipian, SourceID: sourceID,
-		Title: truncate(name, 512), Name: truncate(name, 512),
-		Desc: truncate(description, 12000), Intro: truncate(description, 12000),
+		ID: ProviderDramaID(sourceGuipian, sourceID), Source: sourceGuipian, SourceID: sourceID,
+		Title: Truncate(name, 512), Name: Truncate(name, 512),
+		Desc: Truncate(description, 12000), Intro: Truncate(description, 12000),
 		Cover: cover, CoverURL: cover, ChannelName: "鬼片网", CategoryName: "影视",
-		Remark: truncate(status, 64),
+		Remark: Truncate(status, 64),
 	}
 	tags := make([]string, 0, 8)
 	seenTag := map[string]bool{}
@@ -422,10 +422,10 @@ func (p *guipianProvider) fetchGuipianDetail(ctx context.Context, sourceID strin
 		addTag(area)
 	}
 	if director != "" {
-		addTag("导演 " + truncate(director, 32))
+		addTag("导演 " + Truncate(director, 32))
 	}
 	if actors != "" {
-		addTag("主演 " + truncate(actors, 48))
+		addTag("主演 " + Truncate(actors, 48))
 	}
 	drama.Tags = tags
 
@@ -434,15 +434,15 @@ func (p *guipianProvider) fetchGuipianDetail(ctx context.Context, sourceID strin
 		return Drama{}, nil, err
 	}
 	for index := range chapters {
-		chapters[index].ID = providerChapterID(sourceGuipian, sourceID, chapters[index].PageURL)
+		chapters[index].ID = ProviderChapterID(sourceGuipian, sourceID, chapters[index].PageURL)
 	}
 	drama.TotalEpisode, drama.EpisodeCount = len(chapters), len(chapters)
 	return drama, chapters, nil
 }
 
 func (p *guipianProvider) resolveGuipianMedia(ctx context.Context, task Task) (ProviderMedia, error) {
-	source, sourceID, valid := splitProviderDramaID(task.DramaID)
-	prefix := providerChapterID(sourceGuipian, sourceID, "")
+	source, sourceID, valid := SplitProviderDramaID(task.DramaID)
+	prefix := ProviderChapterID(sourceGuipian, sourceID, "")
 	if !valid || source != sourceGuipian || !guipianNumericID(sourceID) || !strings.HasPrefix(task.Chapter.ID, prefix) {
 		return ProviderMedia{}, errors.New("鬼片网播放分集信息无效，请刷新详情")
 	}
@@ -470,7 +470,7 @@ func (p *guipianProvider) resolveGuipianMedia(ctx context.Context, task Task) (P
 	if strings.HasPrefix(address, "//") {
 		address = "https:" + address
 	}
-	if !isProviderHTTPMediaURL(address) {
+	if !IsProviderHTTPMediaURL(address) {
 		return ProviderMedia{}, errors.New("鬼片网播放地址无效")
 	}
 	parsed, err := url.Parse(address)
@@ -514,8 +514,8 @@ func (p *guipianProvider) searchGuipian(ctx context.Context, page int, query str
 		}
 		seen[id] = true
 		matched = append(matched, Drama{
-			ID: providerDramaID(sourceGuipian, id), Source: sourceGuipian, SourceID: id,
-			Title: truncate(title, 512), Name: truncate(title, 512),
+			ID: ProviderDramaID(sourceGuipian, id), Source: sourceGuipian, SourceID: id,
+			Title: Truncate(title, 512), Name: Truncate(title, 512),
 			ChannelName: "鬼片网", CategoryName: "影视",
 		})
 	}

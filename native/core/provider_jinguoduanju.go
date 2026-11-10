@@ -21,7 +21,7 @@ func validJinguoDuanjuCategory(category string) bool {
 		return true
 	}
 	kind, id, ok := strings.Cut(category, ":")
-	return ok && (kind == "nav" || kind == "tag") && webProviderNumericID.MatchString(id)
+	return ok && (kind == "nav" || kind == "tag") && WebProviderNumericID.MatchString(id)
 }
 
 func jinguoDuanjuActive(row map[string]any, key string) bool {
@@ -58,14 +58,14 @@ func (p *jinguoDuanjuProvider) fetchJinguoDuanjuCategories(ctx context.Context) 
 	}
 	for _, value := range rows {
 		row, _ := value.(map[string]any)
-		if !jinguoDuanjuActive(row, "active") || !jinguoDuanjuActive(row, "valid") || strings.EqualFold(mapString(row, "targetType"), "SYSTEM") {
+		if !jinguoDuanjuActive(row, "active") || !jinguoDuanjuActive(row, "valid") || strings.EqualFold(MapString(row, "targetType"), "SYSTEM") {
 			continue
 		}
-		id := mapString(row, "id")
-		if !webProviderNumericID.MatchString(id) {
+		id := MapString(row, "id")
+		if !WebProviderNumericID.MatchString(id) {
 			continue
 		}
-		add("nav:"+id, mapString(row, "frontendName"))
+		add("nav:"+id, MapString(row, "frontendName"))
 	}
 	if filterErr == nil {
 		groups, _ := filters.([]any)
@@ -86,11 +86,11 @@ func (p *jinguoDuanjuProvider) fetchJinguoDuanjuCategories(ctx context.Context) 
 				if !jinguoDuanjuActive(tag, "active") || !jinguoDuanjuActive(tag, "frontendVisible") {
 					continue
 				}
-				id := mapString(tag, "id")
-				if !webProviderNumericID.MatchString(id) {
+				id := MapString(tag, "id")
+				if !WebProviderNumericID.MatchString(id) {
 					continue
 				}
-				add("tag:"+id, mapString(tag, "name"))
+				add("tag:"+id, MapString(tag, "name"))
 			}
 		}
 	}
@@ -125,19 +125,19 @@ func jinguoDuanjuCatalogQuery(category, query string) (url.Values, error) {
 }
 
 func jinguoDuanjuDramaFromMap(row map[string]any, site, sourceID string) (Drama, error) {
-	id, title := mapString(row, "id"), strings.TrimSpace(mapString(row, "title"))
-	if !webProviderNumericID.MatchString(id) || title == "" {
+	id, title := MapString(row, "id"), strings.TrimSpace(MapString(row, "title"))
+	if !WebProviderNumericID.MatchString(id) || title == "" {
 		return Drama{}, errors.New("禁果短剧剧集资料不完整")
 	}
 	if sourceID != "" && sourceID != id {
 		return Drama{}, errors.New("禁果短剧详情与请求剧集不符")
 	}
-	episodes, _ := webProviderInteger(row["episodeCount"], 100000)
+	episodes, _ := WebProviderInteger(row["episodeCount"], 100000)
 	var tags []string
 	seenTags := map[string]bool{}
 	if values, valid := row["tags"].([]any); valid {
 		for _, value := range values {
-			tag := strings.TrimSpace(nativeText(value))
+			tag := strings.TrimSpace(NativeText(value))
 			if tag == "" || len([]rune(tag)) > 24 || seenTags[tag] || len(tags) >= 32 {
 				continue
 			}
@@ -145,17 +145,17 @@ func jinguoDuanjuDramaFromMap(row map[string]any, site, sourceID string) (Drama,
 			tags = append(tags, tag)
 		}
 	}
-	description := truncate(firstNonEmpty(mapString(row, "description"), mapString(row, "subtitle")), 12000)
-	cover := providerCoverAddress(firstPresent(row, "coverUrl", "cover"), site+"/")
-	drama := Drama{ID: providerDramaID(sourceJinguoDuanju, id), Source: sourceJinguoDuanju, SourceID: id,
-		Title: truncate(title, 512), Name: truncate(title, 512), Desc: description, Intro: description,
+	description := Truncate(FirstNonEmpty(MapString(row, "description"), MapString(row, "subtitle")), 12000)
+	cover := ProviderCoverAddress(firstPresent(row, "coverUrl", "cover"), site+"/")
+	drama := Drama{ID: ProviderDramaID(sourceJinguoDuanju, id), Source: sourceJinguoDuanju, SourceID: id,
+		Title: Truncate(title, 512), Name: Truncate(title, 512), Desc: description, Intro: description,
 		Cover: cover, CoverURL: cover, EpisodeCount: episodes, TotalEpisode: episodes,
-		CategoryName: firstNonEmpty(firstTag(tags), "短剧"), ChannelName: "禁果短剧", Tags: tags,
-		OnlineDate: providerReleaseDate(mapString(row, "publishedAt"))}
-	if heat, valid := webProviderInteger(row["heat"], 1000000000); valid && heat > 0 {
+		CategoryName: FirstNonEmpty(firstTag(tags), "短剧"), ChannelName: "禁果短剧", Tags: tags,
+		OnlineDate: ProviderReleaseDate(MapString(row, "publishedAt"))}
+	if heat, valid := WebProviderInteger(row["heat"], 1000000000); valid && heat > 0 {
 		drama.Heat = strconv.Itoa(heat)
 	}
-	switch strings.ToUpper(mapString(row, "filmType")) {
+	switch strings.ToUpper(MapString(row, "filmType")) {
 	case "FREE":
 		vip := false
 		drama.VIP = &vip
@@ -257,23 +257,23 @@ func jinguoDuanjuChapters(site, sourceID string, rows []any) ([]Chapter, error) 
 	seenIDs, seenNumbers := map[string]bool{}, map[int]bool{}
 	for _, value := range rows {
 		row, _ := value.(map[string]any)
-		id := mapString(row, "id")
-		number, valid := webProviderInteger(row["number"], 100000)
-		if !webProviderNumericID.MatchString(id) || !valid || number < 1 || seenIDs[id] || seenNumbers[number] {
+		id := MapString(row, "id")
+		number, valid := WebProviderInteger(row["number"], 100000)
+		if !WebProviderNumericID.MatchString(id) || !valid || number < 1 || seenIDs[id] || seenNumbers[number] {
 			return nil, errors.New("禁果短剧分集编号无效或重复，请刷新详情")
 		}
 		seenIDs[id], seenNumbers[number] = true, true
-		title := firstNonEmpty(mapString(row, "title"), fmt.Sprintf("第%d集", number))
+		title := FirstNonEmpty(MapString(row, "title"), fmt.Sprintf("第%d集", number))
 		locked, _ := row["locked"].(bool)
-		chapters = append(chapters, Chapter{ID: providerChapterID(sourceJinguoDuanju, sourceID, id), Source: sourceJinguoDuanju,
-			Title: truncate(title, 256), CurrentEpisode: rawEpisode(number), VideoURL: "jinguoduanju-play://" + id,
+		chapters = append(chapters, Chapter{ID: ProviderChapterID(sourceJinguoDuanju, sourceID, id), Source: sourceJinguoDuanju,
+			Title: Truncate(title, 256), CurrentEpisode: RawEpisode(number), VideoURL: "jinguoduanju-play://" + id,
 			Referer: site + "/", VIP: locked})
 	}
 	return chapters, nil
 }
 
 func (p *jinguoDuanjuProvider) fetchJinguoDuanjuDetail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
-	if !webProviderNumericID.MatchString(sourceID) {
+	if !WebProviderNumericID.MatchString(sourceID) {
 		return Drama{}, nil, errors.New("禁果短剧剧集 ID 无效")
 	}
 	client := p.client
@@ -286,7 +286,7 @@ func (p *jinguoDuanjuProvider) fetchJinguoDuanjuDetail(ctx context.Context, sour
 	if row == nil {
 		row = object
 	}
-	if description := mapString(object, "description"); description != "" && mapString(row, "description") == "" {
+	if description := MapString(object, "description"); description != "" && MapString(row, "description") == "" {
 		row["description"] = description
 	}
 	drama, err := jinguoDuanjuDramaFromMap(row, client.siteURL(), sourceID)
@@ -302,7 +302,7 @@ func (p *jinguoDuanjuProvider) fetchJinguoDuanjuDetail(ctx context.Context, sour
 		return Drama{}, nil, err
 	}
 	if count := len(chapters); count > 0 {
-		if listed, valid := webProviderInteger(drama.EpisodeCount, 100000); !valid || count > listed {
+		if listed, valid := WebProviderInteger(drama.EpisodeCount, 100000); !valid || count > listed {
 			drama.EpisodeCount, drama.TotalEpisode = count, count
 		}
 	}
@@ -310,13 +310,13 @@ func (p *jinguoDuanjuProvider) fetchJinguoDuanjuDetail(ctx context.Context, sour
 }
 
 func (p *jinguoDuanjuProvider) resolveJinguoDuanjuMedia(ctx context.Context, task Task) (ProviderMedia, error) {
-	source, sourceID, valid := splitProviderDramaID(task.DramaID)
-	prefix := providerChapterID(sourceJinguoDuanju, sourceID, "")
-	if !valid || source != sourceJinguoDuanju || !webProviderNumericID.MatchString(sourceID) || !strings.HasPrefix(task.Chapter.ID, prefix) {
+	source, sourceID, valid := SplitProviderDramaID(task.DramaID)
+	prefix := ProviderChapterID(sourceJinguoDuanju, sourceID, "")
+	if !valid || source != sourceJinguoDuanju || !WebProviderNumericID.MatchString(sourceID) || !strings.HasPrefix(task.Chapter.ID, prefix) {
 		return ProviderMedia{}, errors.New("禁果短剧播放分集信息无效，请刷新详情")
 	}
 	episodeID := strings.TrimPrefix(task.Chapter.ID, prefix)
-	if !webProviderNumericID.MatchString(episodeID) {
+	if !WebProviderNumericID.MatchString(episodeID) {
 		return ProviderMedia{}, errors.New("禁果短剧播放分集 ID 无效")
 	}
 	client := p.client
@@ -325,7 +325,7 @@ func (p *jinguoDuanjuProvider) resolveJinguoDuanjuMedia(ctx context.Context, tas
 		return ProviderMedia{}, err
 	}
 	row, _ := decoded.(map[string]any)
-	if id := mapString(row, "episodeId"); id != "" && id != episodeID {
+	if id := MapString(row, "episodeId"); id != "" && id != episodeID {
 		return ProviderMedia{}, errors.New("禁果短剧返回的播放地址与请求分集不符")
 	}
 	if allowance, valid := row["allowance"].(map[string]any); valid {
@@ -334,8 +334,8 @@ func (p *jinguoDuanjuProvider) resolveJinguoDuanjuMedia(ctx context.Context, tas
 		}
 	}
 	referer := client.siteURL() + "/"
-	address := normalizeProviderMediaURL(referer, mapString(row, "videoUrl"))
-	if !isProviderHTTPMediaURL(address) {
+	address := NormalizeProviderMediaURL(referer, MapString(row, "videoUrl"))
+	if !IsProviderHTTPMediaURL(address) {
 		return ProviderMedia{}, errors.New("禁果短剧未提供该集播放地址，请确认是否需要会员或解锁")
 	}
 	return p.host.PrepareWebMedia(ctx, ProviderMedia{URL: address, Referer: referer}, "禁果短剧")
@@ -367,7 +367,7 @@ func init() {
 func (p *jinguoDuanjuProvider) Descriptor() SourceDescriptor { return jinguoDuanjuDescriptor }
 
 func (p *jinguoDuanjuProvider) BaseURL() string {
-	return firstNonEmpty(jinguoDuanjuContentSite(p.client.configured), jinguoDuanjuBaseURL)
+	return FirstNonEmpty(jinguoDuanjuContentSite(p.client.configured), jinguoDuanjuBaseURL)
 }
 
 func (p *jinguoDuanjuProvider) Categories(ctx context.Context, force bool) ([]Category, error) {

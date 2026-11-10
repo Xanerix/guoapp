@@ -11,10 +11,10 @@ func TestRegisteredProviderResolvesAliasesAndCapabilities(t *testing.T) {
 	if !registeredProviderSource(sourceGuipian) {
 		t.Fatal("registered source must be recognised as a provider source")
 	}
-	if got := providerSourceForURL("https://www.guipianwu.com/nv/1.html"); got != sourceGuipian {
+	if got := ProviderSourceForURL("https://www.guipianwu.com/nv/1.html"); got != sourceGuipian {
 		t.Fatalf("providerSourceForURL = %q", got)
 	}
-	d := &Downloader{cfg: defaultConfig()}
+	d := &Downloader{cfg: DefaultConfig()}
 	if got := d.providerBaseURL(sourceGuipian); got != guipianSiteBaseURL {
 		t.Fatalf("providerBaseURL = %q", got)
 	}
@@ -28,7 +28,7 @@ func TestRegisteredProviderResolvesAliasesAndCapabilities(t *testing.T) {
 	if again, _ := d.provider(sourceGuipian); again != p {
 		t.Fatal("provider instances must be cached per Downloader")
 	}
-	if !validNativeCategory(sourceGuipian, "3") || validNativeCategory(sourceGuipian, "nope") {
+	if !ValidNativeCategory(sourceGuipian, "3") || ValidNativeCategory(sourceGuipian, "nope") {
 		t.Fatal("category validation must come from the descriptor")
 	}
 	if _, ok := d.provider("unknown-source"); ok {
@@ -37,10 +37,10 @@ func TestRegisteredProviderResolvesAliasesAndCapabilities(t *testing.T) {
 }
 
 func TestRegisteredProviderHostSuffixesAndConfiguredBaseURL(t *testing.T) {
-	if got := providerSourceForURL("https://some-line.buxefaex.cc/drama/video/1/"); got != sourceYeguo {
+	if got := ProviderSourceForURL("https://some-line.buxefaex.cc/drama/video/1/"); got != sourceYeguo {
 		t.Fatalf("yeguo suffix host resolved to %q", got)
 	}
-	d := &Downloader{cfg: defaultConfig()}
+	d := &Downloader{cfg: DefaultConfig()}
 	huangjuFixtureProvider(d, huangjuAPIBaseURL, "https://huangju.test/")
 	if got := d.providerBaseURL(sourceHuangju); got != "https://huangju.test" {
 		t.Fatalf("configured huangju base ignored: %q", got)
@@ -48,7 +48,7 @@ func TestRegisteredProviderHostSuffixesAndConfiguredBaseURL(t *testing.T) {
 	if got := d.providerURLCandidates("https://huangju.net/x"); len(got) != 1 {
 		t.Fatalf("huangju must not rotate hosts, got %v", got)
 	}
-	if !validNativeCategory(sourceHuangju, huangjuNewestCategory) || validNativeCategory(sourceDSD, "abc") {
+	if !ValidNativeCategory(sourceHuangju, huangjuNewestCategory) || ValidNativeCategory(sourceDSD, "abc") {
 		t.Fatal("descriptor category validation mismatch")
 	}
 }

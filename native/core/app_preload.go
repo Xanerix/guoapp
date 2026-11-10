@@ -18,7 +18,7 @@ type nativePreloadKey struct{}
 const nativePreloadLimit = 4 << 20
 
 func (engine *nativeEngine) nativePreload(ctx context.Context, input nativeInput) (nativePlan, error) {
-	ctx = context.WithValue(ctx, backgroundCatalogKey{}, true)
+	ctx = context.WithValue(ctx, BackgroundCatalogKey{}, true)
 	ctx = context.WithValue(ctx, nativePreloadKey{}, true)
 	plan, err := engine.nativeResolve(ctx, input)
 	if err != nil || plan.Local {

@@ -10,22 +10,22 @@ import (
 func hongguoHeat(row map[string]any) string {
 	hot := nestedMap(row, "hot_score_data")
 
-	if score := firstNonEmpty(mapString(hot, "score"), mapString(row, "hot_score")); score != "" {
+	if score := FirstNonEmpty(MapString(hot, "score"), MapString(row, "hot_score")); score != "" {
 		value, err := strconv.ParseFloat(score, 64)
 		if err == nil && value >= 0 && !math.IsInf(value, 0) && !math.IsNaN(value) {
 			return score
 		}
 	}
-	return mapString(hot, "text")
+	return MapString(hot, "text")
 }
 
 func hongguoOnlineDate(row map[string]any, now time.Time) string {
-	if date := providerTimestampDate(mapString(row, "first_visible_time")); date != "" {
+	if date := providerTimestampDate(MapString(row, "first_visible_time")); date != "" {
 		return date
 	}
 	for _, value := range anyList(row["sub_title_list"]) {
-		label := mapString(nestedMap(value), "content")
-		day := now.In(providerChinaTime)
+		label := MapString(nestedMap(value), "content")
+		day := now.In(ProviderChinaTime)
 		switch label {
 		case "今日上新":
 			return day.Format("2006-01-02")
@@ -33,7 +33,7 @@ func hongguoOnlineDate(row map[string]any, now time.Time) string {
 			return day.AddDate(0, 0, -1).Format("2006-01-02")
 		default:
 			if strings.HasSuffix(label, "上新") {
-				date := normalizeDate(label)
+				date := NormalizeDate(label)
 				if _, err := time.Parse("2006-01-02", date); err == nil {
 					return date
 				}

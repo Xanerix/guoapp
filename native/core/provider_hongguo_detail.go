@@ -69,7 +69,7 @@ func (p *hongguoProvider) hongguoAppDetail(ctx context.Context, seriesID string)
 
 func parseHongguoAppDetail(result map[string]any, seriesID string) (hongguoDetailEntry, error) {
 	detail := nestedMap(result, "data", "video_data")
-	returnedID := mapString(detail, "series_id_str", "series_id")
+	returnedID := MapString(detail, "series_id_str", "series_id")
 	if returnedID != seriesID {
 		return hongguoDetailEntry{}, errors.New("红果 App 未返回所请求的剧集")
 	}
@@ -78,12 +78,12 @@ func parseHongguoAppDetail(result map[string]any, seriesID string) (hongguoDetai
 	episodes := map[int]bool{}
 	for _, row := range anyList(detail["video_list"]) {
 		video, _ := row.(map[string]any)
-		videoID := mapString(video, "vid")
-		index, err := strconv.Atoi(mapString(video, "vid_index"))
+		videoID := MapString(video, "vid")
+		index, err := strconv.Atoi(MapString(video, "vid_index"))
 		if err != nil || index < 1 || !hongguoNumericID.MatchString(videoID) {
 			return entry, errors.New("红果 App 分集编号或视频 ID 无效")
 		}
-		if identifier := mapString(video, "series_id"); identifier != "" && identifier != seriesID {
+		if identifier := MapString(video, "series_id"); identifier != "" && identifier != seriesID {
 			return entry, errors.New("红果 App 返回了其他剧集的分集")
 		}
 		if seen[videoID] || episodes[index] {
@@ -91,8 +91,8 @@ func parseHongguoAppDetail(result map[string]any, seriesID string) (hongguoDetai
 		}
 		seen[videoID], episodes[index] = true, true
 		chapter := Chapter{
-			ID: providerChapterID(sourceHongguo, seriesID, videoID), Source: sourceHongguo,
-			Title: fmt.Sprintf("第%d集", index), VideoURL: "hongguo-cenc://" + videoID, CurrentEpisode: rawEpisode(index),
+			ID: ProviderChapterID(sourceHongguo, seriesID, videoID), Source: sourceHongguo,
+			Title: fmt.Sprintf("第%d集", index), VideoURL: "hongguo-cenc://" + videoID, CurrentEpisode: RawEpisode(index),
 		}
 		if vertical, ok := video["vertical"].(bool); ok {
 			chapter.Vertical = &vertical
@@ -104,7 +104,7 @@ func parseHongguoAppDetail(result map[string]any, seriesID string) (hongguoDetai
 		rightIndex, _ := strconv.Atoi(entry.Chapters[right].EpisodeString(right + 1))
 		return leftIndex < rightIndex
 	})
-	total, _ := strconv.Atoi(mapString(detail, "episode_cnt"))
+	total, _ := strconv.Atoi(MapString(detail, "episode_cnt"))
 	if len(entry.Chapters) == 0 || total > len(entry.Chapters) {
 		return entry, errors.New("红果 App 未返回完整分集，已尝试其他详情入口")
 	}
@@ -117,7 +117,7 @@ func parseHongguoAppDetail(result map[string]any, seriesID string) (hongguoDetai
 }
 
 func (p *hongguoProvider) hongguoCachedDrama(drama Drama) Drama {
-	source, seriesID, valid := splitProviderDramaID(drama.ID)
+	source, seriesID, valid := SplitProviderDramaID(drama.ID)
 	if !valid || source != sourceHongguo {
 		return drama
 	}

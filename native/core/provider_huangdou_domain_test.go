@@ -90,7 +90,7 @@ func TestHuangdouHostPoolConsistency(t *testing.T) {
 		if !isHuangdouHost("https://" + pooled + "/api/drama/list") {
 			t.Fatalf("完整 URL 未被识别: %s", pooled)
 		}
-		if got := providerSourceForURL("https://" + pooled + "/api/drama/list"); got != sourceHuangdou {
+		if got := ProviderSourceForURL("https://" + pooled + "/api/drama/list"); got != sourceHuangdou {
 			t.Fatalf("providerSourceForURL 未识别池内域名: %s -> %q", pooled, got)
 		}
 		if host := huangdouHostname("HTTPS://" + strings.ToUpper(pooled) + ":443/x?y=1"); host != pooled {
@@ -314,7 +314,7 @@ func TestHuangdouCallSharesTightBudget(t *testing.T) {
 }
 
 func TestHuangdouCoverRefererFollowsPool(t *testing.T) {
-	d := &Downloader{cfg: defaultConfig(), providerHosts: map[string]string{}}
+	d := &Downloader{cfg: DefaultConfig(), providerHosts: map[string]string{}}
 	for _, pooled := range huangdouHostPool {
 		cover := "https://" + pooled + "/covers/a.jpg"
 		want := "https://" + pooled + "/home"

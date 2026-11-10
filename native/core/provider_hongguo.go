@@ -91,7 +91,7 @@ func (p *hongguoProvider) fetchHongguoRoute(ctx context.Context, route, category
 				pages = 500
 			}
 		}
-		reportLibraryProgress(ctx, sourceHongguo, items, nil, false)
+		ReportLibraryProgress(ctx, sourceHongguo, items, nil, false)
 		added := 0
 		for _, drama := range items {
 			if !seen[drama.ID] {
@@ -124,7 +124,7 @@ func (p *hongguoProvider) fetchHongguoCategoryPage(ctx context.Context, route, c
 			out = append(out, dr)
 		}
 	}
-	pages, _ := strconv.Atoi(mapString(nestedMap(page, "pagination"), "totalPages"))
+	pages, _ := strconv.Atoi(MapString(nestedMap(page, "pagination"), "totalPages"))
 	return out, pages, nil
 }
 
@@ -144,7 +144,7 @@ func (p *hongguoProvider) fetchHongguoChapters(ctx context.Context, sourceID str
 	if webErr == nil {
 		return title, chapters, nil
 	}
-	return "", nil, fmt.Errorf("App 详情失败: %v；网页详情失败: %w", publicError(appErr), webErr)
+	return "", nil, fmt.Errorf("App 详情失败: %v；网页详情失败: %w", PublicError(appErr), webErr)
 }
 
 func (p *hongguoProvider) fetchHongguoWebChapters(ctx context.Context, sourceID string) (string, []Chapter, error) {
@@ -158,7 +158,7 @@ func (p *hongguoProvider) fetchHongguoWebChapters(ctx context.Context, sourceID 
 	if len(detail) == 0 {
 		return "", nil, fmt.Errorf("hongguo detail is empty")
 	}
-	title := firstNonEmpty(mapString(detail, "series_name", "series_title", "name"), sourceID)
+	title := FirstNonEmpty(MapString(detail, "series_name", "series_title", "name"), sourceID)
 	vids := anyList(detail["vid_list"])
 	chapters := make([]Chapter, 0, len(vids))
 	for i, v := range vids {
@@ -167,7 +167,7 @@ func (p *hongguoProvider) fetchHongguoWebChapters(ctx context.Context, sourceID 
 			continue
 		}
 		idx := i + 1
-		chapters = append(chapters, Chapter{ID: providerChapterID(sourceHongguo, sourceID, vid), Source: sourceHongguo, Title: fmt.Sprintf("第%d集", idx), VideoURL: "hongguo-cenc://" + vid, CurrentEpisode: rawEpisode(idx)})
+		chapters = append(chapters, Chapter{ID: ProviderChapterID(sourceHongguo, sourceID, vid), Source: sourceHongguo, Title: fmt.Sprintf("第%d集", idx), VideoURL: "hongguo-cenc://" + vid, CurrentEpisode: RawEpisode(idx)})
 	}
 	if len(chapters) == 0 {
 		return title, nil, errors.New("红果详情没有返回剧集 ID")
@@ -190,7 +190,7 @@ func parseRouterData(raw string) map[string]any {
 }
 
 func (p *hongguoProvider) resolveHongguoMedia(ctx context.Context, task Task) (ProviderMedia, error) {
-	source, seriesID, ok := splitProviderDramaID(task.DramaID)
+	source, seriesID, ok := SplitProviderDramaID(task.DramaID)
 	if !ok || source != sourceHongguo {
 		return ProviderMedia{}, fmt.Errorf("红果章节缺少剧 ID，请刷新剧库后重新加入队列")
 	}
@@ -212,7 +212,7 @@ func (p *hongguoProvider) resolveHongguoMedia(ctx context.Context, task Task) (P
 	if err := ctx.Err(); err != nil {
 		return ProviderMedia{}, err
 	}
-	return ProviderMedia{}, fmt.Errorf("红果 App 取流失败：%v；网页取流失败：%w", publicError(nativeErr), publicError(pageErr))
+	return ProviderMedia{}, fmt.Errorf("红果 App 取流失败：%v；网页取流失败：%w", PublicError(nativeErr), PublicError(pageErr))
 }
 
 func (p *hongguoProvider) resolveHongguoWebMedia(ctx context.Context, seriesID, videoID string) (ProviderMedia, error) {
@@ -222,7 +222,7 @@ func (p *hongguoProvider) resolveHongguoWebMedia(ctx context.Context, seriesID, 
 		return ProviderMedia{}, err
 	}
 	page := routerLoaderMap(parseRouterData(body), "player_", "player_page")
-	if mapString(page, "vid") != videoID || mapString(page, "series_id") != seriesID {
+	if MapString(page, "vid") != videoID || MapString(page, "series_id") != seriesID {
 		return ProviderMedia{}, fmt.Errorf("红果未返回所请求的剧集，可能仅允许网页试看；请在站点确认该集的访问权限")
 	}
 	info, _ := page["video_player_info"].(map[string]any)
@@ -230,7 +230,7 @@ func (p *hongguoProvider) resolveHongguoWebMedia(ctx context.Context, seriesID, 
 	if len(addresses) == 0 {
 		return ProviderMedia{}, fmt.Errorf("红果该集未提供公开播放地址，可能需要登录或 App 授权；不会将试看集冒充该集下载")
 	}
-	duration, _ := strconv.ParseFloat(mapString(info, "duration"), 64)
+	duration, _ := strconv.ParseFloat(MapString(info, "duration"), 64)
 	media := ProviderMedia{URL: addresses[0], Referer: hongguoBaseURL + "/", Duration: time.Duration(duration * float64(time.Second))}
 	for _, address := range addresses {
 		variant := media
@@ -249,46 +249,46 @@ func hongguoDramaFromAny(v any, category string) Drama {
 	if len(vd) == 0 {
 		vd = m
 	}
-	sourceID := firstNonEmpty(mapString(vd, "series_id_str", "series_id"), mapString(m, "series_id_str", "series_id"), mapString(vd, "keyword"), mapString(m, "keyword"))
+	sourceID := FirstNonEmpty(MapString(vd, "series_id_str", "series_id"), MapString(m, "series_id_str", "series_id"), MapString(vd, "keyword"), MapString(m, "keyword"))
 	if !hongguoNumericID.MatchString(sourceID) {
 		return Drama{}
 	}
-	title := firstNonEmpty(mapString(vd, "series_title", "series_name", "title"), mapString(m, "series_name", "name"), sourceID)
-	cover := firstNonEmpty(mapString(vd, "series_cover", "cover"), mapString(m, "series_cover"))
-	intro := firstNonEmpty(mapString(vd, "series_intro", "video_desc"), mapString(m, "series_intro"))
-	count := firstNonEmpty(mapString(vd, "episode_cnt"), mapString(m, "episode_cnt"))
-	remark := firstNonEmpty(mapString(vd, "episode_right_text"), mapString(m, "episode_right_text"))
-	releaseStatus := releaseStatusFromRemark(remark)
-	if mapString(vd, "series_status") == "1" {
+	title := FirstNonEmpty(MapString(vd, "series_title", "series_name", "title"), MapString(m, "series_name", "name"), sourceID)
+	cover := FirstNonEmpty(MapString(vd, "series_cover", "cover"), MapString(m, "series_cover"))
+	intro := FirstNonEmpty(MapString(vd, "series_intro", "video_desc"), MapString(m, "series_intro"))
+	count := FirstNonEmpty(MapString(vd, "episode_cnt"), MapString(m, "episode_cnt"))
+	remark := FirstNonEmpty(MapString(vd, "episode_right_text"), MapString(m, "episode_right_text"))
+	releaseStatus := ReleaseStatusFromRemark(remark)
+	if MapString(vd, "series_status") == "1" {
 		releaseStatus = "finished"
-	} else if mapString(vd, "series_status") == "0" {
+	} else if MapString(vd, "series_status") == "0" {
 		releaseStatus = "ongoing"
 	}
 	if remark == "" && count != "" {
 		remark = "共" + count + "集"
 	}
-	tags := mapStringSlice(vd, "tags")
+	tags := MapStringSlice(vd, "tags")
 	for _, value := range anyList(vd["category_list"]) {
 		item, _ := value.(map[string]any)
-		if name := mapString(item, "name"); name != "" && !slices.Contains(tags, name) {
+		if name := MapString(item, "name"); name != "" && !slices.Contains(tags, name) {
 			tags = append(tags, name)
 		}
 	}
 	var categories []struct {
 		Name string `json:"name"`
 	}
-	if json.Unmarshal([]byte(mapString(vd, "category_schema")), &categories) == nil {
+	if json.Unmarshal([]byte(MapString(vd, "category_schema")), &categories) == nil {
 		for _, item := range categories {
 			if item.Name != "" && !slices.Contains(tags, item.Name) {
 				tags = append(tags, item.Name)
 			}
 		}
 	}
-	genre := mapString(vd, "category_name", "categoryName", "category")
+	genre := MapString(vd, "category_name", "categoryName", "category")
 	if genre == "" && len(tags) > 0 {
 		genre = tags[0]
 	}
-	return Drama{ID: providerDramaID(sourceHongguo, sourceID), Source: sourceHongguo, SourceID: sourceID, Title: title, Name: title, Desc: intro, Intro: intro, Cover: cover, CoverURL: cover, CategoryName: firstNonEmpty(genre, category), ChannelName: "红果", Remark: remark, TotalEpisode: count, EpisodeCount: count, Tags: tags, ReleaseStatus: releaseStatus, Score: mapString(vd, "score"), Views: mapString(vd, "series_play_cnt", "play_cnt"), Heat: hongguoHeat(vd), OnlineDate: hongguoOnlineDate(vd, time.Now())}
+	return Drama{ID: ProviderDramaID(sourceHongguo, sourceID), Source: sourceHongguo, SourceID: sourceID, Title: title, Name: title, Desc: intro, Intro: intro, Cover: cover, CoverURL: cover, CategoryName: FirstNonEmpty(genre, category), ChannelName: "红果", Remark: remark, TotalEpisode: count, EpisodeCount: count, Tags: tags, ReleaseStatus: releaseStatus, Score: MapString(vd, "score"), Views: MapString(vd, "series_play_cnt", "play_cnt"), Heat: hongguoHeat(vd), OnlineDate: hongguoOnlineDate(vd, time.Now())}
 }
 
 func nestedMap(v any, keys ...string) map[string]any {

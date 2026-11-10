@@ -120,7 +120,7 @@ func TestSoraniAccountLoginRenewAndExpiry(t *testing.T) {
 	server := &soraniFixtureServer{accessLife: time.Hour}
 	d := sourceFixtureDownloader(t, server.transport(t))
 	ctx := context.Background()
-	task := Task{DramaID: providerDramaID(sourceSorani, "4647"), Chapter: Chapter{ID: providerChapterID(sourceSorani, "4647", "64334")}}
+	task := Task{DramaID: ProviderDramaID(sourceSorani, "4647"), Chapter: Chapter{ID: ProviderChapterID(sourceSorani, "4647", "64334")}}
 
 	if _, err := soraniFixtureProvider(d).resolveSoraniMedia(ctx, task); !errors.Is(err, errSoraniLoginRequired) {
 		t.Fatalf("anonymous playback should ask for login: %v", err)

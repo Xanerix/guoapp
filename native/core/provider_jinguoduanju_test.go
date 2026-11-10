@@ -10,7 +10,7 @@ import (
 )
 
 func TestJinguoDuanjuAliasesAndDramaParsing(t *testing.T) {
-	if got := (&Downloader{cfg: defaultConfig()}).providerBaseURL(sourceJinguoDuanju); got != jinguoDuanjuBaseURL {
+	if got := (&Downloader{cfg: DefaultConfig()}).providerBaseURL(sourceJinguoDuanju); got != jinguoDuanjuBaseURL {
 		t.Fatalf("unexpected default jinguoDuanju endpoint: %s", got)
 	}
 	if got := jinguoDuanjuConfigured("https://jgdj.app/").providerBaseURL(sourceJinguoDuanju); got != "https://jgdj.app" {
@@ -24,7 +24,7 @@ func TestJinguoDuanjuAliasesAndDramaParsing(t *testing.T) {
 		"https://play.jinguoduanju.app/",
 		"https://jgdj.app/",
 	} {
-		if got := providerSourceForURL(address); got != sourceJinguoDuanju {
+		if got := ProviderSourceForURL(address); got != sourceJinguoDuanju {
 			t.Fatalf("jinguoDuanju host was not recognized: %s -> %s", address, got)
 		}
 	}
@@ -33,7 +33,7 @@ func TestJinguoDuanjuAliasesAndDramaParsing(t *testing.T) {
 			t.Fatalf("jinguoDuanju alias was not canonicalized: %s -> %s", alias, got)
 		}
 	}
-	if got := providerSourceForURL("https://9fu8e.com/"); got == sourceJinguoDuanju {
+	if got := ProviderSourceForURL("https://9fu8e.com/"); got == sourceJinguoDuanju {
 		t.Fatal("the unrelated 禁果 landing host was mapped to 禁果短剧")
 	}
 	if !validJinguoDuanjuCategory("home") || !validJinguoDuanjuCategory("tag:22") || validJinguoDuanjuCategory("tag:古装") || validJinguoDuanjuCategory("nav:") {
@@ -41,7 +41,7 @@ func TestJinguoDuanjuAliasesAndDramaParsing(t *testing.T) {
 	}
 	row := map[string]any{"id": "2137", "title": "禁果短剧样本", "episodeCount": "12", "coverUrl": "/media/covers/sample.png", "heat": "8", "publishedAt": "2026-09-23T10:20:30+08:00", "filmType": "FREE", "tags": []any{"都市", "职场"}}
 	drama, err := jinguoDuanjuDramaFromMap(row, jinguoDuanjuBaseURL, "")
-	if err != nil || drama.ID != "jinguoduanju:2137" || drama.EpisodeCount != 12 || drama.ChannelName != "禁果短剧" || drama.CategoryName != "都市" || drama.Heat != "8" || drama.OnlineDate != "2026-09-23" || drama.VIP == nil || *drama.VIP || !strings.HasPrefix(nativeText(drama.Cover), jinguoDuanjuBaseURL+"/media/covers/") {
+	if err != nil || drama.ID != "jinguoduanju:2137" || drama.EpisodeCount != 12 || drama.ChannelName != "禁果短剧" || drama.CategoryName != "都市" || drama.Heat != "8" || drama.OnlineDate != "2026-09-23" || drama.VIP == nil || *drama.VIP || !strings.HasPrefix(NativeText(drama.Cover), jinguoDuanjuBaseURL+"/media/covers/") {
 		t.Fatalf("jinguoDuanju row parsed incorrectly: %+v %v", drama, err)
 	}
 	if _, err := jinguoDuanjuDramaFromMap(row, jinguoDuanjuBaseURL, "2138"); err == nil {

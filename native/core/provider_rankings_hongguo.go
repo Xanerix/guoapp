@@ -30,7 +30,7 @@ func (p *hongguoProvider) fetchHongguoRankingPage(ctx context.Context, board Ran
 			}
 		}
 		base := hongguoBaseURL
-		address := base + "/rank/" + board.path
+		address := base + "/rank/" + board.Path
 		if page > 1 {
 			address += "?page=" + strconv.Itoa(page)
 		}
@@ -52,7 +52,7 @@ func (p *hongguoProvider) fetchHongguoRankingPage(ctx context.Context, board Ran
 
 func hongguoRankingURLPage(address string, board RankingBoard) (int, bool) {
 	parsed, err := url.Parse(address)
-	if err != nil || parsed.User != nil || strings.TrimRight(parsed.Path, "/") != "/rank/"+board.path {
+	if err != nil || parsed.User != nil || strings.TrimRight(parsed.Path, "/") != "/rank/"+board.Path {
 		return 0, false
 	}
 	if parsed.Host != "" && parsed.Hostname() != "hongguoduanju.com" && parsed.Hostname() != "www.hongguoduanju.com" {
@@ -90,10 +90,10 @@ func parseHongguoRankingDocument(body string, board RankingBoard, page int, load
 		return RankingPage{}, errHongguoRankingIncomplete
 	}
 	identified := len(loader) > 0
-	for _, node := range providerHTMLNodes(document, func(node *html.Node) bool {
-		return node.Data == "link" && providerHTMLAttr(node, "rel") == "canonical"
+	for _, node := range ProviderHTMLNodes(document, func(node *html.Node) bool {
+		return node.Data == "link" && ProviderHTMLAttr(node, "rel") == "canonical"
 	}) {
-		actual, valid := hongguoRankingURLPage(providerHTMLAttr(node, "href"), board)
+		actual, valid := hongguoRankingURLPage(ProviderHTMLAttr(node, "href"), board)
 		if !valid || actual != page {
 			return RankingPage{}, errHongguoRankingFormat
 		}
@@ -102,29 +102,29 @@ func parseHongguoRankingDocument(body string, board RankingBoard, page int, load
 	if !identified {
 		return RankingPage{}, errHongguoRankingIncomplete
 	}
-	pagination := providerHTMLNodes(document, func(node *html.Node) bool {
-		return node.Data == "nav" && providerHTMLAttr(node, "aria-label") == "榜单分页"
+	pagination := ProviderHTMLNodes(document, func(node *html.Node) bool {
+		return node.Data == "nav" && ProviderHTMLAttr(node, "aria-label") == "榜单分页"
 	})
 	if len(pagination) != 1 {
 		return RankingPage{}, errHongguoRankingIncomplete
 	}
-	current := providerHTMLNodes(pagination[0], func(node *html.Node) bool {
-		return providerHTMLAttr(node, "aria-current") == "page"
+	current := ProviderHTMLNodes(pagination[0], func(node *html.Node) bool {
+		return ProviderHTMLAttr(node, "aria-current") == "page"
 	})
-	if len(current) != 1 || providerHTMLText(current[0]) != strconv.Itoa(page) {
+	if len(current) != 1 || ProviderHTMLText(current[0]) != strconv.Itoa(page) {
 		return RankingPage{}, errHongguoRankingFormat
 	}
-	result := RankingPage{Items: []RankingItem{}, UpdatedText: mapString(loader, "updatedText")}
+	result := RankingPage{Items: []RankingItem{}, UpdatedText: MapString(loader, "updatedText")}
 	maximumPage := page
-	for _, link := range providerHTMLNodes(pagination[0], func(node *html.Node) bool { return node.Data == "a" }) {
-		actual, valid := hongguoRankingURLPage(providerHTMLAttr(link, "href"), board)
+	for _, link := range ProviderHTMLNodes(pagination[0], func(node *html.Node) bool { return node.Data == "a" }) {
+		actual, valid := hongguoRankingURLPage(ProviderHTMLAttr(link, "href"), board)
 		if !valid {
 			return RankingPage{}, errHongguoRankingFormat
 		}
 		if actual > maximumPage {
 			maximumPage = actual
 		}
-		if providerHTMLAttr(link, "rel") == "next" {
+		if ProviderHTMLAttr(link, "rel") == "next" {
 			if actual != page+1 {
 				return RankingPage{}, errHongguoRankingFormat
 			}
@@ -140,11 +140,11 @@ func parseHongguoRankingDocument(body string, board RankingBoard, page int, load
 	if items, found := parseHongguoRankingJSONLD(body, board, page); found {
 		result.Items = items
 	} else {
-		for _, list := range providerHTMLNodes(document, func(node *html.Node) bool {
-			return node.Data == "ol" && providerHTMLAttr(node, "aria-label") != ""
+		for _, list := range ProviderHTMLNodes(document, func(node *html.Node) bool {
+			return node.Data == "ol" && ProviderHTMLAttr(node, "aria-label") != ""
 		}) {
-			articles := providerHTMLNodes(list, func(node *html.Node) bool {
-				return node.Data == "article" && strings.HasPrefix(providerHTMLAttr(node, "aria-labelledby"), "rank-title-")
+			articles := ProviderHTMLNodes(list, func(node *html.Node) bool {
+				return node.Data == "article" && strings.HasPrefix(ProviderHTMLAttr(node, "aria-labelledby"), "rank-title-")
 			})
 			if len(articles) == 0 {
 				continue
@@ -200,7 +200,7 @@ func parseHongguoRankingJSONLD(body string, board RankingBoard, page int) ([]Ran
 			id := hongguoRankingDramaID(row.URL)
 			title := strings.TrimSpace(row.Name)
 			items = append(items, RankingItem{Rank: row.Position, Drama: Drama{
-				ID: providerDramaID(sourceHongguo, id), Source: sourceHongguo, SourceID: id,
+				ID: ProviderDramaID(sourceHongguo, id), Source: sourceHongguo, SourceID: id,
 				Title: title, Name: title, ChannelName: "红果",
 			}})
 		}
@@ -210,42 +210,42 @@ func parseHongguoRankingJSONLD(body string, board RankingBoard, page int) ([]Ran
 }
 
 func parseHongguoRankingArticle(article *html.Node) (RankingItem, bool) {
-	label := providerHTMLAttr(article, "aria-labelledby")
+	label := ProviderHTMLAttr(article, "aria-labelledby")
 	id := strings.TrimPrefix(label, "rank-title-")
 	if !hongguoNumericID.MatchString(id) {
 		return RankingItem{}, false
 	}
-	headings := providerHTMLNodes(article, func(node *html.Node) bool {
-		return (node.Data == "h2" || node.Data == "h3") && providerHTMLAttr(node, "id") == label
+	headings := ProviderHTMLNodes(article, func(node *html.Node) bool {
+		return (node.Data == "h2" || node.Data == "h3") && ProviderHTMLAttr(node, "id") == label
 	})
-	if len(headings) != 1 || headings[0].Parent == nil || hongguoRankingDramaID(providerHTMLAttr(headings[0].Parent, "href")) != id {
+	if len(headings) != 1 || headings[0].Parent == nil || hongguoRankingDramaID(ProviderHTMLAttr(headings[0].Parent, "href")) != id {
 		return RankingItem{}, false
 	}
-	title := providerHTMLText(headings[0])
+	title := ProviderHTMLText(headings[0])
 	if title == "" || len([]rune(title)) > 200 {
 		return RankingItem{}, false
 	}
-	drama := Drama{ID: providerDramaID(sourceHongguo, id), Source: sourceHongguo, SourceID: id, Title: title, Name: title, ChannelName: "红果"}
+	drama := Drama{ID: ProviderDramaID(sourceHongguo, id), Source: sourceHongguo, SourceID: id, Title: title, Name: title, ChannelName: "红果"}
 	rank := 0
-	for _, link := range providerHTMLNodes(article, func(node *html.Node) bool {
-		return node.Data == "a" && strings.HasPrefix(providerHTMLAttr(node, "aria-label"), "查看")
+	for _, link := range ProviderHTMLNodes(article, func(node *html.Node) bool {
+		return node.Data == "a" && strings.HasPrefix(ProviderHTMLAttr(node, "aria-label"), "查看")
 	}) {
-		if hongguoRankingDramaID(providerHTMLAttr(link, "href")) != id {
+		if hongguoRankingDramaID(ProviderHTMLAttr(link, "href")) != id {
 			return RankingItem{}, false
 		}
-		value, err := strconv.Atoi(providerHTMLText(link))
+		value, err := strconv.Atoi(ProviderHTMLText(link))
 		if err == nil && value > 0 && (rank == 0 || rank == value) {
 			rank = value
 		}
-		for _, image := range providerHTMLNodes(link, func(node *html.Node) bool { return node.Data == "img" }) {
-			cover := hongguoCoverAddress(providerHTMLAttr(image, "src"))
+		for _, image := range ProviderHTMLNodes(link, func(node *html.Node) bool { return node.Data == "img" }) {
+			cover := hongguoCoverAddress(ProviderHTMLAttr(image, "src"))
 			if cover != "" {
 				drama.Cover, drama.CoverURL = cover, cover
 				break
 			}
 		}
 	}
-	for _, node := range providerHTMLNodes(article, func(node *html.Node) bool { return node.Type == html.TextNode }) {
+	for _, node := range ProviderHTMLNodes(article, func(node *html.Node) bool { return node.Type == html.TextNode }) {
 		text := strings.TrimSpace(node.Data)
 		if hongguoRankingMetric.MatchString(text) {
 			drama.Heat = text
@@ -254,11 +254,11 @@ func parseHongguoRankingArticle(article *html.Node) (RankingItem, bool) {
 			drama.Score = strings.TrimSpace(strings.TrimPrefix(text, "评分"))
 		}
 	}
-	for _, paragraph := range providerHTMLNodes(article, func(node *html.Node) bool { return node.Data == "p" }) {
+	for _, paragraph := range ProviderHTMLNodes(article, func(node *html.Node) bool { return node.Data == "p" }) {
 		var tags []string
 		for child := paragraph.FirstChild; child != nil; child = child.NextSibling {
 			if child.Data == "span" && child.FirstChild != nil && child.FirstChild == child.LastChild && child.FirstChild.Type == html.TextNode {
-				value := providerHTMLText(child)
+				value := ProviderHTMLText(child)
 				if value != "" && len([]rune(value)) <= 20 && !strings.Contains(value, "热度") {
 					tags = append(tags, value)
 				}
@@ -267,7 +267,7 @@ func parseHongguoRankingArticle(article *html.Node) (RankingItem, bool) {
 		if len(tags) > 0 {
 			drama.Tags, drama.CategoryName = tags, tags[0]
 		} else if paragraph.FirstChild != nil && paragraph.FirstChild == paragraph.LastChild && paragraph.FirstChild.Type == html.TextNode {
-			drama.Desc = providerHTMLText(paragraph)
+			drama.Desc = ProviderHTMLText(paragraph)
 			drama.Intro = drama.Desc
 		}
 	}

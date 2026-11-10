@@ -99,7 +99,7 @@ func newHuangdouAPIClient(p *huangdouProvider) *huangdouAPIClient {
 	if id == "" {
 		id = strconv.FormatInt(time.Now().UnixNano(), 16)
 	}
-	host := firstNonEmpty(p.host.PreferredSite(sourceHuangdou), p.site())
+	host := FirstNonEmpty(p.host.PreferredSite(sourceHuangdou), p.site())
 	return &huangdouAPIClient{p: p, host: host, sessionID: id, deviceID: id}
 }
 
@@ -109,9 +109,9 @@ func (p *huangdouProvider) fetchHuangdouChapters(ctx context.Context, sourceID s
 	if err != nil {
 		return "", nil, err
 	}
-	title := firstNonEmpty(mapString(data, "name", "title", "t"), sourceID)
+	title := FirstNonEmpty(MapString(data, "name", "title", "t"), sourceID)
 	episodes := huangdouList(data["episodes"])
-	count := atoiDefault(firstNonEmpty(mapString(data, "episode_count"), mapString(data, "free_episodes")), len(episodes))
+	count := atoiDefault(FirstNonEmpty(MapString(data, "episode_count"), MapString(data, "free_episodes")), len(episodes))
 	if count <= 0 {
 		count = len(episodes)
 	}
@@ -121,20 +121,20 @@ func (p *huangdouProvider) fetchHuangdouChapters(ctx context.Context, sourceID s
 	chapters := make([]Chapter, 0, count)
 	if len(episodes) > 0 {
 		for i, ep := range episodes {
-			seq := atoiDefault(firstNonEmpty(mapString(ep, "seq"), mapString(ep, "episode"), mapString(ep, "ep")), i+1)
+			seq := atoiDefault(FirstNonEmpty(MapString(ep, "seq"), MapString(ep, "episode"), MapString(ep, "ep")), i+1)
 			if seq <= 0 {
 				seq = i + 1
 			}
-			titleText := firstNonEmpty(mapString(ep, "name", "title"), fmt.Sprintf("第%d集", seq))
-			chapters = append(chapters, Chapter{VIP: huangdouEpisodeVIP(data, ep, seq), ID: providerChapterID(sourceHuangdou, sourceID, strconv.Itoa(seq)), Source: sourceHuangdou, Title: titleText, CurrentEpisode: rawEpisode(seq)})
+			titleText := FirstNonEmpty(MapString(ep, "name", "title"), fmt.Sprintf("第%d集", seq))
+			chapters = append(chapters, Chapter{VIP: huangdouEpisodeVIP(data, ep, seq), ID: ProviderChapterID(sourceHuangdou, sourceID, strconv.Itoa(seq)), Source: sourceHuangdou, Title: titleText, CurrentEpisode: RawEpisode(seq)})
 		}
 	} else {
 		for i := 1; i <= count; i++ {
-			chapters = append(chapters, Chapter{VIP: huangdouEpisodeVIP(data, nil, i), ID: providerChapterID(sourceHuangdou, sourceID, strconv.Itoa(i)), Source: sourceHuangdou, Title: fmt.Sprintf("第%d集", i), CurrentEpisode: rawEpisode(i)})
+			chapters = append(chapters, Chapter{VIP: huangdouEpisodeVIP(data, nil, i), ID: ProviderChapterID(sourceHuangdou, sourceID, strconv.Itoa(i)), Source: sourceHuangdou, Title: fmt.Sprintf("第%d集", i), CurrentEpisode: RawEpisode(i)})
 		}
 	}
-	sortProviderChapters(chapters)
-	return title, uniqueChapters(chapters), nil
+	SortProviderChapters(chapters)
+	return title, UniqueChapters(chapters), nil
 }
 
 func (p *huangdouProvider) resolveHuangdouPlayback(ctx context.Context, client *huangdouAPIClient, sourceID string, seq int) (ProviderMedia, error) {
@@ -143,7 +143,7 @@ func (p *huangdouProvider) resolveHuangdouPlayback(ctx context.Context, client *
 		return ProviderMedia{}, err
 	}
 	data := huangdouDataMap(decoded)
-	media := firstNonEmpty(mapString(data, "m3u8"), mapString(data, "url"), mapString(data, "play_url"), mapString(data, "playUrl"))
+	media := FirstNonEmpty(MapString(data, "m3u8"), MapString(data, "url"), MapString(data, "play_url"), MapString(data, "playUrl"))
 	if huangdouPreviewOnly(data, media, client.host) {
 		return ProviderMedia{}, &huangdouAPIError{code: "preview", message: "黄豆仅提供试看，未取得该集正片；不会把试看内容当作完整分集"}
 	}
@@ -154,19 +154,19 @@ func (p *huangdouProvider) resolveHuangdouPlayback(ctx context.Context, client *
 			return ProviderMedia{}, errors.New("黄豆未提供有效的播放地址，备用播放列表也不可用")
 		}
 	}
-	media = resolveProviderURL(client.host+"/", media)
-	if !isProviderHTTPMediaURL(media) {
+	media = ResolveProviderURL(client.host+"/", media)
+	if !IsProviderHTTPMediaURL(media) {
 		return ProviderMedia{}, errors.New("黄豆播放地址不是 HTTP/HTTPS URL")
 	}
 	result := ProviderMedia{URL: media, Referer: client.host + "/home"}
-	if rawKey := mapString(data, "hls_key"); rawKey != "" {
+	if rawKey := MapString(data, "hls_key"); rawKey != "" {
 		key, err := hex.DecodeString(rawKey)
 		if err != nil || len(key) != aes.BlockSize {
 			return ProviderMedia{}, errors.New("黄豆返回了无效的 HLS 密钥")
 		}
 		result.HLSKey = key
 	}
-	if duration, err := strconv.ParseFloat(mapString(data, "duration"), 64); err == nil && duration > 0 {
+	if duration, err := strconv.ParseFloat(MapString(data, "duration"), 64); err == nil && duration > 0 {
 		result.Duration = time.Duration(duration * float64(time.Second))
 	}
 	return result, nil
@@ -268,12 +268,12 @@ func isHuangdouAccessError(err error) bool {
 }
 
 func huangdouPreviewOnly(data map[string]any, media, host string) bool {
-	switch strings.ToLower(mapString(data, "is_preview", "isPreview")) {
+	switch strings.ToLower(MapString(data, "is_preview", "isPreview")) {
 	case "true", "1", "y":
 		return true
 	}
-	if preview := mapString(data, "preview_m3u8", "preview_url"); preview != "" &&
-		(media == "" || resolveProviderURL(host+"/", media) == resolveProviderURL(host+"/", preview)) {
+	if preview := MapString(data, "preview_m3u8", "preview_url"); preview != "" &&
+		(media == "" || ResolveProviderURL(host+"/", media) == ResolveProviderURL(host+"/", preview)) {
 		return true
 	}
 	parsed, err := url.Parse(media)
@@ -321,7 +321,7 @@ func (c *huangdouAPIClient) callOnce(ctx context.Context, path string, data map[
 	signSum := sha256.Sum256([]byte("Dart|" + c.sessionID + "|" + rid + "|" + timestamp + "|" + path))
 	response, err := c.p.host.Fetch(ctx, HTTPRequest{
 		Label: "黄豆", Method: http.MethodPost, URL: address, Body: body, Ticket: ticket,
-		Limit: providerMaxBodyBytes, Timeout: timeout, FollowRedirects: true, AnyStatus: true,
+		Limit: ProviderMaxBodyBytes, Timeout: timeout, FollowRedirects: true, AnyStatus: true,
 		Header: map[string]string{
 			"User-Agent":   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
 			"Accept":       "*/*",
@@ -341,15 +341,15 @@ func (c *huangdouAPIClient) callOnce(ctx context.Context, path string, data map[
 	}
 	blob := response.Body
 	if response.Status < 200 || response.Status >= 300 {
-		return fmt.Errorf("huangdou HTTP %d: %s", response.Status, truncate(string(blob), 200))
+		return fmt.Errorf("huangdou HTTP %d: %s", response.Status, Truncate(string(blob), 200))
 	}
 	decoded, err := huangdouDecode(blob, key)
 	if err != nil {
 		return err
 	}
 	if envelope, ok := decoded.(map[string]any); ok {
-		if status := mapString(envelope, "status"); status != "" && status != "y" {
-			return &huangdouAPIError{code: mapString(envelope, "errorCode", "error_code", "code"), message: "黄豆接口拒绝请求: " + firstNonEmpty(mapString(envelope, "msg", "message", "error"), status)}
+		if status := MapString(envelope, "status"); status != "" && status != "y" {
+			return &huangdouAPIError{code: MapString(envelope, "errorCode", "error_code", "code"), message: "黄豆接口拒绝请求: " + FirstNonEmpty(MapString(envelope, "msg", "message", "error"), status)}
 		}
 	}
 	c.p.host.RememberSite(sourceHuangdou, c.host)
@@ -371,7 +371,7 @@ func huangdouKey(rid string) ([]byte, error) {
 }
 
 func huangdouDecode(blob, key []byte) (any, error) {
-	if len(blob) > providerMaxBodyBytes {
+	if len(blob) > ProviderMaxBodyBytes {
 		return nil, errors.New("黄豆响应过大")
 	}
 	if json.Valid(blob) {
@@ -395,12 +395,12 @@ func huangdouDecode(blob, key []byte) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		plain, err = io.ReadAll(io.LimitReader(zr, providerMaxBodyBytes+1))
+		plain, err = io.ReadAll(io.LimitReader(zr, ProviderMaxBodyBytes+1))
 		_ = zr.Close()
 		if err != nil {
 			return nil, err
 		}
-		if len(plain) > providerMaxBodyBytes {
+		if len(plain) > ProviderMaxBodyBytes {
 			return nil, errors.New("黄豆解压后响应过大")
 		}
 	}
@@ -437,25 +437,25 @@ func aesCBCDecrypt(cipherText, key, iv []byte) ([]byte, error) {
 	}
 	out := make([]byte, len(cipherText))
 	cipher.NewCBCDecrypter(block, iv).CryptBlocks(out, cipherText)
-	return pkcs7Unpad(out, block.BlockSize())
+	return Pkcs7Unpad(out, block.BlockSize())
 }
 
 func huangdouDramaFromMap(item map[string]any) Drama {
-	sourceID := strings.TrimPrefix(firstNonEmpty(mapString(item, "id"), mapString(item, "drama_id")), "rp_")
+	sourceID := strings.TrimPrefix(FirstNonEmpty(MapString(item, "id"), MapString(item, "drama_id")), "rp_")
 	if sourceID == "" {
 		return Drama{}
 	}
-	title := firstNonEmpty(mapString(item, "name", "title", "t"), sourceID)
-	cover := firstNonEmpty(mapString(item, "img_y", "img_x", "img", "cover", "pic"))
-	remark := firstNonEmpty(mapString(item, "update_label"), mapString(item, "corner"))
-	releaseStatus := releaseStatusFromRemark(remark)
+	title := FirstNonEmpty(MapString(item, "name", "title", "t"), sourceID)
+	cover := FirstNonEmpty(MapString(item, "img_y", "img_x", "img", "cover", "pic"))
+	remark := FirstNonEmpty(MapString(item, "update_label"), MapString(item, "corner"))
+	releaseStatus := ReleaseStatusFromRemark(remark)
 	if remark == "" {
-		if eps := mapString(item, "episode_count"); eps != "" {
+		if eps := MapString(item, "episode_count"); eps != "" {
 			remark = "全" + eps + "集"
 		}
 	}
-	category := firstNonEmpty(mapString(item, "category", "category_name", "categoryName"), "未分类")
-	return Drama{VIP: huangdouVIPFlag(item), ID: providerDramaID(sourceHuangdou, sourceID), Source: sourceHuangdou, SourceID: sourceID, Title: title, Name: title, Desc: firstNonEmpty(mapString(item, "description"), mapString(item, "summary")), Intro: firstNonEmpty(mapString(item, "description"), mapString(item, "summary")), Cover: cover, CoverURL: cover, CategoryName: category, ChannelName: "黄豆", Remark: remark, TotalEpisode: mapString(item, "episode_count"), EpisodeCount: mapString(item, "episode_count"), Tags: mapStringSlice(item, "tags"), ReleaseStatus: releaseStatus, Heat: mapString(item, "hot_rate"), Views: normalizeViews(mapString(item, "click")), OnlineDate: providerReleaseDate(mapString(item, "issue_date"))}
+	category := FirstNonEmpty(MapString(item, "category", "category_name", "categoryName"), "未分类")
+	return Drama{VIP: huangdouVIPFlag(item), ID: ProviderDramaID(sourceHuangdou, sourceID), Source: sourceHuangdou, SourceID: sourceID, Title: title, Name: title, Desc: FirstNonEmpty(MapString(item, "description"), MapString(item, "summary")), Intro: FirstNonEmpty(MapString(item, "description"), MapString(item, "summary")), Cover: cover, CoverURL: cover, CategoryName: category, ChannelName: "黄豆", Remark: remark, TotalEpisode: MapString(item, "episode_count"), EpisodeCount: MapString(item, "episode_count"), Tags: MapStringSlice(item, "tags"), ReleaseStatus: releaseStatus, Heat: MapString(item, "hot_rate"), Views: NormalizeViews(MapString(item, "click")), OnlineDate: ProviderReleaseDate(MapString(item, "issue_date"))}
 }
 
 func huangdouDataMap(v any) map[string]any {
@@ -521,7 +521,7 @@ type huangdouProvider struct {
 }
 
 func (p *huangdouProvider) site() string {
-	return strings.TrimRight(firstNonEmpty(p.configured, huangdouBaseURL), "/")
+	return strings.TrimRight(FirstNonEmpty(p.configured, huangdouBaseURL), "/")
 }
 
 var huangdouDescriptor = SourceDescriptor{
@@ -533,11 +533,11 @@ var huangdouDescriptor = SourceDescriptor{
 	MatchesHost: isHuangdouHost,
 	BaseURL:     huangdouBaseURL,
 	Rankings: []RankingBoard{
-		{ID: "huangdou-all", Source: sourceHuangdou, Name: "总榜", Description: "黄豆短剧总榜，保留站点返回的顺序。", upstreamKey: "all"},
-		{ID: "huangdou-mogai", Source: sourceHuangdou, Name: "魔改榜", Description: "黄豆站点魔改榜。", upstreamKey: "mogai"},
-		{ID: "huangdou-search", Source: sourceHuangdou, Name: "搜索榜", Description: "黄豆站点搜索榜。", upstreamKey: "search"},
-		{ID: "huangdou-favorite", Source: sourceHuangdou, Name: "收藏榜", Description: "黄豆站点收藏榜。", upstreamKey: "favorite"},
-		{ID: "huangdou-finish", Source: sourceHuangdou, Name: "完结榜", Description: "黄豆站点完结榜。", upstreamKey: "finish"},
+		{ID: "huangdou-all", Source: sourceHuangdou, Name: "总榜", Description: "黄豆短剧总榜，保留站点返回的顺序。", UpstreamKey: "all"},
+		{ID: "huangdou-mogai", Source: sourceHuangdou, Name: "魔改榜", Description: "黄豆站点魔改榜。", UpstreamKey: "mogai"},
+		{ID: "huangdou-search", Source: sourceHuangdou, Name: "搜索榜", Description: "黄豆站点搜索榜。", UpstreamKey: "search"},
+		{ID: "huangdou-favorite", Source: sourceHuangdou, Name: "收藏榜", Description: "黄豆站点收藏榜。", UpstreamKey: "favorite"},
+		{ID: "huangdou-finish", Source: sourceHuangdou, Name: "完结榜", Description: "黄豆站点完结榜。", UpstreamKey: "finish"},
 	},
 }
 
@@ -548,11 +548,11 @@ func init() {
 func (p *huangdouProvider) Descriptor() SourceDescriptor { return huangdouDescriptor }
 
 func (p *huangdouProvider) BaseURL() string {
-	return firstNonEmpty(p.configured, huangdouBaseURL)
+	return FirstNonEmpty(p.configured, huangdouBaseURL)
 }
 
 func (p *huangdouProvider) Categories(context.Context, bool) ([]Category, error) {
-	return nil, errCategoriesIncomplete
+	return nil, ErrCategoriesIncomplete
 }
 
 func (p *huangdouProvider) CatalogPage(ctx context.Context, page int, category string) ([]Drama, bool, error) {
@@ -575,7 +575,7 @@ func (p *huangdouProvider) Detail(ctx context.Context, sourceID string) (Drama, 
 	if err != nil {
 		return Drama{}, nil, err
 	}
-	raw := Drama{ID: providerDramaID(sourceHuangdou, strings.TrimPrefix(strings.TrimSpace(sourceID), "rp_")), Source: sourceHuangdou, Title: title, Name: title}
+	raw := Drama{ID: ProviderDramaID(sourceHuangdou, strings.TrimPrefix(strings.TrimSpace(sourceID), "rp_")), Source: sourceHuangdou, Title: title, Name: title}
 	if row, err := p.huangdouDetail(ctx, sourceID); err == nil {
 		if fresh := huangdouDramaFromMap(row); fresh.ID == raw.ID {
 			raw = fresh
@@ -589,8 +589,8 @@ func (p *huangdouProvider) Detail(ctx context.Context, sourceID string) (Drama, 
 
 func (p *huangdouProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	chapter := task.Chapter
-	media := ProviderMedia{URL: chapter.VideoURL, Referer: firstNonEmpty(chapter.Referer, p.site()+"/")}
-	if _, sourceID, valid := splitProviderDramaID(task.DramaID); valid {
+	media := ProviderMedia{URL: chapter.VideoURL, Referer: FirstNonEmpty(chapter.Referer, p.site()+"/")}
+	if _, sourceID, valid := SplitProviderDramaID(task.DramaID); valid {
 		sequence, err := strconv.Atoi(chapter.EpisodeString(task.Index))
 		if err != nil || sequence < 1 {
 			return ProviderMedia{}, fmt.Errorf("黄豆集数无效")
@@ -607,7 +607,7 @@ func (p *huangdouProvider) ResolveMedia(ctx context.Context, task Task) (Provide
 
 func (p *huangdouProvider) RankingPage(ctx context.Context, board RankingBoard, page int) (RankingPage, error) {
 	var decoded any
-	if err := newHuangdouAPIClient(p).call(ctx, "/drama/rank", map[string]any{"tab": board.upstreamKey, "page": strconv.Itoa(page)}, &decoded); err != nil {
+	if err := newHuangdouAPIClient(p).call(ctx, "/drama/rank", map[string]any{"tab": board.UpstreamKey, "page": strconv.Itoa(page)}, &decoded); err != nil {
 		return RankingPage{}, err
 	}
 	return parseHuangdouRanking(decoded, page)
@@ -618,7 +618,7 @@ func (p *huangdouProvider) CoverAddress(ctx context.Context, drama LibraryDrama,
 	if err != nil {
 		return "", err
 	}
-	fresh := nativeNormalize(huangdouDramaFromMap(row))
+	fresh := NativeNormalize(huangdouDramaFromMap(row))
 	if fresh.ID != drama.ID {
 		return "", errors.New("黄豆详情与请求剧集不符")
 	}
@@ -629,7 +629,7 @@ func (p *huangdouProvider) CoverReferer(address string) string {
 	if parsed, err := url.Parse(address); err == nil && isHuangdouHost(parsed.Hostname()) {
 		return parsed.Scheme + "://" + parsed.Host + "/home"
 	}
-	return firstNonEmpty(p.host.PreferredSite(sourceHuangdou), p.site()) + "/home"
+	return FirstNonEmpty(p.host.PreferredSite(sourceHuangdou), p.site()) + "/home"
 }
 
 func (p *huangdouProvider) NeedsExtraMetadata(drama LibraryDrama) bool {
@@ -645,20 +645,20 @@ func (p *huangdouProvider) ExtraMetadata(ctx context.Context, drama LibraryDrama
 	if raw.Heat == "" && drama.Heat == "" {
 		var decoded any
 		err = newHuangdouAPIClient(p).call(ctx, "/drama/list", map[string]any{
-			"keywords": firstNonEmpty(raw.Title, drama.Title), "page": "1", "page_size": "50",
+			"keywords": FirstNonEmpty(raw.Title, drama.Title), "page": "1", "page_size": "50",
 		}, &decoded)
 		if err != nil {
 			return drama, err
 		}
 		for _, candidate := range huangdouList(decoded) {
-			if strings.TrimPrefix(mapString(candidate, "id", "drama_id"), "rp_") == id {
+			if strings.TrimPrefix(MapString(candidate, "id", "drama_id"), "rp_") == id {
 				raw = mergeDramaMetadata(huangdouDramaFromMap(candidate), raw)
 				break
 			}
 		}
 	}
 	if raw.ID == drama.ID {
-		drama = mergeNativeDrama(drama, nativeNormalize(raw))
+		drama = MergeNativeDrama(drama, NativeNormalize(raw))
 	}
 	return drama, ctx.Err()
 }

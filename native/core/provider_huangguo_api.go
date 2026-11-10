@@ -35,7 +35,7 @@ func (p *huangguoAIProvider) huangguoAIAPI(ctx context.Context, path string, out
 		return fmt.Errorf("黄果接口返回格式无效：%w", err)
 	}
 	if reply.Status != 1 {
-		return fmt.Errorf("黄果接口返回失败：%s", firstNonEmpty(reply.Msg, "未知错误"))
+		return fmt.Errorf("黄果接口返回失败：%s", FirstNonEmpty(reply.Msg, "未知错误"))
 	}
 	if err := json.Unmarshal(reply.Data, out); err != nil {
 		return fmt.Errorf("黄果接口数据格式已变化：%w", err)
@@ -61,17 +61,17 @@ func (p *huangguoAIProvider) fetchHuangguoAIDetail(ctx context.Context, sourceID
 	var chapters []Chapter
 	for _, value := range rows {
 		row, _ := value.(map[string]any)
-		episode, err := strconv.Atoi(mapString(row, "ep_num"))
+		episode, err := strconv.Atoi(MapString(row, "ep_num"))
 		if err != nil || episode < 1 {
 			continue
 		}
-		chapters = append(chapters, huangguoAIChapter(base, sourceID, episode, mapString(row, "title")))
+		chapters = append(chapters, huangguoAIChapter(base, sourceID, episode, MapString(row, "title")))
 	}
 	if len(rows) == 0 {
 		chapters = append(chapters, huangguoAIChapter(base, sourceID, 1, drama.DisplayTitle()))
 	}
-	sortProviderChapters(chapters)
-	return drama, uniqueChapters(chapters), nil
+	SortProviderChapters(chapters)
+	return drama, UniqueChapters(chapters), nil
 }
 
 func huangguoAIChapter(base, sourceID string, episode int, title string) Chapter {
@@ -80,8 +80,8 @@ func huangguoAIChapter(base, sourceID string, episode int, title string) Chapter
 		key = "ep-" + strconv.Itoa(episode)
 		pageURL += key + "/"
 	}
-	return Chapter{ID: providerChapterID(sourceHuangguoAI, sourceID, key), Source: sourceHuangguoAI,
-		Title: firstNonEmpty(title, fmt.Sprintf("第%d集", episode)), PageURL: pageURL, CurrentEpisode: rawEpisode(episode)}
+	return Chapter{ID: ProviderChapterID(sourceHuangguoAI, sourceID, key), Source: sourceHuangguoAI,
+		Title: FirstNonEmpty(title, fmt.Sprintf("第%d集", episode)), PageURL: pageURL, CurrentEpisode: RawEpisode(episode)}
 }
 
 func (p *huangguoAIProvider) fetchHuangguoAIPlayURL(ctx context.Context, sourceID string, episode int) (string, error) {
@@ -95,7 +95,7 @@ func (p *huangguoAIProvider) fetchHuangguoAIPlayURL(ctx context.Context, sourceI
 	if err := p.huangguoAIAPI(ctx, path, &play); err != nil {
 		return "", err
 	}
-	return normalizeProviderMediaURL(p.site()+"/", play.VideoURL), nil
+	return NormalizeProviderMediaURL(p.site()+"/", play.VideoURL), nil
 }
 
 func (p *huangguoAIProvider) searchHuangguoAI(ctx context.Context, page int, query string) ([]Drama, bool, error) {
@@ -126,12 +126,12 @@ func parseHuangguoRanking(rows []map[string]any, pageURL string) (RankingPage, e
 	seen := map[string]bool{}
 	for index, row := range rows {
 		row["id"] = row["video_id"]
-		drama, ok := dramaFromAIMap(row, pageURL, mapString(row, "cate_name"))
+		drama, ok := dramaFromAIMap(row, pageURL, MapString(row, "cate_name"))
 		if !ok || !rankingSourceID.MatchString(drama.SourceID) || seen[drama.SourceID] {
 			return RankingPage{}, failure
 		}
 		seen[drama.SourceID] = true
-		rank, err := strconv.Atoi(mapString(row, "rank"))
+		rank, err := strconv.Atoi(MapString(row, "rank"))
 		if err != nil || rank < 1 {
 			rank = index + 1
 		}
@@ -141,8 +141,8 @@ func parseHuangguoRanking(rows []map[string]any, pageURL string) (RankingPage, e
 }
 
 func huangguoRankingMetric(row map[string]any) string {
-	label := mapString(row, "metric_label")
-	value, err := strconv.ParseFloat(mapString(row, "metric_value"), 64)
+	label := MapString(row, "metric_label")
+	value, err := strconv.ParseFloat(MapString(row, "metric_value"), 64)
 	if label == "" || err != nil {
 		return ""
 	}
@@ -158,7 +158,7 @@ type huangguoAIProvider struct {
 }
 
 func (p *huangguoAIProvider) site() string {
-	return strings.TrimRight(firstNonEmpty(p.configured, huangguoAIBaseURL), "/")
+	return strings.TrimRight(FirstNonEmpty(p.configured, huangguoAIBaseURL), "/")
 }
 
 func (p *huangguoAIProvider) URLCandidates(rawURL string) []string {
@@ -185,9 +185,9 @@ var huangguoAIDescriptor = SourceDescriptor{
 		return false
 	},
 	Rankings: []RankingBoard{
-		{ID: "huangguo-hot", Source: sourceHuangguoAI, Name: "热播榜", Description: "黄果站点热播 TOP 20；每日更新。", path: "hot"},
-		{ID: "huangguo-recommend", Source: sourceHuangguoAI, Name: "推荐榜", Description: "黄果站点推荐 TOP 20。", path: "recommend"},
-		{ID: "huangguo-potential", Source: sourceHuangguoAI, Name: "潜力榜", Description: "黄果站点潜力 TOP 20。", path: "potential"},
+		{ID: "huangguo-hot", Source: sourceHuangguoAI, Name: "热播榜", Description: "黄果站点热播 TOP 20；每日更新。", Path: "hot"},
+		{ID: "huangguo-recommend", Source: sourceHuangguoAI, Name: "推荐榜", Description: "黄果站点推荐 TOP 20。", Path: "recommend"},
+		{ID: "huangguo-potential", Source: sourceHuangguoAI, Name: "潜力榜", Description: "黄果站点潜力 TOP 20。", Path: "potential"},
 	},
 }
 
@@ -198,7 +198,7 @@ func init() {
 func (p *huangguoAIProvider) Descriptor() SourceDescriptor { return huangguoAIDescriptor }
 
 func (p *huangguoAIProvider) BaseURL() string {
-	return firstNonEmpty(p.configured, huangguoAIBaseURL)
+	return FirstNonEmpty(p.configured, huangguoAIBaseURL)
 }
 
 func (p *huangguoAIProvider) Categories(context.Context, bool) ([]Category, error) {
@@ -219,15 +219,15 @@ func (p *huangguoAIProvider) Detail(ctx context.Context, sourceID string) (Drama
 
 func (p *huangguoAIProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	chapter := task.Chapter
-	_, sourceID, valid := splitProviderDramaID(task.DramaID)
+	_, sourceID, valid := SplitProviderDramaID(task.DramaID)
 	if !valid {
 		return ProviderMedia{}, fmt.Errorf("黄果剧集信息无效")
 	}
-	address, err := p.fetchHuangguoAIPlayURL(ctx, sourceID, chapterEpisodeNumber(chapter, task.Index))
+	address, err := p.fetchHuangguoAIPlayURL(ctx, sourceID, ChapterEpisodeNumber(chapter, task.Index))
 	if err != nil {
 		return ProviderMedia{}, err
 	}
-	media := ProviderMedia{URL: address, Referer: firstNonEmpty(chapter.Referer, p.site()+"/")}
+	media := ProviderMedia{URL: address, Referer: FirstNonEmpty(chapter.Referer, p.site()+"/")}
 	return p.host.FinishMedia(ctx, media, sourceHuangguoAI)
 }
 
@@ -238,7 +238,7 @@ func (p *huangguoAIProvider) RankingPage(ctx context.Context, board RankingBoard
 	var ranking struct {
 		Items []map[string]any `json:"items"`
 	}
-	if err := p.huangguoAIAPI(ctx, "/api/ranks/"+board.path, &ranking); err != nil {
+	if err := p.huangguoAIAPI(ctx, "/api/ranks/"+board.Path, &ranking); err != nil {
 		return RankingPage{}, err
 	}
 	result, err := parseHuangguoRanking(ranking.Items, p.site()+"/")
@@ -333,10 +333,10 @@ func providerURLCandidates(rawURL string) []string {
 	for i, mirror := range huangguoAIBaseMirrors {
 		if i == 1 {
 			for _, generated := range generatedHuangguoAIMirrors(rawURL, 8) {
-				add(rehostProviderURL(u, generated))
+				add(RehostProviderURL(u, generated))
 			}
 		}
-		add(rehostProviderURL(u, mirror))
+		add(RehostProviderURL(u, mirror))
 	}
 	if len(out) == 0 {
 		return []string{rawURL}
@@ -401,7 +401,7 @@ func parseHuangguoAIJSONCards(raw []byte, pageURL, category string) []Drama {
 }
 
 func dramaFromAIMap(m map[string]any, pageURL, category string) (Drama, bool) {
-	sourceID := firstNonEmpty(mapString(m, "id"), mapString(m, "videoId"), mapString(m, "video_id"), mapString(m, "vid"), mapString(m, "slug"))
+	sourceID := FirstNonEmpty(MapString(m, "id"), MapString(m, "videoId"), MapString(m, "video_id"), MapString(m, "vid"), MapString(m, "slug"))
 	if sourceID == "" {
 		for _, v := range m {
 			if s, ok := v.(string); ok {
@@ -419,21 +419,21 @@ func dramaFromAIMap(m map[string]any, pageURL, category string) (Drama, bool) {
 	if sourceID == "" {
 		return Drama{}, false
 	}
-	title := firstNonEmpty(mapString(m, "title"), mapString(m, "name"), mapString(m, "videoTitle"), mapString(m, "video_title"), mapString(m, "videoName"), mapString(m, "video_name"))
+	title := FirstNonEmpty(MapString(m, "title"), MapString(m, "name"), MapString(m, "videoTitle"), MapString(m, "video_title"), MapString(m, "videoName"), MapString(m, "video_name"))
 	if huangguoTitleNeedsRepair(title, sourceID) {
 		return Drama{}, false
 	}
-	cover := resolveProviderURL(pageURL, firstNonEmpty(mapString(m, "cover"), mapString(m, "coverUrl"), mapString(m, "cover_url"), mapString(m, "coverImage"), mapString(m, "cover_image"), mapString(m, "image"), mapString(m, "imageUrl"), mapString(m, "thumbnail"), mapString(m, "poster"), mapString(m, "posterUrl")))
-	desc := firstNonEmpty(mapString(m, "desc"), mapString(m, "description"), mapString(m, "intro"), mapString(m, "summary"))
+	cover := ResolveProviderURL(pageURL, FirstNonEmpty(MapString(m, "cover"), MapString(m, "coverUrl"), MapString(m, "cover_url"), MapString(m, "coverImage"), MapString(m, "cover_image"), MapString(m, "image"), MapString(m, "imageUrl"), MapString(m, "thumbnail"), MapString(m, "poster"), MapString(m, "posterUrl")))
+	desc := FirstNonEmpty(MapString(m, "desc"), MapString(m, "description"), MapString(m, "intro"), MapString(m, "summary"))
 	eps := huangguoMapEpisodes(m)
 	status := ""
-	switch strings.ToLower(mapString(m, "is_finished")) {
+	switch strings.ToLower(MapString(m, "is_finished")) {
 	case "true", "1":
 		status = "finished"
 	case "false", "0":
 		status = "ongoing"
 	}
-	remark := firstNonEmpty(mapString(m, "vod_remarks"), mapString(m, "remark"), mapString(m, "remarks"))
+	remark := FirstNonEmpty(MapString(m, "vod_remarks"), MapString(m, "remark"), MapString(m, "remarks"))
 	if remark == "" && eps != "" {
 		if status == "finished" {
 			remark = "全" + eps + "集"
@@ -441,11 +441,11 @@ func dramaFromAIMap(m map[string]any, pageURL, category string) (Drama, bool) {
 			remark = "更新至 " + eps + " 集"
 		}
 	}
-	score := firstNonEmpty(mapString(m, "score"), mapString(m, "rating"))
-	views := normalizeViews(firstNonEmpty(mapString(m, "views"), mapString(m, "view_count"), mapString(m, "viewCount"), mapString(m, "view_num"), mapString(m, "viewNum"), mapString(m, "views_text"), mapString(m, "view_count_text"), mapString(m, "play_count"), mapString(m, "playCount"), mapString(m, "play_num"), mapString(m, "playNum"), mapString(m, "play_count_text"), mapString(m, "hits"), mapString(m, "hit_count"), mapString(m, "plays"), mapString(m, "play")))
-	online := providerReleaseDate(firstNonEmpty(mapString(m, "onlineDate"), mapString(m, "online_date"), mapString(m, "online_time"), mapString(m, "onlineTime"), mapString(m, "publish_date"), mapString(m, "publishDate"), mapString(m, "publish_time"), mapString(m, "publishTime"), mapString(m, "release_date"), mapString(m, "releaseDate")))
-	tags := mapStringSlice(m, "tags", "tag", "categories", "category")
-	return Drama{ID: providerDramaID(sourceHuangguoAI, sourceID), Source: sourceHuangguoAI, SourceID: sourceID, Title: title, Name: title, Desc: desc, Intro: desc, Cover: cover, CoverURL: cover, TotalEpisode: eps, EpisodeCount: eps, CategoryName: category, ChannelName: "huangguoai.com", Remark: remark, Score: score, Views: views, OnlineDate: online, Tags: tags, ReleaseStatus: status}, true
+	score := FirstNonEmpty(MapString(m, "score"), MapString(m, "rating"))
+	views := NormalizeViews(FirstNonEmpty(MapString(m, "views"), MapString(m, "view_count"), MapString(m, "viewCount"), MapString(m, "view_num"), MapString(m, "viewNum"), MapString(m, "views_text"), MapString(m, "view_count_text"), MapString(m, "play_count"), MapString(m, "playCount"), MapString(m, "play_num"), MapString(m, "playNum"), MapString(m, "play_count_text"), MapString(m, "hits"), MapString(m, "hit_count"), MapString(m, "plays"), MapString(m, "play")))
+	online := ProviderReleaseDate(FirstNonEmpty(MapString(m, "onlineDate"), MapString(m, "online_date"), MapString(m, "online_time"), MapString(m, "onlineTime"), MapString(m, "publish_date"), MapString(m, "publishDate"), MapString(m, "publish_time"), MapString(m, "publishTime"), MapString(m, "release_date"), MapString(m, "releaseDate")))
+	tags := MapStringSlice(m, "tags", "tag", "categories", "category")
+	return Drama{ID: ProviderDramaID(sourceHuangguoAI, sourceID), Source: sourceHuangguoAI, SourceID: sourceID, Title: title, Name: title, Desc: desc, Intro: desc, Cover: cover, CoverURL: cover, TotalEpisode: eps, EpisodeCount: eps, CategoryName: category, ChannelName: "huangguoai.com", Remark: remark, Score: score, Views: views, OnlineDate: online, Tags: tags, ReleaseStatus: status}, true
 }
 
 const sourceHuangguoAI = "huangguoai"

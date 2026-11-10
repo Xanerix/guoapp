@@ -60,7 +60,7 @@ func selectHongguoAppMedia(model map[string]any) (ProviderMedia, error) {
 			variants = append(variants, rows[key])
 		}
 	}
-	duration, _ := strconv.ParseFloat(mapString(model, "video_duration", "duration"), 64)
+	duration, _ := strconv.ParseFloat(MapString(model, "video_duration", "duration"), 64)
 	var keyErr error
 	type scoredMedia struct {
 		media ProviderMedia
@@ -70,8 +70,8 @@ func selectHongguoAppMedia(model map[string]any) (ProviderMedia, error) {
 	for _, row := range variants {
 		variant, _ := row.(map[string]any)
 		meta := nestedMap(variant, "video_meta")
-		codec := strings.ToLower(mapString(meta, "codec_type"))
-		if codec == "bytevc2" || strings.Contains(strings.ToLower(mapString(variant, "gear_des_key")), "bytevc2") {
+		codec := strings.ToLower(MapString(meta, "codec_type"))
+		if codec == "bytevc2" || strings.Contains(strings.ToLower(MapString(variant, "gear_des_key")), "bytevc2") {
 			continue
 		}
 		addresses := hongguoMediaAddresses(variant)
@@ -80,8 +80,8 @@ func selectHongguoAppMedia(model map[string]any) (ProviderMedia, error) {
 		}
 		media := ProviderMedia{Referer: "https://novel.snssdk.com/", Duration: time.Duration(duration * float64(time.Second))}
 		encryption := nestedMap(variant, "encrypt_info")
-		spade := mapString(encryption, "spade_a")
-		if spade != "" || encryption["encrypt"] == true || mapString(encryption, "encryption_method") == "cenc-aes-ctr" {
+		spade := MapString(encryption, "spade_a")
+		if spade != "" || encryption["encrypt"] == true || MapString(encryption, "encryption_method") == "cenc-aes-ctr" {
 			var err error
 			media.CENCKey, err = hongguoContentKey(spade)
 			if err != nil {
@@ -89,10 +89,10 @@ func selectHongguoAppMedia(model map[string]any) (ProviderMedia, error) {
 				continue
 			}
 		}
-		height, _ := strconv.Atoi(mapString(meta, "vheight"))
-		if definition, err := strconv.Atoi(hongguoQualityNumber.FindString(mapString(meta, "definition"))); err == nil && definition > 0 {
+		height, _ := strconv.Atoi(MapString(meta, "vheight"))
+		if definition, err := strconv.Atoi(hongguoQualityNumber.FindString(MapString(meta, "definition"))); err == nil && definition > 0 {
 			height = definition
-		} else if width, _ := strconv.Atoi(mapString(meta, "vwidth")); width > 0 && (height == 0 || width < height) {
+		} else if width, _ := strconv.Atoi(MapString(meta, "vwidth")); width > 0 && (height == 0 || width < height) {
 			height = width
 		}
 		media.Quality = height
@@ -130,14 +130,14 @@ func hongguoMediaAddresses(info map[string]any) []string {
 			if len(address) > 8192 {
 				return
 			}
-			if !isProviderHTTPMediaURL(address) {
+			if !IsProviderHTTPMediaURL(address) {
 				decoded, err := decodeHongguoBase64(address)
 				if err != nil {
 					return
 				}
 				address = strings.TrimSpace(string(decoded))
 			}
-			if isProviderHTTPMediaURL(address) && !seen[address] {
+			if IsProviderHTTPMediaURL(address) && !seen[address] {
 				seen[address] = true
 				addresses = append(addresses, address)
 			}

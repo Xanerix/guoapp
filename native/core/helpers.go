@@ -15,7 +15,7 @@ var (
 	rePublicURL  = regexp.MustCompile(`(?i)(?:https?|socks5h?)://[^\s"'<>]+`)
 )
 
-func publicError(err error) error {
+func PublicError(err error) error {
 	if err == nil {
 		return nil
 	}
@@ -49,7 +49,7 @@ func redactErrorString(s string) string {
 	})
 }
 
-func truncate(s string, n int) string {
+func Truncate(s string, n int) string {
 	s = strings.TrimSpace(s)
 	r := []rune(s)
 	if len(r) <= n {
@@ -58,7 +58,7 @@ func truncate(s string, n int) string {
 	return string(r[:n]) + "..."
 }
 
-func pkcs7Unpad(src []byte, blockSize int) ([]byte, error) {
+func Pkcs7Unpad(src []byte, blockSize int) ([]byte, error) {
 	if len(src) == 0 || len(src)%blockSize != 0 {
 		return nil, errors.New("invalid pkcs7 length")
 	}

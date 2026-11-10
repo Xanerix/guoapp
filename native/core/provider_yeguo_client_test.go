@@ -122,9 +122,9 @@ func TestResolveYeguoMediaKeepsCodecAlternatives(t *testing.T) {
 	client := yeguoFixtureProvider(downloader).client
 	client.access = &yeguoAccess{base: server.URL, identifier: "fixture-trace", loadedAt: time.Now()}
 	media, err := yeguoFixtureProvider(downloader).resolveYeguoMedia(context.Background(), Task{
-		DramaID: providerDramaID(sourceYeguo, "123"),
+		DramaID: ProviderDramaID(sourceYeguo, "123"),
 		Chapter: Chapter{
-			ID: providerChapterID(sourceYeguo, "123", "456"),
+			ID: ProviderChapterID(sourceYeguo, "123", "456"),
 		},
 	})
 	if err != nil {

@@ -30,10 +30,10 @@ var hongguoDescriptor = SourceDescriptor{
 	ContinuousFeed: true,
 	ValidCategory:  validHongguoCategory,
 	Rankings: []RankingBoard{
-		{ID: "hongguo-hot", Source: sourceHongguo, Name: "总热播榜", Description: "红果观看、互动等综合热度；每日更新。", path: "hot-drama", upstreamKey: "hongguo"},
-		{ID: "hongguo-real", Source: sourceHongguo, Name: "真人剧榜", Description: "红果真人剧热播榜；每日更新。", path: "hot-real-drama", upstreamKey: "real"},
-		{ID: "hongguo-comic", Source: sourceHongguo, Name: "漫剧榜", Description: "红果漫剧热播榜；每日更新。", path: "hot-comic-drama", upstreamKey: "comic"},
-		{ID: "hongguo-ai", Source: sourceHongguo, Name: "AI剧榜", Description: "红果 AI 剧热播榜；每日更新。", path: "hot-ai-drama", upstreamKey: "ai"},
+		{ID: "hongguo-hot", Source: sourceHongguo, Name: "总热播榜", Description: "红果观看、互动等综合热度；每日更新。", Path: "hot-drama", UpstreamKey: "hongguo"},
+		{ID: "hongguo-real", Source: sourceHongguo, Name: "真人剧榜", Description: "红果真人剧热播榜；每日更新。", Path: "hot-real-drama", UpstreamKey: "real"},
+		{ID: "hongguo-comic", Source: sourceHongguo, Name: "漫剧榜", Description: "红果漫剧热播榜；每日更新。", Path: "hot-comic-drama", UpstreamKey: "comic"},
+		{ID: "hongguo-ai", Source: sourceHongguo, Name: "AI剧榜", Description: "红果 AI 剧热播榜；每日更新。", Path: "hot-ai-drama", UpstreamKey: "ai"},
 	},
 }
 
@@ -66,7 +66,7 @@ func (p *hongguoProvider) Categories(ctx context.Context, force bool) ([]Categor
 	genres := hongguoGenreCategories()
 	tags, err := p.fetchHongguoTagCategories(ctx)
 	if err != nil {
-		return genres, errCategoriesIncomplete
+		return genres, ErrCategoriesIncomplete
 	}
 	return append(genres, tags...), nil
 }
@@ -110,7 +110,7 @@ func (p *hongguoProvider) Detail(ctx context.Context, sourceID string) (Drama, [
 	if err != nil {
 		return Drama{}, nil, err
 	}
-	raw := p.hongguoCachedDrama(Drama{ID: providerDramaID(sourceHongguo, sourceID), Title: title, Source: sourceHongguo})
+	raw := p.hongguoCachedDrama(Drama{ID: ProviderDramaID(sourceHongguo, sourceID), Title: title, Source: sourceHongguo})
 	return raw, chapters, nil
 }
 
@@ -119,7 +119,7 @@ func (p *hongguoProvider) ResolveMedia(ctx context.Context, task Task) (Provider
 	if strings.HasPrefix(chapter.VideoURL, "hongguo-cenc://") {
 		return p.resolveHongguoMedia(ctx, task)
 	}
-	media := ProviderMedia{URL: chapter.VideoURL, Referer: firstNonEmpty(chapter.Referer, hongguoBaseURL+"/")}
+	media := ProviderMedia{URL: chapter.VideoURL, Referer: FirstNonEmpty(chapter.Referer, hongguoBaseURL+"/")}
 	return p.host.FinishMedia(ctx, media, sourceHongguo)
 }
 
@@ -136,10 +136,10 @@ func (p *hongguoProvider) CoverAddress(ctx context.Context, drama LibraryDrama, 
 		return "", err
 	}
 	row := nestedMap(result, "data", "video_data")
-	if mapString(row, "series_id_str", "series_id") != id {
+	if MapString(row, "series_id_str", "series_id") != id {
 		return "", errors.New("红果详情与请求剧集不符")
 	}
-	return hongguoCoverAddress(mapString(row, "series_cover", "cover")), nil
+	return hongguoCoverAddress(MapString(row, "series_cover", "cover")), nil
 }
 
 func (p *hongguoProvider) NeedsExtraMetadata(drama LibraryDrama) bool {
@@ -160,11 +160,11 @@ func (p *hongguoProvider) ExtraMetadata(ctx context.Context, drama LibraryDrama,
 			return drama, err
 		}
 		if raw.ID == drama.ID {
-			drama = mergeNativeDrama(drama, nativeNormalize(raw))
+			drama = MergeNativeDrama(drama, NativeNormalize(raw))
 		}
 	}
 	if drama.Score == "" {
-		drama.Score = nativeDramaScore(p.hongguoSearchScore(ctx, drama.ID, drama.Title))
+		drama.Score = NativeDramaScore(p.hongguoSearchScore(ctx, drama.ID, drama.Title))
 	}
 	return drama, ctx.Err()
 }
@@ -195,7 +195,7 @@ func hongguoCoverAddress(values ...string) string {
 			value = "https:" + value
 		}
 		parsed, err := url.Parse(value)
-		if err == nil && validNativeCoverURL(parsed) {
+		if err == nil && ValidNativeCoverURL(parsed) {
 			return value
 		}
 	}

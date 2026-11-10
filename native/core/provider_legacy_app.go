@@ -52,9 +52,9 @@ func (p *legacyProvider) fetchLegacyCatalogCategoryPage(ctx context.Context, pag
 			}
 			seen[drama.ID] = true
 			drama.SourceID, drama.Source = drama.ID, sourceCloudFront
-			drama.ID = providerDramaID(sourceCloudFront, drama.SourceID)
+			drama.ID = ProviderDramaID(sourceCloudFront, drama.SourceID)
 			drama.ChannelName = tab.Name
-			drama.CategoryName = firstNonEmpty(drama.CategoryName, drama.CategoryNameSnake, drama.Category, tab.Name)
+			drama.CategoryName = FirstNonEmpty(drama.CategoryName, drama.CategoryNameSnake, drama.Category, tab.Name)
 			for _, cover := range []any{drama.CoverURL, drama.CoverURLSnake, drama.Cover, drama.ImageURL, drama.ImageURLSnake, drama.Image, drama.Img, drama.Pic, drama.Picture, drama.Poster, drama.Thumb, drama.Thumbnail} {
 				if address := legacyCoverURL(cover); address != "" {
 					drama.Cover, drama.CoverURL = address, address
@@ -92,24 +92,24 @@ func (p *legacyProvider) fetchLegacyDetail(ctx context.Context, sourceID string)
 			return Drama{}, nil, err
 		}
 	}
-	chapters = uniqueChapters(chapters)
+	chapters = UniqueChapters(chapters)
 	for index := range chapters {
 		chapter := &chapters[index]
 		chapter.Source = sourceCloudFront
-		chapter.ID = providerChapterID(sourceCloudFront, sourceID, firstNonEmpty(chapter.ID, strconv.Itoa(index+1)))
+		chapter.ID = ProviderChapterID(sourceCloudFront, sourceID, FirstNonEmpty(chapter.ID, strconv.Itoa(index+1)))
 		chapter.Referer = legacyFrontendURL + "/"
-		if chapterEpisodeNumber(*chapter, 0) <= 0 {
-			chapter.CurrentEpisode = rawEpisode(index + 1)
+		if ChapterEpisodeNumber(*chapter, 0) <= 0 {
+			chapter.CurrentEpisode = RawEpisode(index + 1)
 		}
-		chapter.Title = firstNonEmpty(chapter.Title, "第"+chapter.EpisodeString(index+1)+"集")
+		chapter.Title = FirstNonEmpty(chapter.Title, "第"+chapter.EpisodeString(index+1)+"集")
 	}
-	sortProviderChapters(chapters)
+	SortProviderChapters(chapters)
 	drama := detail.Drama
 	drama.Title, drama.Name = detail.Title, detail.Name
-	if drama.ID != "" && drama.ID != sourceID && drama.ID != providerDramaID(sourceCloudFront, sourceID) {
+	if drama.ID != "" && drama.ID != sourceID && drama.ID != ProviderDramaID(sourceCloudFront, sourceID) {
 		return Drama{}, nil, errors.New("黄果旧版详情与请求剧集不符")
 	}
-	drama.ID, drama.Source, drama.SourceID = providerDramaID(sourceCloudFront, sourceID), sourceCloudFront, sourceID
+	drama.ID, drama.Source, drama.SourceID = ProviderDramaID(sourceCloudFront, sourceID), sourceCloudFront, sourceID
 	for _, cover := range []any{drama.CoverURL, drama.CoverURLSnake, drama.Cover, drama.ImageURL, drama.ImageURLSnake, drama.Image, drama.Img, drama.Pic, drama.Poster} {
 		if address := legacyCoverURL(cover); address != "" {
 			drama.Cover, drama.CoverURL = address, address
@@ -141,9 +141,9 @@ func (p *legacyProvider) resolveLegacyMedia(ctx context.Context, task Task) (Pro
 			return ProviderMedia{}, err
 		}
 		address := task.Chapter.VideoURL
-		if !isProviderHTTPMediaURL(address) {
+		if !IsProviderHTTPMediaURL(address) {
 			address = base + "/api/app/vid/h5/m3u8/" + url.PathEscape(strings.Trim(address, "/")) + "?" + url.Values{
-				"token": {access.Token}, "c": {firstNonEmpty(p.cfg.CDNURL, defaultCDNURL)},
+				"token": {access.Token}, "c": {FirstNonEmpty(p.cfg.CDNURL, DefaultCDNURL)},
 			}.Encode()
 		}
 		playlist, finalURL, err := p.host.FetchPlaylist(ctx, address, legacyFrontendURL+"/", nil)
@@ -155,7 +155,7 @@ func (p *legacyProvider) resolveLegacyMedia(ctx context.Context, task Task) (Pro
 			}
 			return ProviderMedia{}, err
 		}
-		return ProviderMedia{URL: finalURL, Playlist: playlist, Referer: legacyFrontendURL + "/", HLSKey: key, Duration: m3u8Duration(playlist)}, nil
+		return ProviderMedia{URL: finalURL, Playlist: playlist, Referer: legacyFrontendURL + "/", HLSKey: key, Duration: M3u8Duration(playlist)}, nil
 	}
 	return ProviderMedia{}, errors.New("黄果旧 API 的播放会话已失效，请稍后重试")
 }
@@ -217,7 +217,7 @@ func (p *legacyProvider) Categories(ctx context.Context, force bool) ([]Category
 	}
 	var categories []Category
 	for _, tab := range tabs {
-		if validNativeCategory(sourceCloudFront, tab.ID) && tab.ID != "" && tab.Name != "" {
+		if ValidNativeCategory(sourceCloudFront, tab.ID) && tab.ID != "" && tab.Name != "" {
 			categories = append(categories, Category{ID: tab.ID, Name: tab.Name})
 		}
 	}

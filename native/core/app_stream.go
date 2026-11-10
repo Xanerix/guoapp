@@ -186,7 +186,7 @@ func (stream *nativeStreamServer) nativeRewrite(token string, session *nativeStr
 				return ""
 			}
 			address := parsed.ResolveReference(relative).String()
-			if !isProviderHTTPMediaURL(address) {
+			if !IsProviderHTTPMediaURL(address) {
 				return ""
 			}
 			kind := "segment"
@@ -314,7 +314,7 @@ func (stream *nativeStreamServer) nativeServe(writer http.ResponseWriter, reques
 		http.Error(writer, "媒体地址无效", http.StatusBadGateway)
 		return
 	}
-	upstream.Header.Set("User-Agent", userAgent)
+	upstream.Header.Set("User-Agent", UserAgent)
 	upstream.Header.Set("Referer", session.referer)
 	for _, name := range []string{"Range", "If-Range"} {
 		if value := request.Header.Get(name); value != "" {

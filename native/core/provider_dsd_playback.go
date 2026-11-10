@@ -24,7 +24,7 @@ var (
 )
 
 func parseDSDPlayer(document *html.Node) (map[string]any, bool, error) {
-	for _, script := range providerHTMLNodes(document, func(node *html.Node) bool { return node.Data == "script" }) {
+	for _, script := range ProviderHTMLNodes(document, func(node *html.Node) bool { return node.Data == "script" }) {
 		if script.FirstChild == nil {
 			continue
 		}
@@ -45,9 +45,9 @@ func parseDSDPlayer(document *html.Node) (map[string]any, bool, error) {
 }
 
 func dsdPlayerIdentity(player map[string]any, sourceID string) (int, int, error) {
-	line, lineValid := webProviderInteger(player["sid"], 1000000)
-	episode, episodeValid := webProviderInteger(player["nid"], 1000000)
-	if mapString(player, "id") != sourceID || !lineValid || line < 1 || !episodeValid || episode < 1 {
+	line, lineValid := WebProviderInteger(player["sid"], 1000000)
+	episode, episodeValid := WebProviderInteger(player["nid"], 1000000)
+	if MapString(player, "id") != sourceID || !lineValid || line < 1 || !episodeValid || episode < 1 {
 		return 0, 0, errors.New("帝果播放器与请求视频不符")
 	}
 	return line, episode, nil
@@ -59,8 +59,8 @@ func dsdEpisodePage(site, sourceID string, line, episode int) string {
 
 func dsdChapter(sourceID string, line, episode int, title, site string, vip bool) Chapter {
 	key := fmt.Sprintf("%d-%d", line, episode)
-	return Chapter{ID: providerChapterID(sourceDSD, sourceID, key), Source: sourceDSD,
-		Title: truncate(firstNonEmpty(title, fmt.Sprintf("第 %d 集", episode)), 256), CurrentEpisode: rawEpisode(episode),
+	return Chapter{ID: ProviderChapterID(sourceDSD, sourceID, key), Source: sourceDSD,
+		Title: Truncate(FirstNonEmpty(title, fmt.Sprintf("第 %d 集", episode)), 256), CurrentEpisode: RawEpisode(episode),
 		PageURL: dsdEpisodePage(site, sourceID, line, episode), Referer: site + "/", VIP: vip}
 }
 
@@ -69,11 +69,11 @@ func dsdDetailIdentity(document *html.Node, sourceID string, player map[string]a
 		_, _, err := dsdPlayerIdentity(player, sourceID)
 		return err
 	}
-	info := providerHTMLFirstClass(document, "video-info")
-	for _, node := range providerHTMLNodes(info, func(node *html.Node) bool {
-		return providerHTMLAttr(node, "data-id") == sourceID
+	info := ProviderHTMLFirstClass(document, "video-info")
+	for _, node := range ProviderHTMLNodes(info, func(node *html.Node) bool {
+		return ProviderHTMLAttr(node, "data-id") == sourceID
 	}) {
-		if providerHTMLClass(node, "btn-favs") {
+		if ProviderHTMLClass(node, "btn-favs") {
 			return nil
 		}
 	}
@@ -92,15 +92,15 @@ func parseDSDDetail(document *html.Node, pageURL, sourceID, site string) (Drama,
 	if found {
 		line, current, _ = dsdPlayerIdentity(player, sourceID)
 	}
-	info := providerHTMLFirstClass(document, "video-info")
-	box := providerHTMLFirstClass(document, "video-box")
+	info := ProviderHTMLFirstClass(document, "video-info")
+	box := ProviderHTMLFirstClass(document, "video-box")
 	data, _ := player["vod_data"].(map[string]any)
-	title := mapString(data, "vod_name")
+	title := MapString(data, "vod_name")
 	if title == "" {
-		for _, heading := range providerHTMLNodes(info, func(node *html.Node) bool {
+		for _, heading := range ProviderHTMLNodes(info, func(node *html.Node) bool {
 			return node.Data == "h1" || node.Data == "h2" || node.Data == "h3"
 		}) {
-			if title = providerHTMLText(heading); title != "" {
+			if title = ProviderHTMLText(heading); title != "" {
 				break
 			}
 		}
@@ -108,12 +108,12 @@ func parseDSDDetail(document *html.Node, pageURL, sourceID, site string) (Drama,
 	if title == "" {
 		return Drama{}, nil, errors.New("帝果详情缺少视频名称")
 	}
-	cover := firstNonEmpty(providerCoverAddress(player["poster"], pageURL), dsdCardCover(box, pageURL))
-	description := truncate(providerHTMLText(providerHTMLFirstClass(info, "desc")), 12000)
-	drama := Drama{ID: providerDramaID(sourceDSD, sourceID), Source: sourceDSD, SourceID: sourceID,
-		Title: truncate(title, 1024), Name: truncate(title, 1024), Desc: description, Intro: description,
+	cover := FirstNonEmpty(ProviderCoverAddress(player["poster"], pageURL), dsdCardCover(box, pageURL))
+	description := Truncate(ProviderHTMLText(ProviderHTMLFirstClass(info, "desc")), 12000)
+	drama := Drama{ID: ProviderDramaID(sourceDSD, sourceID), Source: sourceDSD, SourceID: sourceID,
+		Title: Truncate(title, 1024), Name: Truncate(title, 1024), Desc: description, Intro: description,
 		Cover: cover, CoverURL: cover, ChannelName: "帝果"}
-	vip := providerHTMLFirstClass(box, "noVip", "openVip") != nil
+	vip := ProviderHTMLFirstClass(box, "noVip", "openVip") != nil
 	if vip {
 		drama.VIP = &vip
 	}
@@ -125,29 +125,29 @@ func parseDSDDetail(document *html.Node, pageURL, sourceID, site string) (Drama,
 			drama.Tags = append(drama.Tags, tag)
 		}
 	}
-	for _, tag := range strings.Split(mapString(data, "vod_class"), ",") {
+	for _, tag := range strings.Split(MapString(data, "vod_class"), ",") {
 		addTag(tag)
 	}
-	for _, tag := range providerHTMLNodes(providerHTMLFirstClass(info, "labels"), func(node *html.Node) bool { return node.Data == "a" }) {
-		addTag(providerHTMLText(tag))
+	for _, tag := range ProviderHTMLNodes(ProviderHTMLFirstClass(info, "labels"), func(node *html.Node) bool { return node.Data == "a" }) {
+		addTag(ProviderHTMLText(tag))
 	}
 	chapters := []Chapter{dsdChapter(sourceID, line, current, "", site, vip)}
 	seen := map[int]bool{current: true}
 	addEpisode := func(reference, title string) {
 		action, values, valid := dsdRouteParameters(pageURL, reference)
-		candidateLine, lineValid := webProviderInteger(values["sid"], 1000000)
-		episode, episodeValid := webProviderInteger(values["nid"], 1000000)
+		candidateLine, lineValid := WebProviderInteger(values["sid"], 1000000)
+		episode, episodeValid := WebProviderInteger(values["nid"], 1000000)
 		if !valid || action != "play" || values["id"] != sourceID || !lineValid || candidateLine != line || !episodeValid || episode < 1 || seen[episode] {
 			return
 		}
 		seen[episode] = true
 		chapters = append(chapters, dsdChapter(sourceID, line, episode, title, site, vip))
 	}
-	for _, anchor := range providerHTMLNodes(document, func(node *html.Node) bool { return node.Data == "a" }) {
-		addEpisode(providerHTMLAttr(anchor, "href"), providerHTMLText(anchor))
+	for _, anchor := range ProviderHTMLNodes(document, func(node *html.Node) bool { return node.Data == "a" }) {
+		addEpisode(ProviderHTMLAttr(anchor, "href"), ProviderHTMLText(anchor))
 	}
-	addEpisode(mapString(player, "link_pre"), "")
-	addEpisode(mapString(player, "link_next"), "")
+	addEpisode(MapString(player, "link_pre"), "")
+	addEpisode(MapString(player, "link_next"), "")
 	if len(chapters) > 10000 {
 		return Drama{}, nil, errors.New("帝果分集目录过大")
 	}
@@ -164,11 +164,11 @@ func parseDSDDetail(document *html.Node, pageURL, sourceID, site string) (Drama,
 }
 
 func (p *dSDProvider) fetchDSDDetail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
-	if !webProviderNumericID.MatchString(sourceID) {
+	if !WebProviderNumericID.MatchString(sourceID) {
 		return Drama{}, nil, errors.New("帝果视频 ID 无效")
 	}
 	site := p.site
-	document, address, err := fetchHostPage(ctx, p.host, dsdEpisodePage(site, sourceID, 1, 1), site+"/", dsdUserAgent)
+	document, address, err := FetchHostPage(ctx, p.host, dsdEpisodePage(site, sourceID, 1, 1), site+"/", dsdUserAgent)
 	if err != nil {
 		return Drama{}, nil, err
 	}
@@ -176,11 +176,11 @@ func (p *dSDProvider) fetchDSDDetail(ctx context.Context, sourceID string) (Dram
 }
 
 func dsdIssuedMedia(player map[string]any, pageURL string) (string, error) {
-	address := mapString(player, "url")
+	address := MapString(player, "url")
 	if address == "" {
 		return "", nil
 	}
-	switch mapString(player, "encrypt") {
+	switch MapString(player, "encrypt") {
 	case "", "0":
 	case "1":
 		decoded, err := url.PathUnescape(address)
@@ -203,9 +203,9 @@ func dsdIssuedMedia(player map[string]any, pageURL string) (string, error) {
 	default:
 		return "", errors.New("帝果播放地址编码已变化")
 	}
-	address = resolveProviderURL(pageURL, address)
+	address = ResolveProviderURL(pageURL, address)
 	parsed, err := url.Parse(address)
-	if err != nil || !isProviderHTTPMediaURL(address) || parsed.User != nil {
+	if err != nil || !IsProviderHTTPMediaURL(address) || parsed.User != nil {
 		return "", errors.New("帝果播放地址无效")
 	}
 	path := strings.ToLower(parsed.Path)
@@ -481,16 +481,16 @@ func (p *dSDProvider) signDSDMedia(ctx context.Context, address, pageURL, site s
 	if !found || signed == "" {
 		return address, false, nil
 	}
-	resolved := resolveProviderURL(dsdVplayerReferer(site), signed)
+	resolved := ResolveProviderURL(dsdVplayerReferer(site), signed)
 	parsed, err := url.Parse(resolved)
-	if err != nil || !isProviderHTTPMediaURL(resolved) || parsed.User != nil {
+	if err != nil || !IsProviderHTTPMediaURL(resolved) || parsed.User != nil {
 		return "", false, errors.New("帝果播放签名地址无效")
 	}
 	path := strings.ToLower(parsed.Path)
 	if !strings.HasSuffix(path, ".m3u8") && !strings.HasSuffix(path, ".mp4") {
 		return "", false, errors.New("帝果签名后未返回可播放媒体")
 	}
-	if providerMediaOrigin(parsed) == "" || pageURL == "" {
+	if ProviderMediaOrigin(parsed) == "" || pageURL == "" {
 		return "", false, errors.New("帝果播放签名缺少来源信息")
 	}
 	return resolved, true, nil
@@ -499,8 +499,8 @@ func (p *dSDProvider) signDSDMedia(ctx context.Context, address, pageURL, site s
 func dsdMediaFromPagePath(cover, pageURL string) string {
 	address, err := url.Parse(cover)
 	page, pageErr := url.Parse(pageURL)
-	if err != nil || pageErr != nil || !isProviderHTTPMediaURL(cover) || address.User != nil ||
-		providerMediaOrigin(address) != providerMediaOrigin(page) || !dsdVideoDirectory.MatchString(address.Path) || !dsdPosterFilename.MatchString(address.Path) {
+	if err != nil || pageErr != nil || !IsProviderHTTPMediaURL(cover) || address.User != nil ||
+		ProviderMediaOrigin(address) != ProviderMediaOrigin(page) || !dsdVideoDirectory.MatchString(address.Path) || !dsdPosterFilename.MatchString(address.Path) {
 		return ""
 	}
 	address.Path = dsdPosterFilename.ReplaceAllString(address.Path, "/1000k/index.m3u8")
@@ -509,22 +509,22 @@ func dsdMediaFromPagePath(cover, pageURL string) string {
 }
 
 func (p *dSDProvider) resolveDSDMedia(ctx context.Context, task Task) (ProviderMedia, error) {
-	source, sourceID, valid := splitProviderDramaID(task.DramaID)
-	prefix := providerChapterID(sourceDSD, sourceID, "")
-	if !valid || source != sourceDSD || !webProviderNumericID.MatchString(sourceID) || !strings.HasPrefix(task.Chapter.ID, prefix) {
+	source, sourceID, valid := SplitProviderDramaID(task.DramaID)
+	prefix := ProviderChapterID(sourceDSD, sourceID, "")
+	if !valid || source != sourceDSD || !WebProviderNumericID.MatchString(sourceID) || !strings.HasPrefix(task.Chapter.ID, prefix) {
 		return ProviderMedia{}, errors.New("帝果播放信息无效，请刷新详情")
 	}
 	parts := strings.Split(strings.TrimPrefix(task.Chapter.ID, prefix), "-")
 	if len(parts) != 2 {
 		return ProviderMedia{}, errors.New("帝果播放分集无效")
 	}
-	line, lineValid := webProviderInteger(parts[0], 1000000)
-	episode, episodeValid := webProviderInteger(parts[1], 1000000)
+	line, lineValid := WebProviderInteger(parts[0], 1000000)
+	episode, episodeValid := WebProviderInteger(parts[1], 1000000)
 	if !lineValid || line < 1 || !episodeValid || episode < 1 {
 		return ProviderMedia{}, errors.New("帝果播放分集无效")
 	}
 	site := p.site
-	document, pageURL, err := fetchHostPage(ctx, p.host, dsdEpisodePage(site, sourceID, line, episode), site+"/", dsdUserAgent)
+	document, pageURL, err := FetchHostPage(ctx, p.host, dsdEpisodePage(site, sourceID, line, episode), site+"/", dsdUserAgent)
 	if err != nil {
 		return ProviderMedia{}, err
 	}
@@ -541,7 +541,7 @@ func (p *dSDProvider) resolveDSDMedia(ctx context.Context, task Task) (ProviderM
 		if line != actualLine || episode != actualEpisode {
 			return ProviderMedia{}, errors.New("帝果返回的播放地址与请求分集不符")
 		}
-		if preview, valid := webProviderInteger(player["trysee"], 86400); valid && preview > 0 {
+		if preview, valid := WebProviderInteger(player["trysee"], 86400); valid && preview > 0 {
 			return ProviderMedia{}, errors.New("帝果仅提供试看，暂未取得正片播放地址")
 		}
 		address, err = dsdIssuedMedia(player, pageURL)
@@ -553,8 +553,8 @@ func (p *dSDProvider) resolveDSDMedia(ctx context.Context, task Task) (ProviderM
 		if line != 1 || episode != 1 {
 			return ProviderMedia{}, errors.New("帝果未提供该分集的播放地址")
 		}
-		box := providerHTMLFirstClass(document, "video-box")
-		cover := firstNonEmpty(providerCoverAddress(player["poster"], pageURL), dsdCardCover(box, pageURL))
+		box := ProviderHTMLFirstClass(document, "video-box")
+		cover := FirstNonEmpty(ProviderCoverAddress(player["poster"], pageURL), dsdCardCover(box, pageURL))
 		address = dsdMediaFromPagePath(cover, pageURL)
 	}
 	if address == "" {
@@ -571,7 +571,7 @@ func (p *dSDProvider) resolveDSDMedia(ctx context.Context, task Task) (ProviderM
 		referer = dsdVplayerReferer(site)
 	}
 	media := ProviderMedia{URL: address, Referer: referer, Credentials: &MediaCredentials{
-		Origin: providerMediaOrigin(parsed), Referer: referer, UserAgent: dsdUserAgent,
+		Origin: ProviderMediaOrigin(parsed), Referer: referer, UserAgent: dsdUserAgent,
 	}}
 	return p.host.PrepareWebMedia(ctx, media, "帝果")
 }

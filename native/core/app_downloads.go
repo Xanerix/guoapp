@@ -252,7 +252,7 @@ func (manager *nativeDownloads) enqueueContext(ctx context.Context, input native
 	if !nativeDramaAvailable(input.Drama) {
 		return 0, errNativeBuildSource
 	}
-	if _, _, valid := splitProviderDramaID(input.Drama.ID); !valid {
+	if _, _, valid := SplitProviderDramaID(input.Drama.ID); !valid {
 		return 0, errors.New("剧集信息无效")
 	}
 	if len(input.Entries) == 0 || len(input.Entries) > 500 {
@@ -297,7 +297,7 @@ func (manager *nativeDownloads) enqueueContext(ctx context.Context, input native
 				if _, changed := previous[id]; !changed {
 					previous[id] = *existing
 				}
-				existing.Drama = mergeNativeDrama(existing.Drama, input.Drama)
+				existing.Drama = MergeNativeDrama(existing.Drama, input.Drama)
 			}
 			if input.Force && (existing.State == "failed" || existing.State == "completed" && !manager.localFilesValid(*existing)) {
 				if existing.Archived {
@@ -502,7 +502,7 @@ func (manager *nativeDownloads) run(ctx context.Context, job nativeDownloadJob) 
 		if interrupted {
 			record.Error = "下载已中断，点击重试可继续"
 		} else {
-			record.Error = publicError(err).Error()
+			record.Error = PublicError(err).Error()
 		}
 	}
 	if saveErr := manager.saveLocked(); saveErr != nil && manager.jobs[job.ID] != nil {

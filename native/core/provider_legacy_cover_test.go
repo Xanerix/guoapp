@@ -37,8 +37,8 @@ func TestLegacyCoverAddressesAndSyntheticPayloads(t *testing.T) {
 		}
 	}
 	for _, sample := range []struct{ input, address, referer string }{
-		{defaultCDNURL + "/images/synthetic.png?sig=a%2Fb", "https://zzzznnn.lkkwip.cn/images/synthetic.png?sig=a%2Fb", legacyFrontendURL + "/"},
-		{defaultCDNURL + "/upload_01/synthetic.png?sig=a%2Fb", "https://pic.zdmhyg.cn/upload_01/synthetic.png?sig=a%2Fb", huangguoAIBaseURL + "/"},
+		{DefaultCDNURL + "/images/synthetic.png?sig=a%2Fb", "https://zzzznnn.lkkwip.cn/images/synthetic.png?sig=a%2Fb", legacyFrontendURL + "/"},
+		{DefaultCDNURL + "/upload_01/synthetic.png?sig=a%2Fb", "https://pic.zdmhyg.cn/upload_01/synthetic.png?sig=a%2Fb", huangguoAIBaseURL + "/"},
 		{"https://new-covers.example.test/synthetic.png?sig=a%2Fb", "https://new-covers.example.test/synthetic.png?sig=a%2Fb", legacyFrontendURL + "/"},
 	} {
 		t.Run(sample.address, func(t *testing.T) {

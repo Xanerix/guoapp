@@ -41,7 +41,7 @@ func (client *soraniAPIClient) call(ctx context.Context, method, route string, q
 		limit = 4 << 20
 	}
 	base, err := url.Parse(client.base)
-	if err != nil || !isProviderHTTPMediaURL(client.base) || base.User != nil || base.RawQuery != "" || base.Fragment != "" {
+	if err != nil || !IsProviderHTTPMediaURL(client.base) || base.User != nil || base.RawQuery != "" || base.Fragment != "" {
 		return nil, errors.New("青空次元接口地址无效")
 	}
 	address := client.base + route
@@ -80,12 +80,12 @@ func (client *soraniAPIClient) call(ctx context.Context, method, route string, q
 		return nil, errors.New("青空次元返回的数据格式无效")
 	}
 	if row, ok := decoded.(map[string]any); ok {
-		if code := nativeText(row["code"]); code != "" && code != "200" {
-			message := mapString(row, "message", "msg")
+		if code := NativeText(row["code"]); code != "" && code != "200" {
+			message := MapString(row, "message", "msg")
 			if message == "" {
 				message = "上游返回错误码 " + code
 			}
-			return nil, &soraniAPIError{code: code, message: truncate(message, 120)}
+			return nil, &soraniAPIError{code: code, message: Truncate(message, 120)}
 		}
 	}
 	return decoded, nil

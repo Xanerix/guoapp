@@ -97,10 +97,10 @@ func (downloader *Downloader) recordDiagnostic(event diagnosticEvent) {
 	if downloader == nil || downloader.diagnostics == nil {
 		return
 	}
-	event.Message = truncate(redactErrorString(event.Message), 4096)
+	event.Message = Truncate(redactErrorString(event.Message), 4096)
 	if err := downloader.diagnostics.write(event); err != nil {
 		downloader.diagnostics.warningOnce.Do(func() {
-			fmt.Fprintf(os.Stderr, "诊断日志保存失败：%v\n", publicError(err))
+			fmt.Fprintf(os.Stderr, "诊断日志保存失败：%v\n", PublicError(err))
 		})
 	}
 }

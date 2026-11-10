@@ -166,7 +166,7 @@ func mergeNativeCatalog(first, second []LibraryDrama) []LibraryDrama {
 	}
 	for _, item := range second {
 		if index, found := indices[item.ID]; found {
-			items[index] = mergeNativeDrama(items[index], item)
+			items[index] = MergeNativeDrama(items[index], item)
 		} else {
 			indices[item.ID] = len(items)
 			items = append(items, item)
@@ -175,7 +175,7 @@ func mergeNativeCatalog(first, second []LibraryDrama) []LibraryDrama {
 	return items
 }
 
-func mergeNativeDrama(previous, fresh LibraryDrama) LibraryDrama {
+func MergeNativeDrama(previous, fresh LibraryDrama) LibraryDrama {
 	previous, fresh = migrateNativeDrama(previous), migrateNativeDrama(fresh)
 	if previous.ID != "" && fresh.ID != previous.ID {
 		return fresh
@@ -250,7 +250,7 @@ func (engine *nativeEngine) saveCatalogCache(source string, result *nativeCatalo
 				old[item.ID] = item
 			}
 			for index, item := range items {
-				items[index] = mergeNativeDrama(old[item.ID], item)
+				items[index] = MergeNativeDrama(old[item.ID], item)
 			}
 			fresh := make(map[string]bool, len(items))
 			for _, item := range items {
@@ -342,7 +342,7 @@ func (engine *nativeEngine) saveDetailMetadata(drama LibraryDrama) error {
 	for _, items := range engine.catalogs {
 		for index := range items {
 			if items[index].ID == drama.ID {
-				items[index] = mergeNativeDrama(items[index], drama)
+				items[index] = MergeNativeDrama(items[index], drama)
 				changed = true
 			}
 		}

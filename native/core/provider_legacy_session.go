@@ -99,7 +99,7 @@ func (p *legacyProvider) legacyCredentials(ctx context.Context) (legacyAccess, e
 }
 
 func (p *legacyProvider) legacySessionScope() string {
-	return strings.TrimRight(firstNonEmpty(p.cfg.APIBase, defaultAPIBase), "/")
+	return strings.TrimRight(FirstNonEmpty(p.cfg.APIBase, DefaultAPIBase), "/")
 }
 
 func (p *legacyProvider) loadLegacySession() legacySessionState {
@@ -135,7 +135,7 @@ func (p *legacyProvider) bootstrapLegacySession(ctx context.Context, state legac
 	if needsProtocol && (!validLegacyProtocol(protocol) || time.Since(state.UpdatedAt) > 24*time.Hour) {
 		script, err := p.fetchLegacyFrontendScript(ctx)
 		if err != nil {
-			return access, state, fmt.Errorf("获取黄果官网协议失败: %w", publicError(err))
+			return access, state, fmt.Errorf("获取黄果官网协议失败: %w", PublicError(err))
 		}
 		protocol, err = parseLegacyProtocol(script)
 		if err != nil {
@@ -144,9 +144,9 @@ func (p *legacyProvider) bootstrapLegacySession(ctx context.Context, state legac
 		state.Protocol, state.UpdatedAt = protocol, time.Now()
 	}
 	access.legacyProtocol = legacyProtocol{
-		InterfaceKey: firstNonEmpty(p.cfg.InterfaceKey, protocol.InterfaceKey),
-		ParamKey:     firstNonEmpty(p.cfg.ParamKey, protocol.ParamKey),
-		ParamIV:      firstNonEmpty(p.cfg.ParamIV, protocol.ParamIV),
+		InterfaceKey: FirstNonEmpty(p.cfg.InterfaceKey, protocol.InterfaceKey),
+		ParamKey:     FirstNonEmpty(p.cfg.ParamKey, protocol.ParamKey),
+		ParamIV:      FirstNonEmpty(p.cfg.ParamIV, protocol.ParamIV),
 	}
 	if !validLegacyProtocol(access.legacyProtocol) || !validLegacyToken(access.Token) {
 		return access, state, errors.New("黄果 API 协议配置无效，请更新应用后重试")
@@ -215,9 +215,9 @@ func (p *legacyProvider) invalidateLegacyToken(access legacyAccess) {
 	}
 }
 
-func (access legacyAccess) userAgent() string {
+func (access legacyAccess) UserAgent() string {
 	if access.DeviceID == "" {
-		return xUserAgent
+		return XUserAgent
 	}
-	return strings.Replace(xUserAgent, "DevID=00000000000000000000000000000", "DevID="+access.DeviceID, 1)
+	return strings.Replace(XUserAgent, "DevID=00000000000000000000000000000", "DevID="+access.DeviceID, 1)
 }

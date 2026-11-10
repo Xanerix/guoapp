@@ -36,7 +36,7 @@ func huangguoClassBlock(raw, className string) string {
 		if match[3] > match[2] {
 			continue
 		}
-		for _, class := range strings.Fields(extractAttr(raw[match[0]:match[1]], "class")) {
+		for _, class := range strings.Fields(ExtractAttr(raw[match[0]:match[1]], "class")) {
 			if class == className {
 				return huangguoElementBlock(raw, match[0], match[1], raw[match[4]:match[5]])
 			}
@@ -62,7 +62,7 @@ func firstHuangguoTitle(sourceID string, values ...string) string {
 
 func huangguoMapEpisodes(row map[string]any) string {
 	for _, key := range []string{"episode_count", "episodeCount", "total_episodes", "totalEpisodes", "totalEpisode", "total_episode", "episodes", "total"} {
-		if count, err := strconv.Atoi(mapString(row, key)); err == nil && count > 0 {
+		if count, err := strconv.Atoi(MapString(row, key)); err == nil && count > 0 {
 			return strconv.Itoa(count)
 		}
 	}
@@ -98,10 +98,10 @@ func mergeDramaMetadata(base, extra Drama) Drama {
 	if strings.TrimSpace(base.Intro) == "" {
 		base.Intro = extra.Intro
 	}
-	if coverPathFromAny(base.Cover) == "" {
+	if CoverPathFromAny(base.Cover) == "" {
 		base.Cover = extra.Cover
 	}
-	if coverPathFromAny(base.CoverURL) == "" {
+	if CoverPathFromAny(base.CoverURL) == "" {
 		base.CoverURL = extra.CoverURL
 	}
 	if valueEmpty(base.TotalEpisode) {
@@ -137,8 +137,8 @@ func mergeDramaMetadata(base, extra Drama) Drama {
 	if base.ReleaseStatus == "" || base.ReleaseStatus == "unknown" {
 		base.ReleaseStatus = extra.ReleaseStatus
 	}
-	if dramaProvider(base) == sourceHuangguoAI && base.ID == extra.ID {
-		_, sourceID, _ := splitProviderDramaID(base.ID)
+	if DramaProvider(base) == sourceHuangguoAI && base.ID == extra.ID {
+		_, sourceID, _ := SplitProviderDramaID(base.ID)
 		if title := firstHuangguoTitle(sourceID, base.Title, base.Name, extra.Title, extra.Name); title != "" {
 			base.Title, base.Name = title, title
 		}

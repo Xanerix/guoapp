@@ -23,7 +23,7 @@ func validHuangjuID(value string) bool {
 }
 
 func huangjuInteger(value any, maximum int) (int, bool) {
-	text := nativeText(value)
+	text := NativeText(value)
 	number, err := strconv.Atoi(text)
 	return number, err == nil && number >= 0 && number <= maximum
 }
@@ -55,8 +55,8 @@ func huangjuCategoryNames(row map[string]any) []string {
 }
 
 func huangjuDramaFromMap(row map[string]any, site, sourceID string) (Drama, error) {
-	id := mapString(row, "id")
-	slug := mapString(row, "slug")
+	id := MapString(row, "id")
+	slug := MapString(row, "slug")
 	title, _ := row["title"].(string)
 	if !validHuangjuID(id) || strings.TrimSpace(title) == "" {
 		return Drama{}, errors.New("剧果返回的剧集信息不完整")
@@ -84,13 +84,13 @@ func huangjuDramaFromMap(row map[string]any, site, sourceID string) (Drama, erro
 		category = categories[0]
 	}
 	tags := append([]string{}, categories...)
-	if region := mapString(row, "region"); region != "" {
-		tags = append(tags, truncate(region, 48))
+	if region := MapString(row, "region"); region != "" {
+		tags = append(tags, Truncate(region, 48))
 	}
 	if year, valid := huangjuInteger(row["year"], 9999); valid && year >= 1000 {
 		tags = append(tags, strconv.Itoa(year)+"年")
 	}
-	status := mapString(row, "status")
+	status := MapString(row, "status")
 	if status == "completed" {
 		status = "finished"
 	}
@@ -98,12 +98,12 @@ func huangjuDramaFromMap(row map[string]any, site, sourceID string) (Drama, erro
 		status = ""
 	}
 	description, _ := row["description"].(string)
-	cover := providerCoverAddress(row["coverUrl"], site+"/")
+	cover := ProviderCoverAddress(row["coverUrl"], site+"/")
 	return Drama{
-		ID: providerDramaID(sourceHuangju, sourceID), Source: sourceHuangju, SourceID: sourceID,
-		Title: truncate(title, 256), Name: truncate(title, 256), Desc: truncate(description, 12000), Intro: truncate(description, 12000),
+		ID: ProviderDramaID(sourceHuangju, sourceID), Source: sourceHuangju, SourceID: sourceID,
+		Title: Truncate(title, 256), Name: Truncate(title, 256), Desc: Truncate(description, 12000), Intro: Truncate(description, 12000),
 		Cover: cover, CoverURL: cover, TotalEpisode: episodes, EpisodeCount: episodes,
-		Category: category, ChannelName: "剧果", Tags: tags, ReleaseStatus: status, Score: mapString(row, "score"),
+		Category: category, ChannelName: "剧果", Tags: tags, ReleaseStatus: status, Score: MapString(row, "score"),
 	}, nil
 }
 
@@ -120,11 +120,11 @@ func (p *huangjuProvider) fetchHuangjuCategories(ctx context.Context) ([]Categor
 	seen := map[string]bool{huangjuNewestCategory: true}
 	for _, entry := range rows {
 		row, _ := entry.(map[string]any)
-		id, name := mapString(row, "slug"), mapString(row, "name")
+		id, name := MapString(row, "slug"), MapString(row, "name")
 		if id == "hot" {
 			continue
 		}
-		if !validNativeCategory(sourceHuangju, id) || id == "" || name == "" || len([]rune(name)) > 48 || seen[id] {
+		if !ValidNativeCategory(sourceHuangju, id) || id == "" || name == "" || len([]rune(name)) > 48 || seen[id] {
 			return nil, errors.New("剧果分类数据包含无效或重复条目")
 		}
 		seen[id] = true
@@ -134,7 +134,7 @@ func (p *huangjuProvider) fetchHuangjuCategories(ctx context.Context) ([]Categor
 }
 
 func (p *huangjuProvider) fetchHuangjuCatalogPage(ctx context.Context, page int, category, query string) ([]Drama, bool, error) {
-	if page < 1 || page > 1000000 || len(query) > 1024 || !validNativeCategory(sourceHuangju, category) {
+	if page < 1 || page > 1000000 || len(query) > 1024 || !ValidNativeCategory(sourceHuangju, category) {
 		return nil, false, errors.New("剧果目录查询参数无效")
 	}
 	values := url.Values{"page": {strconv.Itoa(page)}}
@@ -225,7 +225,7 @@ func (p *huangjuProvider) fetchHuangjuDetail(ctx context.Context, sourceID strin
 		if playable, ok := episode["playable"].(bool); ok && !playable {
 			continue
 		}
-		id := mapString(episode, "id")
+		id := MapString(episode, "id")
 		if !validHuangjuID(id) || seenIDs[id] {
 			return Drama{}, nil, errors.New("剧果分集目录包含无效或重复分集")
 		}
@@ -245,7 +245,7 @@ func (p *huangjuProvider) fetchHuangjuDetail(ctx context.Context, sourceID strin
 		}
 		seenIDs[id], seenNumbers[number] = true, true
 		chapters = append(chapters, Chapter{
-			ID: providerChapterID(sourceHuangju, sourceID, id), Source: sourceHuangju,
+			ID: ProviderChapterID(sourceHuangju, sourceID, id), Source: sourceHuangju,
 			Title: fmt.Sprintf("第 %d 集", number), CurrentEpisode: json.RawMessage(strconv.Itoa(number)),
 			VideoURL: "huangju-play://" + url.PathEscape(id), Referer: p.client.site + "/",
 		})
@@ -261,7 +261,7 @@ func (p *huangjuProvider) fetchHuangjuDetail(ctx context.Context, sourceID strin
 var huangjuSignedCookie = regexp.MustCompile(`(?:^|[,;\s])CloudFront-(Policy|Signature|Key-Pair-Id)\s*=\s*([^;,\s"']+)`)
 
 func huangjuExpiration(value any) time.Time {
-	text := nativeText(value)
+	text := NativeText(value)
 	if stamp, err := strconv.ParseInt(text, 10, 64); err == nil && stamp > 0 && stamp <= 253402300799000 {
 		if stamp > 100000000000 {
 			return time.UnixMilli(stamp)
@@ -308,18 +308,18 @@ func huangjuMediaCredentials(headers http.Header, address, site string, expirati
 		return nil, errors.New("剧果媒体凭证已过期，请检查设备时间后重试")
 	}
 	parsed, err := url.Parse(address)
-	if err != nil || !isProviderHTTPMediaURL(address) || parsed.User != nil {
+	if err != nil || !IsProviderHTTPMediaURL(address) || parsed.User != nil {
 		return nil, errors.New("剧果播放地址无效")
 	}
 	return &MediaCredentials{
-		Cookie: strings.Join(values, "; "), Origin: providerMediaOrigin(parsed),
+		Cookie: strings.Join(values, "; "), Origin: ProviderMediaOrigin(parsed),
 		Referer: site + "/", UserAgent: huangjuUserAgent, Expires: expires,
 	}, nil
 }
 
 func (p *huangjuProvider) resolveHuangjuMedia(ctx context.Context, task Task) (ProviderMedia, error) {
-	source, sourceID, valid := splitProviderDramaID(task.DramaID)
-	prefix := providerChapterID(sourceHuangju, sourceID, "")
+	source, sourceID, valid := SplitProviderDramaID(task.DramaID)
+	prefix := ProviderChapterID(sourceHuangju, sourceID, "")
 	if !valid || source != sourceHuangju || !validHuangjuID(sourceID) || !strings.HasPrefix(task.Chapter.ID, prefix) {
 		return ProviderMedia{}, errors.New("剧果播放分集信息无效，请刷新详情")
 	}
@@ -344,7 +344,7 @@ func (p *huangjuProvider) resolveHuangjuMedia(ctx context.Context, task Task) (P
 		if err != nil {
 			return ProviderMedia{}, fmt.Errorf("获取剧果播放列表失败：%w", err)
 		}
-		media.Duration = m3u8Duration(media.Playlist)
+		media.Duration = M3u8Duration(media.Playlist)
 	}
 	return media, nil
 }

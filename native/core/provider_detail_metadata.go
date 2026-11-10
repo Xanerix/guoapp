@@ -10,14 +10,14 @@ import (
 
 func parseHongguoSortDetail(body, id string) (Drama, error) {
 	row := nestedMap(routerLoaderMap(parseRouterData(body), "detail_page", "detail_"), "seriesDetail")
-	if mapString(row, "series_id", "series_id_str") != id || mapString(row, "series_name", "series_title") == "" {
+	if MapString(row, "series_id", "series_id_str") != id || MapString(row, "series_name", "series_title") == "" {
 		return Drama{}, errors.New("红果网页详情与请求剧集不符")
 	}
 	patch := hongguoDramaFromAny(row, "")
-	patch.Title = mapString(row, "series_name", "series_title")
+	patch.Title = MapString(row, "series_name", "series_title")
 	patch.Name = patch.Title
-	patch.OnlineDate = providerTimestampDate(mapString(row, "first_visible_time"))
-	if cover := hongguoCoverAddress(mapString(row, "series_cover", "cover")); cover != "" {
+	patch.OnlineDate = providerTimestampDate(MapString(row, "first_visible_time"))
+	if cover := hongguoCoverAddress(MapString(row, "series_cover", "cover")); cover != "" {
 		patch.Cover, patch.CoverURL = cover, cover
 	}
 	return patch, nil
@@ -48,16 +48,16 @@ func parseHuangguoSortDetail(body, pageURL string, patch Drama) (Drama, error) {
 			if row.Type != "WebPage" && row.Type != "VideoObject" && row.Type != "TVSeries" && row.Type != "Movie" {
 				continue
 			}
-			actual, err := url.Parse(firstNonEmpty(row.URL, row.ID))
-			if err != nil || actual.Host != "" && !strings.EqualFold(actual.Host, expected.Host) && providerSourceForURL(actual.String()) != patch.Source || strings.TrimRight(actual.Path, "/") != strings.TrimRight(expected.Path, "/") || row.Name == "" || patch.Source == sourceHuangguoAI && huangguoTitleNeedsRepair(row.Name, patch.SourceID) {
+			actual, err := url.Parse(FirstNonEmpty(row.URL, row.ID))
+			if err != nil || actual.Host != "" && !strings.EqualFold(actual.Host, expected.Host) && ProviderSourceForURL(actual.String()) != patch.Source || strings.TrimRight(actual.Path, "/") != strings.TrimRight(expected.Path, "/") || row.Name == "" || patch.Source == sourceHuangguoAI && huangguoTitleNeedsRepair(row.Name, patch.SourceID) {
 				continue
 			}
 			matched = true
 			patch.Title = row.Name
-			if address := firstNonEmpty(providerCoverAddress(row.Image, pageURL), providerCoverAddress(row.Thumbnail, pageURL)); address != "" {
+			if address := FirstNonEmpty(ProviderCoverAddress(row.Image, pageURL), ProviderCoverAddress(row.Thumbnail, pageURL)); address != "" {
 				patch.Cover, patch.CoverURL = address, address
 			}
-			if date := providerReleaseDate(firstNonEmpty(row.Uploaded, row.Published)); date != "" && (patch.OnlineDate == "" || row.Type == "VideoObject") {
+			if date := ProviderReleaseDate(FirstNonEmpty(row.Uploaded, row.Published)); date != "" && (patch.OnlineDate == "" || row.Type == "VideoObject") {
 				patch.OnlineDate = date
 			}
 		}
@@ -65,10 +65,10 @@ func parseHuangguoSortDetail(body, pageURL string, patch Drama) (Drama, error) {
 	if !matched {
 		return patch, fmt.Errorf("黄果详情没有返回所请求剧集的元数据")
 	}
-	if nativeNormalize(patch).Cover == "" {
-		for _, tag := range coverMetaTag.FindAllString(body, -1) {
-			if strings.ToLower(extractAttr(tag, "property", "name")) == "og:image" {
-				if address := providerCoverAddress(extractAttr(tag, "content"), pageURL); address != "" {
+	if NativeNormalize(patch).Cover == "" {
+		for _, tag := range CoverMetaTag.FindAllString(body, -1) {
+			if strings.ToLower(ExtractAttr(tag, "property", "name")) == "og:image" {
+				if address := ProviderCoverAddress(ExtractAttr(tag, "content"), pageURL); address != "" {
 					patch.Cover, patch.CoverURL = address, address
 					break
 				}
@@ -77,14 +77,14 @@ func parseHuangguoSortDetail(body, pageURL string, patch Drama) (Drama, error) {
 	}
 	markup := huangguoNonContent.ReplaceAllString(body, "")
 	metaBlock := huangguoClassBlock(markup, "hg-web-detail__meta")
-	meta := cleanText(metaBlock)
-	patch.Views = normalizeViews(firstMatchText(reViewsText, meta))
+	meta := CleanText(metaBlock)
+	patch.Views = NormalizeViews(FirstMatchText(ReViewsText, meta))
 	if patch.OnlineDate == "" && strings.Contains(meta, "上线") {
-		patch.OnlineDate = providerReleaseDate(firstMatchText(reDateText, meta))
+		patch.OnlineDate = ProviderReleaseDate(FirstMatchText(ReDateText, meta))
 	}
 	if patch.Source == sourceHuangguoAI {
-		episode := firstNonEmpty(extractAttr(metaBlock, "data-ep-base"), meta)
-		if count := episodeIndex(episode, 0); count > 0 {
+		episode := FirstNonEmpty(ExtractAttr(metaBlock, "data-ep-base"), meta)
+		if count := EpisodeIndex(episode, 0); count > 0 {
 			patch.TotalEpisode, patch.EpisodeCount = count, count
 		}
 	}
@@ -92,17 +92,17 @@ func parseHuangguoSortDetail(body, pageURL string, patch Drama) (Drama, error) {
 }
 
 func huangguoDetailMetadata(body, pageURL, source, sourceID string) Drama {
-	drama := Drama{ID: providerDramaID(source, sourceID), Source: source, SourceID: sourceID,
-		Title: firstNonEmpty(extractPageTitle(body), "短剧"), Desc: extractDescription(body), Tags: extractTags(body)}
+	drama := Drama{ID: ProviderDramaID(source, sourceID), Source: source, SourceID: sourceID,
+		Title: FirstNonEmpty(ExtractPageTitle(body), "短剧"), Desc: ExtractDescription(body), Tags: ExtractTags(body)}
 	if patch, err := parseHuangguoSortDetail(body, pageURL, drama); err == nil {
 		drama = patch
 	}
 	drama.Name, drama.Intro = drama.Title, drama.Desc
-	meta := cleanText(huangguoClassBlock(huangguoNonContent.ReplaceAllString(body, ""), "hg-web-detail__meta"))
-	drama.ReleaseStatus = releaseStatusFromRemark(meta)
+	meta := CleanText(huangguoClassBlock(huangguoNonContent.ReplaceAllString(body, ""), "hg-web-detail__meta"))
+	drama.ReleaseStatus = ReleaseStatusFromRemark(meta)
 	if drama.ReleaseStatus == "unknown" && source == sourceHuangguoVideo && !strings.HasPrefix(sourceID, "video/") {
 		if header := reVideoDetailMeta.FindStringSubmatch(body); len(header) > 1 {
-			drama.ReleaseStatus = releaseStatusFromRemark(cleanText(header[1]))
+			drama.ReleaseStatus = ReleaseStatusFromRemark(CleanText(header[1]))
 		}
 	}
 	return drama
