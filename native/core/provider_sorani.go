@@ -175,15 +175,15 @@ func soraniRecordList(payload any) ([]any, bool) {
 	}
 }
 
-func (d *Downloader) soraniRequest(ctx context.Context, route string, query url.Values, limit int64) (any, error) {
-	return d.soraniClient().get(ctx, route, query, limit)
+func (p *soraniProvider) soraniRequest(ctx context.Context, route string, query url.Values, limit int64) (any, error) {
+	return p.client.get(ctx, route, query, limit)
 }
 
-func (d *Downloader) fetchSoraniCategories() []Category {
+func (p *soraniProvider) fetchSoraniCategories() []Category {
 	return append([]Category(nil), soraniCategories...)
 }
 
-func (d *Downloader) fetchSoraniCatalogPage(ctx context.Context, page int, category, query string) ([]Drama, bool, error) {
+func (p *soraniProvider) fetchSoraniCatalogPage(ctx context.Context, page int, category, query string) ([]Drama, bool, error) {
 	if page < 1 || page > soraniMaxPage {
 		return nil, false, errors.New("青空次元目录页码无效")
 	}
@@ -203,7 +203,7 @@ func (d *Downloader) fetchSoraniCatalogPage(ctx context.Context, page int, categ
 	case category != "":
 		values.Set("categoryId", category)
 	}
-	value, err := d.soraniRequest(ctx, route, values, 4<<20)
+	value, err := p.soraniRequest(ctx, route, values, 4<<20)
 	if err != nil {
 		return nil, false, err
 	}
@@ -238,11 +238,11 @@ func (d *Downloader) fetchSoraniCatalogPage(ctx context.Context, page int, categ
 	return items, hasMore, nil
 }
 
-func (d *Downloader) fetchSoraniDetail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
+func (p *soraniProvider) fetchSoraniDetail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
 	if !soraniNumericID(sourceID) {
 		return Drama{}, nil, errors.New("青空次元剧集 ID 无效")
 	}
-	value, err := d.soraniRequest(ctx, "/video/"+url.PathEscape(sourceID), nil, 8<<20)
+	value, err := p.soraniRequest(ctx, "/video/"+url.PathEscape(sourceID), nil, 8<<20)
 	if err != nil {
 		return Drama{}, nil, err
 	}
@@ -322,7 +322,7 @@ func soraniLoginRejected(row map[string]any) bool {
 	return ok && !canPlay && strings.Contains(mapString(row, "message"), "登录")
 }
 
-func (d *Downloader) resolveSoraniMedia(ctx context.Context, task Task) (ProviderMedia, error) {
+func (p *soraniProvider) resolveSoraniMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	source, sourceID, valid := splitProviderDramaID(task.DramaID)
 	prefix := providerChapterID(sourceSorani, sourceID, "")
 	if !valid || source != sourceSorani || !soraniNumericID(sourceID) || !strings.HasPrefix(task.Chapter.ID, prefix) {
@@ -333,7 +333,7 @@ func (d *Downloader) resolveSoraniMedia(ctx context.Context, task Task) (Provide
 		return ProviderMedia{}, errors.New("青空次元分集 ID 无效")
 	}
 	lineCode := soraniLineCodeDefault
-	client := d.soraniClient()
+	client := p.client
 	token, err := client.accessToken(ctx)
 	if err != nil {
 		return ProviderMedia{}, err
@@ -369,7 +369,7 @@ func (d *Downloader) resolveSoraniMedia(ctx context.Context, task Task) (Provide
 		return ProviderMedia{}, errors.New("青空次元播放地址无效")
 	}
 	if strings.HasSuffix(strings.ToLower(parsed.Path), ".m3u8") {
-		playlist, finalURL, err := d.fetchMediaPlaylist(ctx, media.URL, media.Referer)
+		playlist, finalURL, err := p.host.FetchPlaylist(ctx, media.URL, media.Referer)
 		if err != nil {
 			return ProviderMedia{}, fmt.Errorf("获取青空次元播放列表失败：%w", err)
 		}
@@ -382,7 +382,10 @@ func (d *Downloader) resolveSoraniMedia(ctx context.Context, task Task) (Provide
 	return media, nil
 }
 
-type soraniProvider struct{ d *Downloader }
+type soraniProvider struct {
+	host   Host
+	client *soraniAPIClient
+}
 
 var soraniDescriptor = SourceDescriptor{
 	ID:                sourceSorani,
@@ -395,29 +398,31 @@ var soraniDescriptor = SourceDescriptor{
 }
 
 func init() {
-	Register(soraniDescriptor, func(host Host) Provider { return &soraniProvider{d: host.(*Downloader)} })
+	Register(soraniDescriptor, func(host Host) Provider {
+		return &soraniProvider{host: host, client: &soraniAPIClient{host: host, base: soraniAPIBaseURL, site: soraniSiteBaseURL}}
+	})
 }
 
 func (p *soraniProvider) Descriptor() SourceDescriptor { return soraniDescriptor }
 
 func (p *soraniProvider) Categories(ctx context.Context, force bool) ([]Category, error) {
-	return p.d.fetchSoraniCategories(), nil
+	return p.fetchSoraniCategories(), nil
 }
 
 func (p *soraniProvider) CatalogPage(ctx context.Context, page int, category string) ([]Drama, bool, error) {
-	return p.d.fetchSoraniCatalogPage(ctx, page, category, "")
+	return p.fetchSoraniCatalogPage(ctx, page, category, "")
 }
 
 func (p *soraniProvider) Search(ctx context.Context, page int, query string) ([]Drama, bool, error) {
-	return p.d.fetchSoraniCatalogPage(ctx, page, "", query)
+	return p.fetchSoraniCatalogPage(ctx, page, "", query)
 }
 
 func (p *soraniProvider) Detail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
-	return p.d.fetchSoraniDetail(ctx, sourceID)
+	return p.fetchSoraniDetail(ctx, sourceID)
 }
 
 func (p *soraniProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
-	return p.d.resolveSoraniMedia(ctx, task)
+	return p.resolveSoraniMedia(ctx, task)
 }
 
 func (p *soraniProvider) Account(ctx context.Context, command string, payload json.RawMessage) (any, error) {
@@ -427,5 +432,5 @@ func (p *soraniProvider) Account(ctx context.Context, command string, payload js
 			return nil, errors.New("账号参数无效")
 		}
 	}
-	return p.d.soraniAccount(ctx, command, input)
+	return p.soraniAccount(ctx, command, input)
 }

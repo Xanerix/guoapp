@@ -29,8 +29,6 @@ type Config struct {
 	YeguoURL         string
 	YeguoAPIURL      string
 	JinguoDuanjuURL  string
-	DSDURL           string
-	SoraniAPIURL     string
 	BeaboxURL        string
 	Token            string
 	AESKeyHex        string
@@ -69,9 +67,6 @@ type Downloader struct {
 	jinguoDuanju          *jinguoDuanjuAPIClient
 	jinguoOnce            sync.Once
 	jinguo                *jinguoAPIClient
-	soraniOnce            sync.Once
-	sorani                *soraniAPIClient
-	dsdCatalog            dsdCatalogState
 	diagnostics           *diagnosticLog
 	apiMu                 sync.Mutex
 	apiBase               string

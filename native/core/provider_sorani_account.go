@@ -1,17 +1,14 @@
 package core
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"io/fs"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -76,8 +73,8 @@ type soraniCaptcha struct {
 	TemplateHeight   int    `json:"templateHeight"`
 }
 
-func (d *Downloader) soraniAccount(ctx context.Context, command string, input soraniAccountInput) (any, error) {
-	client := d.soraniClient()
+func (p *soraniProvider) soraniAccount(ctx context.Context, command string, input soraniAccountInput) (any, error) {
+	client := p.client
 	switch command {
 	case "":
 		return client.accountStatus(), nil
@@ -109,22 +106,17 @@ func soraniTokenExpiry(token string) time.Time {
 	return time.Unix(claims.Exp, 0)
 }
 
-func (client *soraniAPIClient) sessionPath() string {
-	return filepath.Join(client.downloader.cfg.dataDir, soraniSessionFile)
-}
-
 func (client *soraniAPIClient) loadSessionLocked() {
 	if client.loaded {
 		return
 	}
 	client.loaded = true
-	file, err := os.Open(client.sessionPath())
-	if err != nil {
+	data, err := client.host.LoadState(soraniSessionFile)
+	if err != nil || len(data) == 0 || len(data) > 32*1024 {
 		return
 	}
-	defer file.Close()
 	var stored soraniSession
-	if json.NewDecoder(io.LimitReader(file, 32*1024)).Decode(&stored) != nil || stored.Version != 1 ||
+	if json.NewDecoder(bytes.NewReader(data)).Decode(&stored) != nil || stored.Version != 1 ||
 		soraniTokenExpiry(stored.AccessToken).IsZero() || !time.Now().Before(soraniTokenExpiry(stored.RefreshToken)) {
 		return
 	}
@@ -134,19 +126,13 @@ func (client *soraniAPIClient) loadSessionLocked() {
 func (client *soraniAPIClient) saveSessionLocked(session soraniSession) error {
 	client.session = session
 	if session.RefreshToken == "" {
-		if err := os.Remove(client.sessionPath()); err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return err
-		}
-		return nil
+		return client.host.SaveState(soraniSessionFile, nil)
 	}
 	data, err := json.Marshal(session)
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(client.downloader.cfg.dataDir, 0o700); err != nil {
-		return err
-	}
-	return nativeDownloadWrite(client.sessionPath(), data)
+	return client.host.SaveState(soraniSessionFile, data)
 }
 
 func (client *soraniAPIClient) accountStatus() soraniAccountStatus {

@@ -127,9 +127,9 @@ func heitaoEpisodeCount(remark string) int {
 	return value
 }
 
-func (d *Downloader) fetchHeitaoCategories(ctx context.Context) ([]Category, error) {
-	site := d.providerBaseURL(sourceHeitao)
-	document, pageURL, err := d.fetchProviderPage(ctx, site+"/", site+"/", heitaoUserAgent)
+func (p *heitaoProvider) fetchHeitaoCategories(ctx context.Context) ([]Category, error) {
+	site := heitaoBaseURL
+	document, pageURL, err := fetchHostPage(ctx, p.host, site+"/", site+"/", heitaoUserAgent)
 	if err != nil {
 		return nil, err
 	}
@@ -248,14 +248,14 @@ func heitaoCatalogAddress(site string, page int, category, query string) string 
 	return fmt.Sprintf("%s/page/%d.html", show, page)
 }
 
-func (d *Downloader) fetchHeitaoCatalogPage(ctx context.Context, page int, category, query string) ([]Drama, bool, error) {
+func (p *heitaoProvider) fetchHeitaoCatalogPage(ctx context.Context, page int, category, query string) ([]Drama, bool, error) {
 	query = strings.TrimSpace(query)
 	if page < 1 || page > 100000 || len(query) > 256 || !validHeitaoCategory(category) {
 		return nil, false, errors.New("黑桃目录查询参数无效")
 	}
-	site := d.providerBaseURL(sourceHeitao)
+	site := heitaoBaseURL
 	address := heitaoCatalogAddress(site, page, category, query)
-	document, pageURL, err := d.fetchProviderPage(ctx, address, site+"/", heitaoUserAgent)
+	document, pageURL, err := fetchHostPage(ctx, p.host, address, site+"/", heitaoUserAgent)
 	if err != nil {
 		return nil, false, err
 	}
@@ -317,13 +317,13 @@ func heitaoChapters(document *html.Node, site, sourceID string) []Chapter {
 	return chapters
 }
 
-func (d *Downloader) fetchHeitaoDetail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
+func (p *heitaoProvider) fetchHeitaoDetail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
 	if !webProviderNumericID.MatchString(sourceID) {
 		return Drama{}, nil, errors.New("黑桃视频 ID 无效")
 	}
-	site := d.providerBaseURL(sourceHeitao)
+	site := heitaoBaseURL
 	address := site + "/index.php/vod/detail/id/" + sourceID + ".html"
-	document, pageURL, err := d.fetchProviderPage(ctx, address, site+"/", heitaoUserAgent)
+	document, pageURL, err := fetchHostPage(ctx, p.host, address, site+"/", heitaoUserAgent)
 	if err != nil {
 		return Drama{}, nil, err
 	}
@@ -474,7 +474,7 @@ func heitaoDecryptMediaURL(raw string, encrypt int) (string, error) {
 	}
 }
 
-func (d *Downloader) resolveHeitaoMedia(ctx context.Context, task Task) (ProviderMedia, error) {
+func (p *heitaoProvider) resolveHeitaoMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	source, sourceID, valid := splitProviderDramaID(task.DramaID)
 	prefix := providerChapterID(sourceHeitao, sourceID, "")
 	if !valid || source != sourceHeitao || !webProviderNumericID.MatchString(sourceID) || !strings.HasPrefix(task.Chapter.ID, prefix) {
@@ -487,16 +487,14 @@ func (d *Downloader) resolveHeitaoMedia(ctx context.Context, task Task) (Provide
 	if !ok {
 		return ProviderMedia{}, errors.New("黑桃播放分集信息无效，请刷新详情")
 	}
-	site := d.providerBaseURL(sourceHeitao)
+	site := heitaoBaseURL
 	playerURL := fmt.Sprintf("%s/index.php/vod/player/id/%s/nid/%d/sid/%d.html", site, sourceID, nid, sid)
 	playURL := fmt.Sprintf("%s/index.php/vod/play/id/%s/sid/%d/nid/%d.html", site, sourceID, sid, nid)
-	pageContext := context.WithValue(ctx, providerTextUserAgentKey{}, heitaoUserAgent)
-	pageContext = context.WithValue(pageContext, providerTextCookieKey{}, heitaoAgeCookie)
-	body, err := d.fetchProviderText(pageContext, playerURL, playURL)
+	response, err := p.host.FetchText(ctx, TextRequest{URL: playerURL, Referer: playURL, UserAgent: heitaoUserAgent, Cookie: heitaoAgeCookie})
 	if err != nil {
 		return ProviderMedia{}, err
 	}
-	entry, err := heitaoReadPlayerConfig(body)
+	entry, err := heitaoReadPlayerConfig(response.Body)
 	if err != nil {
 		return ProviderMedia{}, err
 	}
@@ -519,10 +517,10 @@ func (d *Downloader) resolveHeitaoMedia(ctx context.Context, task Task) (Provide
 	if !isProviderHTTPMediaURL(address) {
 		return ProviderMedia{}, errors.New("黑桃播放地址无效")
 	}
-	return d.prepareWebProviderMedia(ctx, ProviderMedia{URL: address, Referer: site + "/"}, "黑桃")
+	return p.host.PrepareWebMedia(ctx, ProviderMedia{URL: address, Referer: site + "/"}, "黑桃")
 }
 
-type heitaoProvider struct{ d *Downloader }
+type heitaoProvider struct{ host Host }
 
 var heitaoDescriptor = SourceDescriptor{
 	ID:                sourceHeitao,
@@ -536,27 +534,27 @@ var heitaoDescriptor = SourceDescriptor{
 }
 
 func init() {
-	Register(heitaoDescriptor, func(host Host) Provider { return &heitaoProvider{d: host.(*Downloader)} })
+	Register(heitaoDescriptor, func(host Host) Provider { return &heitaoProvider{host: host} })
 }
 
 func (p *heitaoProvider) Descriptor() SourceDescriptor { return heitaoDescriptor }
 
 func (p *heitaoProvider) Categories(ctx context.Context, force bool) ([]Category, error) {
-	return p.d.fetchHeitaoCategories(ctx)
+	return p.fetchHeitaoCategories(ctx)
 }
 
 func (p *heitaoProvider) CatalogPage(ctx context.Context, page int, category string) ([]Drama, bool, error) {
-	return p.d.fetchHeitaoCatalogPage(ctx, page, category, "")
+	return p.fetchHeitaoCatalogPage(ctx, page, category, "")
 }
 
 func (p *heitaoProvider) Search(ctx context.Context, page int, query string) ([]Drama, bool, error) {
-	return p.d.fetchHeitaoCatalogPage(ctx, page, "", query)
+	return p.fetchHeitaoCatalogPage(ctx, page, "", query)
 }
 
 func (p *heitaoProvider) Detail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
-	return p.d.fetchHeitaoDetail(ctx, sourceID)
+	return p.fetchHeitaoDetail(ctx, sourceID)
 }
 
 func (p *heitaoProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
-	return p.d.resolveHeitaoMedia(ctx, task)
+	return p.resolveHeitaoMedia(ctx, task)
 }

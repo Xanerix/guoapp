@@ -5,11 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
-	"strings"
 	"sync"
 	"time"
 )
@@ -21,29 +19,18 @@ const (
 )
 
 type soraniAPIClient struct {
-	downloader *Downloader
-	base       string
-	site       string
-	once       sync.Once
-	accountMu  sync.Mutex
-	loaded     bool
-	session    soraniSession
+	host      Host
+	base      string
+	site      string
+	once      sync.Once
+	accountMu sync.Mutex
+	loaded    bool
+	session   soraniSession
 }
 
 type soraniAPIError struct{ code, message string }
 
 func (err *soraniAPIError) Error() string { return "青空次元接口错误：" + err.message }
-
-func (d *Downloader) soraniClient() *soraniAPIClient {
-	d.soraniOnce.Do(func() {
-		d.sorani = &soraniAPIClient{
-			downloader: d,
-			base:       strings.TrimRight(firstNonEmpty(d.cfg.SoraniAPIURL, soraniAPIBaseURL), "/"),
-			site:       d.providerBaseURL(sourceSorani),
-		}
-	})
-	return d.sorani
-}
 
 func (client *soraniAPIClient) get(ctx context.Context, route string, query url.Values, limit int64) (any, error) {
 	return client.call(ctx, http.MethodGet, route, query, nil, "", limit)
@@ -57,77 +44,32 @@ func (client *soraniAPIClient) call(ctx context.Context, method, route string, q
 	if err != nil || !isProviderHTTPMediaURL(client.base) || base.User != nil || base.RawQuery != "" || base.Fragment != "" {
 		return nil, errors.New("青空次元接口地址无效")
 	}
-	timeout := 15 * time.Second
-	if background, _ := ctx.Value(backgroundCatalogKey{}).(bool); background {
-		timeout = 8 * time.Second
-	}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
 	address := client.base + route
 	if len(query) > 0 {
 		address += "?" + query.Encode()
 	}
-	var payload io.Reader
+	header := map[string]string{
+		"User-Agent":      soraniUserAgent,
+		"Accept":          "application/json, text/plain, */*",
+		"Accept-Language": "zh-CN,zh;q=0.9",
+		"Referer":         client.site + "/",
+		"Origin":          client.site,
+	}
+	var payload []byte
 	if body != nil {
-		encoded, err := json.Marshal(body)
-		if err != nil {
+		if payload, err = json.Marshal(body); err != nil {
 			return nil, errors.New("无法创建青空次元请求")
 		}
-		payload = bytes.NewReader(encoded)
-	}
-	request, err := http.NewRequestWithContext(ctx, method, address, payload)
-	if err != nil {
-		return nil, errors.New("无法创建青空次元请求")
-	}
-	if body != nil {
-		request.Header.Set("Content-Type", "application/json")
+		header["Content-Type"] = "application/json"
 	}
 	if bearer != "" {
-		request.Header.Set("Authorization", "Bearer "+bearer)
+		header["Authorization"] = "Bearer " + bearer
 	}
-	request.Header.Set("User-Agent", soraniUserAgent)
-	request.Header.Set("Accept", "application/json, text/plain, */*")
-	request.Header.Set("Accept-Language", "zh-CN,zh;q=0.9")
-	request.Header.Set("Referer", client.site+"/")
-	request.Header.Set("Origin", client.site)
-
-	d := client.downloader
-	if d.limiter != nil {
-		release, err := d.limiter.acquire(ctx, request)
-		if err != nil {
-			return nil, err
-		}
-		defer release()
-	}
-	transport := *d.client
-	transport.Jar = nil
-	previousRedirect := transport.CheckRedirect
-	transport.CheckRedirect = func(next *http.Request, via []*http.Request) error {
-		if len(via) >= 5 || providerMediaOrigin(next.URL) != providerMediaOrigin(base) {
-			return errors.New("青空次元接口重定向地址异常")
-		}
-		if previousRedirect != nil {
-			return previousRedirect(next, via)
-		}
-		return nil
-	}
-	response, err := transport.Do(request)
+	response, err := client.host.Fetch(ctx, HTTPRequest{Label: "青空次元", Method: method, URL: address, Header: header, Body: payload, Limit: limit, Timeout: 15 * time.Second})
 	if err != nil {
-		return nil, fmt.Errorf("青空次元连接失败：%w", publicError(err))
+		return nil, err
 	}
-	defer response.Body.Close()
-	data, readErr := io.ReadAll(io.LimitReader(response.Body, limit+1))
-	if d.limiter != nil {
-		d.limiter.observe(request, response)
-	}
-	blocked := catalogResponseBlockReason(response, data) != ""
-	if response.StatusCode < 200 || response.StatusCode >= 300 || blocked {
-		return nil, d.catalogResponseError(request, response, data)
-	}
-	if readErr != nil || int64(len(data)) > limit {
-		return nil, errors.New("青空次元返回的数据过大或读取失败")
-	}
+	data := response.Body
 	var decoded any
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.UseNumber()

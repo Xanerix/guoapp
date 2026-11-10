@@ -163,12 +163,12 @@ func parseDSDDetail(document *html.Node, pageURL, sourceID, site string) (Drama,
 	return drama, chapters, nil
 }
 
-func (d *Downloader) fetchDSDDetail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
+func (p *dSDProvider) fetchDSDDetail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
 	if !webProviderNumericID.MatchString(sourceID) {
 		return Drama{}, nil, errors.New("帝果视频 ID 无效")
 	}
-	site := d.providerBaseURL(sourceDSD)
-	document, address, err := d.fetchProviderPage(ctx, dsdEpisodePage(site, sourceID, 1, 1), site+"/", dsdUserAgent)
+	site := p.site
+	document, address, err := fetchHostPage(ctx, p.host, dsdEpisodePage(site, sourceID, 1, 1), site+"/", dsdUserAgent)
 	if err != nil {
 		return Drama{}, nil, err
 	}
@@ -467,18 +467,17 @@ func dsdVplayerReferer(site string) string {
 	return strings.TrimRight(site, "/") + "/addons/vplayer/"
 }
 
-func (d *Downloader) signDSDMedia(ctx context.Context, address, pageURL, site string) (string, bool, error) {
+func (p *dSDProvider) signDSDMedia(ctx context.Context, address, pageURL, site string) (string, bool, error) {
 	if strings.Contains(address, "sign=") {
 		return address, false, nil
 	}
 	mediaPath := dsdVplayerMediaPath(address)
 	vplayerURL := strings.TrimRight(site, "/") + "/addons/vplayer/?url=" + url.QueryEscape(mediaPath) + "&jump="
-	pageContext := context.WithValue(ctx, providerTextUserAgentKey{}, dsdUserAgent)
-	body, err := d.fetchProviderText(pageContext, vplayerURL, site+"/")
+	response, err := p.host.FetchText(ctx, TextRequest{URL: vplayerURL, Referer: site + "/", UserAgent: dsdUserAgent})
 	if err != nil {
 		return "", false, err
 	}
-	signed, found := dsdSignedPathFromVplayer(body)
+	signed, found := dsdSignedPathFromVplayer(response.Body)
 	if !found || signed == "" {
 		return address, false, nil
 	}
@@ -509,7 +508,7 @@ func dsdMediaFromPagePath(cover, pageURL string) string {
 	return address.String()
 }
 
-func (d *Downloader) resolveDSDMedia(ctx context.Context, task Task) (ProviderMedia, error) {
+func (p *dSDProvider) resolveDSDMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	source, sourceID, valid := splitProviderDramaID(task.DramaID)
 	prefix := providerChapterID(sourceDSD, sourceID, "")
 	if !valid || source != sourceDSD || !webProviderNumericID.MatchString(sourceID) || !strings.HasPrefix(task.Chapter.ID, prefix) {
@@ -524,8 +523,8 @@ func (d *Downloader) resolveDSDMedia(ctx context.Context, task Task) (ProviderMe
 	if !lineValid || line < 1 || !episodeValid || episode < 1 {
 		return ProviderMedia{}, errors.New("帝果播放分集无效")
 	}
-	site := d.providerBaseURL(sourceDSD)
-	document, pageURL, err := d.fetchProviderPage(ctx, dsdEpisodePage(site, sourceID, line, episode), site+"/", dsdUserAgent)
+	site := p.site
+	document, pageURL, err := fetchHostPage(ctx, p.host, dsdEpisodePage(site, sourceID, line, episode), site+"/", dsdUserAgent)
 	if err != nil {
 		return ProviderMedia{}, err
 	}
@@ -561,7 +560,7 @@ func (d *Downloader) resolveDSDMedia(ctx context.Context, task Task) (ProviderMe
 	if address == "" {
 		return ProviderMedia{}, errors.New("帝果未提供播放地址，请重试或确认站源权限")
 	}
-	signed, signedByVplayer, err := d.signDSDMedia(ctx, address, pageURL, site)
+	signed, signedByVplayer, err := p.signDSDMedia(ctx, address, pageURL, site)
 	if err != nil {
 		return ProviderMedia{}, err
 	}
@@ -574,10 +573,14 @@ func (d *Downloader) resolveDSDMedia(ctx context.Context, task Task) (ProviderMe
 	media := ProviderMedia{URL: address, Referer: referer, credentials: &providerMediaCredentials{
 		origin: providerMediaOrigin(parsed), referer: referer, userAgent: dsdUserAgent,
 	}}
-	return d.prepareWebProviderMedia(ctx, media, "帝果")
+	return p.host.PrepareWebMedia(ctx, media, "帝果")
 }
 
-type dSDProvider struct{ d *Downloader }
+type dSDProvider struct {
+	host    Host
+	site    string
+	catalog dsdCatalogState
+}
 
 var dSDDescriptor = SourceDescriptor{
 	ID:                sourceDSD,
@@ -592,29 +595,29 @@ var dSDDescriptor = SourceDescriptor{
 }
 
 func init() {
-	Register(dSDDescriptor, func(host Host) Provider { return &dSDProvider{d: host.(*Downloader)} })
+	Register(dSDDescriptor, func(host Host) Provider { return &dSDProvider{host: host, site: dsdBaseURL} })
 }
 
 func (p *dSDProvider) Descriptor() SourceDescriptor { return dSDDescriptor }
 
-func (p *dSDProvider) BaseURL() string { return firstNonEmpty(p.d.cfg.DSDURL, dsdBaseURL) }
+func (p *dSDProvider) BaseURL() string { return p.site }
 
 func (p *dSDProvider) Categories(ctx context.Context, force bool) ([]Category, error) {
-	return p.d.fetchDSDCategories(ctx, force)
+	return p.fetchDSDCategories(ctx, force)
 }
 
 func (p *dSDProvider) CatalogPage(ctx context.Context, page int, category string) ([]Drama, bool, error) {
-	return p.d.fetchDSDCatalogPage(ctx, page, category, "")
+	return p.fetchDSDCatalogPage(ctx, page, category, "")
 }
 
 func (p *dSDProvider) Search(ctx context.Context, page int, query string) ([]Drama, bool, error) {
-	return p.d.fetchDSDCatalogPage(ctx, page, "", query)
+	return p.fetchDSDCatalogPage(ctx, page, "", query)
 }
 
 func (p *dSDProvider) Detail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
-	return p.d.fetchDSDDetail(ctx, sourceID)
+	return p.fetchDSDDetail(ctx, sourceID)
 }
 
 func (p *dSDProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
-	return p.d.resolveDSDMedia(ctx, task)
+	return p.resolveDSDMedia(ctx, task)
 }

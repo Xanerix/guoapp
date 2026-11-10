@@ -104,6 +104,11 @@ func (server *soraniFixtureServer) transport(t *testing.T) sourceFixtureTranspor
 	}
 }
 
+func soraniFixtureProvider(d *Downloader) *soraniProvider {
+	p, _ := d.provider(sourceSorani)
+	return p.(*soraniProvider)
+}
+
 func soraniFixtureLogin(password string) soraniAccountInput {
 	return soraniAccountInput{Identifier: " 123521 ", Password: password, CaptchaID: "SLIDER_abc", Track: soraniCaptchaTrack{
 		BgImageWidth: 300, BgImageHeight: 180, TemplateImageWidth: 55, TemplateImageHeight: 180,
@@ -117,21 +122,21 @@ func TestSoraniAccountLoginRenewAndExpiry(t *testing.T) {
 	ctx := context.Background()
 	task := Task{DramaID: providerDramaID(sourceSorani, "4647"), Chapter: Chapter{ID: providerChapterID(sourceSorani, "4647", "64334")}}
 
-	if _, err := d.resolveSoraniMedia(ctx, task); !errors.Is(err, errSoraniLoginRequired) {
+	if _, err := soraniFixtureProvider(d).resolveSoraniMedia(ctx, task); !errors.Is(err, errSoraniLoginRequired) {
 		t.Fatalf("anonymous playback should ask for login: %v", err)
 	}
-	captcha, err := d.soraniAccount(ctx, "captcha", soraniAccountInput{})
+	captcha, err := soraniFixtureProvider(d).soraniAccount(ctx, "captcha", soraniAccountInput{})
 	if value, _ := captcha.(soraniCaptcha); err != nil || value.ID != "SLIDER_abc" || value.BackgroundWidth != 600 || value.TemplateHeight != 360 {
 		t.Fatalf("captcha: %+v %v", captcha, err)
 	}
-	if _, err := d.soraniAccount(ctx, "login", soraniFixtureLogin("wrong")); err == nil || !strings.Contains(err.Error(), "用户名或密码错误") {
+	if _, err := soraniFixtureProvider(d).soraniAccount(ctx, "login", soraniFixtureLogin("wrong")); err == nil || !strings.Contains(err.Error(), "用户名或密码错误") {
 		t.Fatalf("bad password was not reported: %v", err)
 	}
-	status, err := d.soraniAccount(ctx, "login", soraniFixtureLogin("secret"))
+	status, err := soraniFixtureProvider(d).soraniAccount(ctx, "login", soraniFixtureLogin("secret"))
 	if err != nil || status != (soraniAccountStatus{LoggedIn: true, Name: "友人"}) || server.loginBodies[1]["identifier"] != "123521" {
 		t.Fatalf("login: %+v %v %v", status, err, server.loginBodies)
 	}
-	media, err := d.resolveSoraniMedia(ctx, task)
+	media, err := soraniFixtureProvider(d).resolveSoraniMedia(ctx, task)
 	if err != nil || !strings.HasPrefix(media.Playlist, "#EXTM3U") || server.refreshes != 0 {
 		t.Fatalf("logged-in playback: %+v %v refreshes=%d", media, err, server.refreshes)
 	}
@@ -139,29 +144,29 @@ func TestSoraniAccountLoginRenewAndExpiry(t *testing.T) {
 	server.mu.Lock()
 	server.access, server.accessLife = nil, time.Minute
 	server.mu.Unlock()
-	if _, err := d.resolveSoraniMedia(ctx, task); err != nil || server.refreshes != 1 {
+	if _, err := soraniFixtureProvider(d).resolveSoraniMedia(ctx, task); err != nil || server.refreshes != 1 {
 		t.Fatalf("revoked access token was not renewed once: %v refreshes=%d", err, server.refreshes)
 	}
 
 	restarted := sourceFixtureDownloader(t, server.transport(t))
 	restarted.cfg.dataDir = d.cfg.dataDir
-	if token, err := restarted.soraniClient().accessToken(ctx); err != nil || server.refreshes != 2 || !server.access[token] {
+	if token, err := soraniFixtureProvider(restarted).client.accessToken(ctx); err != nil || server.refreshes != 2 || !server.access[token] {
 		t.Fatalf("restart did not renew the stored near-expiry token with the rotated refresh token: %v refreshes=%d", err, server.refreshes)
 	}
 	server.mu.Lock()
 	server.accessLife = time.Hour
 	server.mu.Unlock()
-	if _, err := restarted.resolveSoraniMedia(ctx, task); err != nil || server.refreshes != 3 {
+	if _, err := soraniFixtureProvider(restarted).resolveSoraniMedia(ctx, task); err != nil || server.refreshes != 3 {
 		t.Fatalf("restarted playback: %v refreshes=%d", err, server.refreshes)
 	}
 
 	server.mu.Lock()
 	server.access, server.refresh = nil, ""
 	server.mu.Unlock()
-	if _, err := restarted.resolveSoraniMedia(ctx, task); !errors.Is(err, errSoraniLoginExpired) {
+	if _, err := soraniFixtureProvider(restarted).resolveSoraniMedia(ctx, task); !errors.Is(err, errSoraniLoginExpired) {
 		t.Fatalf("revoked session should require a new login: %v", err)
 	}
-	if status := restarted.soraniClient().accountStatus(); status.LoggedIn {
+	if status := soraniFixtureProvider(restarted).client.accountStatus(); status.LoggedIn {
 		t.Fatalf("revoked session is still shown as logged in: %+v", status)
 	}
 	if _, err := os.Stat(filepath.Join(d.cfg.dataDir, soraniSessionFile)); !errors.Is(err, os.ErrNotExist) {
@@ -175,15 +180,15 @@ func TestSoraniAccountLogoutAndCaptchaChecks(t *testing.T) {
 	ctx := context.Background()
 	bad := soraniFixtureLogin("secret")
 	bad.Track.TrackList = bad.Track.TrackList[:2]
-	if _, err := d.soraniAccount(ctx, "login", bad); err == nil || !strings.Contains(err.Error(), "安全验证未通过") || len(server.loginBodies) != 0 {
+	if _, err := soraniFixtureProvider(d).soraniAccount(ctx, "login", bad); err == nil || !strings.Contains(err.Error(), "安全验证未通过") || len(server.loginBodies) != 0 {
 		t.Fatalf("rejected captcha must not reach login: %v", err)
 	}
 	invalid := soraniFixtureLogin("secret")
 	invalid.Track.TrackList[1].Type = "jump"
-	if _, err := d.soraniAccount(ctx, "login", invalid); err == nil || !strings.Contains(err.Error(), "安全验证数据无效") {
+	if _, err := soraniFixtureProvider(d).soraniAccount(ctx, "login", invalid); err == nil || !strings.Contains(err.Error(), "安全验证数据无效") {
 		t.Fatalf("malformed track was forwarded: %v", err)
 	}
-	if _, err := d.soraniAccount(ctx, "login", soraniFixtureLogin("secret")); err != nil {
+	if _, err := soraniFixtureProvider(d).soraniAccount(ctx, "login", soraniFixtureLogin("secret")); err != nil {
 		t.Fatal(err)
 	}
 	server.mu.Lock()
@@ -192,7 +197,7 @@ func TestSoraniAccountLogoutAndCaptchaChecks(t *testing.T) {
 		access = token
 	}
 	server.mu.Unlock()
-	status, err := d.soraniAccount(ctx, "logout", soraniAccountInput{})
+	status, err := soraniFixtureProvider(d).soraniAccount(ctx, "logout", soraniAccountInput{})
 	if err != nil || status != (soraniAccountStatus{}) || len(server.logouts) != 1 || server.logouts[0] != access {
 		t.Fatalf("logout: %+v %v %v", status, err, server.logouts)
 	}

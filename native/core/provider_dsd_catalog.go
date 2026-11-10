@@ -86,8 +86,8 @@ func parseDSDCategories(document *html.Node, pageURL string) ([]Category, error)
 	return categories, nil
 }
 
-func (d *Downloader) fetchDSDCategories(ctx context.Context, force bool) ([]Category, error) {
-	state := &d.dsdCatalog
+func (p *dSDProvider) fetchDSDCategories(ctx context.Context, force bool) ([]Category, error) {
+	state := &p.catalog
 	state.mu.Lock()
 	if len(state.categories) > 0 && !force && time.Since(state.updatedAt) < time.Hour {
 		categories := append([]Category(nil), state.categories...)
@@ -95,8 +95,8 @@ func (d *Downloader) fetchDSDCategories(ctx context.Context, force bool) ([]Cate
 		return categories, nil
 	}
 	state.mu.Unlock()
-	site := d.providerBaseURL(sourceDSD)
-	document, address, err := d.fetchProviderPage(ctx, site+"/", site+"/", dsdUserAgent)
+	site := p.site
+	document, address, err := fetchHostPage(ctx, p.host, site+"/", site+"/", dsdUserAgent)
 	if err != nil {
 		return nil, err
 	}
@@ -223,33 +223,33 @@ func dsdPagination(document *html.Node, pageURL, category, query string, page in
 	return pages, nil
 }
 
-func (d *Downloader) dsdPageLimit(category string) (int, bool) {
-	state := &d.dsdCatalog
+func (p *dSDProvider) dsdPageLimit(category string) (int, bool) {
+	state := &p.catalog
 	state.mu.Lock()
 	defer state.mu.Unlock()
 	limit, found := state.limits[category]
 	return limit.pages, found && time.Since(limit.updatedAt) < 15*time.Minute
 }
 
-func (d *Downloader) fetchDSDPage(ctx context.Context, page int, category Category, query string) ([]Drama, bool, error) {
+func (p *dSDProvider) fetchDSDPage(ctx context.Context, page int, category Category, query string) ([]Drama, bool, error) {
 	if query == "" && page > 1 {
-		limit, known := d.dsdPageLimit(category.ID)
+		limit, known := p.dsdPageLimit(category.ID)
 		if !known {
-			if _, _, err := d.fetchDSDPage(ctx, 1, category, ""); err != nil {
+			if _, _, err := p.fetchDSDPage(ctx, 1, category, ""); err != nil {
 				return nil, false, err
 			}
-			limit, known = d.dsdPageLimit(category.ID)
+			limit, known = p.dsdPageLimit(category.ID)
 		}
 		if known && page > limit {
 			return []Drama{}, false, nil
 		}
 	}
-	site := d.providerBaseURL(sourceDSD)
+	site := p.site
 	address := fmt.Sprintf("%s/index.php/vod/type/id/%s/page/%d.html", site, category.ID, page)
 	if query != "" {
 		address = site + "/index.php/vod/search.html?" + url.Values{"wd": {query}, "page": {strconv.Itoa(page)}}.Encode()
 	}
-	document, address, err := d.fetchProviderPage(ctx, address, site+"/", dsdUserAgent)
+	document, address, err := fetchHostPage(ctx, p.host, address, site+"/", dsdUserAgent)
 	if err != nil {
 		return nil, false, err
 	}
@@ -268,7 +268,7 @@ func (d *Downloader) fetchDSDPage(ctx context.Context, page int, category Catego
 		return nil, false, errors.New("帝果未返回应有的视频条目，请重试")
 	}
 	if query == "" {
-		state := &d.dsdCatalog
+		state := &p.catalog
 		state.mu.Lock()
 		if state.limits == nil {
 			state.limits = map[string]dsdPageLimit{}
@@ -279,21 +279,21 @@ func (d *Downloader) fetchDSDPage(ctx context.Context, page int, category Catego
 	return items, pages > page, nil
 }
 
-func (d *Downloader) fetchDSDCatalogPage(ctx context.Context, page int, category, query string) ([]Drama, bool, error) {
+func (p *dSDProvider) fetchDSDCatalogPage(ctx context.Context, page int, category, query string) ([]Drama, bool, error) {
 	if page < 1 || page > 1000000 || len(query) > 1024 || category != "" && !webProviderNumericID.MatchString(category) {
 		return nil, false, errors.New("帝果目录查询参数无效")
 	}
 	if query != "" {
-		return d.fetchDSDPage(ctx, page, Category{}, query)
+		return p.fetchDSDPage(ctx, page, Category{}, query)
 	}
-	categories, err := d.fetchDSDCategories(ctx, false)
+	categories, err := p.fetchDSDCategories(ctx, false)
 	if err != nil {
 		return nil, false, err
 	}
 	if category != "" {
 		for _, item := range categories {
 			if item.ID == category {
-				return d.fetchDSDPage(ctx, page, item, "")
+				return p.fetchDSDPage(ctx, page, item, "")
 			}
 		}
 		return nil, false, errors.New("帝果分类已变化，请刷新分类")
@@ -317,7 +317,7 @@ func (d *Downloader) fetchDSDCatalogPage(ctx context.Context, page int, category
 				results[index].err = ctx.Err()
 				return
 			}
-			results[index].items, results[index].more, results[index].err = d.fetchDSDPage(ctx, page, category, "")
+			results[index].items, results[index].more, results[index].err = p.fetchDSDPage(ctx, page, category, "")
 		}(index, category)
 	}
 	group.Wait()

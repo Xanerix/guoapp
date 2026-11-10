@@ -33,7 +33,8 @@ func providerParityDownloader(t *testing.T, transport func(*http.Request, url.Va
 	d.cfg.HuangjuAPIURL = "https://api.huangju.test"
 	d.cfg.HuangjuURL = "https://huangju.test"
 	d.cfg.YeguoURL = "https://yeguo.test"
-	d.cfg.DSDURL = "https://dsd.test"
+	dsd, _ := d.provider(sourceDSD)
+	dsd.(*dSDProvider).site = "https://dsd.test"
 	return d
 }
 
@@ -208,7 +209,7 @@ func TestProviderDSDMediaSigningPropagatesFetchErrors(t *testing.T) {
 		}
 		return rankingHTTPResponse(request, http.StatusBadGateway, "unavailable"), nil
 	})
-	_, found, err := d.signDSDMedia(context.Background(), "https://media.example.test/video/index.m3u8", "https://www.dsd.com.se/index.php/vod/play/id/1/sid/1/nid/1.html", "https://www.dsd.com.se")
+	_, found, err := (&dSDProvider{host: d}).signDSDMedia(context.Background(), "https://media.example.test/video/index.m3u8", "https://www.dsd.com.se/index.php/vod/play/id/1/sid/1/nid/1.html", "https://www.dsd.com.se")
 	if err == nil || found {
 		t.Fatal("dsd signing failure was swallowed", found, err)
 	}

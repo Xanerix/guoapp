@@ -89,23 +89,19 @@ func providerHTMLText(root *html.Node) string {
 }
 
 func (d *Downloader) fetchProviderPage(ctx context.Context, address, referer, agent string) (*html.Node, string, error) {
-	responses := &playbackResponseURLs{}
-	ctx = context.WithValue(ctx, playbackResponseURLsKey{}, responses)
-	if agent != "" {
-		ctx = context.WithValue(ctx, providerTextUserAgentKey{}, agent)
-	}
-	body, err := d.fetchProviderText(ctx, address, referer)
+	return fetchHostPage(ctx, d, address, referer, agent)
+}
+
+func fetchHostPage(ctx context.Context, host Host, address, referer, agent string) (*html.Node, string, error) {
+	response, err := host.FetchText(ctx, TextRequest{URL: address, Referer: referer, UserAgent: agent})
 	if err != nil {
 		return nil, "", err
 	}
-	if len(body) > 4<<20 {
+	if len(response.Body) > 4<<20 {
 		return nil, "", errors.New("站源页面过大")
 	}
-	if actual, found := responses.values.Load(address); found {
-		address = actual.(string)
-	}
-	document, err := html.Parse(strings.NewReader(body))
-	return document, address, err
+	document, err := html.Parse(strings.NewReader(response.Body))
+	return document, response.URL, err
 }
 
 func (d *Downloader) prepareWebProviderMedia(ctx context.Context, media ProviderMedia, sourceName string) (ProviderMedia, error) {

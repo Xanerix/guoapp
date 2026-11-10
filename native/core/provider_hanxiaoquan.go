@@ -94,18 +94,17 @@ func hanxiaoquanFixURL(raw string) string {
 	return parsed.String()
 }
 
-func (d *Downloader) fetchHanxiaoquanCategories() []Category {
+func (p *hanxiaoquanProvider) fetchHanxiaoquanCategories() []Category {
 	return append([]Category(nil), hanxiaoquanCategories...)
 }
 
-func (d *Downloader) hanxiaoquanGet(ctx context.Context, path string) (string, error) {
-	site := d.providerBaseURL(sourceHanxiaoquan)
+func (p *hanxiaoquanProvider) hanxiaoquanGet(ctx context.Context, path string) (string, error) {
 	address := path
 	if !strings.HasPrefix(address, "http") {
-		address = site + path
+		address = hanxiaoquanSiteBaseURL + path
 	}
-	pageContext := context.WithValue(ctx, providerTextUserAgentKey{}, hanxiaoquanUserAgent)
-	return d.fetchProviderText(pageContext, address, site+"/")
+	response, err := p.host.FetchText(ctx, TextRequest{URL: address, Referer: hanxiaoquanSiteBaseURL + "/", UserAgent: hanxiaoquanUserAgent})
+	return response.Body, err
 }
 
 func parseHanxiaoquanCards(body string) []Drama {
@@ -171,12 +170,12 @@ func hanxiaoquanPageCount(body, category string, page, count int) int {
 	return page
 }
 
-func (d *Downloader) fetchHanxiaoquanCatalogPage(ctx context.Context, page int, category, query string) ([]Drama, bool, error) {
+func (p *hanxiaoquanProvider) fetchHanxiaoquanCatalogPage(ctx context.Context, page int, category, query string) ([]Drama, bool, error) {
 	if page < 1 || page > 100000 {
 		return nil, false, errors.New("韩小圈目录页码无效")
 	}
 	if query != "" {
-		return d.searchHanxiaoquan(ctx, page, query)
+		return p.searchHanxiaoquan(ctx, page, query)
 	}
 	if !validHanxiaoquanCategory(category) {
 		return nil, false, errors.New("韩小圈内容分类无效")
@@ -188,7 +187,7 @@ func (d *Downloader) fetchHanxiaoquanCatalogPage(ctx context.Context, page int, 
 	if page > 1 {
 		path = fmt.Sprintf("/hxq/%s-%d.html", category, page)
 	}
-	body, err := d.hanxiaoquanGet(ctx, path)
+	body, err := p.hanxiaoquanGet(ctx, path)
 	if err != nil {
 		return nil, false, err
 	}
@@ -308,11 +307,11 @@ func hanxiaoquanPlayURL(href string) string {
 	return parsed.String()
 }
 
-func (d *Downloader) fetchHanxiaoquanDetail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
+func (p *hanxiaoquanProvider) fetchHanxiaoquanDetail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
 	if !hanxiaoquanNumericID(sourceID) {
 		return Drama{}, nil, errors.New("韩小圈视频 ID 无效")
 	}
-	body, err := d.hanxiaoquanGet(ctx, "/hanxiaoquan/"+sourceID+".html")
+	body, err := p.hanxiaoquanGet(ctx, "/hanxiaoquan/"+sourceID+".html")
 	if err != nil {
 		return Drama{}, nil, err
 	}
@@ -378,7 +377,7 @@ func (d *Downloader) fetchHanxiaoquanDetail(ctx context.Context, sourceID string
 	return drama, chapters, nil
 }
 
-func (d *Downloader) resolveHanxiaoquanMedia(ctx context.Context, task Task) (ProviderMedia, error) {
+func (p *hanxiaoquanProvider) resolveHanxiaoquanMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	source, sourceID, valid := splitProviderDramaID(task.DramaID)
 	prefix := providerChapterID(sourceHanxiaoquan, sourceID, "")
 	if !valid || source != sourceHanxiaoquan || !hanxiaoquanNumericID(sourceID) || !strings.HasPrefix(task.Chapter.ID, prefix) {
@@ -391,7 +390,7 @@ func (d *Downloader) resolveHanxiaoquanMedia(ctx context.Context, task Task) (Pr
 	if hanxiaoquanPlayURL(playURL) == "" {
 		return ProviderMedia{}, errors.New("韩小圈播放页地址无效")
 	}
-	body, err := d.hanxiaoquanGet(ctx, playURL)
+	body, err := p.hanxiaoquanGet(ctx, playURL)
 	if err != nil {
 		return ProviderMedia{}, err
 	}
@@ -417,12 +416,12 @@ func (d *Downloader) resolveHanxiaoquanMedia(ctx context.Context, task Task) (Pr
 	}
 	media := ProviderMedia{URL: address, Referer: hanxiaoquanSiteBaseURL + "/"}
 	if strings.HasSuffix(strings.ToLower(parsed.Path), ".m3u8") {
-		return d.prepareWebProviderMedia(ctx, media, "韩小圈")
+		return p.host.PrepareWebMedia(ctx, media, "韩小圈")
 	}
 	return media, nil
 }
 
-func (d *Downloader) searchHanxiaoquan(ctx context.Context, page int, query string) ([]Drama, bool, error) {
+func (p *hanxiaoquanProvider) searchHanxiaoquan(ctx context.Context, page int, query string) ([]Drama, bool, error) {
 	query = strings.TrimSpace(query)
 	if query == "" || len(query) > 256 {
 		return nil, false, errors.New("韩小圈搜索关键词无效")
@@ -430,14 +429,14 @@ func (d *Downloader) searchHanxiaoquan(ctx context.Context, page int, query stri
 	if page > 1 {
 		return []Drama{}, false, nil
 	}
-	body, err := d.hanxiaoquanGet(ctx, "/search.php?"+url.Values{"searchword": {query}}.Encode())
+	body, err := p.hanxiaoquanGet(ctx, "/search.php?"+url.Values{"searchword": {query}}.Encode())
 	if err != nil {
 		return nil, false, err
 	}
 	return parseHanxiaoquanCards(body), false, nil
 }
 
-type hanxiaoquanProvider struct{ d *Downloader }
+type hanxiaoquanProvider struct{ host Host }
 
 var hanxiaoquanDescriptor = SourceDescriptor{
 	ID:                sourceHanxiaoquan,
@@ -450,27 +449,27 @@ var hanxiaoquanDescriptor = SourceDescriptor{
 }
 
 func init() {
-	Register(hanxiaoquanDescriptor, func(host Host) Provider { return &hanxiaoquanProvider{d: host.(*Downloader)} })
+	Register(hanxiaoquanDescriptor, func(host Host) Provider { return &hanxiaoquanProvider{host: host} })
 }
 
 func (p *hanxiaoquanProvider) Descriptor() SourceDescriptor { return hanxiaoquanDescriptor }
 
 func (p *hanxiaoquanProvider) Categories(ctx context.Context, force bool) ([]Category, error) {
-	return p.d.fetchHanxiaoquanCategories(), nil
+	return p.fetchHanxiaoquanCategories(), nil
 }
 
 func (p *hanxiaoquanProvider) CatalogPage(ctx context.Context, page int, category string) ([]Drama, bool, error) {
-	return p.d.fetchHanxiaoquanCatalogPage(ctx, page, category, "")
+	return p.fetchHanxiaoquanCatalogPage(ctx, page, category, "")
 }
 
 func (p *hanxiaoquanProvider) Search(ctx context.Context, page int, query string) ([]Drama, bool, error) {
-	return p.d.fetchHanxiaoquanCatalogPage(ctx, page, "", query)
+	return p.fetchHanxiaoquanCatalogPage(ctx, page, "", query)
 }
 
 func (p *hanxiaoquanProvider) Detail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
-	return p.d.fetchHanxiaoquanDetail(ctx, sourceID)
+	return p.fetchHanxiaoquanDetail(ctx, sourceID)
 }
 
 func (p *hanxiaoquanProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
-	return p.d.resolveHanxiaoquanMedia(ctx, task)
+	return p.resolveHanxiaoquanMedia(ctx, task)
 }
