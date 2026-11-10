@@ -6,11 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -48,29 +45,23 @@ type jinguoAuthCall struct {
 }
 
 type jinguoAPIClient struct {
-	downloader *Downloader
-	mu         sync.Mutex
-	loaded     bool
-	base       string
-	session    jinguoSession
-	pending    *jinguoAuthCall
-}
-
-func (d *Downloader) jinguoClient() *jinguoAPIClient {
-	d.jinguoOnce.Do(func() { d.jinguo = &jinguoAPIClient{downloader: d} })
-	return d.jinguo
+	host    Host
+	mu      sync.Mutex
+	loaded  bool
+	base    string
+	session jinguoSession
+	pending *jinguoAuthCall
 }
 
 func (client *jinguoAPIClient) loadSession() {
 	client.loaded = true
 	client.session = jinguoSession{Version: 1}
-	file, err := os.Open(filepath.Join(client.downloader.cfg.dataDir, jinguoSessionFile))
-	if err != nil {
+	data, err := client.host.LoadState(jinguoSessionFile)
+	if err != nil || len(data) == 0 || len(data) > 16*1024 {
 		return
 	}
-	defer file.Close()
 	var stored jinguoSession
-	if json.NewDecoder(io.LimitReader(file, 16*1024)).Decode(&stored) != nil || stored.Version != 1 ||
+	if json.NewDecoder(bytes.NewReader(data)).Decode(&stored) != nil || stored.Version != 1 ||
 		!jinguoDeviceIDFormat.MatchString(stored.DeviceID) || !validLegacyToken(stored.Token) {
 		return
 	}
@@ -78,23 +69,11 @@ func (client *jinguoAPIClient) loadSession() {
 }
 
 func (client *jinguoAPIClient) saveSession(session jinguoSession) error {
-	directory := client.downloader.cfg.dataDir
-	if err := os.MkdirAll(directory, 0o700); err != nil {
-		return err
-	}
-	file, err := os.CreateTemp(directory, ".jinguo-session-*.tmp")
+	data, err := json.Marshal(session)
 	if err != nil {
 		return err
 	}
-	defer os.Remove(file.Name())
-	if err := json.NewEncoder(file).Encode(session); err != nil {
-		file.Close()
-		return err
-	}
-	if err := file.Close(); err != nil {
-		return err
-	}
-	return os.Rename(file.Name(), filepath.Join(directory, jinguoSessionFile))
+	return client.host.SaveState(jinguoSessionFile, data)
 }
 
 func (client *jinguoAPIClient) credentials(ctx context.Context) (string, string, error) {
@@ -261,42 +240,26 @@ func (client *jinguoAPIClient) request(ctx context.Context, method, apiPath stri
 }
 
 func (client *jinguoAPIClient) requestBase(ctx context.Context, base, method, route string, body []byte, token, deviceID string) ([]byte, error) {
-	d := client.downloader
-	var reader io.Reader
-	if body != nil {
-		reader = bytes.NewReader(body)
-	}
-	request, err := http.NewRequestWithContext(ctx, method, base+route, reader)
-	if err != nil {
-		return nil, errors.New("无法创建禁果请求")
+	header := map[string]string{
+		"Accept":       "application/json",
+		"temp":         "test",
+		"X-User-Agent": fmt.Sprintf(jinguoXUserAgent, deviceID),
+		"User-Agent":   userAgent,
 	}
 	if token != "" {
-		request.Header.Set("Authorization", token)
+		header["Authorization"] = token
 	}
 	if body != nil {
-		request.Header.Set("Content-Type", "application/json")
+		header["Content-Type"] = "application/json"
 	}
-	request.Header.Set("Accept", "application/json")
-	request.Header.Set("temp", "test")
-	request.Header.Set("X-User-Agent", fmt.Sprintf(jinguoXUserAgent, deviceID))
-	request.Header.Set("User-Agent", userAgent)
-
-	response, err := d.doCatalogRequestWithTimeout(request, providerTimeout)
+	response, err := client.host.Fetch(ctx, HTTPRequest{Label: "禁果", Method: method, URL: base + route, Header: header, Body: body, Limit: providerMaxBodyBytes, Timeout: providerTimeout, FollowRedirects: true})
 	if err != nil {
-		return nil, &jinguoLineError{fmt.Errorf("禁果连接失败：%w", publicError(err))}
-	}
-	data, readErr := io.ReadAll(io.LimitReader(response.Body, providerMaxBodyBytes+1))
-	_ = response.Body.Close()
-	if readErr != nil || len(data) > providerMaxBodyBytes {
-		return nil, &jinguoLineError{errors.New("禁果返回的数据过大或读取失败")}
-	}
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		err := d.catalogResponseError(request, response, data)
-		if response.StatusCode >= 500 || catalogResponseBlockReason(response, data) != "" {
+		if response.Status == 0 || response.Status >= 500 || response.Blocked {
 			return nil, &jinguoLineError{err}
 		}
 		return nil, err
 	}
+	data := response.Body
 	var envelope apiEnvelope
 	if json.Unmarshal(data, &envelope) != nil {
 		return nil, errors.New("禁果返回的数据格式无效")

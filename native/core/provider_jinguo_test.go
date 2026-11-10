@@ -90,11 +90,11 @@ func TestJinguoCatalogSearchDetailAndSessionReuse(t *testing.T) {
 		}
 	})
 	d := sourceFixtureDownloader(t, transport)
-	categories, err := d.fetchJinguoCategories(context.Background())
+	categories, err := jinguoFixtureProvider(d).fetchJinguoCategories(context.Background())
 	if err != nil || len(categories) != 3 || categories[2].ID != "tab:6a928dfedb2cc815f75d7213" || !validJinguoCategory(categories[2].ID) || validJinguoCategory("tab:bad id") {
 		t.Fatalf("categories: %+v %v", categories, err)
 	}
-	items, _, err := d.fetchJinguoCatalogPage(context.Background(), 1, "", "")
+	items, _, err := jinguoFixtureProvider(d).fetchJinguoCatalogPage(context.Background(), 1, "", "")
 	if err != nil || len(items) != 1 {
 		t.Fatalf("catalog: %+v %v", items, err)
 	}
@@ -103,19 +103,19 @@ func TestJinguoCatalogSearchDetailAndSessionReuse(t *testing.T) {
 		drama.Cover != "https://zzzznnn.lkkwip.cn/cf230705/image/a/b.gif" || len(drama.Tags) != 1 || drama.Tags[0] != "都市" {
 		t.Fatalf("drama parsed incorrectly: %+v", drama)
 	}
-	if items, more, err := d.fetchJinguoCatalogPage(context.Background(), 1, "", "  禁果 "); err != nil || len(items) != 0 || more || searched != "禁果" {
+	if items, more, err := jinguoFixtureProvider(d).fetchJinguoCatalogPage(context.Background(), 1, "", "  禁果 "); err != nil || len(items) != 0 || more || searched != "禁果" {
 		t.Fatalf("search: %+v %t %v %q", items, more, err, searched)
 	}
-	_, chapters, err := d.fetchJinguoDetail(context.Background(), "6aa409d8d7dd5abdc481cbb1")
+	_, chapters, err := jinguoFixtureProvider(d).fetchJinguoDetail(context.Background(), "6aa409d8d7dd5abdc481cbb1")
 	if err != nil || len(chapters) != 2 || chapters[0].VIP || !chapters[1].VIP || chapters[0].Source != sourceJinguo || chapters[0].VideoURL != "JHA-213/tk1/abc.m3u8" {
 		t.Fatalf("chapters: %+v %v", chapters, err)
 	}
-	if _, err := d.resolveJinguoMedia(context.Background(), Task{Chapter: chapters[1]}); err == nil || !strings.Contains(err.Error(), "解锁") {
+	if _, err := jinguoFixtureProvider(d).resolveJinguoMedia(context.Background(), Task{Chapter: chapters[1]}); err == nil || !strings.Contains(err.Error(), "解锁") {
 		t.Fatalf("paid episode was not refused: %v", err)
 	}
 	restarted := sourceFixtureDownloader(t, transport)
 	restarted.cfg.dataDir = d.cfg.dataDir
-	if _, _, err := restarted.jinguoClient().credentials(context.Background()); err != nil || logins.Load() != 1 {
+	if _, _, err := jinguoFixtureProvider(restarted).client.credentials(context.Background()); err != nil || logins.Load() != 1 {
 		t.Fatalf("restart did not reuse the guest session: logins=%d %v", logins.Load(), err)
 	}
 }
@@ -139,7 +139,7 @@ func TestJinguoExpiredSessionRefreshesPlaylistOnce(t *testing.T) {
 			return nil, errors.New("unexpected endpoint")
 		}
 	})
-	media, err := d.resolveJinguoMedia(context.Background(), Task{Chapter: Chapter{Source: sourceJinguo, VideoURL: "/JHA-213/tk1/a b.m3u8"}})
+	media, err := jinguoFixtureProvider(d).resolveJinguoMedia(context.Background(), Task{Chapter: Chapter{Source: sourceJinguo, VideoURL: "/JHA-213/tk1/a b.m3u8"}})
 	if err != nil || logins.Load() != 2 || !strings.Contains(media.Playlist, "/api/app/vid/sec") || media.HLSKey != nil {
 		t.Fatalf("playlist: %+v logins=%d %v", media, logins.Load(), err)
 	}
@@ -178,16 +178,21 @@ func TestJinguoFailsOverToBackupLineAndKeepsIt(t *testing.T) {
 			return nil, errors.New("unexpected endpoint")
 		}
 	})
-	if _, err := d.fetchJinguoCategories(context.Background()); err != nil {
+	if _, err := jinguoFixtureProvider(d).fetchJinguoCategories(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if primaryCalls.Load() != 1 || backupCalls.Load() != 2 {
 		t.Fatalf("failover did not pin the backup line: primary=%d backup=%d", primaryCalls.Load(), backupCalls.Load())
 	}
 	var detail json.RawMessage
-	err := d.jinguoClient().get(context.Background(), "/api/app/playlet/detail/missing", nil, &detail)
+	err := jinguoFixtureProvider(d).client.get(context.Background(), "/api/app/playlet/detail/missing", nil, &detail)
 	var apiErr *jinguoAPIError
 	if !errors.As(err, &apiErr) || apiErr.code != "51021" || primaryCalls.Load() != 1 || backupCalls.Load() != 3 {
 		t.Fatalf("business error switched lines: %v primary=%d backup=%d", err, primaryCalls.Load(), backupCalls.Load())
 	}
+}
+
+func jinguoFixtureProvider(d *Downloader) *jinguoProvider {
+	p, _ := d.provider(sourceJinguo)
+	return p.(*jinguoProvider)
 }

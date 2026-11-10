@@ -31,7 +31,7 @@ func providerParityDownloader(t *testing.T, transport func(*http.Request, url.Va
 		return transport(request, form)
 	})
 	huangjuFixtureProvider(d, "https://api.huangju.test", "https://huangju.test")
-	d.cfg.YeguoURL = "https://yeguo.test"
+	yeguoFixtureProvider(d).client.site = "https://yeguo.test"
 	dsd, _ := d.provider(sourceDSD)
 	dsd.(*dSDProvider).site = "https://dsd.test"
 	return d
@@ -135,8 +135,8 @@ func TestYeguoCatalogAcceptsSourcePageSize(t *testing.T) {
 		body, _ := json.Marshal(map[string]any{"status": "1", "data": map[string]any{"list": rows, "limit": 20, "total": 30, "has_more": "0"}})
 		return sourceFixtureResponse(request, http.StatusOK, string(body)), nil
 	})
-	d.yeguoClient().access = &yeguoAccess{base: "https://api.yeguo.test", identifier: "fixture-trace", loadedAt: time.Now()}
-	items, more, err := d.fetchYeguoCatalogPage(context.Background(), 1, "", "")
+	yeguoFixtureProvider(d).client.access = &yeguoAccess{base: "https://api.yeguo.test", identifier: "fixture-trace", loadedAt: time.Now()}
+	items, more, err := yeguoFixtureProvider(d).fetchYeguoCatalogPage(context.Background(), 1, "", "")
 	if err != nil || more || len(items) != 30 {
 		t.Fatalf("yeguo source-sized page rejected: items=%d more=%t err=%v", len(items), more, err)
 	}
@@ -222,4 +222,9 @@ func huangjuFixtureProvider(d *Downloader, api, site string) *huangjuProvider {
 	huangju := p.(*huangjuProvider)
 	huangju.client.base, huangju.client.site = api, site
 	return huangju
+}
+
+func yeguoFixtureProvider(d *Downloader) *yeguoProvider {
+	p, _ := d.provider(sourceYeguo)
+	return p.(*yeguoProvider)
 }

@@ -100,7 +100,7 @@ func (sites *beaboxFixtureSites) take() []string {
 	return requests
 }
 
-func (sites *beaboxFixtureSites) downloader(t *testing.T, dataDir string) *Downloader {
+func (sites *beaboxFixtureSites) provider(t *testing.T, dataDir string) *beaboxProvider {
 	t.Helper()
 	raw, err := json.Marshal([]string{"dead.example.test", "live.example.test"})
 	if err != nil {
@@ -131,12 +131,13 @@ func (sites *beaboxFixtureSites) downloader(t *testing.T, dataDir string) *Downl
 		return nil, errors.New("offline")
 	})
 	d.cfg.dataDir = dataDir
-	return d
+	p, _ := d.provider(sourceBeabox)
+	return p.(*beaboxProvider)
 }
 
 func TestBeaboxCallFailsOverOnlyFromUnreachableSites(t *testing.T) {
 	sites := &beaboxFixtureSites{publishOnline: true}
-	d := sites.downloader(t, t.TempDir())
+	d := sites.provider(t, t.TempDir())
 	categories, err := d.fetchBeaboxCategories(context.Background())
 	if err != nil || len(categories) != 2 {
 		t.Fatalf("beabox categories = %+v, %v", categories, err)
@@ -156,11 +157,11 @@ func TestBeaboxCallFailsOverOnlyFromUnreachableSites(t *testing.T) {
 func TestBeaboxSitesSurviveRestart(t *testing.T) {
 	sites := &beaboxFixtureSites{publishOnline: true}
 	dataDir := t.TempDir()
-	if _, err := sites.downloader(t, dataDir).fetchBeaboxCategories(context.Background()); err != nil {
+	if _, err := sites.provider(t, dataDir).fetchBeaboxCategories(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	sites.take()
-	if _, err := sites.downloader(t, dataDir).fetchBeaboxCategories(context.Background()); err != nil {
+	if _, err := sites.provider(t, dataDir).fetchBeaboxCategories(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if requests := sites.take(); !slices.Equal(requests, []string{"live.example.test/api/configs"}) {
@@ -173,7 +174,7 @@ func TestBeaboxSitesSurviveRestart(t *testing.T) {
 	if err := writeNativeCacheFile(filepath.Join(stale, "beabox-sites.json"), []byte(state)); err != nil {
 		t.Fatal(err)
 	}
-	d := sites.downloader(t, stale)
+	d := sites.provider(t, stale)
 	if _, err := d.fetchBeaboxCategories(context.Background()); err != nil {
 		t.Fatal(err)
 	}

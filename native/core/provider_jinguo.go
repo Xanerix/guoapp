@@ -53,9 +53,9 @@ func validJinguoCategory(category string) bool {
 	return ok && jinguoID.MatchString(id)
 }
 
-func (d *Downloader) fetchJinguoTabs(ctx context.Context) ([]Tab, error) {
+func (p *jinguoProvider) fetchJinguoTabs(ctx context.Context) ([]Tab, error) {
 	var tabs legacyTabList
-	if err := d.jinguoClient().get(ctx, "/api/app/playlet-tab/all", nil, &tabs); err != nil {
+	if err := p.client.get(ctx, "/api/app/playlet-tab/all", nil, &tabs); err != nil {
 		return nil, err
 	}
 	var valid []Tab
@@ -71,8 +71,8 @@ func (d *Downloader) fetchJinguoTabs(ctx context.Context) ([]Tab, error) {
 	return valid, nil
 }
 
-func (d *Downloader) fetchJinguoCategories(ctx context.Context) ([]Category, error) {
-	tabs, err := d.fetchJinguoTabs(ctx)
+func (p *jinguoProvider) fetchJinguoCategories(ctx context.Context) ([]Category, error) {
+	tabs, err := p.fetchJinguoTabs(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -83,22 +83,22 @@ func (d *Downloader) fetchJinguoCategories(ctx context.Context) ([]Category, err
 	return categories, nil
 }
 
-func (d *Downloader) fetchJinguoCatalogPage(ctx context.Context, page int, category, query string) ([]Drama, bool, error) {
+func (p *jinguoProvider) fetchJinguoCatalogPage(ctx context.Context, page int, category, query string) ([]Drama, bool, error) {
 	query = strings.TrimSpace(query)
 	if !validJinguoCategory(category) || len(query) > 256 {
 		return nil, false, errors.New("禁果目录查询参数无效")
 	}
-	params := map[string]string{"pageNumber": strconv.Itoa(max(1, page)), "pageSize": strconv.Itoa(max(1, d.cfg.PageSize))}
+	params := map[string]string{"pageNumber": strconv.Itoa(max(1, page)), "pageSize": strconv.Itoa(max(1, jinguoPageSize))}
 	switch {
 	case query != "":
 		params["keyword"] = query
-		return d.fetchJinguoList(ctx, "/api/app/playlet/keyword/search", params, "")
+		return p.fetchJinguoList(ctx, "/api/app/playlet/keyword/search", params, "")
 	case category == jinguoChooseCategory:
-		return d.fetchJinguoList(ctx, "/api/app/playlet-recommend/home/choose", params, "")
+		return p.fetchJinguoList(ctx, "/api/app/playlet-recommend/home/choose", params, "")
 	case category == jinguoNewCategory:
-		return d.fetchJinguoList(ctx, "/api/app/playlet-recommend/home/new", params, "")
+		return p.fetchJinguoList(ctx, "/api/app/playlet-recommend/home/new", params, "")
 	}
-	tabs, err := d.fetchJinguoTabs(ctx)
+	tabs, err := p.fetchJinguoTabs(ctx)
 	if err != nil {
 		return nil, false, err
 	}
@@ -113,7 +113,7 @@ func (d *Downloader) fetchJinguoCatalogPage(ctx context.Context, page int, categ
 			continue
 		}
 		found = true
-		list, more, err := d.fetchJinguoList(ctx, "/api/app/playlet/home/tab/"+url.PathEscape(tab.ID), params, tab.Name)
+		list, more, err := p.fetchJinguoList(ctx, "/api/app/playlet/home/tab/"+url.PathEscape(tab.ID), params, tab.Name)
 		if err != nil {
 			failures = append(failures, fmt.Errorf("%s: %w", tab.Name, err))
 			hasMore = true
@@ -136,11 +136,11 @@ func (d *Downloader) fetchJinguoCatalogPage(ctx context.Context, page int, categ
 	return items, hasMore, errors.Join(failures...)
 }
 
-func (d *Downloader) fetchJinguoList(ctx context.Context, route string, params map[string]string, tabName string) ([]Drama, bool, error) {
+func (p *jinguoProvider) fetchJinguoList(ctx context.Context, route string, params map[string]string, tabName string) ([]Drama, bool, error) {
 	var result struct {
 		List []jinguoRow `json:"list"`
 	}
-	if err := d.jinguoClient().get(ctx, route, params, &result); err != nil {
+	if err := p.client.get(ctx, route, params, &result); err != nil {
 		return nil, false, err
 	}
 	var items []Drama
@@ -149,7 +149,7 @@ func (d *Downloader) fetchJinguoList(ctx context.Context, route string, params m
 			items = append(items, drama)
 		}
 	}
-	return items, len(result.List) >= max(1, d.cfg.PageSize), nil
+	return items, len(result.List) >= max(1, jinguoPageSize), nil
 }
 
 func jinguoDrama(drama Drama, tabName string) (Drama, bool) {
@@ -171,11 +171,11 @@ func jinguoDrama(drama Drama, tabName string) (Drama, bool) {
 	return drama, true
 }
 
-func (d *Downloader) fetchJinguoDetail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
+func (p *jinguoProvider) fetchJinguoDetail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
 	if !jinguoID.MatchString(sourceID) {
 		return Drama{}, nil, errors.New("无效的禁果剧集 ID")
 	}
-	client := d.jinguoClient()
+	client := p.client
 	var raw json.RawMessage
 	if err := client.get(ctx, "/api/app/playlet/detail/"+url.PathEscape(sourceID), nil, &raw); err != nil {
 		return Drama{}, nil, err
@@ -229,7 +229,7 @@ func jinguoPlaylistPath(videoURL string) (string, bool) {
 	return strings.Join(segments, "/"), true
 }
 
-func (d *Downloader) resolveJinguoMedia(ctx context.Context, task Task) (ProviderMedia, error) {
+func (p *jinguoProvider) resolveJinguoMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	if strings.TrimSpace(task.Chapter.VideoURL) == "" {
 		return ProviderMedia{}, errors.New("禁果该集需要金币或会员解锁后才能播放")
 	}
@@ -237,7 +237,7 @@ func (d *Downloader) resolveJinguoMedia(ctx context.Context, task Task) (Provide
 	if !ok {
 		return ProviderMedia{}, errors.New("禁果分集播放地址无效")
 	}
-	client := d.jinguoClient()
+	client := p.client
 	for attempt := 0; attempt < 2; attempt++ {
 		token, _, err := client.credentials(ctx)
 		if err != nil {
@@ -248,7 +248,7 @@ func (d *Downloader) resolveJinguoMedia(ctx context.Context, task Task) (Provide
 		for _, base := range client.bases() {
 			referer := base + "/"
 			address := base + "/api/app/vid/h5/m3u8/" + path + "?" + url.Values{"token": {token}}.Encode()
-			playlist, finalURL, err := d.fetchMediaPlaylist(ctx, address, referer)
+			playlist, finalURL, err := p.host.FetchPlaylist(ctx, address, referer, nil)
 			if err == nil {
 				client.rememberBase(base)
 				return ProviderMedia{URL: finalURL, Playlist: playlist, Referer: referer, Duration: m3u8Duration(playlist)}, nil
@@ -267,7 +267,12 @@ func (d *Downloader) resolveJinguoMedia(ctx context.Context, task Task) (Provide
 	return ProviderMedia{}, errors.New("禁果播放会话已失效，请稍后重试")
 }
 
-type jinguoProvider struct{ d *Downloader }
+const jinguoPageSize = 30
+
+type jinguoProvider struct {
+	host   Host
+	client *jinguoAPIClient
+}
 
 var jinguoDescriptor = SourceDescriptor{
 	ID:                 sourceJinguo,
@@ -280,27 +285,29 @@ var jinguoDescriptor = SourceDescriptor{
 }
 
 func init() {
-	Register(jinguoDescriptor, func(host Host) Provider { return &jinguoProvider{d: host.(*Downloader)} })
+	Register(jinguoDescriptor, func(host Host) Provider {
+		return &jinguoProvider{host: host, client: &jinguoAPIClient{host: host}}
+	})
 }
 
 func (p *jinguoProvider) Descriptor() SourceDescriptor { return jinguoDescriptor }
 
 func (p *jinguoProvider) Categories(ctx context.Context, force bool) ([]Category, error) {
-	return p.d.fetchJinguoCategories(ctx)
+	return p.fetchJinguoCategories(ctx)
 }
 
 func (p *jinguoProvider) CatalogPage(ctx context.Context, page int, category string) ([]Drama, bool, error) {
-	return p.d.fetchJinguoCatalogPage(ctx, page, category, "")
+	return p.fetchJinguoCatalogPage(ctx, page, category, "")
 }
 
 func (p *jinguoProvider) Search(ctx context.Context, page int, query string) ([]Drama, bool, error) {
-	return p.d.fetchJinguoCatalogPage(ctx, page, "", query)
+	return p.fetchJinguoCatalogPage(ctx, page, "", query)
 }
 
 func (p *jinguoProvider) Detail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
-	return p.d.fetchJinguoDetail(ctx, sourceID)
+	return p.fetchJinguoDetail(ctx, sourceID)
 }
 
 func (p *jinguoProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
-	return p.d.resolveJinguoMedia(ctx, task)
+	return p.resolveJinguoMedia(ctx, task)
 }

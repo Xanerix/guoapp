@@ -9,7 +9,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
-	"crypto/tls"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -63,20 +62,12 @@ type yeguoAccessCall struct {
 }
 
 type yeguoAPIClient struct {
-	downloader *Downloader
-	site       string
-	mu         sync.Mutex
-	access     *yeguoAccess
-	pending    *yeguoAccessCall
-	httpOnce   sync.Once
-	httpClient *http.Client
-}
-
-func (d *Downloader) yeguoClient() *yeguoAPIClient {
-	d.yeguoOnce.Do(func() {
-		d.yeguo = &yeguoAPIClient{downloader: d, site: d.providerBaseURL(sourceYeguo)}
-	})
-	return d.yeguo
+	host          Host
+	site          string
+	configuredAPI string
+	mu            sync.Mutex
+	access        *yeguoAccess
+	pending       *yeguoAccessCall
 }
 
 func (client *yeguoAPIClient) siteURL() string {
@@ -204,11 +195,11 @@ func yeguoTransitSites(body string) []string {
 }
 
 func (client *yeguoAPIClient) discoverTransitSites(ctx context.Context) []string {
-	body, err := client.downloader.fetchProviderText(context.WithValue(ctx, providerTextNoCacheKey{}, true), yeguoTransitURL+"/", yeguoTransitURL+"/")
+	response, err := client.host.FetchText(ctx, TextRequest{URL: yeguoTransitURL + "/", Referer: yeguoTransitURL + "/", NoCache: true})
 	if err != nil {
 		return nil
 	}
-	return yeguoTransitSites(body)
+	return yeguoTransitSites(response.Body)
 }
 
 func (client *yeguoAPIClient) configuration(ctx context.Context) (*yeguoAccess, error) {
@@ -248,61 +239,9 @@ func (client *yeguoAPIClient) configuration(ctx context.Context) (*yeguoAccess, 
 	return access, err
 }
 
-func (client *yeguoAPIClient) requestClient() *http.Client {
-	client.httpOnce.Do(func() {
-		if client.downloader.client != nil && client.downloader.client.Transport != nil {
-			if _, production := client.downloader.client.Transport.(*huangguoBrowserTransport); !production {
-				client.httpClient = &http.Client{Transport: client.downloader.client.Transport}
-				return
-			}
-		}
-		transport := http.DefaultTransport.(*http.Transport).Clone()
-		transport.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12}
-		if client.downloader.cfg.InsecureTLS {
-			transport.TLSClientConfig = transport.TLSClientConfig.Clone()
-			transport.TLSClientConfig.InsecureSkipVerify = true
-		}
-		if client.downloader.proxyRouter != nil {
-			transport.Proxy = client.downloader.proxyRouter.proxy
-		}
-		client.httpClient = &http.Client{
-			Transport: transport,
-			CheckRedirect: func(request *http.Request, via []*http.Request) error {
-				if len(via) >= 10 {
-					return errors.New("野果接口重定向次数过多")
-				}
-				return nil
-			},
-		}
-	})
-	return client.httpClient
-}
-
-func (client *yeguoAPIClient) do(ctx context.Context, request *http.Request, timeout time.Duration) (*http.Response, error) {
-	release := func() {}
-	var err error
-	if client.downloader.limiter != nil {
-		release, err = client.downloader.limiter.acquire(ctx, request)
-		if err != nil {
-			return nil, err
-		}
-	}
-	cancel := func() {}
-	if timeout > 0 {
-		ctx, cancel = context.WithTimeout(ctx, timeout)
-		request = request.WithContext(ctx)
-	}
-	response, err := client.requestClient().Do(request)
-	if err != nil {
-		cancel()
-		release()
-		return nil, err
-	}
-	if client.downloader.limiter != nil {
-		client.downloader.limiter.observe(request, response)
-	}
-	response.Body = &limitedResponseBody{ReadCloser: response.Body, release: func() { cancel(); release() }}
-	return response, nil
+func (client *yeguoAPIClient) text(ctx context.Context, address, referer string) (string, error) {
+	response, err := client.host.FetchText(ctx, TextRequest{URL: address, Referer: referer})
+	return response.Body, err
 }
 
 func yeguoAPIBase(document *html.Node, configured string) (string, error) {
@@ -453,12 +392,11 @@ func (client *yeguoAPIClient) discoverConfiguration(ctx context.Context) (*yeguo
 }
 
 func (client *yeguoAPIClient) discoverConfigurationAt(ctx context.Context, site string) (*yeguoAccess, error) {
-	d := client.downloader
-	document, pageURL, err := d.fetchProviderPage(ctx, site+"/", site+"/", "")
+	document, pageURL, err := fetchHostPage(ctx, client.host, site+"/", site+"/", "")
 	if err != nil {
 		return nil, err
 	}
-	apiBase, baseErr := yeguoAPIBase(document, d.cfg.YeguoAPIURL)
+	apiBase, baseErr := yeguoAPIBase(document, client.configuredAPI)
 	pageAddress, _ := url.Parse(pageURL)
 	origin := providerMediaOrigin(pageAddress)
 	entry := ""
@@ -472,7 +410,7 @@ func (client *yeguoAPIClient) discoverConfigurationAt(ctx context.Context, site 
 	if entry == "" {
 		return nil, errors.New("野果页面未提供接口配置脚本")
 	}
-	entryBody, err := d.fetchProviderText(ctx, entry, pageURL)
+	entryBody, err := client.text(ctx, entry, pageURL)
 	if err != nil {
 		return nil, err
 	}
@@ -501,7 +439,7 @@ func (client *yeguoAPIClient) discoverConfigurationAt(ctx context.Context, site 
 			break
 		}
 		seen[address] = true
-		body, err := d.fetchProviderText(ctx, address, pageURL)
+		body, err := client.text(ctx, address, pageURL)
 		if err != nil {
 			lastErr = err
 			var backoff *requestBackoff
@@ -622,40 +560,27 @@ func (client *yeguoAPIClient) call(ctx context.Context, route string, parameters
 			method = http.MethodGet
 		}
 		address := access.base + route
-		var requestBody io.Reader
+		var requestBody []byte
 		if method == http.MethodGet {
 			address += "?" + values.Encode()
 		} else {
-			requestBody = strings.NewReader(values.Encode())
+			requestBody = []byte(values.Encode())
 		}
-		request, err := http.NewRequestWithContext(ctx, method, address, requestBody)
-		if err != nil {
-			return nil, errors.New("野果接口地址无效")
-		}
-		request.Header.Set("User-Agent", userAgent)
-		if method == http.MethodPost {
-			request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		}
-		request.Header.Set("Accept", "application/json, text/plain, */*")
 		site := firstNonEmpty(access.site, client.site, yeguoBaseURL)
-		request.Header.Set("Origin", site)
-		request.Header.Set("Referer", site+"/")
-		timeout := 30 * time.Second
-		if background, _ := ctx.Value(backgroundCatalogKey{}).(bool); background {
-			timeout = 8 * time.Second
+		header := map[string]string{
+			"User-Agent": userAgent,
+			"Accept":     "application/json, text/plain, */*",
+			"Origin":     site,
+			"Referer":    site + "/",
 		}
-		response, err := client.do(ctx, request, timeout)
+		if method == http.MethodPost {
+			header["Content-Type"] = "application/x-www-form-urlencoded"
+		}
+		response, err := client.host.Fetch(ctx, HTTPRequest{Label: "野果接口", Method: method, URL: address, Header: header, Body: requestBody, Limit: 8 << 20, Timeout: 30 * time.Second, Direct: true, FollowRedirects: true})
 		if err != nil {
 			return nil, err
 		}
-		body, readErr := io.ReadAll(io.LimitReader(response.Body, (8<<20)+1))
-		response.Body.Close()
-		if response.StatusCode < 200 || response.StatusCode >= 300 || catalogResponseBlockReason(response, body) != "" {
-			return nil, client.downloader.catalogResponseError(request, response, body)
-		}
-		if readErr != nil || len(body) > 8<<20 {
-			return nil, errors.New("野果接口数据过大或读取失败")
-		}
+		body := response.Body
 		payload, err := decodeYeguoResponse(body, access)
 		if errors.Is(err, errYeguoDecode) && attempt == 0 {
 			client.mu.Lock()

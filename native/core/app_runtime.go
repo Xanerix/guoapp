@@ -24,9 +24,6 @@ type Config struct {
 	HuangguoVideoURL string
 	HuangdouURL      string
 	HongguoURL       string
-	YeguoURL         string
-	YeguoAPIURL      string
-	BeaboxURL        string
 	Token            string
 	AESKeyHex        string
 	InterfaceKey     string
@@ -46,20 +43,12 @@ type Downloader struct {
 	providerHosts         map[string]string
 	providersMu           sync.Mutex
 	providers             map[string]Provider
-	beaboxMu              sync.Mutex
-	beaboxLoaded          bool
-	beaboxSite            string
-	beaboxPool            []string
-	beaboxPoolNext        time.Time
-	beaboxDiscoverMu      sync.Mutex
 	limiter               *requestLimiter
 	proxyRouter           *proxyRouter
 	hongguoOnce           sync.Once
 	hongguo               *hongguoAppClient
-	yeguoOnce             sync.Once
-	yeguo                 *yeguoAPIClient
-	jinguoOnce            sync.Once
-	jinguo                *jinguoAPIClient
+	directOnce            sync.Once
+	direct                *http.Client
 	diagnostics           *diagnosticLog
 	apiMu                 sync.Mutex
 	apiBase               string

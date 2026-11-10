@@ -56,9 +56,9 @@ func TestYeguoAPIClientUsesRouteMethods(t *testing.T) {
 	defer server.Close()
 
 	client := &yeguoAPIClient{
-		downloader: &Downloader{client: server.Client()},
-		site:       yeguoBaseURL,
-		access:     &yeguoAccess{base: server.URL, identifier: "fixture-trace", loadedAt: time.Now()},
+		host:   &Downloader{client: server.Client()},
+		site:   yeguoBaseURL,
+		access: &yeguoAccess{base: server.URL, identifier: "fixture-trace", loadedAt: time.Now()},
 	}
 	if _, err := client.call(context.Background(), "/api/home/contentOptions", nil); err != nil {
 		t.Fatal(err)
@@ -119,9 +119,9 @@ func TestResolveYeguoMediaKeepsCodecAlternatives(t *testing.T) {
 	defer server.Close()
 
 	downloader := &Downloader{}
-	client := downloader.yeguoClient()
+	client := yeguoFixtureProvider(downloader).client
 	client.access = &yeguoAccess{base: server.URL, identifier: "fixture-trace", loadedAt: time.Now()}
-	media, err := downloader.resolveYeguoMedia(context.Background(), Task{
+	media, err := yeguoFixtureProvider(downloader).resolveYeguoMedia(context.Background(), Task{
 		DramaID: providerDramaID(sourceYeguo, "123"),
 		Chapter: Chapter{
 			ID: providerChapterID(sourceYeguo, "123", "456"),

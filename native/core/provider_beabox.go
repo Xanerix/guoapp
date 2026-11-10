@@ -11,16 +11,14 @@ import (
 	"errors"
 	"fmt"
 	"html"
-	"io"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -88,69 +86,53 @@ func beaboxSiteURL(raw string) (string, bool) {
 	return "https://" + address.Hostname(), true
 }
 
-func (d *Downloader) beaboxStatePath() string {
-	if d.cfg.dataDir == "" {
-		return ""
-	}
-	return filepath.Join(d.cfg.dataDir, "beabox-sites.json")
-}
-
-func (d *Downloader) loadBeaboxStateLocked() {
-	if d.beaboxLoaded {
+func (p *beaboxProvider) loadBeaboxStateLocked() {
+	if p.beaboxLoaded {
 		return
 	}
-	d.beaboxLoaded = true
-	path := d.beaboxStatePath()
-	if path == "" {
+	p.beaboxLoaded = true
+	data, err := p.host.LoadState(beaboxStateFile)
+	if err != nil || len(data) == 0 || len(data) > 64*1024 {
 		return
 	}
-	file, err := os.Open(path)
-	if err != nil {
-		return
-	}
-	defer file.Close()
 	var state beaboxSiteState
-	if json.NewDecoder(io.LimitReader(file, 64*1024)).Decode(&state) != nil || state.Version != 1 {
+	if json.NewDecoder(bytes.NewReader(data)).Decode(&state) != nil || state.Version != 1 {
 		return
 	}
 	if site, ok := beaboxSiteURL(state.Site); ok {
-		d.beaboxSite = site
+		p.beaboxSite = site
 	}
 	for _, raw := range state.Pool {
-		if site, ok := beaboxSiteURL(raw); ok && !slices.Contains(d.beaboxPool, site) && len(d.beaboxPool) < 256 {
-			d.beaboxPool = append(d.beaboxPool, site)
+		if site, ok := beaboxSiteURL(raw); ok && !slices.Contains(p.beaboxPool, site) && len(p.beaboxPool) < 256 {
+			p.beaboxPool = append(p.beaboxPool, site)
 		}
 	}
 }
 
-func (d *Downloader) saveBeaboxState(state beaboxSiteState) {
-	path := d.beaboxStatePath()
-	if path == "" {
-		return
-	}
+func (p *beaboxProvider) saveBeaboxState(state beaboxSiteState) {
 	if data, err := json.Marshal(state); err == nil {
-		_ = writeNativeCacheFile(path, data)
+		_ = p.host.SaveState(beaboxStateFile, data)
 	}
 }
 
-func (d *Downloader) rememberBeaboxSite(site string) {
-	d.beaboxMu.Lock()
-	changed := d.beaboxSite != site
-	d.beaboxSite = site
-	state := beaboxSiteState{Version: 1, Site: site, Pool: d.beaboxPool}
-	d.beaboxMu.Unlock()
+func (p *beaboxProvider) rememberBeaboxSite(site string) {
+	p.beaboxMu.Lock()
+	changed := p.beaboxSite != site
+	p.beaboxSite = site
+	state := beaboxSiteState{Version: 1, Site: site, Pool: p.beaboxPool}
+	p.beaboxMu.Unlock()
 	if changed {
-		d.saveBeaboxState(state)
+		p.saveBeaboxState(state)
 	}
 }
 
-func (d *Downloader) beaboxKnownSites() []string {
-	d.beaboxMu.Lock()
-	d.loadBeaboxStateLocked()
-	site := d.beaboxSite
-	d.beaboxMu.Unlock()
+func (p *beaboxProvider) beaboxKnownSites() []string {
+	p.beaboxMu.Lock()
+	p.loadBeaboxStateLocked()
+	site := p.beaboxSite
+	p.beaboxMu.Unlock()
 	var sites []string
-	for _, value := range []string{site, d.cfg.BeaboxURL, beaboxBaseURL} {
+	for _, value := range []string{site, p.configured, beaboxBaseURL} {
 		value = strings.TrimRight(strings.TrimSpace(value), "/")
 		if value != "" && !slices.Contains(sites, value) {
 			sites = append(sites, value)
@@ -159,39 +141,39 @@ func (d *Downloader) beaboxKnownSites() []string {
 	return sites
 }
 
-func (d *Downloader) beaboxDiscoveredSites(ctx context.Context) []string {
-	d.beaboxDiscoverMu.Lock()
-	defer d.beaboxDiscoverMu.Unlock()
-	d.beaboxMu.Lock()
-	d.loadBeaboxStateLocked()
-	pool, next := d.beaboxPool, d.beaboxPoolNext
-	d.beaboxMu.Unlock()
+func (p *beaboxProvider) beaboxDiscoveredSites(ctx context.Context) []string {
+	p.beaboxDiscoverMu.Lock()
+	defer p.beaboxDiscoverMu.Unlock()
+	p.beaboxMu.Lock()
+	p.loadBeaboxStateLocked()
+	pool, next := p.beaboxPool, p.beaboxPoolNext
+	p.beaboxMu.Unlock()
 	if time.Now().Before(next) {
 		return pool
 	}
-	sites := d.discoverBeaboxSites(ctx)
+	sites := p.discoverBeaboxSites(ctx)
 	if ctx.Err() != nil {
 		return pool
 	}
-	d.beaboxMu.Lock()
-	changed := len(sites) > 0 && !slices.Equal(sites, d.beaboxPool)
+	p.beaboxMu.Lock()
+	changed := len(sites) > 0 && !slices.Equal(sites, p.beaboxPool)
 	if len(sites) > 0 {
-		d.beaboxPool, d.beaboxPoolNext = sites, time.Now().Add(beaboxPoolTTL)
+		p.beaboxPool, p.beaboxPoolNext = sites, time.Now().Add(beaboxPoolTTL)
 	} else {
-		d.beaboxPoolNext = time.Now().Add(beaboxPoolRetryTTL)
+		p.beaboxPoolNext = time.Now().Add(beaboxPoolRetryTTL)
 	}
-	pool = d.beaboxPool
-	state := beaboxSiteState{Version: 1, Site: d.beaboxSite, Pool: pool}
-	d.beaboxMu.Unlock()
+	pool = p.beaboxPool
+	state := beaboxSiteState{Version: 1, Site: p.beaboxSite, Pool: pool}
+	p.beaboxMu.Unlock()
 	if changed {
-		d.saveBeaboxState(state)
+		p.saveBeaboxState(state)
 	}
 	return pool
 }
 
-func (d *Downloader) discoverBeaboxSites(ctx context.Context) []string {
+func (p *beaboxProvider) discoverBeaboxSites(ctx context.Context) []string {
 	for _, seed := range []string{beaboxPublishURL, beaboxPermanentURL} {
-		status, body, err := d.beaboxFetch(ctx, http.MethodGet, seed+"/", seed+"/", nil)
+		status, body, err := p.beaboxFetch(ctx, http.MethodGet, seed+"/", seed+"/", nil)
 		if ctx.Err() != nil {
 			return nil
 		}
@@ -205,35 +187,21 @@ func (d *Downloader) discoverBeaboxSites(ctx context.Context) []string {
 	return nil
 }
 
-func (d *Downloader) beaboxFetch(ctx context.Context, method, address, referer string, payload []byte) (int, []byte, error) {
-	var body io.Reader
+func (p *beaboxProvider) beaboxFetch(ctx context.Context, method, address, referer string, payload []byte) (int, []byte, error) {
+	header := map[string]string{
+		"User-Agent":      beaboxUserAgent,
+		"Accept-Language": "zh-CN,zh;q=0.9",
+		"Referer":         referer,
+	}
 	if payload != nil {
-		body = bytes.NewReader(payload)
+		header["Content-Type"] = "application/json"
+		header["Accept"] = "application/json"
 	}
-	request, err := http.NewRequestWithContext(ctx, method, address, body)
+	response, err := p.host.Fetch(ctx, HTTPRequest{Label: "笔盒", Method: method, URL: address, Header: header, Body: payload, Limit: providerMaxBodyBytes, Timeout: providerTimeout, FollowRedirects: true, AnyStatus: true})
 	if err != nil {
 		return 0, nil, err
 	}
-	request.Header.Set("User-Agent", beaboxUserAgent)
-	request.Header.Set("Accept-Language", "zh-CN,zh;q=0.9")
-	request.Header.Set("Referer", referer)
-	if payload != nil {
-		request.Header.Set("Content-Type", "application/json")
-		request.Header.Set("Accept", "application/json")
-	}
-	response, err := d.doCatalogRequestWithTimeout(request, providerTimeout)
-	if err != nil {
-		return 0, nil, err
-	}
-	defer response.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(response.Body, providerMaxBodyBytes+1))
-	if err != nil {
-		return 0, nil, err
-	}
-	if len(data) > providerMaxBodyBytes {
-		return 0, nil, errors.New("笔盒返回的数据过大")
-	}
-	return response.StatusCode, data, nil
+	return response.Status, response.Body, nil
 }
 
 func parseBeaboxPublishPage(body string) []string {
@@ -276,7 +244,7 @@ func decodeBeaboxBase64(value string) ([]byte, error) {
 	return nil, errors.New("base64 解码失败")
 }
 
-func (d *Downloader) beaboxCall(ctx context.Context, route string, query url.Values, payload any) (any, string, error) {
+func (p *beaboxProvider) beaboxCall(ctx context.Context, route string, query url.Values, payload any) (any, string, error) {
 	method, path := http.MethodGet, "/api"+route
 	if len(query) > 0 {
 		path += "?" + query.Encode()
@@ -297,7 +265,7 @@ func (d *Downloader) beaboxCall(ctx context.Context, route string, query url.Val
 				continue
 			}
 			tried[site] = true
-			status, data, err := d.beaboxFetch(ctx, method, site+path, site+"/home", body)
+			status, data, err := p.beaboxFetch(ctx, method, site+path, site+"/home", body)
 			if err != nil {
 				lastErr = err
 				continue
@@ -311,9 +279,9 @@ func (d *Downloader) beaboxCall(ctx context.Context, route string, query url.Val
 		}
 		return nil, ""
 	}
-	envelope, site := call(d.beaboxKnownSites())
+	envelope, site := call(p.beaboxKnownSites())
 	if envelope == nil && ctx.Err() == nil {
-		envelope, site = call(d.beaboxDiscoveredSites(ctx))
+		envelope, site = call(p.beaboxDiscoveredSites(ctx))
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, "", err
@@ -324,7 +292,7 @@ func (d *Downloader) beaboxCall(ctx context.Context, route string, query url.Val
 		}
 		return nil, "", lastErr
 	}
-	d.rememberBeaboxSite(site)
+	p.rememberBeaboxSite(site)
 	value, err := beaboxEnvelopeData(envelope)
 	return value, site, err
 }
@@ -456,8 +424,8 @@ func beaboxTime(value any) string {
 	return time.Unix(seconds, 0).Format("2006-01-02")
 }
 
-func (d *Downloader) fetchBeaboxCategories(ctx context.Context) ([]Category, error) {
-	value, _, err := d.beaboxCall(ctx, "/configs", url.Values{"platformType": {"h5"}}, nil)
+func (p *beaboxProvider) fetchBeaboxCategories(ctx context.Context) ([]Category, error) {
+	value, _, err := p.beaboxCall(ctx, "/configs", url.Values{"platformType": {"h5"}}, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -485,7 +453,7 @@ func (d *Downloader) fetchBeaboxCategories(ctx context.Context) ([]Category, err
 	return categories, nil
 }
 
-func (d *Downloader) fetchBeaboxCatalogPage(ctx context.Context, page int, category, query string) ([]Drama, bool, error) {
+func (p *beaboxProvider) fetchBeaboxCatalogPage(ctx context.Context, page int, category, query string) ([]Drama, bool, error) {
 	if page < 1 || page > 1000000 || len(query) > 256 || !validBeaboxCategory(category) {
 		return nil, false, errors.New("笔盒目录查询参数无效")
 	}
@@ -502,7 +470,7 @@ func (d *Downloader) fetchBeaboxCatalogPage(ctx context.Context, page int, categ
 		values.Set("keyword", keyword)
 		values.Set("sort", "latest")
 	}
-	value, site, err := d.beaboxCall(ctx, route, values, nil)
+	value, site, err := p.beaboxCall(ctx, route, values, nil)
 	if err != nil {
 		return nil, false, err
 	}
@@ -674,11 +642,11 @@ func beaboxChapters(row map[string]any, site, sourceID string) []Chapter {
 	return chapters
 }
 
-func (d *Downloader) fetchBeaboxDetail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
+func (p *beaboxProvider) fetchBeaboxDetail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
 	if !validBeaboxID(sourceID) {
 		return Drama{}, nil, errors.New("笔盒视频 ID 无效")
 	}
-	value, site, err := d.beaboxCall(ctx, "/vod/detail/"+url.PathEscape(sourceID), nil, nil)
+	value, site, err := p.beaboxCall(ctx, "/vod/detail/"+url.PathEscape(sourceID), nil, nil)
 	if err != nil {
 		return Drama{}, nil, err
 	}
@@ -698,7 +666,7 @@ func (d *Downloader) fetchBeaboxDetail(ctx context.Context, sourceID string) (Dr
 	return drama, chapters, nil
 }
 
-func (d *Downloader) resolveBeaboxMedia(ctx context.Context, task Task) (ProviderMedia, error) {
+func (p *beaboxProvider) resolveBeaboxMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	source, sourceID, valid := splitProviderDramaID(task.DramaID)
 	prefix := providerChapterID(sourceBeabox, sourceID, "")
 	if !valid || source != sourceBeabox || !validBeaboxID(sourceID) || !strings.HasPrefix(task.Chapter.ID, prefix) {
@@ -714,7 +682,7 @@ func (d *Downloader) resolveBeaboxMedia(ctx context.Context, task Task) (Provide
 	if err != nil || index < 0 {
 		return ProviderMedia{}, errors.New("笔盒播放信息无效，请刷新详情")
 	}
-	value, site, err := d.beaboxCall(ctx, "/vod/detail/"+url.PathEscape(sourceID), nil, nil)
+	value, site, err := p.beaboxCall(ctx, "/vod/detail/"+url.PathEscape(sourceID), nil, nil)
 	if err != nil {
 		return ProviderMedia{}, err
 	}
@@ -728,7 +696,7 @@ func (d *Downloader) resolveBeaboxMedia(ctx context.Context, task Task) (Provide
 	}
 	address := firstNonEmpty(mapString(entry, "url"), mapString(entry, "playUrl"))
 	if beaboxEntryNeedsParse(entry, row) {
-		parsed, _, err := d.beaboxCall(ctx, "/vod/parse-url", nil, map[string]any{
+		parsed, _, err := p.beaboxCall(ctx, "/vod/parse-url", nil, map[string]any{
 			"playerFrom": strings.TrimSpace(mapString(entry, "from")),
 			"playUrl":    strings.TrimSpace(mapString(entry, "playUrl")),
 		})
@@ -741,10 +709,21 @@ func (d *Downloader) resolveBeaboxMedia(ctx context.Context, task Task) (Provide
 	if !isProviderHTTPMediaURL(address) {
 		return ProviderMedia{}, errors.New("笔盒未返回有效播放地址，请刷新详情后重试")
 	}
-	return d.prepareWebProviderMedia(ctx, ProviderMedia{URL: address, Referer: site + "/"}, "笔盒")
+	return p.host.PrepareWebMedia(ctx, ProviderMedia{URL: address, Referer: site + "/"}, "笔盒")
 }
 
-type beaboxProvider struct{ d *Downloader }
+const beaboxStateFile = "beabox-sites.json"
+
+type beaboxProvider struct {
+	host             Host
+	configured       string
+	beaboxMu         sync.Mutex
+	beaboxLoaded     bool
+	beaboxSite       string
+	beaboxPool       []string
+	beaboxPoolNext   time.Time
+	beaboxDiscoverMu sync.Mutex
+}
 
 var beaboxDescriptor = SourceDescriptor{
 	ID:                sourceBeabox,
@@ -757,29 +736,29 @@ var beaboxDescriptor = SourceDescriptor{
 }
 
 func init() {
-	Register(beaboxDescriptor, func(host Host) Provider { return &beaboxProvider{d: host.(*Downloader)} })
+	Register(beaboxDescriptor, func(host Host) Provider { return &beaboxProvider{host: host} })
 }
 
 func (p *beaboxProvider) Descriptor() SourceDescriptor { return beaboxDescriptor }
 
-func (p *beaboxProvider) BaseURL() string { return firstNonEmpty(p.d.cfg.BeaboxURL, beaboxBaseURL) }
+func (p *beaboxProvider) BaseURL() string { return firstNonEmpty(p.configured, beaboxBaseURL) }
 
 func (p *beaboxProvider) Categories(ctx context.Context, force bool) ([]Category, error) {
-	return p.d.fetchBeaboxCategories(ctx)
+	return p.fetchBeaboxCategories(ctx)
 }
 
 func (p *beaboxProvider) CatalogPage(ctx context.Context, page int, category string) ([]Drama, bool, error) {
-	return p.d.fetchBeaboxCatalogPage(ctx, page, category, "")
+	return p.fetchBeaboxCatalogPage(ctx, page, category, "")
 }
 
 func (p *beaboxProvider) Search(ctx context.Context, page int, query string) ([]Drama, bool, error) {
-	return p.d.fetchBeaboxCatalogPage(ctx, page, "", query)
+	return p.fetchBeaboxCatalogPage(ctx, page, "", query)
 }
 
 func (p *beaboxProvider) Detail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
-	return p.d.fetchBeaboxDetail(ctx, sourceID)
+	return p.fetchBeaboxDetail(ctx, sourceID)
 }
 
 func (p *beaboxProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
-	return p.d.resolveBeaboxMedia(ctx, task)
+	return p.resolveBeaboxMedia(ctx, task)
 }

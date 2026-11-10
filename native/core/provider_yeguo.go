@@ -48,8 +48,8 @@ func firstPresent(values map[string]any, keys ...string) any {
 	return nil
 }
 
-func (d *Downloader) fetchYeguoCategories(ctx context.Context) ([]Category, error) {
-	data, err := d.yeguoClient().call(ctx, "/api/home/contentOptions", nil)
+func (p *yeguoProvider) fetchYeguoCategories(ctx context.Context) ([]Category, error) {
+	data, err := p.client.call(ctx, "/api/home/contentOptions", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +129,7 @@ func yeguoDramaFromMap(row map[string]any, site string) (Drama, error) {
 	return drama, nil
 }
 
-func (d *Downloader) fetchYeguoCatalogPage(ctx context.Context, page int, category, query string) ([]Drama, bool, error) {
+func (p *yeguoProvider) fetchYeguoCatalogPage(ctx context.Context, page int, category, query string) ([]Drama, bool, error) {
 	if page < 1 || page > 1000000 || len(query) > 1024 || category != "" && !validYeguoCategory(category) {
 		return nil, false, errors.New("野果目录查询参数无效")
 	}
@@ -143,7 +143,7 @@ func (d *Downloader) fetchYeguoCatalogPage(ctx context.Context, page int, catego
 		field, value, _ := strings.Cut(category, ":")
 		values.Set(field, value)
 	}
-	data, err := d.yeguoClient().call(ctx, route, values)
+	data, err := p.client.call(ctx, route, values)
 	if err != nil {
 		return nil, false, err
 	}
@@ -180,7 +180,7 @@ func (d *Downloader) fetchYeguoCatalogPage(ctx context.Context, page int, catego
 	seen := map[string]bool{}
 	for _, value := range rows {
 		row, _ := value.(map[string]any)
-		drama, err := yeguoDramaFromMap(row, d.yeguoClient().siteURL())
+		drama, err := yeguoDramaFromMap(row, p.client.siteURL())
 		if err != nil {
 			return nil, false, err
 		}
@@ -201,17 +201,17 @@ func yeguoEpisodePage(site, id string, episode int) string {
 	return address
 }
 
-func (d *Downloader) fetchYeguoDetail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
+func (p *yeguoProvider) fetchYeguoDetail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
 	if !webProviderNumericID.MatchString(sourceID) {
 		return Drama{}, nil, errors.New("野果剧集 ID 无效")
 	}
-	row, err := d.yeguoClient().call(ctx, "/api/playlet/detail", url.Values{
+	row, err := p.client.call(ctx, "/api/playlet/detail", url.Values{
 		"video_id": {sourceID}, "id": {sourceID}, "episode_id": {"0"}, "related_limit": {"0"},
 	})
 	if err != nil {
 		return Drama{}, nil, err
 	}
-	site := d.yeguoClient().siteURL()
+	site := p.client.siteURL()
 	drama, err := yeguoDramaFromMap(row, site)
 	if err != nil {
 		return Drama{}, nil, err
@@ -262,7 +262,7 @@ func yeguoMediaQuality(resolution string) int {
 	return min(width, height)
 }
 
-func (d *Downloader) resolveYeguoMedia(ctx context.Context, task Task) (ProviderMedia, error) {
+func (p *yeguoProvider) resolveYeguoMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	source, sourceID, valid := splitProviderDramaID(task.DramaID)
 	prefix := providerChapterID(sourceYeguo, sourceID, "")
 	if !valid || source != sourceYeguo || !webProviderNumericID.MatchString(sourceID) || !strings.HasPrefix(task.Chapter.ID, prefix) {
@@ -272,7 +272,7 @@ func (d *Downloader) resolveYeguoMedia(ctx context.Context, task Task) (Provider
 	if !webProviderNumericID.MatchString(episodeID) {
 		return ProviderMedia{}, errors.New("野果播放分集 ID 无效")
 	}
-	row, err := d.yeguoClient().call(ctx, "/api/playlet/play", url.Values{
+	row, err := p.client.call(ctx, "/api/playlet/play", url.Values{
 		"playlet_id": {sourceID}, "video_id": {sourceID}, "episode_id": {episodeID},
 	})
 	if err != nil {
@@ -288,7 +288,7 @@ func (d *Downloader) resolveYeguoMedia(ctx context.Context, task Task) (Provider
 	if !valid || number < 1 {
 		return ProviderMedia{}, errors.New("野果播放分集编号无效")
 	}
-	referer := yeguoEpisodePage(d.yeguoClient().siteURL(), sourceID, number)
+	referer := yeguoEpisodePage(p.client.siteURL(), sourceID, number)
 	quality := yeguoMediaQuality(mapString(row, "resolution"))
 	var options []ProviderMedia
 	seen := map[string]bool{}
@@ -313,10 +313,13 @@ func (d *Downloader) resolveYeguoMedia(ctx context.Context, task Task) (Provider
 	}
 	media := options[0]
 	media.Variants = options
-	return d.prepareWebProviderMedia(ctx, media, "野果")
+	return p.host.PrepareWebMedia(ctx, media, "野果")
 }
 
-type yeguoProvider struct{ d *Downloader }
+type yeguoProvider struct {
+	host   Host
+	client *yeguoAPIClient
+}
 
 var yeguoDescriptor = SourceDescriptor{
 	ID:                 sourceYeguo,
@@ -333,29 +336,31 @@ var yeguoDescriptor = SourceDescriptor{
 }
 
 func init() {
-	Register(yeguoDescriptor, func(host Host) Provider { return &yeguoProvider{d: host.(*Downloader)} })
+	Register(yeguoDescriptor, func(host Host) Provider {
+		return &yeguoProvider{host: host, client: &yeguoAPIClient{host: host, site: yeguoBaseURL}}
+	})
 }
 
 func (p *yeguoProvider) Descriptor() SourceDescriptor { return yeguoDescriptor }
 
-func (p *yeguoProvider) BaseURL() string { return firstNonEmpty(p.d.cfg.YeguoURL, yeguoBaseURL) }
+func (p *yeguoProvider) BaseURL() string { return p.client.site }
 
 func (p *yeguoProvider) Categories(ctx context.Context, force bool) ([]Category, error) {
-	return p.d.fetchYeguoCategories(ctx)
+	return p.fetchYeguoCategories(ctx)
 }
 
 func (p *yeguoProvider) CatalogPage(ctx context.Context, page int, category string) ([]Drama, bool, error) {
-	return p.d.fetchYeguoCatalogPage(ctx, page, category, "")
+	return p.fetchYeguoCatalogPage(ctx, page, category, "")
 }
 
 func (p *yeguoProvider) Search(ctx context.Context, page int, query string) ([]Drama, bool, error) {
-	return p.d.fetchYeguoCatalogPage(ctx, page, "", query)
+	return p.fetchYeguoCatalogPage(ctx, page, "", query)
 }
 
 func (p *yeguoProvider) Detail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
-	return p.d.fetchYeguoDetail(ctx, sourceID)
+	return p.fetchYeguoDetail(ctx, sourceID)
 }
 
 func (p *yeguoProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
-	return p.d.resolveYeguoMedia(ctx, task)
+	return p.resolveYeguoMedia(ctx, task)
 }

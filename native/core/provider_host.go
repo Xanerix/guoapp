@@ -3,6 +3,7 @@ package core
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -39,6 +40,9 @@ type HTTPRequest struct {
 	Timeout time.Duration
 
 	AcceptJSONStatus []int
+	FollowRedirects  bool
+	AnyStatus        bool
+	Direct           bool
 }
 
 type HTTPResponse struct {
@@ -122,18 +126,24 @@ func (d *Downloader) Fetch(ctx context.Context, input HTTPRequest) (HTTPResponse
 		}
 		defer release()
 	}
-	origin := providerMediaOrigin(request.URL)
-	transport := *d.client
-	transport.Jar = nil
-	previousRedirect := transport.CheckRedirect
-	transport.CheckRedirect = func(next *http.Request, via []*http.Request) error {
-		if len(via) >= 5 || providerMediaOrigin(next.URL) != origin {
-			return fmt.Errorf("%s接口重定向地址异常", input.Label)
+	base := d.client
+	if input.Direct {
+		base = d.directClient()
+	}
+	transport := *base
+	if !input.FollowRedirects {
+		origin := providerMediaOrigin(request.URL)
+		transport.Jar = nil
+		previousRedirect := transport.CheckRedirect
+		transport.CheckRedirect = func(next *http.Request, via []*http.Request) error {
+			if len(via) >= 5 || providerMediaOrigin(next.URL) != origin {
+				return fmt.Errorf("%s接口重定向地址异常", input.Label)
+			}
+			if previousRedirect != nil {
+				return previousRedirect(next, via)
+			}
+			return nil
 		}
-		if previousRedirect != nil {
-			return previousRedirect(next, via)
-		}
-		return nil
 	}
 	response, err := transport.Do(request)
 	if err != nil {
@@ -153,7 +163,7 @@ func (d *Downloader) Fetch(ctx context.Context, input HTTPRequest) (HTTPResponse
 	if d.limiter != nil {
 		d.limiter.observe(request, response)
 	}
-	if response.StatusCode < 200 || response.StatusCode >= 300 || blocked {
+	if !input.AnyStatus && (response.StatusCode < 200 || response.StatusCode >= 300 || blocked) {
 		return result, d.catalogResponseError(request, response, data)
 	}
 	if oversized {
@@ -174,6 +184,9 @@ func (d *Downloader) LoadState(name string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	if d.cfg.dataDir == "" {
+		return nil, nil
+	}
 	file, err := os.Open(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
@@ -190,6 +203,9 @@ func (d *Downloader) SaveState(name string, data []byte) error {
 	if err != nil {
 		return err
 	}
+	if d.cfg.dataDir == "" {
+		return errors.New("应用数据目录无效")
+	}
 	if len(data) == 0 {
 		if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err
@@ -200,4 +216,33 @@ func (d *Downloader) SaveState(name string, data []byte) error {
 		return err
 	}
 	return nativeDownloadWrite(path, data)
+}
+
+func (d *Downloader) directClient() *http.Client {
+	d.directOnce.Do(func() {
+		if d.client != nil && d.client.Transport != nil {
+			if _, production := d.client.Transport.(*huangguoBrowserTransport); !production {
+				d.direct = &http.Client{Transport: d.client.Transport}
+				return
+			}
+		}
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+		if d.cfg.InsecureTLS {
+			transport.TLSClientConfig.InsecureSkipVerify = true
+		}
+		if d.proxyRouter != nil {
+			transport.Proxy = d.proxyRouter.proxy
+		}
+		d.direct = &http.Client{
+			Transport: transport,
+			CheckRedirect: func(request *http.Request, via []*http.Request) error {
+				if len(via) >= 10 {
+					return errors.New("站源接口重定向次数过多")
+				}
+				return nil
+			},
+		}
+	})
+	return d.direct
 }
