@@ -97,7 +97,7 @@ func validNativeCoverURL(address *url.URL) bool {
 }
 
 func (cache *nativeCoverCache) loadAddress(ctx context.Context, drama LibraryDrama, force bool) (string, error) {
-	drama.Cover = repairLegacyCoverURL(drama)
+	drama.Cover = cache.downloader.repairCover(drama)
 	address, err := url.Parse(drama.Cover)
 	if err != nil || !validNativeCoverURL(address) {
 		return "", errors.New("海报地址无效")

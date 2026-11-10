@@ -147,7 +147,7 @@ func (p *legacyProvider) resolveLegacyMedia(ctx context.Context, task Task) (Pro
 			}.Encode()
 		}
 		playlist, finalURL, err := p.host.FetchPlaylist(ctx, address, legacyFrontendURL+"/", nil)
-		if err != nil {
+		if err = legacyPlaylistError(err); err != nil {
 			var expired *legacyAPIError
 			if attempt == 0 && access.Anonymous && errors.As(err, &expired) && expired.code == "5005" {
 				p.invalidateLegacyToken(access)
@@ -254,6 +254,8 @@ func (p *legacyProvider) CoverAddress(ctx context.Context, drama LibraryDrama, i
 	}
 	return "", errors.New("详情暂未返回海报地址")
 }
+
+func (p *legacyProvider) RepairCover(drama LibraryDrama) string { return repairLegacyCoverURL(drama) }
 
 func (p *legacyProvider) CoverReferer(address string) string {
 	if parsed, err := url.Parse(address); err == nil && (strings.HasSuffix(strings.ToLower(parsed.Hostname()), ".zdmhyg.cn") || strings.EqualFold(parsed.Hostname(), "pic.tuafjz.cn")) {

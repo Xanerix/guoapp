@@ -24,7 +24,7 @@ type browserHTTPClient interface {
 type huangguoBrowserTransport struct {
 	base      http.RoundTripper
 	router    *proxyRouter
-	host      string
+	hosts     map[string]string
 	insecure  bool
 	record    func(diagnosticEvent)
 	mu        sync.Mutex
@@ -33,9 +33,20 @@ type huangguoBrowserTransport struct {
 }
 
 func newHuangguoBrowserTransport(base http.RoundTripper, downloader *Downloader) *huangguoBrowserTransport {
-	configured, _ := url.Parse(downloader.providerBaseURL(sourceHuangguoVideo))
+	hosts := map[string]string{}
+	for _, descriptor := range registeredDescriptors() {
+		if !descriptor.BrowserFingerprint {
+			continue
+		}
+		if configured, err := url.Parse(downloader.providerBaseURL(descriptor.ID)); err == nil && configured.Host != "" {
+			hosts[strings.ToLower(configured.Host)] = descriptor.ID
+		}
+		for _, alias := range descriptor.Aliases {
+			hosts[strings.ToLower(alias)] = descriptor.ID
+		}
+	}
 	transport := &huangguoBrowserTransport{
-		base: base, router: downloader.proxyRouter, host: configured.Host,
+		base: base, router: downloader.proxyRouter, hosts: hosts,
 		insecure: downloader.cfg.InsecureTLS, record: downloader.recordDiagnostic,
 		clients: make(map[string]browserHTTPClient),
 	}
@@ -46,7 +57,14 @@ func newHuangguoBrowserTransport(base http.RoundTripper, downloader *Downloader)
 func (transport *huangguoBrowserTransport) matches(request *http.Request) bool {
 	return (request.Method == http.MethodGet || request.Method == http.MethodHead) &&
 		(request.URL.Scheme == "http" || request.URL.Scheme == "https") &&
-		(strings.EqualFold(request.URL.Host, transport.host) || strings.EqualFold(request.URL.Hostname(), "huangguo.video"))
+		transport.source(request.URL) != ""
+}
+
+func (transport *huangguoBrowserTransport) source(address *url.URL) string {
+	if source := transport.hosts[strings.ToLower(address.Host)]; source != "" {
+		return source
+	}
+	return transport.hosts[strings.ToLower(address.Hostname())]
 }
 
 func (transport *huangguoBrowserTransport) createClient(proxy string) (browserHTTPClient, error) {
@@ -186,7 +204,7 @@ func (transport *huangguoBrowserTransport) RoundTrip(request *http.Request) (*ht
 		if result.StatusCode >= 400 || strings.EqualFold(result.Header.Get("Cf-Mitigated"), "challenge") {
 			level = "warning"
 		}
-		transport.record(diagnosticEvent{Event: "network.browser_request", Level: level, Source: sourceHuangguoVideo,
+		transport.record(diagnosticEvent{Event: "network.browser_request", Level: level, Source: transport.source(request.URL),
 			Host: request.URL.Hostname(), HTTPStatus: result.StatusCode, Client: huangguoBrowserProfile,
 			Protocol: result.Proto, CFRay: truncate(result.Header.Get("Cf-Ray"), 128),
 			ResponseType: truncate(result.Header.Get("Content-Type"), 128), Message: "黄果浏览器指纹请求完成"})

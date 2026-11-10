@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/url"
 	"strings"
 	"sync"
 )
@@ -25,6 +26,7 @@ type SourceDescriptor struct {
 	NoHostRotation     bool
 	KeepDetailEpisodes bool
 	ContinuousFeed     bool
+	BrowserFingerprint bool
 	ValidCategory      func(category string) bool
 	Rankings           []RankingBoard
 }
@@ -51,6 +53,16 @@ type Sited interface {
 
 type URLRotator interface {
 	URLCandidates(rawURL string) []string
+}
+
+type CoverRepairer interface {
+	RepairCover(drama LibraryDrama) string
+}
+
+type MediaAuthorizer interface {
+	AuthorizesMedia(address *url.URL) bool
+	MediaAuthorization(ctx context.Context, address *url.URL, referer string) (header, value string, err error)
+	RejectMediaAuthorization(address *url.URL, value string)
 }
 
 type Searcher interface {

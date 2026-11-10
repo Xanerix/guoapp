@@ -118,22 +118,6 @@ func pkcs7Pad(src []byte, blockSize int) []byte {
 	return append(src, bytes.Repeat([]byte{byte(pad)}, pad)...)
 }
 
-func pkcs7Unpad(src []byte, blockSize int) ([]byte, error) {
-	if len(src) == 0 || len(src)%blockSize != 0 {
-		return nil, errors.New("invalid pkcs7 length")
-	}
-	pad := int(src[len(src)-1])
-	if pad == 0 || pad > blockSize || pad > len(src) {
-		return nil, errors.New("invalid pkcs7 padding")
-	}
-	for _, v := range src[len(src)-pad:] {
-		if int(v) != pad {
-			return nil, errors.New("invalid pkcs7 padding bytes")
-		}
-	}
-	return src[:len(src)-pad], nil
-}
-
 func encryptParam(obj any, key, iv []byte) (string, error) {
 	plain, err := json.Marshal(obj)
 	if err != nil {
@@ -209,6 +193,15 @@ type legacyAPIError struct{ code, message string }
 
 func (err *legacyAPIError) Error() string {
 	return fmt.Sprintf("黄果 API 错误 %s: %s", err.code, err.message)
+}
+
+func legacyPlaylistError(err error) error {
+	var rejected *PlaylistError
+	var envelope apiEnvelope
+	if errors.As(err, &rejected) && json.Unmarshal(rejected.Body, &envelope) == nil && strings.Trim(string(envelope.Code), `"`) == "5005" {
+		return &legacyAPIError{code: "5005", message: "播放会话已失效"}
+	}
+	return err
 }
 
 func (p *legacyProvider) legacyRequest(ctx context.Context, method, apiPath string, params any, access legacyAccess) ([]byte, error) {

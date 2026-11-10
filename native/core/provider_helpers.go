@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 var reTitleTag = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
@@ -22,91 +23,6 @@ var reEpisodeNumber = regexp.MustCompile(`(?i)(?:第\s*0*(\d+)\s*(?:集|话|期)
 var reDateText = regexp.MustCompile(`\d{4}-\d{1,2}-\d{1,2}`)
 
 var reViewsText = regexp.MustCompile(`(?i)[0-9]+(?:\.[0-9]+)?\s*[w万]?\s*次播放`)
-
-func mergeDramaMetadata(base, extra Drama) Drama {
-	if base.VIP == nil && extra.VIP != nil {
-		value := *extra.VIP
-		base.VIP = &value
-	}
-	if extra.SortMetadata != nil && (base.SortMetadata == nil || extra.SortMetadata.CheckedAt.After(base.SortMetadata.CheckedAt)) {
-		base.SortMetadata = extra.SortMetadata
-	}
-	if strings.TrimSpace(base.ID) == "" {
-		base.ID = extra.ID
-	}
-	if strings.TrimSpace(base.Source) == "" {
-		base.Source = extra.Source
-	}
-	if strings.TrimSpace(base.SourceID) == "" {
-		base.SourceID = extra.SourceID
-	}
-	if strings.TrimSpace(base.Title) == "" {
-		base.Title = extra.Title
-	}
-	if strings.TrimSpace(base.Name) == "" {
-		base.Name = extra.Name
-	}
-	if strings.TrimSpace(base.Desc) == "" {
-		base.Desc = extra.Desc
-	}
-	if strings.TrimSpace(base.Intro) == "" {
-		base.Intro = extra.Intro
-	}
-	if coverPathFromAny(base.Cover) == "" {
-		base.Cover = extra.Cover
-	}
-	if coverPathFromAny(base.CoverURL) == "" {
-		base.CoverURL = extra.CoverURL
-	}
-	if valueEmpty(base.TotalEpisode) {
-		base.TotalEpisode = extra.TotalEpisode
-	}
-	if valueEmpty(base.EpisodeCount) {
-		base.EpisodeCount = extra.EpisodeCount
-	}
-	if strings.TrimSpace(base.ChannelName) == "" {
-		base.ChannelName = extra.ChannelName
-	}
-	if strings.TrimSpace(base.CategoryName) == "" || (base.CategoryName == "首页" && extra.CategoryName != "") {
-		base.CategoryName = extra.CategoryName
-	}
-	if strings.TrimSpace(base.Remark) == "" || base.Remark == "在线观看" {
-		base.Remark = extra.Remark
-	}
-	if strings.TrimSpace(base.Score) == "" {
-		base.Score = extra.Score
-	}
-	if strings.TrimSpace(base.Views) == "" {
-		base.Views = extra.Views
-	}
-	if strings.TrimSpace(base.Heat) == "" {
-		base.Heat = extra.Heat
-	}
-	if strings.TrimSpace(base.OnlineDate) == "" {
-		base.OnlineDate = extra.OnlineDate
-	}
-	if len(base.Tags) == 0 {
-		base.Tags = extra.Tags
-	}
-	if base.ReleaseStatus == "" || base.ReleaseStatus == "unknown" {
-		base.ReleaseStatus = extra.ReleaseStatus
-	}
-	if dramaProvider(base) == sourceHuangguoAI && base.ID == extra.ID {
-		_, sourceID, _ := splitProviderDramaID(base.ID)
-		if title := firstHuangguoTitle(sourceID, base.Title, base.Name, extra.Title, extra.Name); title != "" {
-			base.Title, base.Name = title, title
-		}
-	}
-	return base
-}
-
-func valueEmpty(v any) bool {
-	if v == nil {
-		return true
-	}
-	s := strings.TrimSpace(fmt.Sprint(v))
-	return s == "" || s == "0" || s == "<nil>"
-}
 
 func sortProviderChapters(chapters []Chapter) {
 	sort.SliceStable(chapters, func(i, j int) bool {
@@ -383,3 +299,17 @@ func isProviderHTTPMediaURL(raw string) bool {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
 	return err == nil && (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Hostname() != "" && parsed.User == nil
 }
+
+func providerReleaseDate(value string) string {
+	value = strings.TrimSpace(value)
+	if stamp, err := time.Parse(time.RFC3339Nano, value); err == nil {
+		value = stamp.In(providerChinaTime).Format("2006-01-02")
+	}
+	date := normalizeDate(value)
+	if parsed, err := time.Parse("2006-01-02", date); err != nil || parsed.Year() < 2000 || parsed.Year() > 2100 {
+		return ""
+	}
+	return date
+}
+
+var providerChinaTime = time.FixedZone("CST", 8*60*60)

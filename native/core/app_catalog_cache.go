@@ -141,7 +141,7 @@ func (engine *nativeEngine) nativeCached(source string) nativeCatalogResult {
 	defer engine.mu.Unlock()
 	items := append([]LibraryDrama{}, engine.catalogs[source]...)
 	for index := range items {
-		items[index].Cover = repairLegacyCoverURL(items[index])
+		items[index].Cover = engine.downloader.repairCover(items[index])
 	}
 	state, found := engine.catalogStates[source]
 	age := time.Since(state.UpdatedAt)

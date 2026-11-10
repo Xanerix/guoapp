@@ -249,6 +249,7 @@ func (p *jinguoProvider) resolveJinguoMedia(ctx context.Context, task Task) (Pro
 			referer := base + "/"
 			address := base + "/api/app/vid/h5/m3u8/" + path + "?" + url.Values{"token": {token}}.Encode()
 			playlist, finalURL, err := p.host.FetchPlaylist(ctx, address, referer, nil)
+			err = legacyPlaylistError(err)
 			if err == nil {
 				client.rememberBase(base)
 				return ProviderMedia{URL: finalURL, Playlist: playlist, Referer: referer, Duration: m3u8Duration(playlist)}, nil

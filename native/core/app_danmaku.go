@@ -39,3 +39,5 @@ func (engine *nativeEngine) nativeDanmaku(ctx context.Context, input nativeInput
 	}
 	return page, ctx.Err()
 }
+
+const danmakuMaxDurationMS = 24 * 60 * 60 * 1000

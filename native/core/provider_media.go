@@ -264,3 +264,28 @@ func (d *Downloader) GetHuangguoChapters(ctx context.Context, source, sourceID s
 	drama, chapters, err := p.Detail(ctx, sourceID)
 	return drama.DisplayTitle(), chapters, err
 }
+
+func (d *Downloader) repairCover(drama LibraryDrama) string {
+	if d == nil {
+		return drama.Cover
+	}
+	for _, source := range []string{drama.Source, sourceFromDramaID(drama.ID)} {
+		if p, ok := d.provider(source); ok {
+			if repairer, ok := p.(CoverRepairer); ok {
+				return repairer.RepairCover(drama)
+			}
+		}
+	}
+	return drama.Cover
+}
+
+func (d *Downloader) mediaAuthorizer(address *url.URL) MediaAuthorizer {
+	for _, descriptor := range registeredDescriptors() {
+		if p, ok := d.provider(descriptor.ID); ok {
+			if authorizer, ok := p.(MediaAuthorizer); ok && authorizer.AuthorizesMedia(address) {
+				return authorizer
+			}
+		}
+	}
+	return nil
+}

@@ -7,8 +7,6 @@ import (
 	"time"
 )
 
-var providerChinaTime = time.FixedZone("CST", 8*60*60)
-
 func hongguoHeat(row map[string]any) string {
 	hot := nestedMap(row, "hot_score_data")
 

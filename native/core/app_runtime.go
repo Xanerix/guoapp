@@ -23,23 +23,21 @@ type Config struct {
 }
 
 type Downloader struct {
-	rankings        rankingCache
-	cfg             Config
-	client          *http.Client
-	reserveMu       sync.Mutex
-	reserveNext     uint64
-	reservations    map[uint64]func()
-	providerMu      sync.Mutex
-	providerHosts   map[string]string
-	providersMu     sync.Mutex
-	providers       map[string]Provider
-	limiter         *requestLimiter
-	proxyRouter     *proxyRouter
-	directOnce      sync.Once
-	direct          *http.Client
-	diagnostics     *diagnosticLog
-	previewMu       sync.Mutex
-	previewSessions map[string]*huangguoPreviewSession
+	rankings      rankingCache
+	cfg           Config
+	client        *http.Client
+	reserveMu     sync.Mutex
+	reserveNext   uint64
+	reservations  map[uint64]func()
+	providerMu    sync.Mutex
+	providerHosts map[string]string
+	providersMu   sync.Mutex
+	providers     map[string]Provider
+	limiter       *requestLimiter
+	proxyRouter   *proxyRouter
+	directOnce    sync.Once
+	direct        *http.Client
+	diagnostics   *diagnosticLog
 }
 
 func defaultConfig() Config { return Config{MaxPagesPerSort: 50, PageSize: 30, Retries: 2} }

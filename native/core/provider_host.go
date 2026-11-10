@@ -54,6 +54,12 @@ type HTTPResponse struct {
 	Oversized bool
 }
 
+type PlaylistError struct{ Body []byte }
+
+func (*PlaylistError) Error() string {
+	return "站源未返回有效的播放列表，链接可能已失效"
+}
+
 type Host interface {
 	Reserve(ctx context.Context, address, lane string) (ticket uint64, err error)
 	Retries() int

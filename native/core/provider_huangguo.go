@@ -2,6 +2,10 @@ package core
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"sync"
+	"time"
 
 	"errors"
 	"fmt"
@@ -309,9 +313,119 @@ func titleNearDetail(raw, sourceID string) string {
 	return extractByClassText(contextBlock(raw, idx, idx+len(needle), 1800), "hg-drama-card__title")
 }
 
+type huangguoPreviewSession struct {
+	mu      sync.Mutex
+	token   string
+	expires time.Time
+	pending chan struct{}
+}
+
 type huangguoVideoProvider struct {
-	host Host
-	site string
+	host            Host
+	site            string
+	previewMu       sync.Mutex
+	previewSessions map[string]*huangguoPreviewSession
+}
+
+func (p *huangguoVideoProvider) AuthorizesMedia(address *url.URL) bool {
+	if address == nil || !strings.HasPrefix(address.Path, "/api/hls_key/") {
+		return false
+	}
+	configured, err := url.Parse(p.site)
+	return strings.EqualFold(address.Hostname(), "huangguo.video") || err == nil && strings.EqualFold(address.Host, configured.Host)
+}
+
+func (p *huangguoVideoProvider) MediaAuthorization(ctx context.Context, address *url.URL, referer string) (string, string, error) {
+	token, err := p.previewToken(ctx, address.Scheme+"://"+address.Host, referer)
+	return "X-Preview-Token", token, err
+}
+
+func (p *huangguoVideoProvider) RejectMediaAuthorization(address *url.URL, value string) {
+	session := p.previewSession(address.Scheme + "://" + address.Host)
+	session.mu.Lock()
+	if session.token == value {
+		session.token = ""
+	}
+	session.mu.Unlock()
+}
+
+func (p *huangguoVideoProvider) previewSession(origin string) *huangguoPreviewSession {
+	p.previewMu.Lock()
+	defer p.previewMu.Unlock()
+	if p.previewSessions == nil {
+		p.previewSessions = map[string]*huangguoPreviewSession{}
+	}
+	if p.previewSessions[origin] == nil {
+		p.previewSessions[origin] = &huangguoPreviewSession{}
+	}
+	return p.previewSessions[origin]
+}
+
+func (p *huangguoVideoProvider) previewToken(ctx context.Context, origin, referer string) (string, error) {
+	session := p.previewSession(origin)
+	for {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+		session.mu.Lock()
+		if session.token != "" && time.Now().Add(15*time.Second).Before(session.expires) {
+			token := session.token
+			session.mu.Unlock()
+			return token, nil
+		}
+		if pending := session.pending; pending != nil {
+			session.mu.Unlock()
+			select {
+			case <-pending:
+				continue
+			case <-ctx.Done():
+				return "", ctx.Err()
+			}
+		}
+		pending := make(chan struct{})
+		session.pending = pending
+		session.mu.Unlock()
+		token, expiry, err := p.fetchPreviewToken(ctx, origin, referer)
+		session.mu.Lock()
+		if err == nil {
+			session.token, session.expires = token, expiry
+		}
+		session.pending = nil
+		close(pending)
+		session.mu.Unlock()
+		return token, err
+	}
+}
+
+func (p *huangguoVideoProvider) fetchPreviewToken(ctx context.Context, origin, referer string) (string, time.Time, error) {
+	header := map[string]string{
+		"User-Agent": userAgent, "Referer": referer, "Accept": "application/json", "Accept-Language": "zh-CN,zh;q=0.9",
+		"Sec-Fetch-Mode": "cors", "Sec-Fetch-Dest": "empty",
+	}
+	if page, err := url.Parse(referer); err == nil && page.Host != "" {
+		header["Origin"] = page.Scheme + "://" + page.Host
+	}
+	response, err := p.host.Fetch(ctx, HTTPRequest{Label: "黄果视频", Method: http.MethodGet, URL: origin + "/api/preview-token", Header: header, Limit: 16 << 10, Timeout: providerTimeout, FollowRedirects: true})
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	var result struct {
+		OK        bool   `json:"ok"`
+		Token     string `json:"token"`
+		ExpiresAt int64  `json:"expires_at"`
+		ExpiresIn int64  `json:"expires_in"`
+	}
+	if response.Status != http.StatusOK || json.Unmarshal(response.Body, &result) != nil || !result.OK || result.Token == "" || !validLegacyToken(result.Token) {
+		return "", time.Time{}, errors.New("黄果视频未返回有效播放凭证，请稍后重试")
+	}
+	expiry := time.Now().Add(time.Duration(max(30, min(result.ExpiresIn, 1800))) * time.Second)
+	if result.ExpiresAt > 0 {
+		expiry = time.Unix(result.ExpiresAt, 0)
+	}
+	if !expiry.After(time.Now()) {
+		return "", time.Time{}, errors.New("黄果视频播放凭证已过期，请检查设备时间")
+	}
+	return result.Token, expiry, nil
 }
 
 func (p *huangguoVideoProvider) text(ctx context.Context, address, referer string) (string, error) {
@@ -320,15 +434,16 @@ func (p *huangguoVideoProvider) text(ctx context.Context, address, referer strin
 }
 
 var huangguoVideoDescriptor = SourceDescriptor{
-	ID:          sourceHuangguoVideo,
-	Name:        "黄果视频",
-	Description: "视频剧集",
-	Group:       "huangguo",
-	GroupName:   "黄果",
-	EntryName:   "视频",
-	DefaultOff:  true,
-	Aliases:     []string{"huangguo.video"},
-	BaseURL:     huangguoVideoBaseURL,
+	ID:                 sourceHuangguoVideo,
+	Name:               "黄果视频",
+	Description:        "视频剧集",
+	Group:              "huangguo",
+	GroupName:          "黄果",
+	EntryName:          "视频",
+	DefaultOff:         true,
+	Aliases:            []string{"huangguo.video"},
+	BrowserFingerprint: true,
+	BaseURL:            huangguoVideoBaseURL,
 	ValidCategory: func(category string) bool {
 		id, err := strconv.Atoi(category)
 		return err == nil && id > 0
