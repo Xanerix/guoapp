@@ -96,7 +96,7 @@ func isHuangguoProviderSource(source string) bool {
 		return true
 	}
 	switch source {
-	case sourceHuangguoAI, sourceHuangguoVideo, sourceHuangdou, sourceHongguo, sourceCloudFront:
+	case sourceHongguo:
 		return true
 	default:
 		return false
@@ -108,20 +108,9 @@ func canonicalProviderSource(source string) string {
 	if id, ok := registeredSource(trimmed); ok {
 		return id
 	}
-	if isHuangdouHost(trimmed) {
-		return sourceHuangdou
-	}
 	switch trimmed {
-	case "huangguo", "huangguoai", "huangguoai.com":
-		return sourceHuangguoAI
-	case "huangguo-video", "huangguo.video":
-		return sourceHuangguoVideo
-	case "huangdou", "tideember.cc", "xqjurgek.top":
-		return sourceHuangdou
 	case "hongguo", "hongguoduanju.com":
 		return sourceHongguo
-	case "cloudfront":
-		return sourceCloudFront
 	default:
 		return strings.TrimSpace(source)
 	}
@@ -218,29 +207,11 @@ func (d *Downloader) GetHuangguoChapters(ctx context.Context, source, sourceID s
 		return drama.DisplayTitle(), chapters, err
 	}
 	switch canonicalProviderSource(source) {
-	case sourceHuangguoAI:
-		return d.fetchHuangguoAIChapters(ctx, sourceID)
-	case sourceHuangguoVideo:
-		return d.fetchHuangguoVideoChapters(ctx, sourceID)
-	case sourceHuangdou:
-		return d.fetchHuangdouChapters(ctx, sourceID)
 	case sourceHongguo:
 		return d.fetchHongguoChapters(ctx, sourceID)
-	case sourceCloudFront:
-		return d.fetchLegacyChapters(ctx, sourceID)
 	default:
 		return "", nil, fmt.Errorf("unsupported provider source: %s", source)
 	}
-}
-
-func (d *Downloader) fetchHuangguoAIChapters(ctx context.Context, sourceID string) (string, []Chapter, error) {
-	drama, chapters, err := d.fetchHuangguoAIDetail(ctx, sourceID)
-	return drama.DisplayTitle(), chapters, err
-}
-
-func (d *Downloader) fetchHuangguoVideoChapters(ctx context.Context, sourceID string) (string, []Chapter, error) {
-	drama, chapters, err := d.fetchHuangguoVideoDetail(ctx, sourceID)
-	return drama.DisplayTitle(), chapters, err
 }
 
 func (d *Downloader) fetchHuangguoVideoDetail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
@@ -1053,4 +1024,111 @@ func normalizeProviderMediaURL(pageURL, raw string) string {
 func isProviderHTTPMediaURL(raw string) bool {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
 	return err == nil && (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Hostname() != "" && parsed.User == nil
+}
+
+type huangguoVideoProvider struct{ d *Downloader }
+
+var huangguoVideoDescriptor = SourceDescriptor{
+	ID:          sourceHuangguoVideo,
+	Name:        "黄果视频",
+	Description: "视频剧集",
+	Aliases:     []string{"huangguo.video"},
+	BaseURL:     huangguoVideoBaseURL,
+	ValidCategory: func(category string) bool {
+		id, err := strconv.Atoi(category)
+		return err == nil && id > 0
+	},
+}
+
+func init() {
+	Register(huangguoVideoDescriptor, func(d *Downloader) Provider { return &huangguoVideoProvider{d: d} })
+}
+
+func (p *huangguoVideoProvider) Descriptor() SourceDescriptor { return huangguoVideoDescriptor }
+
+func (p *huangguoVideoProvider) BaseURL() string {
+	return firstNonEmpty(p.d.cfg.HuangguoVideoURL, huangguoVideoBaseURL)
+}
+
+func (p *huangguoVideoProvider) Categories(ctx context.Context, force bool) ([]nativeCategory, error) {
+	address := p.d.providerBaseURL(sourceHuangguoVideo) + "/videos"
+	body, err := p.d.fetchProviderText(ctx, address, p.d.providerBaseURL(sourceHuangguoVideo)+"/")
+	if err != nil {
+		return nil, err
+	}
+	return parseHuangguoVideoCategories(body), nil
+}
+
+func (p *huangguoVideoProvider) CatalogPage(ctx context.Context, page int, category string) ([]Drama, bool, error) {
+	address := fmt.Sprintf("%s/videos?page=%d", p.d.providerBaseURL(sourceHuangguoVideo), page)
+	if category != "" {
+		address += "&category=" + url.QueryEscape(category)
+	}
+	body, err := p.d.fetchProviderText(ctx, address, p.d.providerBaseURL(sourceHuangguoVideo)+"/")
+	if err != nil {
+		return nil, false, err
+	}
+	items := parseHuangguoVideoCards(body, address)
+	return items, len(items) >= 20, nil
+}
+
+func (p *huangguoVideoProvider) Detail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
+	return p.d.fetchHuangguoVideoDetail(ctx, sourceID)
+}
+
+func (p *huangguoVideoProvider) ResolveMedia(ctx context.Context, task Task) (providerMedia, error) {
+	chapter := task.Chapter
+	if chapter.PageURL == "" {
+		if _, sourceID, valid := splitProviderDramaID(task.DramaID); valid {
+			_, chapters, err := p.Detail(ctx, sourceID)
+			if err != nil {
+				return providerMedia{}, fmt.Errorf("刷新旧任务播放地址失败: %w", err)
+			}
+			matched := false
+			for _, fresh := range chapters {
+				if fresh.ID == chapter.ID {
+					chapter = fresh
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				return providerMedia{}, fmt.Errorf("原章节已变化，请更新该合集后重新下载")
+			}
+		}
+	}
+	media := providerMedia{URL: chapter.VideoURL, Referer: firstNonEmpty(chapter.Referer, p.d.providerBaseURL(sourceHuangguoVideo)+"/")}
+	if chapter.PageURL != "" {
+		responses := &playbackResponseURLs{}
+		pageContext := context.WithValue(ctx, playbackResponseURLsKey{}, responses)
+		body, err := p.d.fetchProviderText(pageContext, chapter.PageURL, media.Referer)
+		if err != nil {
+			return providerMedia{}, err
+		}
+		pageURL := chapter.PageURL
+		if actual, ok := responses.values.Load(chapter.PageURL); ok {
+			pageURL = actual.(string)
+		}
+		media.URL = parseDataHLS(body, pageURL)
+		media.Referer = pageURL
+	}
+	return p.d.finishProviderMedia(ctx, media, sourceHuangguoVideo)
+}
+
+func (p *huangguoVideoProvider) CoverAddress(ctx context.Context, drama nativeDrama, id string) (string, error) {
+	parts := strings.Split(id, "/")
+	if len(parts) == 1 {
+		parts = []string{"series", id}
+	}
+	if len(parts) != 2 || (parts[0] != "series" && parts[0] != "video") || !rankingSourceID.MatchString(parts[1]) {
+		return "", errors.New("无效的黄果剧集 ID")
+	}
+	base := p.d.providerBaseURL(sourceHuangguoVideo)
+	pageURL := base + "/" + parts[0] + "/" + url.PathEscape(parts[1])
+	body, err := p.d.fetchProviderText(ctx, pageURL, base+"/")
+	if err != nil {
+		return "", err
+	}
+	fresh, err := parseHuangguoSortDetail(body, pageURL, Drama{ID: drama.ID, Source: sourceHuangguoVideo, SourceID: id})
+	return nativeNormalize(fresh).Cover, err
 }

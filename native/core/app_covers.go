@@ -84,22 +84,10 @@ func newNativeCoverCache(directory string, downloader *Downloader) *nativeCoverC
 }
 
 func nativeCoverReferer(downloader *Downloader, source, address string) string {
-	if source == sourceCloudFront {
-		if parsed, err := url.Parse(address); err == nil && (strings.HasSuffix(strings.ToLower(parsed.Hostname()), ".zdmhyg.cn") || strings.EqualFold(parsed.Hostname(), "pic.tuafjz.cn")) {
-			return downloader.providerBaseURL(sourceHuangguoAI) + "/"
+	if p, ok := downloader.provider(source); ok {
+		if referer, ok := p.(CoverRefererProvider); ok {
+			return referer.CoverReferer(address)
 		}
-	}
-	if source == sourceHuangdou {
-		if parsed, err := url.Parse(address); err == nil && isHuangdouHost(parsed.Hostname()) {
-			return parsed.Scheme + "://" + parsed.Host + "/home"
-		}
-		downloader.providerMu.Lock()
-		host := downloader.providerHosts[source]
-		downloader.providerMu.Unlock()
-		if host == "" {
-			host = downloader.providerBaseURL(source)
-		}
-		return host + "/home"
 	}
 	return downloader.providerBaseURL(source) + "/"
 }

@@ -519,3 +519,149 @@ func uuidLike() string {
 	}
 	return raw[:8] + "-" + raw[8:12] + "-" + raw[12:16] + "-" + raw[16:20] + "-" + raw[20:]
 }
+
+type huangdouProvider struct{ d *Downloader }
+
+var huangdouDescriptor = SourceDescriptor{
+	ID:          sourceHuangdou,
+	Name:        "黄豆",
+	Description: "精选短剧",
+	Aliases:     []string{"tideember.cc", "xqjurgek.top"},
+	MatchesHost: isHuangdouHost,
+	BaseURL:     huangdouBaseURL,
+	Rankings: []rankingBoard{
+		{ID: "huangdou-all", Source: sourceHuangdou, Name: "总榜", Description: "黄豆短剧总榜，保留站点返回的顺序。", upstreamKey: "all"},
+		{ID: "huangdou-mogai", Source: sourceHuangdou, Name: "魔改榜", Description: "黄豆站点魔改榜。", upstreamKey: "mogai"},
+		{ID: "huangdou-search", Source: sourceHuangdou, Name: "搜索榜", Description: "黄豆站点搜索榜。", upstreamKey: "search"},
+		{ID: "huangdou-favorite", Source: sourceHuangdou, Name: "收藏榜", Description: "黄豆站点收藏榜。", upstreamKey: "favorite"},
+		{ID: "huangdou-finish", Source: sourceHuangdou, Name: "完结榜", Description: "黄豆站点完结榜。", upstreamKey: "finish"},
+	},
+}
+
+func init() {
+	Register(huangdouDescriptor, func(d *Downloader) Provider { return &huangdouProvider{d: d} })
+}
+
+func (p *huangdouProvider) Descriptor() SourceDescriptor { return huangdouDescriptor }
+
+func (p *huangdouProvider) BaseURL() string {
+	return firstNonEmpty(p.d.cfg.HuangdouURL, huangdouBaseURL)
+}
+
+func (p *huangdouProvider) Categories(context.Context, bool) ([]nativeCategory, error) {
+	return nil, errCategoriesIncomplete
+}
+
+func (p *huangdouProvider) CatalogPage(ctx context.Context, page int, category string) ([]Drama, bool, error) {
+	var decoded any
+	if err := newHuangdouAPIClient(p.d).call(ctx, "/drama/list", map[string]any{"page": strconv.Itoa(page), "page_size": "30"}, &decoded); err != nil {
+		return nil, false, err
+	}
+	rows := huangdouList(decoded)
+	items := make([]Drama, 0, len(rows))
+	for _, row := range rows {
+		if drama := huangdouDramaFromMap(row); drama.ID != "" {
+			items = append(items, drama)
+		}
+	}
+	return items, len(rows) >= 30, nil
+}
+
+func (p *huangdouProvider) Detail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
+	title, chapters, err := p.d.fetchHuangdouChapters(ctx, sourceID)
+	if err != nil {
+		return Drama{}, nil, err
+	}
+	raw := Drama{ID: providerDramaID(sourceHuangdou, strings.TrimPrefix(strings.TrimSpace(sourceID), "rp_")), Source: sourceHuangdou, Title: title, Name: title}
+	if row, err := p.d.huangdouDetail(ctx, sourceID); err == nil {
+		if fresh := huangdouDramaFromMap(row); fresh.ID == raw.ID {
+			raw = fresh
+			if raw.Title == "" || raw.Title == "短剧" {
+				raw.Title, raw.Name = title, title
+			}
+		}
+	}
+	return raw, chapters, nil
+}
+
+func (p *huangdouProvider) ResolveMedia(ctx context.Context, task Task) (providerMedia, error) {
+	chapter := task.Chapter
+	media := providerMedia{URL: chapter.VideoURL, Referer: firstNonEmpty(chapter.Referer, p.d.providerBaseURL(sourceHuangdou)+"/")}
+	if _, sourceID, valid := splitProviderDramaID(task.DramaID); valid {
+		sequence, err := strconv.Atoi(chapter.EpisodeString(task.Index))
+		if err != nil || sequence < 1 {
+			return providerMedia{}, fmt.Errorf("黄豆集数无效")
+		}
+		client := newHuangdouAPIClient(p.d)
+		media, err = p.d.resolveHuangdouPlayback(ctx, client, sourceID, sequence)
+		if err != nil {
+			return providerMedia{}, err
+		}
+		media.Referer = client.host + "/home"
+	}
+	return p.d.finishProviderMedia(ctx, media, sourceHuangdou)
+}
+
+func (p *huangdouProvider) RankingPage(ctx context.Context, board rankingBoard, page int) (rankingPage, error) {
+	var decoded any
+	if err := newHuangdouAPIClient(p.d).call(ctx, "/drama/rank", map[string]any{"tab": board.upstreamKey, "page": strconv.Itoa(page)}, &decoded); err != nil {
+		return rankingPage{}, err
+	}
+	return parseHuangdouRanking(decoded, page)
+}
+
+func (p *huangdouProvider) CoverAddress(ctx context.Context, drama nativeDrama, id string) (string, error) {
+	row, err := p.d.huangdouDetail(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	fresh := nativeNormalize(huangdouDramaFromMap(row))
+	if fresh.ID != drama.ID {
+		return "", errors.New("黄豆详情与请求剧集不符")
+	}
+	return fresh.Cover, nil
+}
+
+func (p *huangdouProvider) CoverReferer(address string) string {
+	if parsed, err := url.Parse(address); err == nil && isHuangdouHost(parsed.Hostname()) {
+		return parsed.Scheme + "://" + parsed.Host + "/home"
+	}
+	p.d.providerMu.Lock()
+	host := p.d.providerHosts[sourceHuangdou]
+	p.d.providerMu.Unlock()
+	if host == "" {
+		host = p.d.providerBaseURL(sourceHuangdou)
+	}
+	return host + "/home"
+}
+
+func (p *huangdouProvider) NeedsExtraMetadata(drama nativeDrama) bool {
+	return drama.Heat == "" || drama.VIP == nil
+}
+
+func (p *huangdouProvider) ExtraMetadata(ctx context.Context, drama nativeDrama, id string) (nativeDrama, error) {
+	row, err := p.d.huangdouDetail(ctx, id)
+	if err != nil {
+		return drama, err
+	}
+	raw := huangdouDramaFromMap(row)
+	if raw.Heat == "" && drama.Heat == "" {
+		var decoded any
+		err = newHuangdouAPIClient(p.d).call(ctx, "/drama/list", map[string]any{
+			"keywords": firstNonEmpty(raw.Title, drama.Title), "page": "1", "page_size": "50",
+		}, &decoded)
+		if err != nil {
+			return drama, err
+		}
+		for _, candidate := range huangdouList(decoded) {
+			if strings.TrimPrefix(mapString(candidate, "id", "drama_id"), "rp_") == id {
+				raw = mergeDramaMetadata(huangdouDramaFromMap(candidate), raw)
+				break
+			}
+		}
+	}
+	if raw.ID == drama.ID {
+		drama = mergeNativeDrama(drama, nativeNormalize(raw))
+	}
+	return drama, ctx.Err()
+}

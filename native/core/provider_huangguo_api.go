@@ -148,3 +148,84 @@ func huangguoRankingMetric(row map[string]any) string {
 	}
 	return label + " " + strconv.FormatFloat(value, 'f', -1, 64)
 }
+
+type huangguoAIProvider struct{ d *Downloader }
+
+var huangguoAIDescriptor = SourceDescriptor{
+	ID:          sourceHuangguoAI,
+	Name:        "黄果 AI",
+	Description: "AI 短剧",
+	Aliases:     []string{"huangguo", "huangguoai.com"},
+	MatchesHost: func(host string) bool { return host == "huangguoai.com" || isHuangguoAIMirrorHost(host) },
+	BaseURL:     huangguoAIBaseURL,
+	ValidCategory: func(category string) bool {
+		for _, entry := range nativeAICategories {
+			if category == entry.ID {
+				return true
+			}
+		}
+		return false
+	},
+	Rankings: []rankingBoard{
+		{ID: "huangguo-hot", Source: sourceHuangguoAI, Name: "热播榜", Description: "黄果站点热播 TOP 20；每日更新。", path: "hot"},
+		{ID: "huangguo-recommend", Source: sourceHuangguoAI, Name: "推荐榜", Description: "黄果站点推荐 TOP 20。", path: "recommend"},
+		{ID: "huangguo-potential", Source: sourceHuangguoAI, Name: "潜力榜", Description: "黄果站点潜力 TOP 20。", path: "potential"},
+	},
+}
+
+func init() {
+	Register(huangguoAIDescriptor, func(d *Downloader) Provider { return &huangguoAIProvider{d: d} })
+}
+
+func (p *huangguoAIProvider) Descriptor() SourceDescriptor { return huangguoAIDescriptor }
+
+func (p *huangguoAIProvider) BaseURL() string {
+	return firstNonEmpty(p.d.cfg.HuangguoAIURL, huangguoAIBaseURL)
+}
+
+func (p *huangguoAIProvider) Categories(context.Context, bool) ([]nativeCategory, error) {
+	return append([]nativeCategory(nil), nativeAICategories...), nil
+}
+
+func (p *huangguoAIProvider) CatalogPage(ctx context.Context, page int, category string) ([]Drama, bool, error) {
+	return p.d.fetchHuangguoAICatalogPage(ctx, page, category)
+}
+
+func (p *huangguoAIProvider) Search(ctx context.Context, page int, query string) ([]Drama, bool, error) {
+	return p.d.searchHuangguoAI(ctx, page, query)
+}
+
+func (p *huangguoAIProvider) Detail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
+	return p.d.fetchHuangguoAIDetail(ctx, sourceID)
+}
+
+func (p *huangguoAIProvider) ResolveMedia(ctx context.Context, task Task) (providerMedia, error) {
+	chapter := task.Chapter
+	_, sourceID, valid := splitProviderDramaID(task.DramaID)
+	if !valid {
+		return providerMedia{}, fmt.Errorf("黄果剧集信息无效")
+	}
+	address, err := p.d.fetchHuangguoAIPlayURL(ctx, sourceID, chapterEpisodeNumber(chapter, task.Index))
+	if err != nil {
+		return providerMedia{}, err
+	}
+	media := providerMedia{URL: address, Referer: firstNonEmpty(chapter.Referer, p.d.providerBaseURL(sourceHuangguoAI)+"/")}
+	return p.d.finishProviderMedia(ctx, media, sourceHuangguoAI)
+}
+
+func (p *huangguoAIProvider) RankingPage(ctx context.Context, board rankingBoard, page int) (rankingPage, error) {
+	if page != 1 {
+		return rankingPage{}, errors.New("该榜单只有一页")
+	}
+	var ranking struct {
+		Items []map[string]any `json:"items"`
+	}
+	if err := p.d.huangguoAIAPI(ctx, "/api/ranks/"+board.path, &ranking); err != nil {
+		return rankingPage{}, err
+	}
+	result, err := parseHuangguoRanking(ranking.Items, p.d.providerBaseURL(sourceHuangguoAI)+"/")
+	if err != nil {
+		return rankingPage{}, fmt.Errorf("%s: %w", board.Name, err)
+	}
+	return result, nil
+}

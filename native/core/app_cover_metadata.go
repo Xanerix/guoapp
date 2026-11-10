@@ -17,6 +17,9 @@ func (d *Downloader) nativeCoverAddress(ctx context.Context, drama nativeDrama) 
 		return "", errors.New("无效的剧集 ID")
 	}
 	if p, ok := d.provider(source); ok {
+		if resolver, ok := p.(CoverResolver); ok {
+			return resolver.CoverAddress(ctx, drama, id)
+		}
 		fresh, _, err := p.Detail(ctx, id)
 		return nativeNormalize(fresh).Cover, err
 	}
@@ -34,51 +37,6 @@ func (d *Downloader) nativeCoverAddress(ctx context.Context, drama nativeDrama) 
 			return "", errors.New("红果详情与请求剧集不符")
 		}
 		return hongguoCoverAddress(mapString(row, "series_cover", "cover")), nil
-	case sourceHuangdou:
-		row, err := d.huangdouDetail(ctx, id)
-		if err != nil {
-			return "", err
-		}
-		fresh := nativeNormalize(huangdouDramaFromMap(row))
-		if fresh.ID != drama.ID {
-			return "", errors.New("黄豆详情与请求剧集不符")
-		}
-		return fresh.Cover, nil
-	case sourceCloudFront:
-		if !rankingSourceID.MatchString(id) {
-			return "", errors.New("无效的黄果剧集 ID")
-		}
-		var raw Drama
-		if err := d.fetchAPI(ctx, "/api/app/playlet/detail/"+url.PathEscape(id), nil, &raw); err != nil {
-			return "", err
-		}
-		if raw.ID != "" && raw.ID != id && raw.ID != drama.ID {
-			return "", errors.New("黄果详情与请求剧集不符")
-		}
-		for _, value := range []any{raw.Cover, raw.CoverURL, raw.CoverURLSnake, raw.Image, raw.ImageURL, raw.ImageURLSnake, raw.Img, raw.Pic, raw.Picture, raw.Poster, raw.Thumb, raw.Thumbnail} {
-			if address := legacyCoverURL(value); address != "" {
-				return address, nil
-			}
-		}
-		return "", errors.New("详情暂未返回海报地址")
-	case sourceHuangguoAI:
-		fresh, _, err := d.fetchHuangguoAIDetail(ctx, id)
-		return nativeNormalize(fresh).Cover, err
-	case sourceHuangguoVideo:
-		parts := strings.Split(id, "/")
-		if len(parts) == 1 {
-			parts = []string{"series", id}
-		}
-		if len(parts) != 2 || (parts[0] != "series" && parts[0] != "video") || !rankingSourceID.MatchString(parts[1]) {
-			return "", errors.New("无效的黄果剧集 ID")
-		}
-		pageURL := d.providerBaseURL(source) + "/" + parts[0] + "/" + url.PathEscape(parts[1])
-		body, err := d.fetchProviderText(ctx, pageURL, d.providerBaseURL(source)+"/")
-		if err != nil {
-			return "", err
-		}
-		fresh, err := parseHuangguoSortDetail(body, pageURL, Drama{ID: drama.ID, Source: source, SourceID: id})
-		return nativeNormalize(fresh).Cover, err
 	}
 	return "", errors.New("该站源暂无封面补齐接口")
 }

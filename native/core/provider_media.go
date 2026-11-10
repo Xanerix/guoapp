@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -33,12 +32,6 @@ func (d *Downloader) providerBaseURL(source string) string {
 	}
 	var configured, fallback string
 	switch source {
-	case sourceHuangguoAI:
-		configured, fallback = d.cfg.HuangguoAIURL, huangguoAIBaseURL
-	case sourceHuangguoVideo:
-		configured, fallback = d.cfg.HuangguoVideoURL, huangguoVideoBaseURL
-	case sourceHuangdou:
-		configured, fallback = d.cfg.HuangdouURL, huangdouBaseURL
 	case sourceHongguo:
 		configured, fallback = d.cfg.HongguoURL, hongguoBaseURL
 	default:
@@ -57,12 +50,6 @@ func providerSourceForURL(raw string) string {
 		return id
 	}
 	switch {
-	case host == "huangguoai.com" || isHuangguoAIMirrorHost(host):
-		return sourceHuangguoAI
-	case host == "huangguo.video":
-		return sourceHuangguoVideo
-	case isHuangdouHost(host):
-		return sourceHuangdou
 	case host == "hongguoduanju.com" || host == "www.hongguoduanju.com":
 		return sourceHongguo
 	default:
@@ -117,74 +104,16 @@ func (d *Downloader) resolveProviderMedia(ctx context.Context, task Task) (provi
 	if p, ok := d.provider(chapter.Source); ok {
 		return p.ResolveMedia(ctx, task)
 	}
-	if chapter.Source == sourceCloudFront {
-		return d.resolveLegacyMedia(ctx, task)
-	}
 	if strings.HasPrefix(chapter.VideoURL, "hongguo-cenc://") {
 		return d.resolveHongguoMedia(ctx, task)
 	}
-	if chapter.PageURL == "" && chapter.Source == sourceHuangguoVideo {
-		if source, sourceID, valid := splitProviderDramaID(task.DramaID); valid {
-			_, chapters, err := d.GetHuangguoChapters(ctx, source, sourceID)
-			if err != nil {
-				return providerMedia{}, fmt.Errorf("刷新旧任务播放地址失败: %w", err)
-			}
-			matched := false
-			for _, fresh := range chapters {
-				if fresh.ID == chapter.ID {
-					chapter = fresh
-					matched = true
-					break
-				}
-			}
-			if !matched {
-				return providerMedia{}, fmt.Errorf("原章节已变化，请更新该合集后重新下载")
-			}
-		}
-	}
 	media := providerMedia{URL: chapter.VideoURL, Referer: firstNonEmpty(chapter.Referer, d.providerBaseURL(chapter.Source)+"/")}
-	if chapter.Source == sourceHuangdou {
-		_, sourceID, valid := splitProviderDramaID(task.DramaID)
-		if valid {
-			sequence, err := strconv.Atoi(chapter.EpisodeString(task.Index))
-			if err != nil || sequence < 1 {
-				return providerMedia{}, fmt.Errorf("黄豆集数无效")
-			}
-			client := newHuangdouAPIClient(d)
-			media, err = d.resolveHuangdouPlayback(ctx, client, sourceID, sequence)
-			if err != nil {
-				return providerMedia{}, err
-			}
-			media.Referer = client.host + "/home"
-		}
-	}
-	if chapter.Source == sourceHuangguoAI {
-		_, sourceID, valid := splitProviderDramaID(task.DramaID)
-		if !valid {
-			return providerMedia{}, fmt.Errorf("黄果剧集信息无效")
-		}
-		address, err := d.fetchHuangguoAIPlayURL(ctx, sourceID, chapterEpisodeNumber(chapter, task.Index))
-		if err != nil {
-			return providerMedia{}, err
-		}
-		media.URL = address
-	}
-	if chapter.PageURL != "" && chapter.Source == sourceHuangguoVideo {
-		responses := &playbackResponseURLs{}
-		pageContext := context.WithValue(ctx, playbackResponseURLsKey{}, responses)
-		body, err := d.fetchProviderText(pageContext, chapter.PageURL, media.Referer)
-		if err != nil {
-			return providerMedia{}, err
-		}
-		pageURL := chapter.PageURL
-		if actual, ok := responses.values.Load(chapter.PageURL); ok {
-			pageURL = actual.(string)
-		}
-		media.URL = parseDataHLS(body, pageURL)
-		media.Referer = pageURL
-	}
+	return d.finishProviderMedia(ctx, media, chapter.Source)
+}
+
+func (d *Downloader) finishProviderMedia(ctx context.Context, media providerMedia, source string) (providerMedia, error) {
 	if !isProviderHTTPMediaURL(media.URL) {
-		return providerMedia{}, fmt.Errorf("%s 未返回有效播放地址，请刷新章节或确认站点访问权限", chapter.Source)
+		return providerMedia{}, fmt.Errorf("%s 未返回有效播放地址，请刷新章节或确认站点访问权限", source)
 	}
 	parsed, _ := url.Parse(media.URL)
 	if strings.HasSuffix(strings.ToLower(parsed.Path), ".m3u8") {

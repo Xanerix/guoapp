@@ -4,13 +4,15 @@ import (
 	"context"
 	"errors"
 	"net/url"
-	"strings"
 	"time"
 )
 
-func nativeNeedsExtraMetadata(drama nativeDrama) bool {
-	return drama.Source == sourceHongguo && (drama.OnlineDate == "" || drama.Score == "") ||
-		drama.Source == sourceHuangdou && (drama.Heat == "" || drama.VIP == nil)
+func (engine *nativeEngine) nativeNeedsExtraMetadata(drama nativeDrama) bool {
+	if p, ok := engine.downloader.provider(drama.Source); ok {
+		enricher, ok := p.(MetadataEnricher)
+		return ok && enricher.NeedsExtraMetadata(drama)
+	}
+	return drama.Source == sourceHongguo && (drama.OnlineDate == "" || drama.Score == "")
 }
 
 func (engine *nativeEngine) nativeExtraMetadata(ctx context.Context, drama nativeDrama) (nativeDrama, error) {
@@ -18,11 +20,14 @@ func (engine *nativeEngine) nativeExtraMetadata(ctx context.Context, drama nativ
 	if !valid {
 		return drama, errors.New("剧集信息无效")
 	}
-	if !nativeNeedsExtraMetadata(drama) {
+	if !engine.nativeNeedsExtraMetadata(drama) {
 		return drama, nil
 	}
 	ctx, cancel := context.WithTimeout(context.WithValue(ctx, backgroundCatalogKey{}, true), 15*time.Second)
 	defer cancel()
+	if p, ok := engine.downloader.provider(source); ok {
+		return p.(MetadataEnricher).ExtraMetadata(ctx, drama, id)
+	}
 	var raw Drama
 	switch source {
 	case sourceHongguo:
@@ -37,27 +42,6 @@ func (engine *nativeEngine) nativeExtraMetadata(ctx context.Context, drama nativ
 			raw, err = parseHongguoSortDetail(body, id)
 			if err != nil {
 				return drama, err
-			}
-		}
-	case sourceHuangdou:
-		row, err := engine.downloader.huangdouDetail(ctx, id)
-		if err != nil {
-			return drama, err
-		}
-		raw = huangdouDramaFromMap(row)
-		if raw.Heat == "" && drama.Heat == "" {
-			var decoded any
-			err = newHuangdouAPIClient(engine.downloader).call(ctx, "/drama/list", map[string]any{
-				"keywords": firstNonEmpty(raw.Title, drama.Title), "page": "1", "page_size": "50",
-			}, &decoded)
-			if err != nil {
-				return drama, err
-			}
-			for _, candidate := range huangdouList(decoded) {
-				if strings.TrimPrefix(mapString(candidate, "id", "drama_id"), "rp_") == id {
-					raw = mergeDramaMetadata(huangdouDramaFromMap(candidate), raw)
-					break
-				}
 			}
 		}
 	}

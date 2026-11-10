@@ -5,9 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -409,7 +407,7 @@ func nativeDispatch(input nativeInput) (any, error) {
 		return engine.downloader.soraniAccount(ctx, input.Command, input.Account)
 	case "rankingBoards":
 		boards := []rankingBoard{}
-		for _, board := range rankingBoards {
+		for _, board := range allRankingBoards() {
 			if nativeSourceAvailable(board.Source) {
 				boards = append(boards, board)
 			}
@@ -552,17 +550,6 @@ func (engine *nativeEngine) nativeCatalog(ctx context.Context, input nativeInput
 		result.Warning, result.HasMore = entry.Warning, entry.HasMore
 		return result, nil
 	}
-	if query != "" && source == sourceHuangguoAI {
-		items, more, err := d.searchHuangguoAI(ctx, page, query)
-		if err != nil {
-			return result, err
-		}
-		for _, drama := range items {
-			result.Items = append(result.Items, nativeNormalize(drama))
-		}
-		result.HasMore = more
-		return result, nil
-	}
 	if query != "" {
 		engine.mu.Lock()
 		items := append([]nativeDrama{}, engine.catalogs[source]...)
@@ -623,34 +610,6 @@ func (engine *nativeEngine) nativeCatalog(ctx context.Context, input nativeInput
 			items, totalPages, err = d.fetchHongguoCategoryPage(ctx, "real-drama?page="+strconv.Itoa(page), "真人剧")
 			result.HasMore = page < totalPages
 		}
-	case sourceHuangdou:
-		client := newHuangdouAPIClient(d)
-		var decoded any
-		err = client.call(ctx, "/drama/list", map[string]any{"page": strconv.Itoa(page), "page_size": "30"}, &decoded)
-		if err == nil {
-			rows := huangdouList(decoded)
-			for _, row := range rows {
-				if drama := huangdouDramaFromMap(row); drama.ID != "" {
-					items = append(items, drama)
-				}
-			}
-			result.HasMore = len(rows) >= 30
-		}
-	case sourceHuangguoAI:
-		items, result.HasMore, err = d.fetchHuangguoAICatalogPage(ctx, page, category)
-	case sourceHuangguoVideo:
-		address := fmt.Sprintf("%s/videos?page=%d", d.providerBaseURL(source), page)
-		if category != "" {
-			address += "&category=" + url.QueryEscape(category)
-		}
-		var body string
-		body, err = d.fetchProviderText(ctx, address, d.providerBaseURL(source)+"/")
-		if err == nil {
-			items = parseHuangguoVideoCards(body, address)
-		}
-		result.HasMore = len(items) >= 20
-	case sourceCloudFront:
-		items, result.HasMore, err = d.fetchLegacyCatalogCategoryPage(ctx, page, category)
 	}
 	if err != nil && len(items) == 0 {
 		return result, err
@@ -687,16 +646,7 @@ func (engine *nativeEngine) nativeDetail(ctx context.Context, drama nativeDrama)
 		raw, chapters, err = p.Detail(ctx, sourceID)
 		keepDetailEpisodes = p.Descriptor().KeepDetailEpisodes
 	} else {
-		switch source {
-		case sourceHuangguoAI:
-			raw, chapters, err = engine.downloader.fetchHuangguoAIDetail(ctx, sourceID)
-		case sourceHuangguoVideo:
-			raw, chapters, err = engine.downloader.fetchHuangguoVideoDetail(ctx, sourceID)
-		case sourceCloudFront:
-			raw, chapters, err = engine.downloader.fetchLegacyDetail(ctx, sourceID)
-		default:
-			title, chapters, err = engine.downloader.GetHuangguoChapters(ctx, source, sourceID)
-		}
+		title, chapters, err = engine.downloader.GetHuangguoChapters(ctx, source, sourceID)
 	}
 	if err != nil {
 		return nil, err
@@ -713,14 +663,6 @@ func (engine *nativeEngine) nativeDetail(ctx context.Context, drama nativeDrama)
 	if source == sourceHongguo {
 		raw := engine.downloader.hongguoCachedDrama(Drama{ID: drama.ID, Title: drama.Title, Source: source})
 		drama = mergeNativeDrama(drama, nativeNormalize(raw))
-	}
-	if source == sourceHuangdou {
-		if row, err := engine.downloader.huangdouDetail(ctx, sourceID); err == nil {
-			fresh := nativeNormalize(huangdouDramaFromMap(row))
-			if fresh.ID == drama.ID {
-				drama = mergeNativeDrama(drama, fresh)
-			}
-		}
 	}
 	drama.Source, drama.SourceID, drama.Episodes = source, sourceID, len(chapters)
 	if keepDetailEpisodes {

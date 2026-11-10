@@ -18,7 +18,7 @@ func rankingMergedFixture(board rankingBoard, page int, rows []map[string]any) s
 }
 
 func TestHongguoRankingMergeLoaderFormatsPreserveMetadata(t *testing.T) {
-	for _, board := range rankingBoards {
+	for _, board := range allRankingBoards() {
 		if board.Source != sourceHongguo {
 			continue
 		}

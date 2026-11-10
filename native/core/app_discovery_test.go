@@ -44,7 +44,7 @@ func TestNativeCategoryAliasesAndDetailPersistence(t *testing.T) {
 }
 
 func TestNativeRankingPermissionsAndPersistentCache(t *testing.T) {
-	for _, board := range rankingBoards {
+	for _, board := range allRankingBoards() {
 		err := nativeAuthorizeInput(nativeInput{Action: "rankings", Board: board.ID, Source: sourceHongguo})
 		if (err == nil) != nativeSourceAvailable(board.Source) {
 			t.Fatal("ranking permission trusts the caller source", board.ID)

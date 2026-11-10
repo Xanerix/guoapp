@@ -8,7 +8,6 @@ import (
 	"html"
 	"net/url"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 )
@@ -51,17 +50,6 @@ func validNativeCategory(source, category string) bool {
 			}
 		}
 		return hongguoTagPattern.MatchString(category)
-	case sourceHuangguoAI:
-		for _, entry := range nativeAICategories {
-			if category == entry.ID {
-				return true
-			}
-		}
-	case sourceHuangguoVideo:
-		id, err := strconv.Atoi(category)
-		return err == nil && id > 0
-	case sourceCloudFront:
-		return strings.TrimSpace(category) == category
 	}
 	return false
 }
@@ -75,10 +63,6 @@ func (engine *nativeEngine) nativeCategories(ctx context.Context, source string,
 			all = append(all, nativeCategory{ID: genre.key, Name: genre.name})
 		}
 		return engine.hongguoCategories(ctx, all, force), nil
-	case sourceHuangguoAI:
-		return append(all, nativeAICategories...), nil
-	case sourceHuangdou:
-		return all, nil
 	}
 	engine.mu.Lock()
 	cached := append([]nativeCategory{}, engine.categoryOptions[source]...)
@@ -87,33 +71,14 @@ func (engine *nativeEngine) nativeCategories(ctx context.Context, source string,
 		return cached, nil
 	}
 	d := engine.downloader
-	var err error
-	if p, ok := d.provider(source); ok {
-		var categories []nativeCategory
-		categories, err = p.Categories(ctx, force)
-		if err == nil {
-			all = append(all, categories...)
-		}
-	} else {
-		switch source {
-		case sourceCloudFront:
-			var tabs legacyTabList
-			err = d.fetchAPI(ctx, "/api/app/playlet-tab/all", nil, &tabs)
-			for _, tab := range tabs {
-				if validNativeCategory(source, tab.ID) && tab.ID != "" && tab.Name != "" {
-					all = append(all, nativeCategory{ID: tab.ID, Name: tab.Name})
-				}
-			}
-		case sourceHuangguoVideo:
-			address := d.providerBaseURL(source) + "/videos"
-			var body string
-			body, err = d.fetchProviderText(ctx, address, d.providerBaseURL(source)+"/")
-			if err == nil {
-				all = append(all, parseHuangguoVideoCategories(body)...)
-			}
-		default:
-			return nil, errors.New("请选择有效站源")
-		}
+	p, ok := d.provider(source)
+	if !ok {
+		return nil, errors.New("请选择有效站源")
+	}
+	categories, err := p.Categories(ctx, force)
+	all = append(all, categories...)
+	if errors.Is(err, errCategoriesIncomplete) {
+		return all, nil
 	}
 	if err != nil {
 		return nil, err

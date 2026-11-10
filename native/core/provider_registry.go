@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 )
@@ -12,11 +13,13 @@ type SourceDescriptor struct {
 	Description        string
 	Aliases            []string
 	HostSuffixes       []string
+	MatchesHost        func(host string) bool
 	BaseURL            string
 	AllowEmptyCatalog  bool
 	NoHostRotation     bool
 	KeepDetailEpisodes bool
 	ValidCategory      func(category string) bool
+	Rankings           []rankingBoard
 }
 
 type Provider interface {
@@ -35,6 +38,25 @@ type Searcher interface {
 	Search(ctx context.Context, page int, query string) ([]Drama, bool, error)
 }
 
+type Ranker interface {
+	RankingPage(ctx context.Context, board rankingBoard, page int) (rankingPage, error)
+}
+
+type CoverResolver interface {
+	CoverAddress(ctx context.Context, drama nativeDrama, sourceID string) (string, error)
+}
+
+type CoverRefererProvider interface {
+	CoverReferer(address string) string
+}
+
+type MetadataEnricher interface {
+	NeedsExtraMetadata(drama nativeDrama) bool
+	ExtraMetadata(ctx context.Context, drama nativeDrama, sourceID string) (nativeDrama, error)
+}
+
+var errCategoriesIncomplete = errors.New("categories incomplete")
+
 type ProviderFactory func(d *Downloader) Provider
 
 var providerRegistry = struct {
@@ -42,6 +64,7 @@ var providerRegistry = struct {
 	factories   map[string]ProviderFactory
 	descriptors map[string]SourceDescriptor
 	aliases     map[string]string
+	order       []string
 }{factories: map[string]ProviderFactory{}, descriptors: map[string]SourceDescriptor{}, aliases: map[string]string{}}
 
 func Register(descriptor SourceDescriptor, factory ProviderFactory) {
@@ -57,6 +80,7 @@ func Register(descriptor SourceDescriptor, factory ProviderFactory) {
 	}
 	providerRegistry.factories[id] = factory
 	providerRegistry.descriptors[id] = descriptor
+	providerRegistry.order = append(providerRegistry.order, id)
 	providerRegistry.aliases[id] = id
 	for _, alias := range descriptor.Aliases {
 		providerRegistry.aliases[strings.ToLower(strings.TrimSpace(alias))] = id
@@ -76,8 +100,21 @@ func registeredSource(alias string) (string, bool) {
 				return id, true
 			}
 		}
+		if descriptor.MatchesHost != nil && descriptor.MatchesHost(alias) {
+			return id, true
+		}
 	}
 	return "", false
+}
+
+func registeredDescriptors() []SourceDescriptor {
+	providerRegistry.RLock()
+	defer providerRegistry.RUnlock()
+	out := make([]SourceDescriptor, 0, len(providerRegistry.order))
+	for _, id := range providerRegistry.order {
+		out = append(out, providerRegistry.descriptors[id])
+	}
+	return out
 }
 
 func registeredDescriptor(source string) (SourceDescriptor, bool) {

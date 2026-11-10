@@ -157,3 +157,71 @@ func (d *Downloader) resolveLegacyMedia(ctx context.Context, task Task) (provide
 	}
 	return providerMedia{}, errors.New("黄果旧 API 的播放会话已失效，请稍后重试")
 }
+
+type legacyProvider struct{ d *Downloader }
+
+var legacyDescriptor = SourceDescriptor{
+	ID:            sourceCloudFront,
+	Name:          "黄果旧版",
+	Description:   "旧 API 剧库",
+	BaseURL:       "https://d2pypzndaqisk.cloudfront.net",
+	ValidCategory: func(category string) bool { return strings.TrimSpace(category) == category },
+}
+
+func init() {
+	Register(legacyDescriptor, func(d *Downloader) Provider { return &legacyProvider{d: d} })
+}
+
+func (p *legacyProvider) Descriptor() SourceDescriptor { return legacyDescriptor }
+
+func (p *legacyProvider) Categories(ctx context.Context, force bool) ([]nativeCategory, error) {
+	var tabs legacyTabList
+	if err := p.d.fetchAPI(ctx, "/api/app/playlet-tab/all", nil, &tabs); err != nil {
+		return nil, err
+	}
+	var categories []nativeCategory
+	for _, tab := range tabs {
+		if validNativeCategory(sourceCloudFront, tab.ID) && tab.ID != "" && tab.Name != "" {
+			categories = append(categories, nativeCategory{ID: tab.ID, Name: tab.Name})
+		}
+	}
+	return categories, nil
+}
+
+func (p *legacyProvider) CatalogPage(ctx context.Context, page int, category string) ([]Drama, bool, error) {
+	return p.d.fetchLegacyCatalogCategoryPage(ctx, page, category)
+}
+
+func (p *legacyProvider) Detail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
+	return p.d.fetchLegacyDetail(ctx, sourceID)
+}
+
+func (p *legacyProvider) ResolveMedia(ctx context.Context, task Task) (providerMedia, error) {
+	return p.d.resolveLegacyMedia(ctx, task)
+}
+
+func (p *legacyProvider) CoverAddress(ctx context.Context, drama nativeDrama, id string) (string, error) {
+	if !rankingSourceID.MatchString(id) {
+		return "", errors.New("无效的黄果剧集 ID")
+	}
+	var raw Drama
+	if err := p.d.fetchAPI(ctx, "/api/app/playlet/detail/"+url.PathEscape(id), nil, &raw); err != nil {
+		return "", err
+	}
+	if raw.ID != "" && raw.ID != id && raw.ID != drama.ID {
+		return "", errors.New("黄果详情与请求剧集不符")
+	}
+	for _, value := range []any{raw.Cover, raw.CoverURL, raw.CoverURLSnake, raw.Image, raw.ImageURL, raw.ImageURLSnake, raw.Img, raw.Pic, raw.Picture, raw.Poster, raw.Thumb, raw.Thumbnail} {
+		if address := legacyCoverURL(value); address != "" {
+			return address, nil
+		}
+	}
+	return "", errors.New("详情暂未返回海报地址")
+}
+
+func (p *legacyProvider) CoverReferer(address string) string {
+	if parsed, err := url.Parse(address); err == nil && (strings.HasSuffix(strings.ToLower(parsed.Hostname()), ".zdmhyg.cn") || strings.EqualFold(parsed.Hostname(), "pic.tuafjz.cn")) {
+		return p.d.providerBaseURL(sourceHuangguoAI) + "/"
+	}
+	return p.d.providerBaseURL(sourceCloudFront) + "/"
+}
