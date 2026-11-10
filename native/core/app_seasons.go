@@ -266,8 +266,10 @@ func (engine *nativeEngine) hongguoSeasonGroup(ctx context.Context, sourceID str
 	return entry.AlbumID, entry.SeasonIndex, entry.Drama, true
 }
 
-// officialSeasons 用官方季字段聚合：只有 related_album_id 相同的剧才算同一部剧，
-// 季号取官方 season_index。返回 ok=false 表示当前剧拿不到官方字段，需要回退启发式。
+// officialSeasons 用官方季字段聚合：同 related_album_id 一定并入，季号取官方 season_index。
+// 官方偶尔把一部剧拆成多个系列组（如「持械入宋」的第二、五季），
+// 这时只要标题严格同类、日期或集数也说得通，就并入同一部剧。
+// 返回 ok=false 表示当前剧拿不到官方字段，需要回退启发式。
 func (engine *nativeEngine) officialSeasons(
 	ctx context.Context,
 	dramas []Drama,
@@ -285,6 +287,13 @@ func (engine *nativeEngine) officialSeasons(
 	if current.Episodes == 0 {
 		current.Episodes = nativeNormalize(detail).Episodes
 	}
+	base, _, unit := hongguoSeasonLookup(current.Title)
+	titleKey := hongguoSearchText(base)
+	type entry struct {
+		drama     nativeDrama
+		sameAlbum bool
+	}
+	byNumber := map[int]entry{currentNumber: {drama: current, sameAlbum: true}}
 	seen := map[string]bool{current.SourceID: true}
 	var candidates []Drama
 	for _, drama := range dramas {
@@ -297,7 +306,6 @@ func (engine *nativeEngine) officialSeasons(
 		seen[drama.SourceID] = true
 		candidates = append(candidates, drama)
 	}
-	byNumber := map[int]nativeDrama{currentNumber: current}
 	var mu sync.Mutex
 	jobs := make(chan Drama)
 	var group sync.WaitGroup
@@ -311,12 +319,22 @@ func (engine *nativeEngine) officialSeasons(
 				itemCtx, cancel := context.WithTimeout(laneCtx, hongguoSeasonGroupTimeout)
 				itemAlbum, number, _, found := resolve(itemCtx, drama.SourceID)
 				cancel()
-				if !found || itemAlbum != album || number < 1 || number > hongguoSearchSeasonLimit {
+				if !found || number < 1 || number > hongguoSearchSeasonLimit {
 					continue
 				}
+				sameAlbum := itemAlbum == album
+				if !sameAlbum {
+					// 跨组只在标题严格同类时考虑，避免同名不同剧被并进来。
+					itemBase, _, itemUnit := hongguoSeasonLookup(drama.DisplayTitle())
+					if titleKey == "" || itemUnit != unit || hongguoSearchText(itemBase) != titleKey {
+						continue
+					}
+				}
 				mu.Lock()
-				if _, exists := byNumber[number]; !exists {
-					byNumber[number] = nativeNormalize(drama)
+				if number != currentNumber {
+					if existing, exists := byNumber[number]; !exists || !existing.sameAlbum && sameAlbum {
+						byNumber[number] = entry{drama: nativeNormalize(drama), sameAlbum: sameAlbum}
+					}
 				}
 				mu.Unlock()
 			}
@@ -332,16 +350,31 @@ func (engine *nativeEngine) officialSeasons(
 		numbers = append(numbers, number)
 	}
 	sort.Ints(numbers)
+	// 跨组并入的季要用日期单调性 / 集数规模兜底，拒绝同名不同剧。
+	var latest time.Time
 	items := make([]nativeSeason, 0, len(numbers))
 	for _, number := range numbers {
-		drama := byNumber[number]
+		item := byNumber[number]
+		date, dated := hongguoSeasonDate(item.drama.OnlineDate)
+		if number != currentNumber && !item.sameAlbum {
+			if dated {
+				if !latest.IsZero() && date.Add(hongguoSeasonDateTolerance).Before(latest) {
+					continue
+				}
+			} else if !hongguoSeasonEpisodesPlausible(current.Episodes, item.drama.Episodes) {
+				continue
+			}
+		}
+		if dated && date.After(latest) {
+			latest = date
+		}
 		items = append(items, nativeSeason{
 			Number:   number,
-			Unit:     "季",
-			Title:    strings.TrimSpace(drama.Title),
-			Episodes: drama.Episodes,
+			Unit:     firstNonEmpty(unit, "季"),
+			Title:    strings.TrimSpace(item.drama.Title),
+			Episodes: item.drama.Episodes,
 			Current:  number == currentNumber,
-			Drama:    drama,
+			Drama:    item.drama,
 		})
 	}
 	return items, true

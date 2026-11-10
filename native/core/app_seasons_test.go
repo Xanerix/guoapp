@@ -268,16 +268,88 @@ func TestOfficialSeasonsGroupsSameAlbumBySeasonIndex(t *testing.T) {
 	if !ok {
 		t.Fatal("official group should be available")
 	}
-	if len(items) != 3 {
+	// 2999（另一组、第2季）标题同类且集数可信，允许补进缺的第 2 季。
+	if len(items) != 4 {
 		t.Fatalf("seasons = %+v", items)
 	}
-	for index, want := range []int{1, 3, 4} {
+	for index, want := range []int{1, 2, 3, 4} {
 		if items[index].Number != want {
 			t.Fatalf("season %d number = %d", index, items[index].Number)
 		}
 	}
-	if !items[1].Current || items[0].Current || items[2].Current {
+	if items[1].Drama.SourceID != "2999" {
+		t.Fatalf("season 2 should come from the other album: %+v", items[1])
+	}
+	if !items[2].Current || items[0].Current || items[1].Current || items[3].Current {
 		t.Fatalf("current season marker = %+v", items)
+	}
+}
+
+func TestOfficialSeasonsMergesSplitAlbums(t *testing.T) {
+	// 实测：「持械入宋」被官方拆成两个系列组，第二、五季在另一组，但仍是同一部剧。
+	engine, err := newNativeEngine(t.TempDir(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	current := nativeNormalize(seasonDramaOn("1", "合成剧第一季", "2026-08-09", 100))
+	details := map[string]struct {
+		album  string
+		number int
+		drama  Drama
+	}{
+		"1": {"A", 1, seasonDramaOn("1", "合成剧第一季", "2026-08-09", 100)},
+		"2": {"B", 2, seasonDramaOn("2", "合成剧第二季", "2026-08-19", 143)},
+		"3": {"A", 3, seasonDramaOn("3", "合成剧第三季", "2026-08-27", 100)},
+		"5": {"B", 5, seasonDramaOn("5", "合成剧第五季", "2026-10-05", 214)},
+	}
+	resolve := func(_ context.Context, sourceID string) (string, int, Drama, bool) {
+		item, ok := details[sourceID]
+		return item.album, item.number, item.drama, ok
+	}
+	items, ok := engine.officialSeasons(context.Background(), []Drama{
+		seasonDramaOn("3", "合成剧第三季", "2026-08-27", 100),
+		seasonDramaOn("2", "合成剧第二季", "2026-08-19", 143),
+		seasonDramaOn("5", "合成剧第五季", "2026-10-05", 214),
+	}, current, resolve)
+	if !ok {
+		t.Fatal("official group should be available")
+	}
+	var numbers []int
+	for _, item := range items {
+		numbers = append(numbers, item.Number)
+	}
+	if len(numbers) != 4 || numbers[0] != 1 || numbers[1] != 2 || numbers[2] != 3 || numbers[3] != 5 {
+		t.Fatalf("seasons = %v, want [1 2 3 5]", numbers)
+	}
+}
+
+func TestOfficialSeasonsRejectsCrossAlbumOutOfOrder(t *testing.T) {
+	// 实测：「家有五女」第二季(11-05) 与第三季(09-16) 分属不同系列组，日期倒挂应剔除。
+	engine, err := newNativeEngine(t.TempDir(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	current := nativeNormalize(seasonDramaOn("2", "合成剧第二季", "2026-11-05", 812))
+	details := map[string]struct {
+		album  string
+		number int
+		drama  Drama
+	}{
+		"2": {"B", 2, seasonDramaOn("2", "合成剧第二季", "2026-11-05", 812)},
+		"3": {"A", 3, seasonDramaOn("3", "合成剧第三季", "2026-09-16", 174)},
+	}
+	resolve := func(_ context.Context, sourceID string) (string, int, Drama, bool) {
+		item, ok := details[sourceID]
+		return item.album, item.number, item.drama, ok
+	}
+	items, ok := engine.officialSeasons(context.Background(), []Drama{
+		seasonDramaOn("3", "合成剧第三季", "2026-09-16", 174),
+	}, current, resolve)
+	if !ok {
+		t.Fatal("official group should be available")
+	}
+	if len(items) != 1 || items[0].Number != 2 {
+		t.Fatalf("seasons = %+v, want only the opened season", items)
 	}
 }
 
