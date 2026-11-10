@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -203,8 +204,9 @@ class _DetailPageState extends State<DetailPage> {
   final _played = <Object>{};
   final _descriptionFocus = FocusNode();
   final _groupFocus = <FocusNode>[];
-  final _groupKeys = <GlobalKey>[];
+  final _groupKeys = <String, List<GlobalKey>>{};
   final _episodeFocus = List.generate(episodeGroupSize, (_) => FocusNode());
+  ScrollController? _seasonStrip;
   bool _entered = false;
 
   @override
@@ -221,6 +223,7 @@ class _DetailPageState extends State<DetailPage> {
   void dispose() {
     _handle?.dispose();
     _details?.dispose();
+    _seasonStrip?.dispose();
     for (final node in [
       _playFocus,
       _followFocus,
@@ -287,7 +290,28 @@ class _DetailPageState extends State<DetailPage> {
     // 季列表晚于剧集到达时，把它同步给已经创建的播放会话。
     final seasons = _details?.seasons ?? const <DramaSeason>[];
     if (seasons.length > 1) _handle?.session.syncSeasons(seasons);
+    _syncSeasonPage();
     _preopen();
+  }
+
+  /// 播放器自动接上下一季后，把 iOS 的季卡片条滚到对应位置。
+  void _syncSeasonPage() {
+    final strip = _seasonStrip;
+    final details = _details;
+    if (strip == null || details == null || !strip.hasClients) return;
+    final index = details.seasons.indexWhere(
+      (season) => season.drama.id == details.drama.id,
+    );
+    if (index < 0) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !strip.hasClients) return;
+      final offset = (index * 116.0).clamp(0.0, strip.position.maxScrollExtent);
+      strip.animateTo(
+        offset,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+      );
+    });
   }
 
   void _preopen() {
@@ -555,7 +579,7 @@ class _DetailPageState extends State<DetailPage> {
                       itemCount: details.groupCount,
                       separatorBuilder: (_, _) => const SizedBox(width: 8),
                       itemBuilder: (context, group) =>
-                          _groupChip(details, m, group),
+                          _groupChip(details, m, group, slot: 'list'),
                     ),
                   ),
                 ),
@@ -674,7 +698,7 @@ class _DetailPageState extends State<DetailPage> {
                     runSpacing: 8,
                     children: [
                       for (var group = 0; group < details.groupCount; group++)
-                        _groupChip(details, m, group),
+                        _groupChip(details, m, group, slot: 'wrap'),
                     ],
                   ),
                 ),
@@ -1080,6 +1104,7 @@ class _DetailPageState extends State<DetailPage> {
                           details,
                           m,
                           group,
+                          slot: 'header',
                           focusNode: _groupFocus[group],
                         ),
                     ],
@@ -1168,20 +1193,185 @@ class _DetailPageState extends State<DetailPage> {
     );
   }
 
-  Widget _seasonSelector(DramaDetails details, _Metrics m) => Wrap(
-    spacing: 8,
-    runSpacing: 8,
-    children: [
-      for (final season in details.seasons)
-        ChoiceChip(
-          label: Text(season.label),
-          selected: season.drama.id == details.drama.id,
-          visualDensity: VisualDensity.compact,
-          labelStyle: TextStyle(fontSize: m.meta),
-          onSelected: (_) => unawaited(_selectSeason(details, season)),
-        ),
-    ],
-  );
+  Widget _seasonSelector(DramaDetails details, _Metrics m) {
+    final seasons = details.seasons;
+    // iOS 上用参考稿的「系列多季」卡片条，其余平台保持一行标签。
+    if (!Platform.isIOS) {
+      return Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (final season in seasons)
+            ChoiceChip(
+              label: Text(
+                season.upcoming ? '${season.label} · 待上线' : season.label,
+              ),
+              selected: season.drama.id == details.drama.id,
+              visualDensity: VisualDensity.compact,
+              labelStyle: TextStyle(fontSize: m.meta),
+              onSelected: (_) => unawaited(_selectSeason(details, season)),
+            ),
+        ],
+      );
+    }
+    final scheme = Theme.of(context).colorScheme;
+    _seasonStrip ??= ScrollController();
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withValues(alpha: .55),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.layers_rounded, size: 16, color: scheme.primary),
+              const SizedBox(width: 6),
+              Text(
+                '系列多季',
+                style: TextStyle(
+                  fontSize: m.meta,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 2,
+                ),
+                decoration: BoxDecoration(
+                  color: scheme.primary.withValues(alpha: .16),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  '共 ${seasons.length} 季',
+                  style: TextStyle(fontSize: m.tag, color: scheme.primary),
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '左右滑动切换',
+                style: TextStyle(fontSize: m.tag, color: scheme.onSurfaceVariant),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 74,
+            child: ListView.separated(
+              controller: _seasonStrip,
+              scrollDirection: Axis.horizontal,
+              itemCount: seasons.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 8),
+              itemBuilder: (context, index) {
+                final season = seasons[index];
+                final selected = season.drama.id == details.drama.id;
+                final watched = widget.store.watched(season.drama.id);
+                final online = season.onlineLabel;
+                return GestureDetector(
+                  onTap: () => unawaited(_selectSeason(details, season)),
+                  child: Container(
+                    width: 116,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: selected ? scheme.primary : scheme.surface,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                season.label,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: m.meta,
+                                  fontWeight: FontWeight.w700,
+                                  color: selected
+                                      ? scheme.onPrimary
+                                      : scheme.onSurface,
+                                ),
+                              ),
+                            ),
+                            if (selected) ...[
+                              const SizedBox(width: 4),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 5,
+                                  vertical: 1,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: scheme.onPrimary.withValues(
+                                    alpha: .24,
+                                  ),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  '当前',
+                                  style: TextStyle(
+                                    fontSize: m.tag * .85,
+                                    color: scheme.onPrimary,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          selected
+                              ? '正在浏览'
+                              : watched != null && !watched.finished
+                              ? '看至第${watched.episode}集'
+                              : season.episodes > 0
+                              ? '共 ${season.episodes} 集'
+                              : '待上线',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: m.tag,
+                            color: selected
+                                ? scheme.onPrimary.withValues(alpha: .84)
+                                : scheme.onSurfaceVariant,
+                          ),
+                        ),
+                        if (online != null) ...[
+                          const SizedBox(height: 1),
+                          Text(
+                            online,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: m.tag * .85,
+                              color: selected
+                                  ? scheme.onPrimary.withValues(alpha: .7)
+                                  : scheme.onSurfaceVariant.withValues(
+                                      alpha: .7,
+                                    ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Future<void> _selectSeason(DramaDetails details, DramaSeason season) async {
     if (season.drama.id == details.drama.id) return;
@@ -1450,15 +1640,25 @@ class _DetailPageState extends State<DetailPage> {
     DramaDetails details,
     _Metrics m,
     int group, {
+    String slot = 'main',
     FocusNode? focusNode,
   }) => _GroupChip(
-    key: _groupKey(group),
+    // 同一分会同时出现在横向标签条和选集头部，不同位置必须用不同的 key。
+    key: _groupKey(slot, group),
     label: details.groupLabel(group),
     selected: group == details.group,
     metrics: m,
     focusNode: focusNode,
     onPressed: () => details.selectGroup(group),
   );
+
+  GlobalKey _groupKey(String slot, int group) {
+    final keys = _groupKeys.putIfAbsent(slot, () => <GlobalKey>[]);
+    while (keys.length <= group) {
+      keys.add(GlobalKey());
+    }
+    return keys[group];
+  }
 
   Widget _swipeGroups(DramaDetails details, _Metrics m) {
     return SwipeSwitch(
@@ -1469,32 +1669,28 @@ class _DetailPageState extends State<DetailPage> {
     );
   }
 
-  GlobalKey _groupKey(int group) {
-    while (_groupKeys.length <= group) {
-      _groupKeys.add(GlobalKey());
-    }
-    return _groupKeys[group];
-  }
-
   void _swipeTo(DramaDetails details, int group) {
     details.selectGroup(group);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final chip = _groupKey(group).currentContext;
-      if (chip == null || !chip.mounted) return;
-      final position = Scrollable.maybeOf(
-        chip,
-        axis: Axis.horizontal,
-      )?.position;
-      final box = chip.findRenderObject();
-      if (position == null || box == null) return;
-      unawaited(
-        position.ensureVisible(
-          box,
-          alignment: .5,
-          duration: Motion.of(chip, Motion.medium),
-          curve: Motion.standard,
-        ),
-      );
+      for (final slot in const ['header', 'list', 'wrap']) {
+        final chip = _groupKey(slot, group).currentContext;
+        if (chip == null || !chip.mounted) continue;
+        final position = Scrollable.maybeOf(
+          chip,
+          axis: Axis.horizontal,
+        )?.position;
+        final box = chip.findRenderObject();
+        if (position == null || box == null) continue;
+        unawaited(
+          position.ensureVisible(
+            box,
+            alignment: .5,
+            duration: Motion.of(chip, Motion.medium),
+            curve: Motion.standard,
+          ),
+        );
+        return;
+      }
     });
   }
 

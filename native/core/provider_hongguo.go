@@ -288,7 +288,13 @@ func hongguoDramaFromAny(v any, category string) Drama {
 	if genre == "" && len(tags) > 0 {
 		genre = tags[0]
 	}
-	return Drama{ID: providerDramaID(sourceHongguo, sourceID), Source: sourceHongguo, SourceID: sourceID, Title: title, Name: title, Desc: intro, Intro: intro, Cover: cover, CoverURL: cover, CategoryName: firstNonEmpty(genre, category), ChannelName: "红果", Remark: remark, TotalEpisode: count, EpisodeCount: count, Tags: tags, ReleaseStatus: releaseStatus, Score: mapString(vd, "score"), Views: mapString(vd, "series_play_cnt", "play_cnt"), Heat: hongguoHeat(vd), OnlineDate: hongguoOnlineDate(vd, time.Now())}
+	online := hongguoOnlineDate(vd, time.Now())
+	if online == "" {
+		// 搜索联想只带 create_time（发布时刻），没有「今日上新」这类标签，
+		// 季卡片要靠它显示每季的上线时间。
+		online = providerTimestampDate(mapString(vd, "create_time"))
+	}
+	return Drama{ID: providerDramaID(sourceHongguo, sourceID), Source: sourceHongguo, SourceID: sourceID, Title: title, Name: title, Desc: intro, Intro: intro, Cover: cover, CoverURL: cover, CategoryName: firstNonEmpty(genre, category), ChannelName: "红果", Remark: remark, TotalEpisode: count, EpisodeCount: count, Tags: tags, ReleaseStatus: releaseStatus, Score: mapString(vd, "score"), Views: mapString(vd, "series_play_cnt", "play_cnt"), Heat: hongguoHeat(vd), OnlineDate: online}
 }
 
 func nestedMap(v any, keys ...string) map[string]any {

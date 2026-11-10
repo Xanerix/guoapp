@@ -297,6 +297,26 @@ class DramaSeason {
 
   String get label => number > 0 ? '第$number$unit' : title;
 
+  /// 上线日期（yyyy-MM-dd），详情没给则为空。
+  String get onlineDate => drama.onlineDate;
+
+  /// 还没有上线：有上线日期且晚于今天，或一集都没有。
+  bool get upcoming {
+    final date = DateTime.tryParse(drama.onlineDate);
+    if (date == null) return episodes == 0;
+    final now = DateTime.now();
+    return date.isAfter(DateTime(now.year, now.month, now.day));
+  }
+
+  /// 「11-20 待上线」/「09-14 上线」，没有上线日期时为空。
+  String? get onlineLabel {
+    final date = DateTime.tryParse(drama.onlineDate);
+    if (date == null) return null;
+    final day =
+        '${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    return upcoming ? '$day 待上线' : '$day 上线';
+  }
+
   factory DramaSeason.fromJson(Map<String, dynamic> json) => DramaSeason(
     number: intValue(json['number']),
     unit: json['unit'] as String? ?? '季',

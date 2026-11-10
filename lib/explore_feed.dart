@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import 'core_bridge.dart';
+import 'cover_loader.dart';
 import 'drama_feed.dart';
 import 'local_store.dart';
 import 'models.dart';
@@ -20,6 +21,8 @@ class ExploreFeed extends ChangeNotifier {
     repository.catalogUpdates.addListener(_metadataChanged);
     _open();
   }
+  static const _posterWarmCount = 8;
+  static const _posterWarmTimeout = Duration(milliseconds: 700);
   final AppRepository repository;
   final LocalStore store;
   SourceCatalog? _catalog;
@@ -29,6 +32,13 @@ class ExploreFeed extends ChangeNotifier {
   final _feeds = <String, DramaFeed>{};
   final _rankings = <String, Map<String, int>>{};
   bool _disposed = false;
+  bool _postersReady = false;
+  bool _warmingPosters = false;
+  String? _warmKey;
+  int _warmToken = 0;
+
+  /// 当前分类首屏海报是否已取回，分类切换时用它决定何时揭幕。
+  bool get postersReady => _postersReady;
 
   SourceSite? get source => _catalog?.source;
   DramaFeed? get feed => _feed;
@@ -110,6 +120,7 @@ class ExploreFeed extends ChangeNotifier {
     final catalog = _catalog!;
     if (recommending) unawaited(repository.cancelRecommendations());
     _tab = tab;
+    _resetPosters();
     if (_feeds[tab.id] case final kept?) {
       _feed = kept;
       _ranks = _rankings[tab.id] ?? const {};
@@ -193,7 +204,46 @@ class ExploreFeed extends ChangeNotifier {
   }
 
   void _notify() {
-    if (!_disposed) notifyListeners();
+    if (_disposed) return;
+    _warmPosters();
+    notifyListeners();
+  }
+
+  void _resetPosters() {
+    _warmToken++;
+    _postersReady = false;
+    _warmingPosters = false;
+    _warmKey = null;
+  }
+
+  // 分类切换时先把首屏封面取回来，SwipeSwitch 等到海报就绪再揭幕，
+  // 避免新分类先露出一片灰色占位再逐张弹出来。
+  void _warmPosters() {
+    final feed = _feed;
+    if (feed == null || _warmingPosters) return;
+    final list = items;
+    if (list.isEmpty) return;
+    final key = '${feed.hashCode}:${list.length}:${list.first.id}';
+    if (key == _warmKey) return;
+    _warmKey = key;
+    _warmingPosters = true;
+    final token = ++_warmToken;
+    final posters = list.take(_posterWarmCount).toList();
+    unawaited(() async {
+      try {
+        await Future.wait([
+          for (final drama in posters)
+            CoverLoader.preload(
+              repository,
+              drama,
+            ).catchError((Object _) => ''),
+        ]).timeout(_posterWarmTimeout);
+      } catch (_) {}
+      if (_disposed || token != _warmToken) return;
+      _warmingPosters = false;
+      _postersReady = true;
+      notifyListeners();
+    }());
   }
 
   @override

@@ -66,6 +66,10 @@ class DiaryService {
             final name = event['event'] as String? ?? '';
             if (name.startsWith('stream.')) {
               lines.add(_nativeLine(event, name.substring('stream.'.length)));
+            } else if (name.startsWith('season.')) {
+              lines.add(
+                _nativeLine(event, name.substring('season.'.length), 'Diag'),
+              );
             }
           } catch (_) {}
         }
@@ -81,11 +85,15 @@ class DiaryService {
         .join('\n');
   }
 
-  static String _nativeLine(Map<String, dynamic> event, String name) {
+  static String _nativeLine(
+    Map<String, dynamic> event,
+    String name, [
+    String tag = 'Stream',
+  ]) {
     final time = DateTime.parse(event['time'] as String).toLocal();
     final status = event['httpStatus'];
     return [
-      '[${_clock(time)}] [Stream] $name',
+      '[${_clock(time)}] [$tag] $name',
       event['host'],
       if (status != null) 'HTTP $status',
       event['responseType'],

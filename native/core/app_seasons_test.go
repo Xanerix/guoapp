@@ -126,6 +126,23 @@ func TestHongguoSeasonListDropsOutlierEpisodesWithoutDate(t *testing.T) {
 	}
 }
 
+func TestNativeSeasonAdapterCoversSearchableSources(t *testing.T) {
+	engine, err := newNativeEngine(t.TempDir(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, source := range []string{sourceHongguo, sourceHuangju, sourceSorani, sourceGuipian, sourceHanxiaoquan, sourceHuangguoAI} {
+		if _, ok := engine.nativeSeasonAdapter(source); !ok {
+			t.Fatalf("source %s is not supported", source)
+		}
+	}
+	for _, source := range []string{sourceBeabox, sourceHeitao, sourceXvideos, sourceDSD} {
+		if _, ok := engine.nativeSeasonAdapter(source); ok {
+			t.Fatalf("source %s should not be supported yet", source)
+		}
+	}
+}
+
 func TestHongguoSeasonLookupTreatsBareTitleAsFirstSeason(t *testing.T) {
 	for _, sample := range []struct {
 		title  string
@@ -177,15 +194,103 @@ func TestNativeSeasonsSkipsSourcesWithoutSeasonData(t *testing.T) {
 		t.Fatal(err)
 	}
 	result, err := engine.nativeSeasons(context.Background(), nativeInput{
-		Drama: nativeDrama{ID: "huangju:1001", Source: "huangju", SourceID: "1001", Title: "合成剧第二季"},
+		Drama: nativeDrama{ID: "beabox:1001", Source: "beabox", SourceID: "1001", Title: "合成剧第二季"},
 	})
 	if err != nil || len(result.Items) != 0 {
-		t.Fatalf("non-hongguo seasons = %+v, err = %v", result.Items, err)
+		t.Fatalf("unsupported source seasons = %+v, err = %v", result.Items, err)
 	}
 	result, err = engine.nativeSeasons(context.Background(), nativeInput{
 		Drama: nativeDrama{ID: "hongguo:1001", Source: "hongguo", SourceID: "1001", Title: ""},
 	})
 	if err != nil || len(result.Items) != 0 {
 		t.Fatalf("empty title seasons = %+v, err = %v", result.Items, err)
+	}
+}
+
+func seasonGroupResolver(groups map[string]struct {
+	album  string
+	number int
+}) func(context.Context, string) (string, int, Drama, bool) {
+	return func(_ context.Context, seriesID string) (string, int, Drama, bool) {
+		item, ok := groups[seriesID]
+		return item.album, item.number, Drama{}, ok
+	}
+}
+
+func TestOfficialSeasonsDropsDifferentAlbum(t *testing.T) {
+	// 实测数据：第二季(812集)的 related_album_id 与第一季/第三季不同，不能并入。
+	engine, err := newNativeEngine(t.TempDir(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	current := nativeNormalize(seasonDrama("7701588705932217406", "家有五女第二季", 812))
+	resolve := seasonGroupResolver(map[string]struct {
+		album  string
+		number int
+	}{
+		"7701588705932217406": {"7689000294050450456", 2},
+		"7663898166743288857": {"7674948658000841790", 1},
+		"7685376296183942169": {"7674948658000841790", 3},
+	})
+	items, ok := engine.officialSeasons(context.Background(), []Drama{
+		seasonDrama("7663898166743288857", "家有五女第一季", 125),
+		seasonDrama("7685376296183942169", "家有五女第三季", 174),
+	}, current, resolve)
+	if !ok {
+		t.Fatal("official group should be available")
+	}
+	if len(items) != 1 || !items[0].Current || items[0].Number != 2 {
+		t.Fatalf("seasons = %+v", items)
+	}
+}
+
+func TestOfficialSeasonsGroupsSameAlbumBySeasonIndex(t *testing.T) {
+	engine, err := newNativeEngine(t.TempDir(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	current := nativeNormalize(seasonDrama("2002", "合成剧第三季", 40))
+	resolve := seasonGroupResolver(map[string]struct {
+		album  string
+		number int
+	}{
+		"2002": {"A", 3},
+		"2001": {"A", 1},
+		"2003": {"A", 4},
+		"2999": {"B", 2},
+	})
+	items, ok := engine.officialSeasons(context.Background(), []Drama{
+		seasonDrama("2001", "合成剧第一季", 80),
+		seasonDrama("2001", "合成剧第一季（重复）", 80),
+		seasonDrama("2003", "合成剧第四季", 30),
+		seasonDrama("2999", "合成剧第二季", 60),
+	}, current, resolve)
+	if !ok {
+		t.Fatal("official group should be available")
+	}
+	if len(items) != 3 {
+		t.Fatalf("seasons = %+v", items)
+	}
+	for index, want := range []int{1, 3, 4} {
+		if items[index].Number != want {
+			t.Fatalf("season %d number = %d", index, items[index].Number)
+		}
+	}
+	if !items[1].Current || items[0].Current || items[2].Current {
+		t.Fatalf("current season marker = %+v", items)
+	}
+}
+
+func TestOfficialSeasonsFallsBackWithoutFields(t *testing.T) {
+	engine, err := newNativeEngine(t.TempDir(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	current := nativeNormalize(seasonDrama("1", "合成剧第二季", 60))
+	resolve := func(context.Context, string) (string, int, Drama, bool) {
+		return "", 0, Drama{}, false
+	}
+	if _, ok := engine.officialSeasons(context.Background(), nil, current, resolve); ok {
+		t.Fatal("missing official fields must fall back to heuristics")
 	}
 }

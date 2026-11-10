@@ -11,9 +11,13 @@ import (
 )
 
 type hongguoDetailEntry struct {
-	Drama     Drama
-	Chapters  []Chapter
-	ExpiresAt time.Time
+	Drama    Drama
+	Chapters []Chapter
+	// SeasonIndex 与 AlbumID 来自 App 详情：同一部剧的多季共享 AlbumID，
+	// SeasonIndex 是官方季号，用来精确聚合季列表。
+	SeasonIndex int
+	AlbumID     string
+	ExpiresAt   time.Time
 }
 
 type hongguoDetailCall struct {
@@ -73,7 +77,11 @@ func parseHongguoAppDetail(result map[string]any, seriesID string) (hongguoDetai
 	if returnedID != seriesID {
 		return hongguoDetailEntry{}, errors.New("红果 App 未返回所请求的剧集")
 	}
-	entry := hongguoDetailEntry{Drama: hongguoDramaFromAny(detail, "短剧")}
+	entry := hongguoDetailEntry{
+		Drama:       hongguoDramaFromAny(detail, "短剧"),
+		SeasonIndex: hongguoAppSeasonIndex(detail),
+		AlbumID:     mapString(detail, "related_album_id"),
+	}
 	seen := map[string]bool{}
 	episodes := map[int]bool{}
 	for _, row := range anyList(detail["video_list"]) {
@@ -114,6 +122,15 @@ func parseHongguoAppDetail(result map[string]any, seriesID string) (hongguoDetai
 		}
 	}
 	return entry, nil
+}
+
+// hongguoAppSeasonIndex 读取 App 详情里的官方季号，异常值一律视为未知。
+func hongguoAppSeasonIndex(detail map[string]any) int {
+	index, err := strconv.Atoi(mapString(detail, "season_index"))
+	if err != nil || index < 1 || index > hongguoSearchSeasonLimit {
+		return 0
+	}
+	return index
 }
 
 func (downloader *Downloader) hongguoCachedDrama(drama Drama) Drama {

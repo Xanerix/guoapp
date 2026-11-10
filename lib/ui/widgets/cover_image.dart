@@ -244,6 +244,9 @@ class _CoverImageState extends State<CoverImage> {
     _request = null;
     _file = CoverLoader.cached(widget.repository, widget.drama);
     if (_file != null) return;
+    // 分类切换预热过的封面直接复用，避免同一张图下载两次。
+    _file = CoverLoader.inflight(widget.drama);
+    if (_file != null) return;
     final request = _request = CoverLoader.request(
       widget.repository,
       widget.drama,
