@@ -36,6 +36,9 @@ const (
 	sourceHanxiaoquan   = "hanxiaoquan"
 	sourceHeitao        = "heitao"
 	sourceBeabox        = "beabox"
+	sourceZuid          = "zuid"
+	sourceFfzy          = "ffzy"
+	sourceRycj          = "rycj"
 	sourceXvideos       = "xvideos"
 
 	providerMaxBodyBytes = 20 * 1024 * 1024
@@ -93,7 +96,7 @@ func splitProviderDramaID(id string) (source, sourceID string, ok bool) {
 
 func isHuangguoProviderSource(source string) bool {
 	switch canonicalProviderSource(source) {
-	case sourceHuangguoAI, sourceHuangguoVideo, sourceHuangdou, sourceHongguo, sourceHuangju, sourceYeguo, sourceJinguoDuanju, sourceJinguo, sourceDSD, sourceCloudFront, sourceSorani, sourceGuipian, sourceHanxiaoquan, sourceHeitao, sourceBeabox, sourceXvideos:
+	case sourceHuangguoAI, sourceHuangguoVideo, sourceHuangdou, sourceHongguo, sourceHuangju, sourceYeguo, sourceJinguoDuanju, sourceJinguo, sourceDSD, sourceCloudFront, sourceSorani, sourceGuipian, sourceHanxiaoquan, sourceHeitao, sourceBeabox, sourceZuid, sourceFfzy, sourceRycj, sourceXvideos:
 		return true
 	default:
 		return false
@@ -136,6 +139,12 @@ func canonicalProviderSource(source string) string {
 		return sourceHeitao
 	case "beabox":
 		return sourceBeabox
+	case "zuid", "zuidapi.com", "api.zuidapi.com", "zuidazy.net", "www.zuidazy.net":
+		return sourceZuid
+	case "ffzy", "ffzyapi.com", "api.ffzyapi.com":
+		return sourceFfzy
+	case "rycj", "rycjapi.com", "cj.rycjapi.com":
+		return sourceRycj
 	case "xvideos", "xvideos.com", "www.xvideos.com":
 		return sourceXvideos
 	default:

@@ -557,6 +557,13 @@ class _DetailPageState extends State<DetailPage> {
                 ),
               ),
             ),
+            if (Platform.isIOS && details.seasons.length > 1)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 14),
+                  child: _seasonSelector(details, m),
+                ),
+              ),
             if (details.episodes.isEmpty)
               SliverFillRemaining(
                 hasScrollBody: false,
@@ -686,6 +693,11 @@ class _DetailPageState extends State<DetailPage> {
             key: const ValueKey('episodes'),
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (Platform.isIOS && details.seasons.length > 1)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _seasonSelector(details, m),
+                ),
               SizedBox(
                 height: desktop ? 44 : 48,
                 child: _episodeHeader(details, m),
@@ -1175,7 +1187,9 @@ class _DetailPageState extends State<DetailPage> {
           ),
         ),
         Text(meta.join(' · '), style: sub(m.meta)),
-        if (details.seasons.length > 1) _seasonSelector(details, m),
+        // iOS 上多季卡片挪到选集上方并铺满整宽，其余平台保持标题下方。
+        if (!Platform.isIOS && details.seasons.length > 1)
+          _seasonSelector(details, m),
         if (drama.score.isNotEmpty)
           Text('评分 ${drama.score}', style: sub(m.meta)),
         if (drama.category.isNotEmpty) Text(drama.category, style: sub(m.meta)),
@@ -1216,8 +1230,10 @@ class _DetailPageState extends State<DetailPage> {
     }
     final scheme = Theme.of(context).colorScheme;
     _seasonStrip ??= ScrollController();
+    // 圆角卡片铺满整宽：外边距 12 + 内边距 8，内容仍与「选集」的 20 对齐。
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+      margin: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.fromLTRB(8, 10, 8, 12),
       decoration: BoxDecoration(
         color: scheme.surfaceContainerHighest.withValues(alpha: .55),
         borderRadius: BorderRadius.circular(16),
@@ -1232,16 +1248,13 @@ class _DetailPageState extends State<DetailPage> {
               Text(
                 '系列多季',
                 style: TextStyle(
-                  fontSize: m.meta,
+                  fontSize: m.section,
                   fontWeight: FontWeight.w700,
                 ),
               ),
               const SizedBox(width: 8),
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 2,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
                   color: scheme.primary.withValues(alpha: .16),
                   borderRadius: BorderRadius.circular(999),
@@ -1254,7 +1267,10 @@ class _DetailPageState extends State<DetailPage> {
               const Spacer(),
               Text(
                 '左右滑动切换',
-                style: TextStyle(fontSize: m.tag, color: scheme.onSurfaceVariant),
+                style: TextStyle(
+                  fontSize: m.tag,
+                  color: scheme.onSurfaceVariant,
+                ),
               ),
             ],
           ),
@@ -1264,6 +1280,7 @@ class _DetailPageState extends State<DetailPage> {
             child: ListView.separated(
               controller: _seasonStrip,
               scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
               itemCount: seasons.length,
               separatorBuilder: (_, _) => const SizedBox(width: 8),
               itemBuilder: (context, index) {

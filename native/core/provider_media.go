@@ -51,6 +51,12 @@ func (d *Downloader) providerBaseURL(source string) string {
 		configured, fallback = d.cfg.HeitaoURL, heitaoBaseURL
 	case sourceBeabox:
 		configured, fallback = d.cfg.BeaboxURL, beaboxBaseURL
+	case sourceZuid:
+		fallback = maccmsSites[sourceZuid].SiteBase
+	case sourceFfzy:
+		fallback = maccmsSites[sourceFfzy].SiteBase
+	case sourceRycj:
+		fallback = maccmsSites[sourceRycj].SiteBase
 	case sourceXvideos:
 		fallback = xvideosSiteBaseURL
 	default:

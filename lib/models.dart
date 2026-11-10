@@ -20,6 +20,9 @@ class SourceSite {
       id == 'hanxiaoquan' ||
       id == 'heitao' ||
       id == 'beabox' ||
+      id == 'zuid' ||
+      id == 'ffzy' ||
+      id == 'rycj' ||
       id == 'xvideos' ||
       id == 'huangguoai';
   bool get searchSuggestions => id == 'hongguo';
@@ -56,6 +59,9 @@ class SourceSite {
     SourceSite('jinguo', '禁果', '精选 · 最新 · 分类短剧 · 在线搜索'),
     SourceSite('heitao', '黑桃', '分类短剧 · 在线搜索'),
     SourceSite('beabox', '笔盒', '分类视频 · 在线搜索'),
+    SourceSite('zuid', '最大影视', '电影 · 剧集 · 综艺 · 动漫'),
+    SourceSite('ffzy', '非凡影视', '电影 · 剧集 · 综艺 · 动漫'),
+    SourceSite('rycj', '如意影视', '电影 · 剧集 · 综艺 · 动漫'),
     SourceSite('xvideos', 'XVideos', '分类视频 · 在线搜索'),
     SourceSite('huangguo-video', '黄果视频', '视频剧集'),
     SourceSite('huangguoai', '黄果 AI', 'AI 短剧'),

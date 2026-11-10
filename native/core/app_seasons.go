@@ -403,6 +403,21 @@ func (engine *nativeEngine) nativeSeasonAdapter(source string) (seasonAdapter, b
 			},
 			date: detailDate(engine.downloader.fetchHuangguoAIDetail),
 		}, true
+	case sourceZuid, sourceFfzy, sourceRycj:
+		// 采集站沿用同一套季规则：列表已带上线日期，缺日期再查详情。
+		return seasonAdapter{
+			search: func(ctx context.Context, keyword string) ([]Drama, error) {
+				items, _, err := engine.downloader.fetchMaccmsCatalogPage(ctx, source, 1, "", keyword)
+				return items, err
+			},
+			date: func(ctx context.Context, sourceID string) string {
+				raw, _, err := engine.downloader.fetchMaccmsDetail(ctx, source, sourceID)
+				if err != nil {
+					return ""
+				}
+				return providerReleaseDate(raw.OnlineDate)
+			},
+		}, true
 	}
 	return seasonAdapter{}, false
 }
