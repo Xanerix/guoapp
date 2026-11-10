@@ -8,7 +8,7 @@ func TestRegisteredProviderResolvesAliasesAndCapabilities(t *testing.T) {
 			t.Fatalf("canonicalProviderSource(%q) = %q", alias, got)
 		}
 	}
-	if !isHuangguoProviderSource(sourceGuipian) {
+	if !registeredProviderSource(sourceGuipian) {
 		t.Fatal("registered source must be recognised as a provider source")
 	}
 	if got := providerSourceForURL("https://www.guipianwu.com/nv/1.html"); got != sourceGuipian {

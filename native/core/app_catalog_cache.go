@@ -95,9 +95,13 @@ func (engine *nativeEngine) loadCatalogCache() {
 		}
 		engine.categoryOptions = disk.Categories
 		engine.recommendations = make(map[string]nativeRecommendationState)
-		for genre, state := range disk.Recommendations {
-			if genre == state.Query.Genre && state.Query.validate() == nil && state.Page > 0 {
-				engine.recommendations[genre] = state
+		for key, state := range disk.Recommendations {
+			source, genre, current := strings.Cut(key, "|recommendation:")
+			if !current {
+				source, genre = "hongguo", key
+			}
+			if recommender, err := engine.recommender(source); err == nil && state.Page > 0 && recommender.ValidRecommendation(genre, state.Query) == nil {
+				engine.recommendations[nativeRecommendationKey(source, genre)] = state
 			}
 		}
 		engine.restoreProviderStates(disk)
@@ -124,7 +128,7 @@ func trimNativeCatalogs(catalogs map[string][]nativeDrama) {
 }
 
 func migrateNativeDrama(drama nativeDrama) nativeDrama {
-	if drama.MetadataSchema == 0 && drama.Source == sourceHuangdou && drama.VIP != nil && !*drama.VIP {
+	if drama.MetadataSchema == 0 && drama.Source == "huangdou" && drama.VIP != nil && !*drama.VIP {
 		drama.VIP = nil
 	}
 	drama.MetadataSchema = 1

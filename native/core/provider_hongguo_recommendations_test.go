@@ -65,15 +65,15 @@ func TestHongguoFeedRecommendationsContinueDoubleColCell(t *testing.T) {
 		return sourceFixtureResponse(request, http.StatusOK, string(body)), nil
 	})
 	engine := sourceFixtureEngine(t, transport)
-	first, err := engine.nativeRecommendations(context.Background(), nativeInput{Category: "find_drama"})
+	first, err := engine.nativeRecommendations(context.Background(), nativeInput{Source: sourceHongguo, Category: "find_drama"})
 	if err != nil || len(first.Items) != 1 || !first.HasMore {
 		t.Fatal("first double column page was not parsed", err, first.Items)
 	}
-	more, err := engine.nativeRecommendations(context.Background(), nativeInput{Category: "find_drama", Command: "more"})
+	more, err := engine.nativeRecommendations(context.Background(), nativeInput{Source: sourceHongguo, Category: "find_drama", Command: "more"})
 	if err != nil || len(more.Items) != 2 || !more.HasMore || more.Items[1].Title != "合成推荐 9002" {
 		t.Fatal("cell change did not continue past the repeated page", err, more.Items, more.HasMore)
 	}
-	last, err := engine.nativeRecommendations(context.Background(), nativeInput{Category: "find_drama", Command: "more"})
+	last, err := engine.nativeRecommendations(context.Background(), nativeInput{Source: sourceHongguo, Category: "find_drama", Command: "more"})
 	if err != nil || len(last.Items) != 4 || last.HasMore || last.Items[2].Title != "合成推荐 9003" || last.Items[3].Title != "合成推荐 9004" {
 		t.Fatal("paired pages were not merged in order", err, last.Items, last.HasMore)
 	}
@@ -113,15 +113,16 @@ func TestHongguoFeedRecommendationsSurviveHelperFailure(t *testing.T) {
 		return sourceFixtureResponse(request, http.StatusOK, string(body)), nil
 	})
 	engine := sourceFixtureEngine(t, transport)
-	if _, err := engine.nativeRecommendations(context.Background(), nativeInput{Category: "find_drama"}); err != nil {
+	if _, err := engine.nativeRecommendations(context.Background(), nativeInput{Source: sourceHongguo, Category: "find_drama"}); err != nil {
 		t.Fatal(err)
 	}
-	more, err := engine.nativeRecommendations(context.Background(), nativeInput{Category: "find_drama", Command: "more"})
+	more, err := engine.nativeRecommendations(context.Background(), nativeInput{Source: sourceHongguo, Category: "find_drama", Command: "more"})
 	if err != nil || len(more.Items) != 2 || !more.HasMore {
 		t.Fatal("helper failure broke the primary page", err, more.Items)
 	}
-	if state := engine.recommendations["find_drama"]; state.Query.Offset != 12 {
-		t.Fatal("feed position skipped the failed helper page", state.Query.Offset)
+	var cursor hongguoRecommendationQuery
+	if err := json.Unmarshal(engine.recommendations[nativeRecommendationKey(sourceHongguo, "find_drama")].Query, &cursor); err != nil || cursor.Offset != 12 {
+		t.Fatal("feed position skipped the failed helper page", cursor.Offset, err)
 	}
 }
 
@@ -159,11 +160,11 @@ func TestHongguoFeedRecommendationsKeepSessionAndSkipRepeats(t *testing.T) {
 				return sourceFixtureResponse(request, http.StatusOK, string(body)), nil
 			})
 			engine := sourceFixtureEngine(t, transport)
-			first, err := engine.nativeRecommendations(context.Background(), nativeInput{Category: feed.key})
+			first, err := engine.nativeRecommendations(context.Background(), nativeInput{Source: sourceHongguo, Category: feed.key})
 			if err != nil || len(first.Items) != 2 || !first.HasMore || first.Items[0].Title != "合成推荐 9001" {
 				t.Fatal("first feed page was not parsed", err, first.Items)
 			}
-			more, err := engine.nativeRecommendations(context.Background(), nativeInput{Category: feed.key, Command: "more"})
+			more, err := engine.nativeRecommendations(context.Background(), nativeInput{Source: sourceHongguo, Category: feed.key, Command: "more"})
 			if err != nil || len(more.Items) != 3 || more.Items[2].Title != "合成推荐 9003" {
 				t.Fatal("continuation did not skip the repeated page", err, more.Items)
 			}

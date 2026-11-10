@@ -73,36 +73,6 @@ type providerEpisode struct {
 	HLS   string
 }
 
-func providerDramaID(source, sourceID string) string {
-	return source + ":" + strings.TrimSpace(sourceID)
-}
-
-func providerChapterID(source, sourceID, chapterKey string) string {
-	return source + ":" + strings.TrimSpace(sourceID) + ":" + strings.TrimSpace(chapterKey)
-}
-
-func splitProviderDramaID(id string) (source, sourceID string, ok bool) {
-	source, sourceID, ok = strings.Cut(strings.TrimSpace(id), ":")
-	source = canonicalProviderSource(source)
-	if !ok || strings.TrimSpace(sourceID) == "" || !isHuangguoProviderSource(source) {
-		return "", "", false
-	}
-	return source, strings.TrimSpace(sourceID), true
-}
-
-func isHuangguoProviderSource(source string) bool {
-	_, ok := registeredDescriptor(canonicalProviderSource(source))
-	return ok
-}
-
-func canonicalProviderSource(source string) string {
-	trimmed := strings.ToLower(strings.TrimSpace(source))
-	if id, ok := registeredSource(trimmed); ok {
-		return id
-	}
-	return strings.TrimSpace(source)
-}
-
 func mergeDramaMetadata(base, extra Drama) Drama {
 	if base.VIP == nil && extra.VIP != nil {
 		value := *extra.VIP
@@ -1114,4 +1084,27 @@ func (p *huangguoVideoProvider) CoverAddress(ctx context.Context, drama nativeDr
 	}
 	fresh, err := parseHuangguoSortDetail(body, pageURL, Drama{ID: drama.ID, Source: sourceHuangguoVideo, SourceID: id})
 	return nativeNormalize(fresh).Cover, err
+}
+
+var categoryAnchorPattern = regexp.MustCompile(`(?is)<a\b([^>]*)>(.*?)</a>`)
+var categoryTextPattern = regexp.MustCompile(`(?s)<[^>]*>`)
+
+func parseHuangguoVideoCategories(body string) []nativeCategory {
+	var categories []nativeCategory
+	seen := map[string]bool{}
+	for _, match := range categoryAnchorPattern.FindAllStringSubmatch(body, -1) {
+		href := html.UnescapeString(extractAttr("<a "+match[1]+">", "href"))
+		address, err := url.Parse(href)
+		if err != nil || address.Path != "" && strings.TrimRight(address.Path, "/") != "/videos" {
+			continue
+		}
+		id := address.Query().Get("category")
+		name := strings.TrimSpace(html.UnescapeString(categoryTextPattern.ReplaceAllString(match[2], "")))
+		if !validNativeCategory(sourceHuangguoVideo, id) || id == "" || seen[id] || name == "" || len([]rune(name)) > 24 {
+			continue
+		}
+		seen[id] = true
+		categories = append(categories, nativeCategory{ID: id, Name: name})
+	}
+	return categories
 }

@@ -2,25 +2,45 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 )
 
 type nativeRecommendationState struct {
-	Query   hongguoRecommendationQuery `json:"query"`
-	Page    int                        `json:"page"`
-	HasMore bool                       `json:"hasMore"`
+	Query   json.RawMessage `json:"query"`
+	Seen    []string        `json:"seen,omitempty"`
+	Page    int             `json:"page"`
+	HasMore bool            `json:"hasMore"`
 }
 
-func nativeRecommendationKey(genre string) string { return sourceHongguo + "|recommendation:" + genre }
+func nativeRecommendationKey(source, genre string) string {
+	return source + "|recommendation:" + genre
+}
 
-func (engine *nativeEngine) cachedRecommendations(genre string) (nativeCatalogResult, error) {
-	if err := (hongguoRecommendationQuery{Genre: genre}).validate(); err != nil {
+func (engine *nativeEngine) recommender(source string) (Recommender, error) {
+	if engine.downloader != nil {
+		if p, ok := engine.downloader.provider(source); ok {
+			if recommender, ok := p.(Recommender); ok {
+				return recommender, nil
+			}
+		}
+	}
+	return nil, errors.New("请选择有效站源")
+}
+
+func (engine *nativeEngine) cachedRecommendations(source, genre string) (nativeCatalogResult, error) {
+	recommender, err := engine.recommender(source)
+	if err != nil {
 		return nativeCatalogResult{}, err
 	}
-	result := engine.nativeCached(nativeRecommendationKey(genre))
+	if err := recommender.ValidRecommendation(genre, nil); err != nil {
+		return nativeCatalogResult{}, err
+	}
+	key := nativeRecommendationKey(source, genre)
+	result := engine.nativeCached(key)
 	engine.mu.Lock()
-	_, found := engine.recommendations[genre]
+	_, found := engine.recommendations[key]
 	engine.mu.Unlock()
 	if !found && len(result.Items) > 0 {
 		result.Fresh, result.HasMore = false, false
@@ -30,24 +50,29 @@ func (engine *nativeEngine) cachedRecommendations(genre string) (nativeCatalogRe
 }
 
 func (engine *nativeEngine) nativeRecommendations(ctx context.Context, input nativeInput) (nativeCatalogResult, error) {
-	genre := input.Category
-	if err := (hongguoRecommendationQuery{Genre: genre}).validate(); err != nil {
+	source, genre := nativeActionSource(input), input.Category
+	recommender, err := engine.recommender(source)
+	if err != nil {
 		return nativeCatalogResult{}, err
 	}
-	unlock, err := engine.lockSourceCatalog(ctx, sourceHongguo)
+	if err := recommender.ValidRecommendation(genre, nil); err != nil {
+		return nativeCatalogResult{}, err
+	}
+	key := nativeRecommendationKey(source, genre)
+	unlock, err := engine.lockSourceCatalog(ctx, source)
 	if err != nil {
 		return nativeCatalogResult{}, err
 	}
 	defer unlock()
 	if retried, err := engine.retryCatalogSave(); retried {
-		cached, _ := engine.cachedRecommendations(genre)
+		cached, _ := engine.cachedRecommendations(source, genre)
 		if err != nil || len(cached.Items) > 0 {
 			return cached, nil
 		}
 	}
-	cached, _ := engine.cachedRecommendations(genre)
+	cached, _ := engine.cachedRecommendations(source, genre)
 	engine.mu.Lock()
-	state, found := engine.recommendations[genre]
+	state, found := engine.recommendations[key]
 	engine.mu.Unlock()
 	if !input.Force && found && len(cached.Items) > 0 && (input.Command != "more" || !state.HasMore) {
 		return cached, nil
@@ -56,9 +81,9 @@ func (engine *nativeEngine) nativeRecommendations(ctx context.Context, input nat
 		return cached, nil
 	}
 	if input.Force || !found {
-		state = nativeRecommendationState{Query: hongguoRecommendationQuery{Genre: genre}, HasMore: true}
+		state = nativeRecommendationState{HasMore: true}
 	}
-	page, err := engine.downloader.fetchHongguoRecommendations(ctx, state.Query)
+	page, err := recommender.Recommendations(ctx, genre, state.Query, state.Seen)
 	if err != nil {
 		if len(cached.Items) == 0 || errors.Is(err, context.Canceled) {
 			return nativeCatalogResult{}, err
@@ -75,7 +100,6 @@ func (engine *nativeEngine) nativeRecommendations(ctx context.Context, input nat
 	if engine.recommendations == nil {
 		engine.recommendations = map[string]nativeRecommendationState{}
 	}
-	key := nativeRecommendationKey(genre)
 	previous := engine.catalogs[key]
 	if input.Force {
 		previous = nil
@@ -85,8 +109,8 @@ func (engine *nativeEngine) nativeRecommendations(ctx context.Context, input nat
 		seen[drama.ID] = true
 	}
 	fresh := make([]nativeDrama, 0, len(page.Dramas))
-	known := make(map[string]nativeDrama, len(engine.catalogs[sourceHongguo]))
-	for _, drama := range engine.catalogs[sourceHongguo] {
+	known := make(map[string]nativeDrama, len(engine.catalogs[source]))
+	for _, drama := range engine.catalogs[source] {
 		known[drama.ID] = drama
 	}
 	for _, drama := range page.Dramas {
@@ -107,17 +131,13 @@ func (engine *nativeEngine) nativeRecommendations(ctx context.Context, input nat
 	for _, drama := range items[max(0, len(items)-540):] {
 		identifiers = append(identifiers, drama.ID)
 	}
-	session := page.SessionID
-	if session == "" {
-		session = state.Query.SessionID
-	}
-	state.Query = hongguoRecommendationQuery{Genre: genre, Offset: page.NextOffset, SessionID: session, CellID: page.CellID, ShowType: page.ShowType, Seen: identifiers}
+	state.Query, state.Seen = page.Cursor, identifiers
 	state.Page++
 	state.HasMore = page.HasMore
-	engine.recommendations[genre] = state
+	engine.recommendations[key] = state
 	engine.catalogs[key] = items
-	engine.catalogs[sourceHongguo] = mergeNativeCatalog(engine.catalogs[sourceHongguo], fresh)
-	engine.commitProviderStateLocked(sourceHongguo)
+	engine.catalogs[source] = mergeNativeCatalog(engine.catalogs[source], fresh)
+	engine.commitProviderStateLocked(source)
 	engine.catalogStates[key] = nativeCatalogState{UpdatedAt: time.Now(), Page: state.Page, HasMore: state.HasMore}
 	result := nativeCatalogResult{Items: append([]nativeDrama{}, items...), Page: state.Page, HasMore: state.HasMore, Fresh: true}
 	if err := engine.writeCatalogDiskLocked(); err != nil {

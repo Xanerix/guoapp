@@ -419,3 +419,13 @@ func (p *soraniProvider) Detail(ctx context.Context, sourceID string) (Drama, []
 func (p *soraniProvider) ResolveMedia(ctx context.Context, task Task) (providerMedia, error) {
 	return p.d.resolveSoraniMedia(ctx, task)
 }
+
+func (p *soraniProvider) Account(ctx context.Context, command string, payload json.RawMessage) (any, error) {
+	var input soraniAccountInput
+	if len(payload) > 0 && string(payload) != "null" {
+		if err := json.Unmarshal(payload, &input); err != nil {
+			return nil, errors.New("账号参数无效")
+		}
+	}
+	return p.d.soraniAccount(ctx, command, input)
+}

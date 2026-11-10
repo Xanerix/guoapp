@@ -256,18 +256,7 @@ func cloneHongguoSearchEntry(entry hongguoSearchEntry) hongguoSearchEntry {
 	return entry
 }
 
-func hongguoSearchText(text string) string {
-	normalized := strings.Map(func(r rune) rune {
-		if unicode.IsSpace(r) || unicode.IsPunct(r) {
-			return -1
-		}
-		return unicode.ToLower(r)
-	}, norm.NFKC.String(text))
-	if normalized == "" {
-		return strings.ToLower(strings.TrimSpace(text))
-	}
-	return normalized
-}
+func hongguoSearchText(text string) string { return nativeSearchText(text) }
 
 func hongguoTitleSearchRank(title, query string) int {
 	words := strings.FieldsFunc(norm.NFKC.String(query), func(r rune) bool { return unicode.IsSpace(r) || unicode.IsPunct(r) })

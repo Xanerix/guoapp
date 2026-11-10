@@ -22,7 +22,7 @@ func hongguoRegistrationTransport(registers *int) sourceFixtureTransport {
 
 func hongguoDevicesReady(t *testing.T, engine *nativeEngine, register bool) bool {
 	t.Helper()
-	result, err := engine.hongguoDevices(context.Background(), register)
+	result, err := engine.sourceDevices(context.Background(), sourceHongguo, register)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,14 +1,33 @@
 package core
 
-import "errors"
+import (
+	"errors"
+	"slices"
+)
 
 var buildAllSources = "false"
 
 var errNativeBuildSource = errors.New("当前版本不包含此站源")
 
+type buildFlavorSpec struct {
+	name    string
+	sources []string
+}
+
+var activeFlavor buildFlavorSpec
+
+func RegisterFlavor(name string, sources []string) {
+	activeFlavor = buildFlavorSpec{name: name, sources: sources}
+}
+
+func buildFlavor() string { return activeFlavor.name }
+
 func nativeSourceAvailable(source string) bool {
 	source = canonicalProviderSource(source)
-	return source == sourceHongguo || buildAllSources == "true" && isHuangguoProviderSource(source)
+	if _, ok := registeredDescriptor(source); !ok {
+		return false
+	}
+	return activeFlavor.sources == nil || slices.Contains(activeFlavor.sources, source)
 }
 
 func nativeDramaAvailable(drama nativeDrama) bool {
@@ -35,19 +54,28 @@ func nativeDownloadAvailable(job nativeDownloadJob) bool {
 	return nativeChapterAvailable(job.Drama, job.Chapter)
 }
 
+func nativeActionSource(input nativeInput) string {
+	if input.Source != "" {
+		return canonicalProviderSource(input.Source)
+	}
+	switch input.Action {
+	case "soraniAccount":
+		return "sorani"
+	case "hongguoDevices", "recommendations", "cachedRecommendations", "suggestions":
+		return "hongguo"
+	}
+	return ""
+}
+
 func nativeAuthorizeInput(input nativeInput) error {
 	switch input.Action {
-	case "recommendations", "cachedRecommendations", "suggestions", "danmaku":
-		if !nativeSourceAvailable(sourceHongguo) {
+	case "recommendations", "cachedRecommendations", "suggestions", "soraniAccount", "sourceAccount":
+		if !nativeSourceAvailable(nativeActionSource(input)) {
 			return errNativeBuildSource
 		}
 	case "rankings":
 		board, found := findRankingBoard(input.Board)
 		if !found || !nativeSourceAvailable(board.Source) {
-			return errNativeBuildSource
-		}
-	case "soraniAccount":
-		if !nativeSourceAvailable(sourceSorani) {
 			return errNativeBuildSource
 		}
 	case "catalog", "cached", "categories":

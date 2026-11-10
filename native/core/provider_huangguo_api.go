@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 const huangguoAISearchPageSize = 20
@@ -228,4 +229,64 @@ func (p *huangguoAIProvider) RankingPage(ctx context.Context, board rankingBoard
 		return rankingPage{}, fmt.Errorf("%s: %w", board.Name, err)
 	}
 	return result, nil
+}
+
+var nativeAICategories = []nativeCategory{
+	{ID: "ai-duanju", Name: "AI 短剧"},
+	{ID: "ai-manju", Name: "AI 漫剧"},
+	{ID: "ai-huanlian", Name: "AI 换脸"},
+	{ID: "ai-mogai", Name: "AI 魔改"},
+}
+
+func (d *Downloader) fetchHuangguoAICatalogPage(ctx context.Context, page int, category string) ([]Drama, bool, error) {
+	categories := nativeAICategories
+	if category != "" {
+		for _, entry := range categories {
+			if entry.ID == category {
+				categories = []nativeCategory{entry}
+				break
+			}
+		}
+	}
+	type categoryResult struct {
+		items []Drama
+		err   error
+	}
+	results := make([]categoryResult, len(categories))
+	slots := make(chan struct{}, 2)
+	var group sync.WaitGroup
+	for index, entry := range categories {
+		group.Add(1)
+		go func(index int, entry nativeCategory) {
+			defer group.Done()
+			select {
+			case slots <- struct{}{}:
+				defer func() { <-slots }()
+			case <-ctx.Done():
+				results[index].err = ctx.Err()
+				return
+			}
+			path := fmt.Sprintf("/api/videos/category/%s?sort=hot&page=%d&size=24", url.PathEscape(entry.ID), page)
+			var body json.RawMessage
+			err := d.huangguoAIAPI(ctx, path, &body)
+			if err == nil {
+				results[index].items = parseHuangguoAIJSONCards(body, d.providerBaseURL(sourceHuangguoAI)+"/", entry.Name)
+			}
+			if err != nil {
+				results[index].err = fmt.Errorf("%s: %w", entry.Name, err)
+			}
+		}(index, entry)
+	}
+	group.Wait()
+	var items []Drama
+	var failures []error
+	more := false
+	for _, result := range results {
+		items = append(items, result.items...)
+		more = more || len(result.items) >= 24 || result.err != nil
+		if result.err != nil {
+			failures = append(failures, result.err)
+		}
+	}
+	return items, more, errors.Join(failures...)
 }

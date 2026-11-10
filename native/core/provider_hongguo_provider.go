@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type hongguoProvider struct{ d *Downloader }
@@ -191,4 +192,71 @@ func hongguoCoverAddress(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func (p *hongguoProvider) Suggestions(ctx context.Context, query string) ([]string, error) {
+	items, err := p.d.hongguoSearchSuggestions(ctx, query)
+	names := make([]string, 0, len(items))
+	for _, item := range items {
+		names = append(names, item.Name)
+	}
+	return names, err
+}
+
+func (p *hongguoProvider) DanmakuIDs(task Task) (string, string, bool) {
+	return hongguoPlaybackIDs(task)
+}
+
+func (p *hongguoProvider) Danmaku(ctx context.Context, series, video string, startMS, durationMS int64) (DanmakuPage, error) {
+	return p.d.hongguoDanmaku(ctx, series, video, startMS, durationMS)
+}
+
+func (p *hongguoProvider) Devices(ctx context.Context, register bool) (bool, error) {
+	client := p.d.hongguoClient()
+	if register {
+		client.deviceMu.Lock()
+		client.registerPausedUntil = time.Time{}
+		client.deviceMu.Unlock()
+		for _, helper := range []bool{false, true} {
+			if err := p.d.ensureHongguoDevice(ctx, helper, ""); err != nil {
+				return false, err
+			}
+		}
+	}
+	_, _, primary := client.device(false)
+	_, _, helper := client.device(true)
+	return primary && helper, nil
+}
+
+func hongguoRecommendationCursor(genre string, cursor json.RawMessage, seen []string) (hongguoRecommendationQuery, error) {
+	query := hongguoRecommendationQuery{Genre: genre}
+	if len(cursor) > 0 && (json.Unmarshal(cursor, &query) != nil || query.Genre != genre) {
+		return hongguoRecommendationQuery{}, errors.New("推荐分类或分页参数无效，请重新获取")
+	}
+	if seen != nil {
+		query.Seen = seen
+	}
+	return query, query.validate()
+}
+
+func (p *hongguoProvider) ValidRecommendation(genre string, cursor json.RawMessage) error {
+	_, err := hongguoRecommendationCursor(genre, cursor, nil)
+	return err
+}
+
+func (p *hongguoProvider) Recommendations(ctx context.Context, genre string, cursor json.RawMessage, seen []string) (RecommendationPage, error) {
+	query, err := hongguoRecommendationCursor(genre, cursor, seen)
+	if err != nil {
+		return RecommendationPage{}, err
+	}
+	page, err := p.d.fetchHongguoRecommendations(ctx, query)
+	if err != nil {
+		return RecommendationPage{}, err
+	}
+	session := page.SessionID
+	if session == "" {
+		session = query.SessionID
+	}
+	next, err := json.Marshal(hongguoRecommendationQuery{Genre: genre, Offset: page.NextOffset, SessionID: session, CellID: page.CellID, ShowType: page.ShowType})
+	return RecommendationPage{Dramas: page.Dramas, Cursor: next, HasMore: page.HasMore}, err
 }

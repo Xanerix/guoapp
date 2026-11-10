@@ -131,7 +131,7 @@ type nativeInput struct {
 	Force           bool                    `json:"force"`
 	Version         string                  `json:"version"`
 	Since           string                  `json:"since"`
-	Account         soraniAccountInput      `json:"account"`
+	Account         json.RawMessage         `json:"account"`
 }
 
 type nativeCatalogResult struct {
@@ -322,7 +322,7 @@ func NativeRequest(raw string) (result string) {
 		if errors.Is(err, errNativeLocalFile) {
 			envelope["code"] = "local_media"
 		}
-		if errors.Is(err, errSoraniLoginRequired) || errors.Is(err, errSoraniLoginExpired) {
+		if errors.Is(err, ErrSourceLogin) {
 			envelope["code"] = "source_login"
 		}
 		var backoff *requestBackoff
@@ -355,7 +355,7 @@ func nativeDispatch(input nativeInput) (any, error) {
 			nativeState.engine = engine
 		}
 		nativeState.Unlock()
-		return map[string]any{"version": "0.2.17", "standalone": true, "allSources": buildAllSources == "true"}, nil
+		return map[string]any{"version": "0.2.17", "standalone": true, "allSources": buildAllSources == "true", "flavor": buildFlavor()}, nil
 	}
 	engine := nativeState.engine
 	nativeState.Unlock()
@@ -399,11 +399,11 @@ func nativeDispatch(input nativeInput) (any, error) {
 	case "recommendations":
 		return engine.nativeRecommendations(ctx, input)
 	case "cachedRecommendations":
-		return engine.cachedRecommendations(input.Category)
-	case "hongguoDevices":
-		return engine.hongguoDevices(ctx, input.Command == "register")
-	case "soraniAccount":
-		return engine.downloader.soraniAccount(ctx, input.Command, input.Account)
+		return engine.cachedRecommendations(nativeActionSource(input), input.Category)
+	case "hongguoDevices", "sourceDevices":
+		return engine.sourceDevices(ctx, nativeActionSource(input), input.Command == "register")
+	case "soraniAccount", "sourceAccount":
+		return engine.sourceAccount(ctx, nativeActionSource(input), input.Command, input.Account)
 	case "rankingBoards":
 		boards := []rankingBoard{}
 		for _, board := range allRankingBoards() {
@@ -415,7 +415,7 @@ func nativeDispatch(input nativeInput) (any, error) {
 	case "rankings":
 		return engine.nativeRanking(ctx, input)
 	case "suggestions":
-		items, err := engine.suggestions(ctx, input.Query)
+		items, err := engine.suggestions(ctx, nativeActionSource(input), input.Query)
 		return map[string]any{"items": items}, err
 	case "downloadDirectory":
 		engine.downloads.mu.Lock()
@@ -490,7 +490,7 @@ func nativeDispatch(input nativeInput) (any, error) {
 
 func (engine *nativeEngine) nativeCatalog(ctx context.Context, input nativeInput) (nativeCatalogResult, error) {
 	source := canonicalProviderSource(input.Source)
-	if !isHuangguoProviderSource(source) {
+	if !registeredProviderSource(source) {
 		return nativeCatalogResult{}, errors.New("请选择有效站源")
 	}
 	category := strings.TrimSpace(input.Category)
@@ -546,10 +546,10 @@ func (engine *nativeEngine) nativeCatalog(ctx context.Context, input nativeInput
 		items := append([]nativeDrama{}, engine.catalogs[source]...)
 		engine.mu.Unlock()
 		for _, item := range items {
-			text := hongguoSearchText(item.Title + " " + item.Description + " " + strings.Join(item.Tags, " "))
+			text := nativeSearchText(item.Title + " " + item.Description + " " + strings.Join(item.Tags, " "))
 			matches := true
 			for _, word := range strings.Fields(query) {
-				matches = matches && strings.Contains(text, hongguoSearchText(word))
+				matches = matches && strings.Contains(text, nativeSearchText(word))
 			}
 			if matches {
 				result.Items = append(result.Items, item)
@@ -652,8 +652,12 @@ func (engine *nativeEngine) nativeResolve(ctx context.Context, input nativeInput
 		return nativePlan{}, err
 	}
 	choice := nativePlaybackChoices(media, input.Quality)
-	if series, video, valid := hongguoPlaybackIDs(task); valid {
-		choice.danmakuSeries, choice.danmakuVideo = series, video
+	if p, ok := engine.downloader.provider(sourceFromDramaID(task.DramaID)); ok {
+		if danmaku, ok := p.(DanmakuProvider); ok {
+			if series, video, valid := danmaku.DanmakuIDs(task); valid {
+				choice.danmakuSource, choice.danmakuSeries, choice.danmakuVideo = p.Descriptor().ID, series, video
+			}
+		}
 	}
 	return engine.nativeOpenPlayback(ctx, choice)
 }

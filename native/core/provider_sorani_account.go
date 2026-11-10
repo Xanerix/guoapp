@@ -25,8 +25,8 @@ const (
 )
 
 var (
-	errSoraniLoginRequired = errors.New("青空次元需要登录后才能播放，请在 设置 > 站源 > 站源账号 中登录青空账号")
-	errSoraniLoginExpired  = errors.New("青空次元登录已失效，请在 设置 > 站源 > 站源账号 中重新登录")
+	errSoraniLoginRequired = SourceLoginError("青空次元需要登录后才能播放，请在 设置 > 站源 > 站源账号 中登录青空账号")
+	errSoraniLoginExpired  = SourceLoginError("青空次元登录已失效，请在 设置 > 站源 > 站源账号 中重新登录")
 	soraniCaptchaIDFormat  = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
 )
 

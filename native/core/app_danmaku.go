@@ -6,28 +6,36 @@ import (
 	"time"
 )
 
-func (engine *nativeEngine) nativeDanmaku(ctx context.Context, input nativeInput) (hongguoDanmakuPage, error) {
+func (engine *nativeEngine) nativeDanmaku(ctx context.Context, input nativeInput) (DanmakuPage, error) {
 	if input.StartMS < 0 || input.DurationMS <= input.StartMS || input.DurationMS > danmakuMaxDurationMS {
-		return hongguoDanmakuPage{}, errors.New("弹幕时间范围无效")
+		return DanmakuPage{}, errors.New("弹幕时间范围无效")
 	}
 	engine.mu.Lock()
 	choice, exists := engine.playbacks[input.PlaybackSession]
 	engine.mu.Unlock()
 	if !exists || time.Since(choice.created) > 12*time.Hour {
-		return hongguoDanmakuPage{}, errors.New("播放会话已过期")
+		return DanmakuPage{}, errors.New("播放会话已过期")
 	}
 	if choice.danmakuSeries == "" || choice.danmakuVideo == "" {
-		return hongguoDanmakuPage{}, errors.New("本集暂不支持弹幕")
+		return DanmakuPage{}, errors.New("本集暂不支持弹幕")
 	}
-	page, err := engine.downloader.hongguoDanmaku(ctx, choice.danmakuSeries, choice.danmakuVideo, input.StartMS, input.DurationMS)
+	p, ok := engine.downloader.provider(choice.danmakuSource)
+	if !ok {
+		return DanmakuPage{}, errors.New("本集暂不支持弹幕")
+	}
+	danmaku, ok := p.(DanmakuProvider)
+	if !ok {
+		return DanmakuPage{}, errors.New("本集暂不支持弹幕")
+	}
+	page, err := danmaku.Danmaku(ctx, choice.danmakuSeries, choice.danmakuVideo, input.StartMS, input.DurationMS)
 	if err != nil {
-		return hongguoDanmakuPage{}, err
+		return DanmakuPage{}, err
 	}
 	engine.mu.Lock()
 	_, exists = engine.playbacks[input.PlaybackSession]
 	engine.mu.Unlock()
 	if !exists {
-		return hongguoDanmakuPage{}, errors.New("播放会话已过期")
+		return DanmakuPage{}, errors.New("播放会话已过期")
 	}
 	return page, ctx.Err()
 }

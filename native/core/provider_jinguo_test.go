@@ -148,7 +148,7 @@ func TestJinguoExpiredSessionRefreshesPlaylistOnce(t *testing.T) {
 			t.Fatalf("unsafe video path accepted: %s", bad)
 		}
 	}
-	if canonicalProviderSource("jinguo") != sourceJinguo || !isHuangguoProviderSource(sourceJinguo) {
+	if canonicalProviderSource("jinguo") != sourceJinguo || !registeredProviderSource(sourceJinguo) {
 		t.Fatal("jinguo source is not registered")
 	}
 }

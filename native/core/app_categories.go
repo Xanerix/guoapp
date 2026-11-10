@@ -2,26 +2,13 @@ package core
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
-	"html"
-	"net/url"
-	"regexp"
 	"strings"
-	"sync"
 )
 
 type nativeCategory struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
-}
-
-var nativeAICategories = []nativeCategory{
-	{ID: "ai-duanju", Name: "AI 短剧"},
-	{ID: "ai-manju", Name: "AI 漫剧"},
-	{ID: "ai-huanlian", Name: "AI 换脸"},
-	{ID: "ai-mogai", Name: "AI 魔改"},
 }
 
 func nativeCatalogKey(source, category string) string {
@@ -82,80 +69,4 @@ func (engine *nativeEngine) rememberCategories(source string, all []nativeCatego
 	}
 	engine.categoryOptions[source] = all
 	engine.writeCatalogDiskLocked()
-}
-
-var categoryAnchorPattern = regexp.MustCompile(`(?is)<a\b([^>]*)>(.*?)</a>`)
-var categoryTextPattern = regexp.MustCompile(`(?s)<[^>]*>`)
-
-func parseHuangguoVideoCategories(body string) []nativeCategory {
-	var categories []nativeCategory
-	seen := map[string]bool{}
-	for _, match := range categoryAnchorPattern.FindAllStringSubmatch(body, -1) {
-		href := html.UnescapeString(extractAttr("<a "+match[1]+">", "href"))
-		address, err := url.Parse(href)
-		if err != nil || address.Path != "" && strings.TrimRight(address.Path, "/") != "/videos" {
-			continue
-		}
-		id := address.Query().Get("category")
-		name := strings.TrimSpace(html.UnescapeString(categoryTextPattern.ReplaceAllString(match[2], "")))
-		if !validNativeCategory(sourceHuangguoVideo, id) || id == "" || seen[id] || name == "" || len([]rune(name)) > 24 {
-			continue
-		}
-		seen[id] = true
-		categories = append(categories, nativeCategory{ID: id, Name: name})
-	}
-	return categories
-}
-
-func (d *Downloader) fetchHuangguoAICatalogPage(ctx context.Context, page int, category string) ([]Drama, bool, error) {
-	categories := nativeAICategories
-	if category != "" {
-		for _, entry := range categories {
-			if entry.ID == category {
-				categories = []nativeCategory{entry}
-				break
-			}
-		}
-	}
-	type categoryResult struct {
-		items []Drama
-		err   error
-	}
-	results := make([]categoryResult, len(categories))
-	slots := make(chan struct{}, 2)
-	var group sync.WaitGroup
-	for index, entry := range categories {
-		group.Add(1)
-		go func(index int, entry nativeCategory) {
-			defer group.Done()
-			select {
-			case slots <- struct{}{}:
-				defer func() { <-slots }()
-			case <-ctx.Done():
-				results[index].err = ctx.Err()
-				return
-			}
-			path := fmt.Sprintf("/api/videos/category/%s?sort=hot&page=%d&size=24", url.PathEscape(entry.ID), page)
-			var body json.RawMessage
-			err := d.huangguoAIAPI(ctx, path, &body)
-			if err == nil {
-				results[index].items = parseHuangguoAIJSONCards(body, d.providerBaseURL(sourceHuangguoAI)+"/", entry.Name)
-			}
-			if err != nil {
-				results[index].err = fmt.Errorf("%s: %w", entry.Name, err)
-			}
-		}(index, entry)
-	}
-	group.Wait()
-	var items []Drama
-	var failures []error
-	more := false
-	for _, result := range results {
-		items = append(items, result.items...)
-		more = more || len(result.items) >= 24 || result.err != nil
-		if result.err != nil {
-			failures = append(failures, result.err)
-		}
-	}
-	return items, more, errors.Join(failures...)
 }

@@ -32,6 +32,14 @@ type Provider interface {
 	ResolveMedia(ctx context.Context, task Task) (providerMedia, error)
 }
 
+var ErrSourceLogin = errors.New("站源需要登录")
+
+type SourceLoginError string
+
+func (err SourceLoginError) Error() string { return string(err) }
+
+func (err SourceLoginError) Is(target error) bool { return target == ErrSourceLogin }
+
 type Sited interface {
 	BaseURL() string
 }
@@ -52,6 +60,48 @@ type CatalogStateful interface {
 type libraryMoreKey struct{}
 
 type libraryKnownKey struct{}
+
+type Suggester interface {
+	Suggestions(ctx context.Context, query string) ([]string, error)
+}
+
+type RecommendationPage struct {
+	Dramas  []Drama
+	Cursor  json.RawMessage
+	HasMore bool
+}
+
+type Recommender interface {
+	ValidRecommendation(genre string, cursor json.RawMessage) error
+	Recommendations(ctx context.Context, genre string, cursor json.RawMessage, seen []string) (RecommendationPage, error)
+}
+
+type DanmakuItem struct {
+	ID     string `json:"id"`
+	Text   string `json:"text"`
+	TimeMS int64  `json:"timeMs"`
+}
+
+type DanmakuPage struct {
+	EpisodeID string        `json:"episodeId"`
+	Items     []DanmakuItem `json:"items"`
+	StartMS   int64         `json:"startMs"`
+	NextMS    int64         `json:"nextMs"`
+	Total     int64         `json:"total"`
+}
+
+type DanmakuProvider interface {
+	DanmakuIDs(task Task) (series, video string, ok bool)
+	Danmaku(ctx context.Context, series, video string, startMS, durationMS int64) (DanmakuPage, error)
+}
+
+type DeviceProvider interface {
+	Devices(ctx context.Context, register bool) (bool, error)
+}
+
+type AccountProvider interface {
+	Account(ctx context.Context, command string, payload json.RawMessage) (any, error)
+}
 
 type Ranker interface {
 	RankingPage(ctx context.Context, board rankingBoard, page int) (rankingPage, error)
@@ -158,4 +208,34 @@ func (d *Downloader) provider(source string) (Provider, bool) {
 	p := factory(d)
 	d.providers[source] = p
 	return p, true
+}
+
+func providerDramaID(source, sourceID string) string {
+	return source + ":" + strings.TrimSpace(sourceID)
+}
+
+func providerChapterID(source, sourceID, chapterKey string) string {
+	return source + ":" + strings.TrimSpace(sourceID) + ":" + strings.TrimSpace(chapterKey)
+}
+
+func splitProviderDramaID(id string) (source, sourceID string, ok bool) {
+	source, sourceID, ok = strings.Cut(strings.TrimSpace(id), ":")
+	source = canonicalProviderSource(source)
+	if !ok || strings.TrimSpace(sourceID) == "" || !registeredProviderSource(source) {
+		return "", "", false
+	}
+	return source, strings.TrimSpace(sourceID), true
+}
+
+func registeredProviderSource(source string) bool {
+	_, ok := registeredDescriptor(canonicalProviderSource(source))
+	return ok
+}
+
+func canonicalProviderSource(source string) string {
+	trimmed := strings.ToLower(strings.TrimSpace(source))
+	if id, ok := registeredSource(trimmed); ok {
+		return id
+	}
+	return strings.TrimSpace(source)
 }

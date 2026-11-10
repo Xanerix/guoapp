@@ -16,22 +16,8 @@ import (
 const danmakuWindowMS = 30_000
 const danmakuMaxDurationMS = 24 * 60 * 60 * 1000
 
-type hongguoDanmakuItem struct {
-	ID     string `json:"id"`
-	Text   string `json:"text"`
-	TimeMS int64  `json:"timeMs"`
-}
-
-type hongguoDanmakuPage struct {
-	EpisodeID string               `json:"episodeId"`
-	Items     []hongguoDanmakuItem `json:"items"`
-	StartMS   int64                `json:"startMs"`
-	NextMS    int64                `json:"nextMs"`
-	Total     int64                `json:"total"`
-}
-
 type hongguoDanmakuCacheEntry struct {
-	page    hongguoDanmakuPage
+	page    DanmakuPage
 	err     error
 	expires time.Time
 }
@@ -50,12 +36,12 @@ func hongguoPlaybackIDs(task Task) (string, string, bool) {
 	return seriesID, videoID, hongguoNumericID.MatchString(seriesID) && hongguoNumericID.MatchString(videoID)
 }
 
-func (d *Downloader) hongguoDanmaku(ctx context.Context, seriesID, videoID string, start, duration int64) (hongguoDanmakuPage, error) {
+func (d *Downloader) hongguoDanmaku(ctx context.Context, seriesID, videoID string, start, duration int64) (DanmakuPage, error) {
 	if err := ctx.Err(); err != nil {
-		return hongguoDanmakuPage{}, err
+		return DanmakuPage{}, err
 	}
 	if !hongguoNumericID.MatchString(seriesID) || !hongguoNumericID.MatchString(videoID) || start < 0 || duration <= start || duration > danmakuMaxDurationMS {
-		return hongguoDanmakuPage{}, errors.New("弹幕请求参数无效")
+		return DanmakuPage{}, errors.New("弹幕请求参数无效")
 	}
 	key := fmt.Sprintf("%s:%s:%d:%d", seriesID, videoID, start, duration)
 	client := d.hongguoClient()
@@ -68,7 +54,7 @@ func (d *Downloader) hongguoDanmaku(ctx context.Context, seriesID, videoID strin
 		client.mu.Unlock()
 		select {
 		case <-ctx.Done():
-			return hongguoDanmakuPage{}, ctx.Err()
+			return DanmakuPage{}, ctx.Err()
 		case <-pending.done:
 			if ctx.Err() == nil && (errors.Is(pending.entry.err, context.Canceled) || errors.Is(pending.entry.err, context.DeadlineExceeded)) {
 				return d.hongguoDanmaku(ctx, seriesID, videoID, start, duration)
@@ -81,7 +67,7 @@ func (d *Downloader) hongguoDanmaku(ctx context.Context, seriesID, videoID strin
 	}
 	if len(client.danmakuPending) >= 16 {
 		client.mu.Unlock()
-		return hongguoDanmakuPage{}, errors.New("弹幕请求繁忙")
+		return DanmakuPage{}, errors.New("弹幕请求繁忙")
 	}
 	pending := &hongguoDanmakuCall{done: make(chan struct{})}
 	client.danmakuPending[key] = pending
@@ -94,7 +80,7 @@ func (d *Downloader) hongguoDanmaku(ctx context.Context, seriesID, videoID strin
 		"business_param": map[string]any{"book_id": seriesID, "start_offset_time": start, "playlet_item_duration": duration, "need_danmaku_guide_type": []int{1, 3, 4, 2}},
 	}
 	result, err := d.hongguoAppRequest(ctx, http.MethodPost, "/novel/commentapi/comment/list/"+videoID+"/v1/", nil, body)
-	var page hongguoDanmakuPage
+	var page DanmakuPage
 	if err == nil {
 		page, err = parseHongguoDanmaku(result, videoID, start, duration)
 	}
@@ -116,19 +102,19 @@ func (d *Downloader) hongguoDanmaku(ctx context.Context, seriesID, videoID strin
 	return cloneDanmakuPage(page), err
 }
 
-func cloneDanmakuPage(page hongguoDanmakuPage) hongguoDanmakuPage {
-	page.Items = append([]hongguoDanmakuItem{}, page.Items...)
+func cloneDanmakuPage(page DanmakuPage) DanmakuPage {
+	page.Items = append([]DanmakuItem{}, page.Items...)
 	return page
 }
 
-func parseHongguoDanmaku(result map[string]any, videoID string, start, duration int64) (hongguoDanmakuPage, error) {
+func parseHongguoDanmaku(result map[string]any, videoID string, start, duration int64) (DanmakuPage, error) {
 	data := nestedMap(result, "data")
 	rows, valid := data["data_list"].([]any)
 	next, err := strconv.ParseInt(mapString(nestedMap(data, "extra"), "next_query_danmaku_list_time"), 10, 64)
 	if !valid || err != nil || next <= start || next > danmakuMaxDurationMS {
-		return hongguoDanmakuPage{}, errors.New("红果弹幕时间段格式无效")
+		return DanmakuPage{}, errors.New("红果弹幕时间段格式无效")
 	}
-	page := hongguoDanmakuPage{EpisodeID: videoID, Items: []hongguoDanmakuItem{}, StartMS: start, NextMS: min(next, duration)}
+	page := DanmakuPage{EpisodeID: videoID, Items: []DanmakuItem{}, StartMS: start, NextMS: min(next, duration)}
 	var cursor struct {
 		Total int64 `json:"danmaku_count"`
 	}
@@ -158,7 +144,7 @@ func parseHongguoDanmaku(result map[string]any, videoID string, start, duration 
 			text = string(runes[:180]) + "…"
 		}
 		seen[id] = true
-		page.Items = append(page.Items, hongguoDanmakuItem{ID: id, Text: text, TimeMS: position})
+		page.Items = append(page.Items, DanmakuItem{ID: id, Text: text, TimeMS: position})
 		if len(page.Items) == 90 {
 			break
 		}
