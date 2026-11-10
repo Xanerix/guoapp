@@ -146,7 +146,7 @@ class PlaybackSession extends ChangeNotifier {
 
   final AppRepository repository;
   final LocalStore store;
-  final DramaDetail detail;
+  DramaDetail detail;
   Player _player;
   final Player Function()? _respawn;
   final void Function(Player player)? _onRetired;
@@ -393,11 +393,58 @@ class PlaybackSession extends ChangeNotifier {
       _queueRecovery('early_completion');
     } else if (_foreground && hasNext) {
       unawaited(play(_index + 1));
+    } else if (_foreground && _nextSeason != null) {
+      // 本季已看完：同一站源内自动接上下一季第 1 集。
+      unawaited(_playNextSeason());
     } else {
       _playIntent = false;
       endBoost();
       unawaited(player.pause());
       unawaited(saveProgress());
+    }
+  }
+
+  /// 当前季在季列表中的下一季；单季或顺序不可知时返回 null。
+  DramaSeason? get _nextSeason {
+    final seasons = detail.seasons;
+    if (seasons.length <= 1) return null;
+    final index = seasons.indexWhere(
+      (season) => season.drama.id == detail.drama.id,
+    );
+    if (index < 0 || index + 1 >= seasons.length) return null;
+    return seasons[index + 1];
+  }
+
+  Future<void> _playNextSeason() async {
+    final season = _nextSeason;
+    if (season == null || _closed || !_foreground || !_usable) return;
+    final ticket = _generation;
+    DiaryService.add('[Play] 本季结束，切换到${season.label}');
+    // 先把上一季的收尾进度按旧剧集记下来，再替换详情。
+    await saveProgress();
+    if (!_current(ticket)) return;
+    try {
+      final next = await repository.detail(season.drama);
+      if (!_current(ticket) || _closed || !_foreground) return;
+      detail = DramaDetail(
+        repository.catalogUpdates.current(season.drama).merge(next.drama),
+        next.episodes,
+        warning: next.warning,
+        seasons: detail.seasons,
+      );
+      _openedIndex = -1;
+      _index = 0;
+      _online = false;
+      _playIntent = true;
+      _notify();
+      await play(0, playWhenReady: true);
+    } catch (error) {
+      DiaryService.add('[Play] 切换下一季失败：${_diagnostic(error)}');
+      if (!_closed) {
+        _playIntent = false;
+        endBoost();
+        unawaited(player.pause());
+      }
     }
   }
 
