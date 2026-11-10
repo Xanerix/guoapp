@@ -52,6 +52,10 @@ bool isBenignPlayerError(String error) {
 /// 取流服务探活结果：明确存活、确认失效、或状态未知（通信异常）。
 enum _StreamProbe { alive, dead, unknown }
 
+/// 恢复后确认真正开播的采样窗口与最小推进量。
+const _restoreWindow = Duration(milliseconds: 1200);
+const _restoreProgress = Duration(milliseconds: 300);
+
 class PlaybackSession extends ChangeNotifier {
   PlaybackSession({
     required this.repository,
@@ -490,10 +494,15 @@ class PlaybackSession extends ChangeNotifier {
 
   /// 等待旧实例真正释放，再让新实例打开媒体；释放失败也不能阻塞恢复。
   Future<void> _retire(Player target) async {
+    final watch = Stopwatch()..start();
     try {
-      await target.dispose().timeout(const Duration(seconds: 3));
+      // 上限 1.5s：dispose 卡住时不能让整条恢复链跟着停住。
+      await target.dispose().timeout(const Duration(milliseconds: 1500));
     } catch (error) {
-      DiaryService.add('[Play] 释放播放器异常：${_diagnostic(error)}');
+      DiaryService.add(
+        '[Play] 释放播放器异常 用时=${watch.elapsedMilliseconds}ms：'
+        '${_diagnostic(error)}',
+      );
     } finally {
       _onRetired?.call(target);
     }
@@ -1193,6 +1202,25 @@ class PlaybackSession extends ChangeNotifier {
     await _rebuildAndResume(position, playIntent, restoreToken: token);
   }
 
+  /// 等待播放位置真的推进：缓冲中不算成功，最多等 [windows] 个窗口。
+  Future<bool> _confirmProgress(
+    Duration before, {
+    int windows = 2,
+    bool Function()? alive,
+  }) async {
+    for (var attempt = 0; attempt < windows; attempt++) {
+      await Future<void>.delayed(_restoreWindow);
+      if (_closed || !_foreground || _loading) return false;
+      if (alive != null && !alive()) return false;
+      final state = player.state;
+      if (state.playing && state.position > before + _restoreProgress) {
+        return true;
+      }
+      if (!state.buffering) return false;
+    }
+    return false;
+  }
+
   /// 原实例仍然可用时直接继续播放，保留已缓冲画面，做到切回来无黑屏。
   Future<void> _resumeInPlace(
     int token,
@@ -1228,22 +1256,19 @@ class PlaybackSession extends ChangeNotifier {
     }
     var advanced = false;
     if (failure == null) {
-      // 缓冲本身不算成功，必须看到位置推进；仍在缓冲时多给一个窗口。
-      for (var attempt = 0; attempt < 2; attempt++) {
-        await Future<void>.delayed(const Duration(milliseconds: 1200));
-        if (!_restorable(token) ||
-            generation != _generation ||
-            index != _index ||
-            _loading) {
-          return;
+      advanced = await _confirmProgress(
+        before,
+        alive: () =>
+            _restorable(token) &&
+            generation == _generation &&
+            index == _index,
+      );
+      // 期间若已切集、暂停或开始别的恢复，旧任务必须放弃。
+      if (!_restorable(token) || generation != _generation || index != _index) {
+        if (_pausedByUser && player.state.playing) {
+          unawaited(player.pause());
         }
-        final state = player.state;
-        if (state.playing &&
-            state.position > before + const Duration(milliseconds: 300)) {
-          advanced = true;
-          break;
-        }
-        if (!state.buffering) break;
+        return;
       }
     }
     if (advanced) {
@@ -1264,11 +1289,9 @@ class PlaybackSession extends ChangeNotifier {
       '播放=${playWatch.elapsedMilliseconds}ms 总=${watch.elapsedMilliseconds}ms'
       '${failure == null ? '' : ' 详情=${_diagnostic(failure)}'}',
     );
-    await _rebuildAndResume(
-      currentPosition > 0 ? currentPosition : position,
-      true,
-      restoreToken: token,
-    );
+    // 取较大值，避免恢复过程中位置回退。
+    final resumeAt = currentPosition > position ? currentPosition : position;
+    await _rebuildAndResume(resumeAt, true, restoreToken: token);
   }
 
   Future<void> _replacePlayer() async {
@@ -1369,11 +1392,39 @@ class PlaybackSession extends ChangeNotifier {
         }
         return;
       }
+      final resetMs = watch.elapsedMilliseconds;
       await play(_index, position: position, playWhenReady: playWhenReady);
-      DiaryService.add(
-        '[Play] 重建完成 用时=${watch.elapsedMilliseconds}ms '
-        '位置=${position.toStringAsFixed(1)} 续播=$playWhenReady',
+      if (!playWhenReady) {
+        DiaryService.add(
+          '[Play] 重建完成（保持暂停）重置=${resetMs}ms '
+          '总=${watch.elapsedMilliseconds}ms 位置=${position.toStringAsFixed(1)}',
+        );
+        return;
+      }
+      if (_closed || !_foreground || !_current(ticket)) return;
+      // open() 返回不代表真的在播：必须看到位置从恢复点继续推进。
+      final baseline = Duration(
+        milliseconds: (position * 1000).round(),
+      ) - _restoreProgress;
+      final playing = await _confirmProgress(
+        baseline,
+        alive: () => _current(ticket),
       );
+      if (_closed || !_foreground || !_current(ticket)) return;
+      if (playing) {
+        DiaryService.add(
+          '[Play] 重建恢复成功 重置=${resetMs}ms 打开=${watch.elapsedMilliseconds - resetMs}ms '
+          '总=${watch.elapsedMilliseconds}ms 位置=${currentPosition.toStringAsFixed(1)}',
+        );
+        return;
+      }
+      final stalled = player.state.buffering ? 'buffering' : 'position_stalled';
+      DiaryService.add(
+        '[Play] 重建后仍未播放 原因=$stalled 重置=${resetMs}ms '
+        '总=${watch.elapsedMilliseconds}ms 位置=${currentPosition.toStringAsFixed(1)}',
+      );
+      // 交给既有的有限恢复链：iOS 下最多再重建 3 次，之后换线路并最终报错。
+      unawaited(_recover('rebuild_$stalled'));
     } finally {
       _rebuilding = false;
       if (_rebuildQueued) {
