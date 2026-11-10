@@ -12,9 +12,9 @@ import (
 	"time"
 )
 
-func (downloader *Downloader) resolveHongguoAppMedia(ctx context.Context, videoID string) (providerMedia, error) {
+func (downloader *Downloader) resolveHongguoAppMedia(ctx context.Context, videoID string) (ProviderMedia, error) {
 	if !hongguoNumericID.MatchString(videoID) {
-		return providerMedia{}, errors.New("红果视频 ID 无效")
+		return ProviderMedia{}, errors.New("红果视频 ID 无效")
 	}
 	payload := map[string]any{
 		"video_id": videoID, "content_type": 1,
@@ -22,7 +22,7 @@ func (downloader *Downloader) resolveHongguoAppMedia(ctx context.Context, videoI
 	}
 	result, err := downloader.hongguoAppRequest(ctx, http.MethodPost, "/novel/player/video_model/v1/", nil, payload)
 	if err != nil {
-		return providerMedia{}, err
+		return ProviderMedia{}, err
 	}
 	data := nestedMap(result, "data")
 	model, _ := data["video_model"].(map[string]any)
@@ -33,7 +33,7 @@ func (downloader *Downloader) resolveHongguoAppMedia(ctx context.Context, videoI
 		decoder := json.NewDecoder(strings.NewReader(encoded))
 		decoder.UseNumber()
 		if err := decoder.Decode(&model); err != nil {
-			return providerMedia{}, errors.New("红果 App 播放信息格式异常")
+			return ProviderMedia{}, errors.New("红果 App 播放信息格式异常")
 		}
 	}
 	if len(model) == 0 {
@@ -48,7 +48,7 @@ func (downloader *Downloader) resolveHongguoAppMedia(ctx context.Context, videoI
 	return selectHongguoAppMedia(model)
 }
 
-func selectHongguoAppMedia(model map[string]any) (providerMedia, error) {
+func selectHongguoAppMedia(model map[string]any) (ProviderMedia, error) {
 	variants := anyList(model["video_list"])
 	if rows, ok := model["video_list"].(map[string]any); ok && len(variants) == 0 {
 		keys := make([]string, 0, len(rows))
@@ -63,7 +63,7 @@ func selectHongguoAppMedia(model map[string]any) (providerMedia, error) {
 	duration, _ := strconv.ParseFloat(mapString(model, "video_duration", "duration"), 64)
 	var keyErr error
 	type scoredMedia struct {
-		media providerMedia
+		media ProviderMedia
 		score int
 	}
 	var choices []scoredMedia
@@ -78,7 +78,7 @@ func selectHongguoAppMedia(model map[string]any) (providerMedia, error) {
 		if len(addresses) == 0 {
 			continue
 		}
-		media := providerMedia{Referer: "https://novel.snssdk.com/", Duration: time.Duration(duration * float64(time.Second))}
+		media := ProviderMedia{Referer: "https://novel.snssdk.com/", Duration: time.Duration(duration * float64(time.Second))}
 		encryption := nestedMap(variant, "encrypt_info")
 		spade := mapString(encryption, "spade_a")
 		if spade != "" || encryption["encrypt"] == true || mapString(encryption, "encryption_method") == "cenc-aes-ctr" {
@@ -114,9 +114,9 @@ func selectHongguoAppMedia(model map[string]any) (providerMedia, error) {
 		return selected, nil
 	}
 	if keyErr != nil {
-		return providerMedia{}, fmt.Errorf("红果 App 媒体密钥不可用: %w", keyErr)
+		return ProviderMedia{}, fmt.Errorf("红果 App 媒体密钥不可用: %w", keyErr)
 	}
-	return providerMedia{}, errors.New("红果 App 未返回兼容的媒体，已跳过不支持的编码")
+	return ProviderMedia{}, errors.New("红果 App 未返回兼容的媒体，已跳过不支持的编码")
 }
 
 func hongguoMediaAddresses(info map[string]any) []string {

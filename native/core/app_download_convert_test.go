@@ -190,9 +190,9 @@ func TestNativeDownloadConversionFailureRetryAndRemoval(t *testing.T) {
 	if _, err := manager.beginConversion(broken); err == nil {
 		t.Fatal("missing download converted")
 	}
-	manager.resolve = func(ctx context.Context, job nativeDownloadJob) (providerMedia, error) {
+	manager.resolve = func(ctx context.Context, job nativeDownloadJob) (ProviderMedia, error) {
 		<-ctx.Done()
-		return providerMedia{}, ctx.Err()
+		return ProviderMedia{}, ctx.Err()
 	}
 	if err := manager.control(broken, "resume"); err != nil {
 		t.Fatal(err)

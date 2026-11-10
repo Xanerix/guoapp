@@ -87,7 +87,7 @@ func TestNativeHLSReadsNestedPlaylistKeyAndRanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer stream.server.Close()
-	address, token := stream.nativeOpen(providerMedia{URL: upstream.URL + "/master.m3u8",
+	address, token := stream.nativeOpen(ProviderMedia{URL: upstream.URL + "/master.m3u8",
 		Referer: "https://example.test/watch", HLSKey: []byte("0123456789abcdef")})
 	defer stream.nativeRelease(token)
 	read := func(address string) string {
@@ -175,7 +175,7 @@ func TestNativeStreamDirectMP4WithHLSKeyPreservesRangeResponse(t *testing.T) {
 	}
 	defer stream.server.Close()
 
-	address, token := stream.nativeOpen(providerMedia{
+	address, token := stream.nativeOpen(ProviderMedia{
 		URL:    upstream.URL + "/episode.mp4?format=hls",
 		HLSKey: []byte("0123456789abcdef"),
 	})
@@ -237,7 +237,7 @@ func TestNativeStreamDowngradesPredictedPlaylistForMP4Response(t *testing.T) {
 	}
 	defer stream.server.Close()
 
-	_, token := stream.nativeOpen(providerMedia{URL: upstream.URL + "/episode.mp4?format=hls"})
+	_, token := stream.nativeOpen(ProviderMedia{URL: upstream.URL + "/episode.mp4?format=hls"})
 	defer stream.nativeRelease(token)
 	stream.mu.Lock()
 	session := stream.sessions[token]

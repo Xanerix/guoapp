@@ -34,18 +34,18 @@ type hongguoRankingContent struct {
 	} `json:"pagination"`
 }
 
-func parseHongguoRanking(body string, board rankingBoard, page int) (rankingPage, error) {
+func parseHongguoRanking(body string, board RankingBoard, page int) (RankingPage, error) {
 	failure := errHongguoRankingFormat
 	loaderKey := "rank_" + board.path + "/page"
 	loader := nestedMap(parseRouterData(body), "loaderData", loaderKey)
 	if len(loader) > 0 && (mapString(loader, "rankKey") != board.upstreamKey || mapString(loader, "pageNum") != strconv.Itoa(page)) {
-		return rankingPage{}, failure
+		return RankingPage{}, failure
 	}
 	var content hongguoRankingContent
 	if inline := nestedMap(loader, "content"); len(inline) > 0 {
 		raw, err := json.Marshal(inline)
 		if err != nil || json.Unmarshal(raw, &content) != nil {
-			return rankingPage{}, failure
+			return RankingPage{}, failure
 		}
 	} else if merged, found := parseHongguoMergeLoader(body, loaderKey); found {
 		content = merged
@@ -63,7 +63,7 @@ func parseHongguoRanking(body string, board rankingBoard, page int) (rankingPage
 				continue
 			}
 			if json.Unmarshal(args[2], &content) != nil {
-				return rankingPage{}, failure
+				return RankingPage{}, failure
 			}
 			break
 		}
@@ -72,15 +72,15 @@ func parseHongguoRanking(body string, board rankingBoard, page int) (rankingPage
 		return parseHongguoRankingDocument(body, board, page, loader)
 	}
 	if content.Pagination.Page != page || content.Pagination.TotalPages < page || content.Pagination.TotalPages > 500 {
-		return rankingPage{}, failure
+		return RankingPage{}, failure
 	}
-	result := rankingPage{Items: make([]rankingItem, 0, len(content.Rows)), TotalPages: content.Pagination.TotalPages, HasMore: page < content.Pagination.TotalPages, UpdatedText: mapString(loader, "updatedText")}
+	result := RankingPage{Items: make([]RankingItem, 0, len(content.Rows)), TotalPages: content.Pagination.TotalPages, HasMore: page < content.Pagination.TotalPages, UpdatedText: mapString(loader, "updatedText")}
 	seen := map[string]bool{}
 	previous := (page - 1) * 20
 	for _, row := range content.Rows {
 		id := firstNonEmpty(row.SeriesID, row.ID)
 		if !hongguoNumericID.MatchString(id) || row.ID != "" && row.SeriesID != "" && row.ID != row.SeriesID || strings.TrimSpace(row.Title) == "" || row.Rank <= previous || row.Rank > page*20 || seen[id] {
-			return rankingPage{}, failure
+			return RankingPage{}, failure
 		}
 		seen[id], previous = true, row.Rank
 		drama := Drama{ID: providerDramaID(sourceHongguo, id), Source: sourceHongguo, SourceID: id, Title: row.Title, Name: row.Title, Desc: row.Description, Intro: row.Description, Tags: row.Tags, Heat: row.Heat, Score: strings.TrimPrefix(row.Score, "评分"), ChannelName: "红果"}
@@ -93,31 +93,31 @@ func parseHongguoRanking(body string, board rankingBoard, page int) (rankingPage
 		if len(row.EpisodeIDs) > 0 {
 			drama.TotalEpisode = len(row.EpisodeIDs)
 		}
-		result.Items = append(result.Items, rankingItem{Rank: row.Rank, Drama: drama, Metric: row.Heat})
+		result.Items = append(result.Items, RankingItem{Rank: row.Rank, Drama: drama, Metric: row.Heat})
 	}
 	if len(result.Items) == 0 && result.HasMore {
-		return rankingPage{}, failure
+		return RankingPage{}, failure
 	}
 	return result, nil
 }
 
-func parseHuangdouRanking(decoded any, page int) (rankingPage, error) {
+func parseHuangdouRanking(decoded any, page int) (RankingPage, error) {
 	data := huangdouDataMap(decoded)
 	rows, valid := data["list"].([]any)
 	if !valid {
-		return rankingPage{}, errors.New("黄豆未返回有效榜单")
+		return RankingPage{}, errors.New("黄豆未返回有效榜单")
 	}
 	if len(rows) > 20 {
-		return rankingPage{}, errors.New("黄豆榜单分页格式已变化")
+		return RankingPage{}, errors.New("黄豆榜单分页格式已变化")
 	}
-	result := rankingPage{Items: make([]rankingItem, 0, len(rows)), HasMore: len(rows) == 20}
+	result := RankingPage{Items: make([]RankingItem, 0, len(rows)), HasMore: len(rows) == 20}
 	seen := map[string]bool{}
 	for index, value := range rows {
 		row, valid := value.(map[string]any)
 		id := strings.TrimPrefix(firstNonEmpty(mapString(row, "id"), mapString(row, "drama_id")), "rp_")
 		title := mapString(row, "name", "title", "t")
 		if !valid || !rankingSourceID.MatchString(id) || strings.TrimSpace(title) == "" || seen[id] {
-			return rankingPage{}, errors.New("黄豆榜单包含无效或重复条目")
+			return RankingPage{}, errors.New("黄豆榜单包含无效或重复条目")
 		}
 		seen[id] = true
 		drama := huangdouDramaFromMap(row)
@@ -127,7 +127,7 @@ func parseHuangdouRanking(decoded any, page int) (rankingPage, error) {
 			metric = drama.Heat + "热度"
 		}
 
-		result.Items = append(result.Items, rankingItem{Rank: (page-1)*20 + index + 1, Drama: drama, Metric: metric})
+		result.Items = append(result.Items, RankingItem{Rank: (page-1)*20 + index + 1, Drama: drama, Metric: metric})
 	}
 	return result, nil
 }

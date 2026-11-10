@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-type nativeCategory struct {
+type Category struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 }
@@ -32,11 +32,11 @@ func validNativeCategory(source, category string) bool {
 	return false
 }
 
-func (engine *nativeEngine) nativeCategories(ctx context.Context, source string, force bool) ([]nativeCategory, error) {
+func (engine *nativeEngine) nativeCategories(ctx context.Context, source string, force bool) ([]Category, error) {
 	source = canonicalProviderSource(source)
-	all := []nativeCategory{{Name: "全部"}}
+	all := []Category{{Name: "全部"}}
 	engine.mu.Lock()
-	cached := append([]nativeCategory{}, engine.categoryOptions[source]...)
+	cached := append([]Category{}, engine.categoryOptions[source]...)
 	engine.mu.Unlock()
 	if len(cached) > 1 && !force {
 		return cached, nil
@@ -61,11 +61,11 @@ func (engine *nativeEngine) nativeCategories(ctx context.Context, source string,
 	return all, nil
 }
 
-func (engine *nativeEngine) rememberCategories(source string, all []nativeCategory) {
+func (engine *nativeEngine) rememberCategories(source string, all []Category) {
 	engine.mu.Lock()
 	defer engine.mu.Unlock()
 	if engine.categoryOptions == nil {
-		engine.categoryOptions = map[string][]nativeCategory{}
+		engine.categoryOptions = map[string][]Category{}
 	}
 	engine.categoryOptions[source] = all
 	engine.writeCatalogDiskLocked()

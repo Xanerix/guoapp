@@ -28,7 +28,7 @@ func TestNativeCategoryAliasesAndDetailPersistence(t *testing.T) {
 	drama := nativeDrama{ID: "hongguo:100", Source: sourceHongguo, Title: "旧名称", Category: "旧分类"}
 	engine.catalogs[sourceHongguo] = []nativeDrama{drama}
 	engine.catalogs["hongguo|short_play"] = []nativeDrama{drama}
-	engine.categoryOptions = map[string][]nativeCategory{sourceHuangguoVideo: {{ID: "2", Name: "合成分类"}}}
+	engine.categoryOptions = map[string][]Category{sourceHuangguoVideo: {{ID: "2", Name: "合成分类"}}}
 	drama.Title, drama.Category = "新名称", "新分类"
 	engine.saveDetailMetadata(drama)
 	restored := &nativeEngine{directory: engine.directory, catalogs: map[string][]nativeDrama{}, catalogStates: map[string]nativeCatalogState{}}

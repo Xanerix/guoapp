@@ -115,25 +115,25 @@ func (d *Downloader) searchHuangguoAI(ctx context.Context, page int, query strin
 	return items, page < result.Pagination.Pages, nil
 }
 
-func parseHuangguoRanking(rows []map[string]any, pageURL string) (rankingPage, error) {
+func parseHuangguoRanking(rows []map[string]any, pageURL string) (RankingPage, error) {
 	failure := errors.New("黄果未返回有效榜单")
 	if len(rows) == 0 || len(rows) > 100 {
-		return rankingPage{}, failure
+		return RankingPage{}, failure
 	}
-	result := rankingPage{Items: make([]rankingItem, 0, len(rows)), TotalPages: 1}
+	result := RankingPage{Items: make([]RankingItem, 0, len(rows)), TotalPages: 1}
 	seen := map[string]bool{}
 	for index, row := range rows {
 		row["id"] = row["video_id"]
 		drama, ok := dramaFromAIMap(row, pageURL, mapString(row, "cate_name"))
 		if !ok || !rankingSourceID.MatchString(drama.SourceID) || seen[drama.SourceID] {
-			return rankingPage{}, failure
+			return RankingPage{}, failure
 		}
 		seen[drama.SourceID] = true
 		rank, err := strconv.Atoi(mapString(row, "rank"))
 		if err != nil || rank < 1 {
 			rank = index + 1
 		}
-		result.Items = append(result.Items, rankingItem{Rank: rank, Drama: drama, Metric: huangguoRankingMetric(row)})
+		result.Items = append(result.Items, RankingItem{Rank: rank, Drama: drama, Metric: huangguoRankingMetric(row)})
 	}
 	return result, nil
 }
@@ -171,7 +171,7 @@ var huangguoAIDescriptor = SourceDescriptor{
 		}
 		return false
 	},
-	Rankings: []rankingBoard{
+	Rankings: []RankingBoard{
 		{ID: "huangguo-hot", Source: sourceHuangguoAI, Name: "热播榜", Description: "黄果站点热播 TOP 20；每日更新。", path: "hot"},
 		{ID: "huangguo-recommend", Source: sourceHuangguoAI, Name: "推荐榜", Description: "黄果站点推荐 TOP 20。", path: "recommend"},
 		{ID: "huangguo-potential", Source: sourceHuangguoAI, Name: "潜力榜", Description: "黄果站点潜力 TOP 20。", path: "potential"},
@@ -179,7 +179,7 @@ var huangguoAIDescriptor = SourceDescriptor{
 }
 
 func init() {
-	Register(huangguoAIDescriptor, func(d *Downloader) Provider { return &huangguoAIProvider{d: d} })
+	Register(huangguoAIDescriptor, func(host Host) Provider { return &huangguoAIProvider{d: host.(*Downloader)} })
 }
 
 func (p *huangguoAIProvider) Descriptor() SourceDescriptor { return huangguoAIDescriptor }
@@ -188,8 +188,8 @@ func (p *huangguoAIProvider) BaseURL() string {
 	return firstNonEmpty(p.d.cfg.HuangguoAIURL, huangguoAIBaseURL)
 }
 
-func (p *huangguoAIProvider) Categories(context.Context, bool) ([]nativeCategory, error) {
-	return append([]nativeCategory(nil), nativeAICategories...), nil
+func (p *huangguoAIProvider) Categories(context.Context, bool) ([]Category, error) {
+	return append([]Category(nil), nativeAICategories...), nil
 }
 
 func (p *huangguoAIProvider) CatalogPage(ctx context.Context, page int, category string) ([]Drama, bool, error) {
@@ -204,38 +204,38 @@ func (p *huangguoAIProvider) Detail(ctx context.Context, sourceID string) (Drama
 	return p.d.fetchHuangguoAIDetail(ctx, sourceID)
 }
 
-func (p *huangguoAIProvider) ResolveMedia(ctx context.Context, task Task) (providerMedia, error) {
+func (p *huangguoAIProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	chapter := task.Chapter
 	_, sourceID, valid := splitProviderDramaID(task.DramaID)
 	if !valid {
-		return providerMedia{}, fmt.Errorf("黄果剧集信息无效")
+		return ProviderMedia{}, fmt.Errorf("黄果剧集信息无效")
 	}
 	address, err := p.d.fetchHuangguoAIPlayURL(ctx, sourceID, chapterEpisodeNumber(chapter, task.Index))
 	if err != nil {
-		return providerMedia{}, err
+		return ProviderMedia{}, err
 	}
-	media := providerMedia{URL: address, Referer: firstNonEmpty(chapter.Referer, p.d.providerBaseURL(sourceHuangguoAI)+"/")}
+	media := ProviderMedia{URL: address, Referer: firstNonEmpty(chapter.Referer, p.d.providerBaseURL(sourceHuangguoAI)+"/")}
 	return p.d.finishProviderMedia(ctx, media, sourceHuangguoAI)
 }
 
-func (p *huangguoAIProvider) RankingPage(ctx context.Context, board rankingBoard, page int) (rankingPage, error) {
+func (p *huangguoAIProvider) RankingPage(ctx context.Context, board RankingBoard, page int) (RankingPage, error) {
 	if page != 1 {
-		return rankingPage{}, errors.New("该榜单只有一页")
+		return RankingPage{}, errors.New("该榜单只有一页")
 	}
 	var ranking struct {
 		Items []map[string]any `json:"items"`
 	}
 	if err := p.d.huangguoAIAPI(ctx, "/api/ranks/"+board.path, &ranking); err != nil {
-		return rankingPage{}, err
+		return RankingPage{}, err
 	}
 	result, err := parseHuangguoRanking(ranking.Items, p.d.providerBaseURL(sourceHuangguoAI)+"/")
 	if err != nil {
-		return rankingPage{}, fmt.Errorf("%s: %w", board.Name, err)
+		return RankingPage{}, fmt.Errorf("%s: %w", board.Name, err)
 	}
 	return result, nil
 }
 
-var nativeAICategories = []nativeCategory{
+var nativeAICategories = []Category{
 	{ID: "ai-duanju", Name: "AI 短剧"},
 	{ID: "ai-manju", Name: "AI 漫剧"},
 	{ID: "ai-huanlian", Name: "AI 换脸"},
@@ -247,7 +247,7 @@ func (d *Downloader) fetchHuangguoAICatalogPage(ctx context.Context, page int, c
 	if category != "" {
 		for _, entry := range categories {
 			if entry.ID == category {
-				categories = []nativeCategory{entry}
+				categories = []Category{entry}
 				break
 			}
 		}
@@ -261,7 +261,7 @@ func (d *Downloader) fetchHuangguoAICatalogPage(ctx context.Context, page int, c
 	var group sync.WaitGroup
 	for index, entry := range categories {
 		group.Add(1)
-		go func(index int, entry nativeCategory) {
+		go func(index int, entry Category) {
 			defer group.Done()
 			select {
 			case slots <- struct{}{}:

@@ -67,7 +67,7 @@ type nativeDownloads struct {
 	lastSaved   time.Time
 	concurrency int
 	bySource    bool
-	resolve     func(context.Context, nativeDownloadJob) (providerMedia, error)
+	resolve     func(context.Context, nativeDownloadJob) (ProviderMedia, error)
 }
 
 func nativeDownloadID(drama string, episode int) string {
@@ -90,7 +90,7 @@ func newNativeDownloads(engine *nativeEngine) *nativeDownloads {
 		jobs: map[string]*nativeDownloadRecord{}, active: map[string]context.CancelFunc{}, converting: map[string]bool{}}
 	settings := engine.resourceSettings()
 	manager.concurrency, manager.bySource = settings.DownloadConcurrency, settings.DownloadBySource
-	manager.resolve = func(ctx context.Context, job nativeDownloadJob) (providerMedia, error) {
+	manager.resolve = func(ctx context.Context, job nativeDownloadJob) (ProviderMedia, error) {
 		return engine.downloader.resolveProviderMedia(ctx, Task{
 			DramaID: job.Drama.ID, DramaTitle: job.Drama.Title, Chapter: job.Chapter, Index: job.Index})
 	}

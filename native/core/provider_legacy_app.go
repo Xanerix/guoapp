@@ -117,26 +117,26 @@ func (d *Downloader) fetchLegacyDetail(ctx context.Context, sourceID string) (Dr
 	return drama, chapters, nil
 }
 
-func (d *Downloader) resolveLegacyMedia(ctx context.Context, task Task) (providerMedia, error) {
+func (d *Downloader) resolveLegacyMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	if task.Chapter.VideoURL == "" {
-		return providerMedia{}, errors.New("此分集没有可用的播放地址")
+		return ProviderMedia{}, errors.New("此分集没有可用的播放地址")
 	}
 	var key []byte
 	if d.cfg.AESKeyHex != "" {
 		var err error
 		key, err = hex.DecodeString(d.cfg.AESKeyHex)
 		if err != nil || len(key) != 16 {
-			return providerMedia{}, errors.New("aesKeyHex 必须是 16 字节 AES 密钥的 hex 编码")
+			return ProviderMedia{}, errors.New("aesKeyHex 必须是 16 字节 AES 密钥的 hex 编码")
 		}
 	}
 	for attempt := 0; attempt < 2; attempt++ {
 		access, err := d.legacyCredentials(ctx)
 		if err != nil {
-			return providerMedia{}, err
+			return ProviderMedia{}, err
 		}
 		base, err := d.apiEndpoint(ctx)
 		if err != nil {
-			return providerMedia{}, err
+			return ProviderMedia{}, err
 		}
 		address := task.Chapter.VideoURL
 		if !isProviderHTTPMediaURL(address) {
@@ -151,11 +151,11 @@ func (d *Downloader) resolveLegacyMedia(ctx context.Context, task Task) (provide
 				d.invalidateLegacyToken(access)
 				continue
 			}
-			return providerMedia{}, err
+			return ProviderMedia{}, err
 		}
-		return providerMedia{URL: finalURL, Playlist: playlist, Referer: legacyFrontendURL + "/", HLSKey: key, Duration: m3u8Duration(playlist)}, nil
+		return ProviderMedia{URL: finalURL, Playlist: playlist, Referer: legacyFrontendURL + "/", HLSKey: key, Duration: m3u8Duration(playlist)}, nil
 	}
-	return providerMedia{}, errors.New("黄果旧 API 的播放会话已失效，请稍后重试")
+	return ProviderMedia{}, errors.New("黄果旧 API 的播放会话已失效，请稍后重试")
 }
 
 type legacyProvider struct{ d *Downloader }
@@ -173,20 +173,20 @@ var legacyDescriptor = SourceDescriptor{
 }
 
 func init() {
-	Register(legacyDescriptor, func(d *Downloader) Provider { return &legacyProvider{d: d} })
+	Register(legacyDescriptor, func(host Host) Provider { return &legacyProvider{d: host.(*Downloader)} })
 }
 
 func (p *legacyProvider) Descriptor() SourceDescriptor { return legacyDescriptor }
 
-func (p *legacyProvider) Categories(ctx context.Context, force bool) ([]nativeCategory, error) {
+func (p *legacyProvider) Categories(ctx context.Context, force bool) ([]Category, error) {
 	var tabs legacyTabList
 	if err := p.d.fetchAPI(ctx, "/api/app/playlet-tab/all", nil, &tabs); err != nil {
 		return nil, err
 	}
-	var categories []nativeCategory
+	var categories []Category
 	for _, tab := range tabs {
 		if validNativeCategory(sourceCloudFront, tab.ID) && tab.ID != "" && tab.Name != "" {
-			categories = append(categories, nativeCategory{ID: tab.ID, Name: tab.Name})
+			categories = append(categories, Category{ID: tab.ID, Name: tab.Name})
 		}
 	}
 	return categories, nil
@@ -200,7 +200,7 @@ func (p *legacyProvider) Detail(ctx context.Context, sourceID string) (Drama, []
 	return p.d.fetchLegacyDetail(ctx, sourceID)
 }
 
-func (p *legacyProvider) ResolveMedia(ctx context.Context, task Task) (providerMedia, error) {
+func (p *legacyProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	return p.d.resolveLegacyMedia(ctx, task)
 }
 

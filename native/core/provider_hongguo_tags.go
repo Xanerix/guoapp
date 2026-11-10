@@ -40,7 +40,7 @@ func hongguoTagQuery(offset int, session string) url.Values {
 	return query
 }
 
-func (downloader *Downloader) fetchHongguoTagCategories(ctx context.Context) ([]nativeCategory, error) {
+func (downloader *Downloader) fetchHongguoTagCategories(ctx context.Context) ([]Category, error) {
 	query := hongguoTagQuery(0, "")
 	query.Set("category_id", hongguoTagPanelCategory)
 	query.Set("selected_item_from_front_page", hongguoTagPanelCategory)
@@ -50,7 +50,7 @@ func (downloader *Downloader) fetchHongguoTagCategories(ctx context.Context) ([]
 	if err != nil {
 		return nil, err
 	}
-	var categories []nativeCategory
+	var categories []Category
 	seen := map[string]bool{}
 	for _, value := range anyList(nestedMap(result, "data", "selector")["rows"]) {
 		row, _ := value.(map[string]any)
@@ -65,7 +65,7 @@ func (downloader *Downloader) fetchHongguoTagCategories(ctx context.Context) ([]
 				continue
 			}
 			seen[id] = true
-			categories = append(categories, nativeCategory{ID: id, Name: name})
+			categories = append(categories, Category{ID: id, Name: name})
 		}
 	}
 	if len(categories) == 0 {

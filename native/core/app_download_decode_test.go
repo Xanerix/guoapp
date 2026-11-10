@@ -49,8 +49,8 @@ func TestNativeDownloadedEncryptedHLSDecodesWithSourceOffline(t *testing.T) {
 	}))
 	t.Cleanup(upstream.Close)
 	manager := downloadTestManager(t)
-	manager.resolve = func(context.Context, nativeDownloadJob) (providerMedia, error) {
-		return providerMedia{URL: upstream.URL + "/index.m3u8", HLSKey: key}, nil
+	manager.resolve = func(context.Context, nativeDownloadJob) (ProviderMedia, error) {
+		return ProviderMedia{URL: upstream.URL + "/index.m3u8", HLSKey: key}, nil
 	}
 	input := downloadTestInput(1)
 	if _, err := manager.enqueue(input); err != nil {
@@ -103,8 +103,8 @@ func TestNativeDownloadedCENCConvertsToPlainMP4(t *testing.T) {
 	upstream := httptest.NewServer(http.FileServer(http.Dir(source)))
 	t.Cleanup(upstream.Close)
 	manager := downloadTestManager(t)
-	manager.resolve = func(context.Context, nativeDownloadJob) (providerMedia, error) {
-		return providerMedia{URL: upstream.URL + "/media.mp4", CENCKey: key}, nil
+	manager.resolve = func(context.Context, nativeDownloadJob) (ProviderMedia, error) {
+		return ProviderMedia{URL: upstream.URL + "/media.mp4", CENCKey: key}, nil
 	}
 	input := downloadTestInput(1)
 	if _, err := manager.enqueue(input); err != nil {

@@ -17,7 +17,7 @@ const (
 	guipianPageSize    = 24
 )
 
-var guipianCategories = []nativeCategory{
+var guipianCategories = []Category{
 	{ID: "3", Name: "恐怖片"},
 	{ID: "6", Name: "大陆鬼片"},
 	{ID: "7", Name: "日韩鬼片"},
@@ -145,18 +145,17 @@ func guipianFixURL(raw string) string {
 	return parsed.String()
 }
 
-func (d *Downloader) fetchGuipianCategories() []nativeCategory {
-	return append([]nativeCategory(nil), guipianCategories...)
+func (p *guipianProvider) fetchGuipianCategories() []Category {
+	return append([]Category(nil), guipianCategories...)
 }
 
-func (d *Downloader) guipianGet(ctx context.Context, path string) (string, error) {
-	site := d.providerBaseURL(sourceGuipian)
+func (p *guipianProvider) guipianGet(ctx context.Context, path string) (string, error) {
 	address := path
 	if !strings.HasPrefix(address, "http") {
-		address = site + path
+		address = guipianSiteBaseURL + path
 	}
-	pageContext := context.WithValue(ctx, providerTextUserAgentKey{}, guipianUserAgent)
-	return d.fetchProviderText(pageContext, address, site+"/")
+	response, err := p.host.FetchText(ctx, TextRequest{URL: address, Referer: guipianSiteBaseURL + "/", UserAgent: guipianUserAgent})
+	return response.Body, err
 }
 
 func parseGuipianCards(body string) []Drama {
@@ -215,12 +214,12 @@ func guipianPageCount(body, category string, page, count int) int {
 	return page
 }
 
-func (d *Downloader) fetchGuipianCatalogPage(ctx context.Context, page int, category, query string) ([]Drama, bool, error) {
+func (p *guipianProvider) fetchGuipianCatalogPage(ctx context.Context, page int, category, query string) ([]Drama, bool, error) {
 	if page < 1 || page > 100000 {
 		return nil, false, errors.New("鬼片网目录页码无效")
 	}
 	if query != "" {
-		return d.searchGuipian(ctx, page, query)
+		return p.searchGuipian(ctx, page, query)
 	}
 	if !validGuipianCategory(category) {
 		return nil, false, errors.New("鬼片网内容分类无效")
@@ -232,7 +231,7 @@ func (d *Downloader) fetchGuipianCatalogPage(ctx context.Context, page int, cate
 	if page > 1 {
 		path = fmt.Sprintf("/list/%s_%d.html", category, page)
 	}
-	body, err := d.guipianGet(ctx, path)
+	body, err := p.guipianGet(ctx, path)
 	if err != nil {
 		return nil, false, err
 	}
@@ -363,11 +362,11 @@ func guipianPlayURL(href string) string {
 	return parsed.String()
 }
 
-func (d *Downloader) fetchGuipianDetail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
+func (p *guipianProvider) fetchGuipianDetail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
 	if !guipianNumericID(sourceID) {
 		return Drama{}, nil, errors.New("鬼片网视频 ID 无效")
 	}
-	body, err := d.guipianGet(ctx, "/nv/"+sourceID+".html")
+	body, err := p.guipianGet(ctx, "/nv/"+sourceID+".html")
 	if err != nil {
 		return Drama{}, nil, err
 	}
@@ -441,22 +440,22 @@ func (d *Downloader) fetchGuipianDetail(ctx context.Context, sourceID string) (D
 	return drama, chapters, nil
 }
 
-func (d *Downloader) resolveGuipianMedia(ctx context.Context, task Task) (providerMedia, error) {
+func (p *guipianProvider) resolveGuipianMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	source, sourceID, valid := splitProviderDramaID(task.DramaID)
 	prefix := providerChapterID(sourceGuipian, sourceID, "")
 	if !valid || source != sourceGuipian || !guipianNumericID(sourceID) || !strings.HasPrefix(task.Chapter.ID, prefix) {
-		return providerMedia{}, errors.New("鬼片网播放分集信息无效，请刷新详情")
+		return ProviderMedia{}, errors.New("鬼片网播放分集信息无效，请刷新详情")
 	}
 	playURL := strings.TrimPrefix(task.Chapter.ID, prefix)
 	if playURL == "" {
 		playURL = task.Chapter.PageURL
 	}
 	if guipianPlayURL(playURL) == "" {
-		return providerMedia{}, errors.New("鬼片网播放页地址无效")
+		return ProviderMedia{}, errors.New("鬼片网播放页地址无效")
 	}
-	body, err := d.guipianGet(ctx, playURL)
+	body, err := p.guipianGet(ctx, playURL)
 	if err != nil {
-		return providerMedia{}, err
+		return ProviderMedia{}, err
 	}
 	address := ""
 	if match := reGuipianNow.FindStringSubmatch(body); len(match) > 1 {
@@ -466,32 +465,32 @@ func (d *Downloader) resolveGuipianMedia(ctx context.Context, task Task) (provid
 		address = reGuipianMediaAny.FindString(body)
 	}
 	if address == "" {
-		return providerMedia{}, errors.New("鬼片网该集暂无可用播放地址")
+		return ProviderMedia{}, errors.New("鬼片网该集暂无可用播放地址")
 	}
 	if strings.HasPrefix(address, "//") {
 		address = "https:" + address
 	}
 	if !isProviderHTTPMediaURL(address) {
-		return providerMedia{}, errors.New("鬼片网播放地址无效")
+		return ProviderMedia{}, errors.New("鬼片网播放地址无效")
 	}
 	parsed, err := url.Parse(address)
 	if err != nil {
-		return providerMedia{}, errors.New("鬼片网播放地址无效")
+		return ProviderMedia{}, errors.New("鬼片网播放地址无效")
 	}
 	referer := guipianSiteBaseURL + "/"
-	media := providerMedia{URL: address, Referer: referer}
+	media := ProviderMedia{URL: address, Referer: referer}
 	if strings.HasSuffix(strings.ToLower(parsed.Path), ".m3u8") {
-		return d.prepareWebProviderMedia(ctx, media, "鬼片网")
+		return p.host.PrepareWebMedia(ctx, media, "鬼片网")
 	}
 	return media, nil
 }
 
-func (d *Downloader) searchGuipian(ctx context.Context, page int, query string) ([]Drama, bool, error) {
+func (p *guipianProvider) searchGuipian(ctx context.Context, page int, query string) ([]Drama, bool, error) {
 	query = strings.TrimSpace(query)
 	if query == "" || len(query) > 256 {
 		return nil, false, errors.New("鬼片网搜索关键词无效")
 	}
-	body, err := d.guipianGet(ctx, "/xml/rss.xml")
+	body, err := p.guipianGet(ctx, "/xml/rss.xml")
 	if err != nil {
 		return nil, false, err
 	}
@@ -531,7 +530,7 @@ func (d *Downloader) searchGuipian(ctx context.Context, page int, query string) 
 	return matched[start:end], end < len(matched), nil
 }
 
-type guipianProvider struct{ d *Downloader }
+type guipianProvider struct{ host Host }
 
 var guipianDescriptor = SourceDescriptor{
 	ID:                sourceGuipian,
@@ -544,27 +543,27 @@ var guipianDescriptor = SourceDescriptor{
 }
 
 func init() {
-	Register(guipianDescriptor, func(d *Downloader) Provider { return &guipianProvider{d: d} })
+	Register(guipianDescriptor, func(host Host) Provider { return &guipianProvider{host: host} })
 }
 
 func (p *guipianProvider) Descriptor() SourceDescriptor { return guipianDescriptor }
 
-func (p *guipianProvider) Categories(context.Context, bool) ([]nativeCategory, error) {
-	return p.d.fetchGuipianCategories(), nil
+func (p *guipianProvider) Categories(context.Context, bool) ([]Category, error) {
+	return p.fetchGuipianCategories(), nil
 }
 
 func (p *guipianProvider) CatalogPage(ctx context.Context, page int, category string) ([]Drama, bool, error) {
-	return p.d.fetchGuipianCatalogPage(ctx, page, category, "")
+	return p.fetchGuipianCatalogPage(ctx, page, category, "")
 }
 
 func (p *guipianProvider) Search(ctx context.Context, page int, query string) ([]Drama, bool, error) {
-	return p.d.fetchGuipianCatalogPage(ctx, page, "", query)
+	return p.fetchGuipianCatalogPage(ctx, page, "", query)
 }
 
 func (p *guipianProvider) Detail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
-	return p.d.fetchGuipianDetail(ctx, sourceID)
+	return p.fetchGuipianDetail(ctx, sourceID)
 }
 
-func (p *guipianProvider) ResolveMedia(ctx context.Context, task Task) (providerMedia, error) {
-	return p.d.resolveGuipianMedia(ctx, task)
+func (p *guipianProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
+	return p.resolveGuipianMedia(ctx, task)
 }

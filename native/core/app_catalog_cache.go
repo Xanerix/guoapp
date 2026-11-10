@@ -22,7 +22,7 @@ type nativeCatalogDisk struct {
 	Version         int                                  `json:"version"`
 	Catalogs        map[string][]nativeDrama             `json:"catalogs"`
 	States          map[string]nativeCatalogState        `json:"states"`
-	Categories      map[string][]nativeCategory          `json:"categories,omitempty"`
+	Categories      map[string][]Category                `json:"categories,omitempty"`
 	HongguoApp      json.RawMessage                      `json:"hongguoApp,omitempty"`
 	ProviderStates  map[string]json.RawMessage           `json:"providerStates,omitempty"`
 	Recommendations map[string]nativeRecommendationState `json:"recommendations,omitempty"`

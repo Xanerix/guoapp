@@ -26,15 +26,15 @@ type SourceDescriptor struct {
 	KeepDetailEpisodes bool
 	ContinuousFeed     bool
 	ValidCategory      func(category string) bool
-	Rankings           []rankingBoard
+	Rankings           []RankingBoard
 }
 
 type Provider interface {
 	Descriptor() SourceDescriptor
-	Categories(ctx context.Context, force bool) ([]nativeCategory, error)
+	Categories(ctx context.Context, force bool) ([]Category, error)
 	CatalogPage(ctx context.Context, page int, category string) ([]Drama, bool, error)
 	Detail(ctx context.Context, sourceID string) (Drama, []Chapter, error)
-	ResolveMedia(ctx context.Context, task Task) (providerMedia, error)
+	ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error)
 }
 
 var ErrSourceLogin = errors.New("站源需要登录")
@@ -109,7 +109,7 @@ type AccountProvider interface {
 }
 
 type Ranker interface {
-	RankingPage(ctx context.Context, board rankingBoard, page int) (rankingPage, error)
+	RankingPage(ctx context.Context, board RankingBoard, page int) (RankingPage, error)
 }
 
 type CoverResolver interface {
@@ -127,7 +127,7 @@ type MetadataEnricher interface {
 
 var errCategoriesIncomplete = errors.New("categories incomplete")
 
-type ProviderFactory func(d *Downloader) Provider
+type ProviderFactory func(host Host) Provider
 
 var providerRegistry = struct {
 	sync.RWMutex

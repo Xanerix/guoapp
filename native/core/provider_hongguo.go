@@ -189,49 +189,49 @@ func parseRouterData(raw string) map[string]any {
 	return data
 }
 
-func (d *Downloader) resolveHongguoMedia(ctx context.Context, task Task) (providerMedia, error) {
+func (d *Downloader) resolveHongguoMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	source, seriesID, ok := splitProviderDramaID(task.DramaID)
 	if !ok || source != sourceHongguo {
-		return providerMedia{}, fmt.Errorf("红果章节缺少剧 ID，请刷新剧库后重新加入队列")
+		return ProviderMedia{}, fmt.Errorf("红果章节缺少剧 ID，请刷新剧库后重新加入队列")
 	}
 	videoID := strings.TrimPrefix(task.Chapter.VideoURL, "hongguo-cenc://")
 	if !hongguoNumericID.MatchString(videoID) || !hongguoNumericID.MatchString(seriesID) {
-		return providerMedia{}, fmt.Errorf("红果章节 ID 无效，请重新获取章节")
+		return ProviderMedia{}, fmt.Errorf("红果章节 ID 无效，请重新获取章节")
 	}
 	media, nativeErr := d.resolveHongguoAppMedia(ctx, videoID)
 	if nativeErr == nil {
 		return media, nil
 	}
 	if err := ctx.Err(); err != nil {
-		return providerMedia{}, err
+		return ProviderMedia{}, err
 	}
 	media, pageErr := d.resolveHongguoWebMedia(ctx, seriesID, videoID)
 	if pageErr == nil {
 		return media, nil
 	}
 	if err := ctx.Err(); err != nil {
-		return providerMedia{}, err
+		return ProviderMedia{}, err
 	}
-	return providerMedia{}, fmt.Errorf("红果 App 取流失败：%v；网页取流失败：%w", publicError(nativeErr), publicError(pageErr))
+	return ProviderMedia{}, fmt.Errorf("红果 App 取流失败：%v；网页取流失败：%w", publicError(nativeErr), publicError(pageErr))
 }
 
-func (d *Downloader) resolveHongguoWebMedia(ctx context.Context, seriesID, videoID string) (providerMedia, error) {
+func (d *Downloader) resolveHongguoWebMedia(ctx context.Context, seriesID, videoID string) (ProviderMedia, error) {
 	pageURL := hongguoBaseURL + "/player/" + url.PathEscape(seriesID) + "/" + url.PathEscape(videoID)
 	body, err := d.fetchProviderText(ctx, pageURL, hongguoBaseURL+"/")
 	if err != nil {
-		return providerMedia{}, err
+		return ProviderMedia{}, err
 	}
 	page := routerLoaderMap(parseRouterData(body), "player_", "player_page")
 	if mapString(page, "vid") != videoID || mapString(page, "series_id") != seriesID {
-		return providerMedia{}, fmt.Errorf("红果未返回所请求的剧集，可能仅允许网页试看；请在站点确认该集的访问权限")
+		return ProviderMedia{}, fmt.Errorf("红果未返回所请求的剧集，可能仅允许网页试看；请在站点确认该集的访问权限")
 	}
 	info, _ := page["video_player_info"].(map[string]any)
 	addresses := hongguoMediaAddresses(info)
 	if len(addresses) == 0 {
-		return providerMedia{}, fmt.Errorf("红果该集未提供公开播放地址，可能需要登录或 App 授权；不会将试看集冒充该集下载")
+		return ProviderMedia{}, fmt.Errorf("红果该集未提供公开播放地址，可能需要登录或 App 授权；不会将试看集冒充该集下载")
 	}
 	duration, _ := strconv.ParseFloat(mapString(info, "duration"), 64)
-	media := providerMedia{URL: addresses[0], Referer: d.providerBaseURL(sourceHongguo) + "/", Duration: time.Duration(duration * float64(time.Second))}
+	media := ProviderMedia{URL: addresses[0], Referer: d.providerBaseURL(sourceHongguo) + "/", Duration: time.Duration(duration * float64(time.Second))}
 	for _, address := range addresses {
 		variant := media
 		variant.URL, variant.Variants = address, nil

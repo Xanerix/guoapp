@@ -33,7 +33,7 @@ func jinguoDuanjuActive(row map[string]any, key string) bool {
 	return isBool && flag
 }
 
-func (d *Downloader) fetchJinguoDuanjuCategories(ctx context.Context) ([]nativeCategory, error) {
+func (d *Downloader) fetchJinguoDuanjuCategories(ctx context.Context) ([]Category, error) {
 	client := d.jinguoDuanjuClient()
 	navigation, err := client.get(ctx, "/top-navigation", nil, 1<<20)
 	if err != nil {
@@ -44,7 +44,7 @@ func (d *Downloader) fetchJinguoDuanjuCategories(ctx context.Context) ([]nativeC
 	if !valid || len(rows) > 200 {
 		return nil, errors.New("禁果短剧分类数据格式无效")
 	}
-	categories := []nativeCategory{{ID: jinguoDuanjuHomeCategory, Name: "推荐"}, {ID: jinguoDuanjuHeatCategory, Name: "热度"}}
+	categories := []Category{{ID: jinguoDuanjuHomeCategory, Name: "推荐"}, {ID: jinguoDuanjuHeatCategory, Name: "热度"}}
 	seenID := map[string]bool{jinguoDuanjuHomeCategory: true, jinguoDuanjuHeatCategory: true}
 	seenName := map[string]bool{"推荐": true, "热度": true, "全部": true}
 	add := func(id, name string) {
@@ -54,7 +54,7 @@ func (d *Downloader) fetchJinguoDuanjuCategories(ctx context.Context) ([]nativeC
 		}
 		seenID[id] = true
 		seenName[name] = true
-		categories = append(categories, nativeCategory{ID: id, Name: name})
+		categories = append(categories, Category{ID: id, Name: name})
 	}
 	for _, value := range rows {
 		row, _ := value.(map[string]any)
@@ -309,36 +309,36 @@ func (d *Downloader) fetchJinguoDuanjuDetail(ctx context.Context, sourceID strin
 	return drama, chapters, nil
 }
 
-func (d *Downloader) resolveJinguoDuanjuMedia(ctx context.Context, task Task) (providerMedia, error) {
+func (d *Downloader) resolveJinguoDuanjuMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	source, sourceID, valid := splitProviderDramaID(task.DramaID)
 	prefix := providerChapterID(sourceJinguoDuanju, sourceID, "")
 	if !valid || source != sourceJinguoDuanju || !webProviderNumericID.MatchString(sourceID) || !strings.HasPrefix(task.Chapter.ID, prefix) {
-		return providerMedia{}, errors.New("禁果短剧播放分集信息无效，请刷新详情")
+		return ProviderMedia{}, errors.New("禁果短剧播放分集信息无效，请刷新详情")
 	}
 	episodeID := strings.TrimPrefix(task.Chapter.ID, prefix)
 	if !webProviderNumericID.MatchString(episodeID) {
-		return providerMedia{}, errors.New("禁果短剧播放分集 ID 无效")
+		return ProviderMedia{}, errors.New("禁果短剧播放分集 ID 无效")
 	}
 	client := d.jinguoDuanjuClient()
 	decoded, err := client.get(ctx, "/episodes/"+url.PathEscape(episodeID)+"/play", nil, 256<<10)
 	if err != nil {
-		return providerMedia{}, err
+		return ProviderMedia{}, err
 	}
 	row, _ := decoded.(map[string]any)
 	if id := mapString(row, "episodeId"); id != "" && id != episodeID {
-		return providerMedia{}, errors.New("禁果短剧返回的播放地址与请求分集不符")
+		return ProviderMedia{}, errors.New("禁果短剧返回的播放地址与请求分集不符")
 	}
 	if allowance, valid := row["allowance"].(map[string]any); valid {
 		if allowed, isBool := allowance["allowed"].(bool); isBool && !allowed {
-			return providerMedia{}, errors.New("禁果短剧该集需要会员或解锁后才能播放")
+			return ProviderMedia{}, errors.New("禁果短剧该集需要会员或解锁后才能播放")
 		}
 	}
 	referer := client.siteURL() + "/"
 	address := normalizeProviderMediaURL(referer, mapString(row, "videoUrl"))
 	if !isProviderHTTPMediaURL(address) {
-		return providerMedia{}, errors.New("禁果短剧未提供该集播放地址，请确认是否需要会员或解锁")
+		return ProviderMedia{}, errors.New("禁果短剧未提供该集播放地址，请确认是否需要会员或解锁")
 	}
-	return d.prepareWebProviderMedia(ctx, providerMedia{URL: address, Referer: referer}, "禁果短剧")
+	return d.prepareWebProviderMedia(ctx, ProviderMedia{URL: address, Referer: referer}, "禁果短剧")
 }
 
 type jinguoDuanjuProvider struct{ d *Downloader }
@@ -356,7 +356,7 @@ var jinguoDuanjuDescriptor = SourceDescriptor{
 }
 
 func init() {
-	Register(jinguoDuanjuDescriptor, func(d *Downloader) Provider { return &jinguoDuanjuProvider{d: d} })
+	Register(jinguoDuanjuDescriptor, func(host Host) Provider { return &jinguoDuanjuProvider{d: host.(*Downloader)} })
 }
 
 func (p *jinguoDuanjuProvider) Descriptor() SourceDescriptor { return jinguoDuanjuDescriptor }
@@ -365,7 +365,7 @@ func (p *jinguoDuanjuProvider) BaseURL() string {
 	return firstNonEmpty(jinguoDuanjuContentSite(p.d.cfg.JinguoDuanjuURL), jinguoDuanjuBaseURL)
 }
 
-func (p *jinguoDuanjuProvider) Categories(ctx context.Context, force bool) ([]nativeCategory, error) {
+func (p *jinguoDuanjuProvider) Categories(ctx context.Context, force bool) ([]Category, error) {
 	return p.d.fetchJinguoDuanjuCategories(ctx)
 }
 
@@ -381,6 +381,6 @@ func (p *jinguoDuanjuProvider) Detail(ctx context.Context, sourceID string) (Dra
 	return p.d.fetchJinguoDuanjuDetail(ctx, sourceID)
 }
 
-func (p *jinguoDuanjuProvider) ResolveMedia(ctx context.Context, task Task) (providerMedia, error) {
+func (p *jinguoDuanjuProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	return p.d.resolveJinguoDuanjuMedia(ctx, task)
 }

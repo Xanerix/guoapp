@@ -28,7 +28,7 @@ type dsdPageLimit struct {
 
 type dsdCatalogState struct {
 	mu         sync.Mutex
-	categories []nativeCategory
+	categories []Category
 	updatedAt  time.Time
 	limits     map[string]dsdPageLimit
 }
@@ -68,8 +68,8 @@ func dsdRouteParameters(pageURL, reference string) (string, map[string]string, b
 	return parts[1], parameters, true
 }
 
-func parseDSDCategories(document *html.Node, pageURL string) ([]nativeCategory, error) {
-	var categories []nativeCategory
+func parseDSDCategories(document *html.Node, pageURL string) ([]Category, error) {
+	var categories []Category
 	seen := map[string]bool{}
 	for _, anchor := range providerHTMLNodes(document, func(node *html.Node) bool { return node.Data == "a" }) {
 		action, values, valid := dsdRouteParameters(pageURL, providerHTMLAttr(anchor, "href"))
@@ -78,7 +78,7 @@ func parseDSDCategories(document *html.Node, pageURL string) ([]nativeCategory, 
 			continue
 		}
 		seen[id] = true
-		categories = append(categories, nativeCategory{ID: id, Name: name})
+		categories = append(categories, Category{ID: id, Name: name})
 	}
 	if len(categories) == 0 || len(categories) > 32 {
 		return nil, errors.New("帝果未返回有效的内容分类")
@@ -86,11 +86,11 @@ func parseDSDCategories(document *html.Node, pageURL string) ([]nativeCategory, 
 	return categories, nil
 }
 
-func (d *Downloader) fetchDSDCategories(ctx context.Context, force bool) ([]nativeCategory, error) {
+func (d *Downloader) fetchDSDCategories(ctx context.Context, force bool) ([]Category, error) {
 	state := &d.dsdCatalog
 	state.mu.Lock()
 	if len(state.categories) > 0 && !force && time.Since(state.updatedAt) < time.Hour {
-		categories := append([]nativeCategory(nil), state.categories...)
+		categories := append([]Category(nil), state.categories...)
 		state.mu.Unlock()
 		return categories, nil
 	}
@@ -105,7 +105,7 @@ func (d *Downloader) fetchDSDCategories(ctx context.Context, force bool) ([]nati
 		return nil, err
 	}
 	state.mu.Lock()
-	state.categories, state.updatedAt = append([]nativeCategory(nil), categories...), time.Now()
+	state.categories, state.updatedAt = append([]Category(nil), categories...), time.Now()
 	if force {
 		state.limits = nil
 	}
@@ -231,7 +231,7 @@ func (d *Downloader) dsdPageLimit(category string) (int, bool) {
 	return limit.pages, found && time.Since(limit.updatedAt) < 15*time.Minute
 }
 
-func (d *Downloader) fetchDSDPage(ctx context.Context, page int, category nativeCategory, query string) ([]Drama, bool, error) {
+func (d *Downloader) fetchDSDPage(ctx context.Context, page int, category Category, query string) ([]Drama, bool, error) {
 	if query == "" && page > 1 {
 		limit, known := d.dsdPageLimit(category.ID)
 		if !known {
@@ -284,7 +284,7 @@ func (d *Downloader) fetchDSDCatalogPage(ctx context.Context, page int, category
 		return nil, false, errors.New("帝果目录查询参数无效")
 	}
 	if query != "" {
-		return d.fetchDSDPage(ctx, page, nativeCategory{}, query)
+		return d.fetchDSDPage(ctx, page, Category{}, query)
 	}
 	categories, err := d.fetchDSDCategories(ctx, false)
 	if err != nil {
@@ -308,7 +308,7 @@ func (d *Downloader) fetchDSDCatalogPage(ctx context.Context, page int, category
 	var group sync.WaitGroup
 	for index, category := range categories {
 		group.Add(1)
-		go func(index int, category nativeCategory) {
+		go func(index int, category Category) {
 			defer group.Done()
 			select {
 			case slots <- struct{}{}:

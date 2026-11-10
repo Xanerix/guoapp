@@ -11,7 +11,7 @@ import (
 
 const rankingCacheTTL = 5 * time.Minute
 
-type rankingBoard struct {
+type RankingBoard struct {
 	ID          string `json:"id"`
 	Source      string `json:"source"`
 	Name        string `json:"name"`
@@ -20,16 +20,16 @@ type rankingBoard struct {
 	upstreamKey string
 }
 
-type rankingItem struct {
+type RankingItem struct {
 	Rank   int    `json:"rank"`
 	Drama  Drama  `json:"drama"`
 	Metric string `json:"metric,omitempty"`
 }
 
-type rankingPage struct {
+type RankingPage struct {
 	BoardID     string        `json:"boardId"`
 	Page        int           `json:"page"`
-	Items       []rankingItem `json:"items"`
+	Items       []RankingItem `json:"items"`
 	HasMore     bool          `json:"hasMore"`
 	TotalPages  int           `json:"totalPages,omitempty"`
 	UpdatedText string        `json:"updatedText,omitempty"`
@@ -40,44 +40,44 @@ type rankingPage struct {
 
 type rankingCall struct {
 	done chan struct{}
-	page rankingPage
+	page RankingPage
 	err  error
 }
 
 type rankingCache struct {
 	mu      sync.Mutex
-	pages   map[string]rankingPage
+	pages   map[string]RankingPage
 	pending map[string]*rankingCall
 }
 
-func allRankingBoards() []rankingBoard {
-	var boards []rankingBoard
+func allRankingBoards() []RankingBoard {
+	var boards []RankingBoard
 	for _, descriptor := range registeredDescriptors() {
 		boards = append(boards, descriptor.Rankings...)
 	}
 	return boards
 }
 
-func findRankingBoard(id string) (rankingBoard, bool) {
+func findRankingBoard(id string) (RankingBoard, bool) {
 	for _, board := range allRankingBoards() {
 		if board.ID == id {
 			return board, true
 		}
 	}
-	return rankingBoard{}, false
+	return RankingBoard{}, false
 }
 
-func cloneRankingPage(page rankingPage) rankingPage {
-	page.Items = append([]rankingItem{}, page.Items...)
+func cloneRankingPage(page RankingPage) RankingPage {
+	page.Items = append([]RankingItem{}, page.Items...)
 	return page
 }
 
-func (d *Downloader) loadRankingPage(ctx context.Context, board rankingBoard, page int, refresh bool) (rankingPage, error) {
+func (d *Downloader) loadRankingPage(ctx context.Context, board RankingBoard, page int, refresh bool) (RankingPage, error) {
 	key := board.ID + ":" + strconv.Itoa(page)
 	cache := &d.rankings
 	cache.mu.Lock()
 	if cache.pages == nil {
-		cache.pages = map[string]rankingPage{}
+		cache.pages = map[string]RankingPage{}
 		cache.pending = map[string]*rankingCall{}
 	}
 	cached, exists := cache.pages[key]
@@ -89,7 +89,7 @@ func (d *Downloader) loadRankingPage(ctx context.Context, board rankingBoard, pa
 		cache.mu.Unlock()
 		select {
 		case <-ctx.Done():
-			return rankingPage{}, ctx.Err()
+			return RankingPage{}, ctx.Err()
 		case <-pending.done:
 			if (errors.Is(pending.err, context.Canceled) || errors.Is(pending.err, context.DeadlineExceeded)) && ctx.Err() == nil {
 				return d.loadRankingPage(ctx, board, page, refresh)
@@ -136,11 +136,11 @@ func (d *Downloader) loadRankingPage(ctx context.Context, board rankingBoard, pa
 	return result, err
 }
 
-func (d *Downloader) fetchRankingPage(ctx context.Context, board rankingBoard, page int) (rankingPage, error) {
+func (d *Downloader) fetchRankingPage(ctx context.Context, board RankingBoard, page int) (RankingPage, error) {
 	if p, ok := d.provider(board.Source); ok {
 		if ranker, ok := p.(Ranker); ok {
 			return ranker.RankingPage(ctx, board, page)
 		}
 	}
-	return rankingPage{}, fmt.Errorf("不支持的榜单站源 %s", board.Source)
+	return RankingPage{}, fmt.Errorf("不支持的榜单站源 %s", board.Source)
 }

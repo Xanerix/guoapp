@@ -54,9 +54,9 @@ func TestNativePlaybackFallbackPreservesKeysAndReleasesOnlyOldSession(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	first := providerMedia{URL: "https://first.test/video.mp4", Referer: "https://first.test/", CENCKey: []byte("0123456789abcdef"), Quality: 1080}
-	second := providerMedia{URL: "https://second.test/video.mp4", Referer: "https://second.test/watch", CENCKey: []byte("fedcba9876543210"), Quality: 1080}
-	first.Variants = []providerMedia{first, first, second}
+	first := ProviderMedia{URL: "https://first.test/video.mp4", Referer: "https://first.test/", CENCKey: []byte("0123456789abcdef"), Quality: 1080}
+	second := ProviderMedia{URL: "https://second.test/video.mp4", Referer: "https://second.test/watch", CENCKey: []byte("fedcba9876543210"), Quality: 1080}
+	first.Variants = []ProviderMedia{first, first, second}
 	plan, err := engine.nativeOpenPlayback(context.Background(), nativePlaybackChoices(first, 0))
 	if err != nil || plan.RouteCount != 2 || plan.Session == "" {
 		t.Fatalf("initial playback: %+v, %v", plan, err)
@@ -106,8 +106,8 @@ func TestNativePlaybackHLSAlternativesAreLazyAndIsolated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	media := providerMedia{URL: "https://first.test/index.m3u8", Playlist: "#EXTM3U\n#EXT-X-ENDLIST\n", Quality: 1080}
-	media.Variants = []providerMedia{{URL: "https://backup.test/index.m3u8", Playlist: "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-ENDLIST\n", Quality: 720}}
+	media := ProviderMedia{URL: "https://first.test/index.m3u8", Playlist: "#EXTM3U\n#EXT-X-ENDLIST\n", Quality: 1080}
+	media.Variants = []ProviderMedia{{URL: "https://backup.test/index.m3u8", Playlist: "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-ENDLIST\n", Quality: 720}}
 	plan, err := engine.nativeOpenPlayback(context.Background(), nativePlaybackChoices(media, 0))
 	if err != nil {
 		t.Fatal(err)
@@ -143,7 +143,7 @@ func TestNativePlaybackHLSAlternativesAreLazyAndIsolated(t *testing.T) {
 
 func TestNativePlaybackCancellationAndCacheBound(t *testing.T) {
 	engine := &nativeEngine{}
-	choice := nativePlaybackChoices(providerMedia{URL: "https://example.test/video.mp4"}, 0)
+	choice := nativePlaybackChoices(ProviderMedia{URL: "https://example.test/video.mp4"}, 0)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if _, err := engine.nativeOpenPlayback(ctx, choice); !errors.Is(err, context.Canceled) || len(engine.playbacks) != 0 {

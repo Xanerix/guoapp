@@ -68,8 +68,8 @@ func TestNativeDownloadsOriginalBytesPersistenceAndLocalPriority(t *testing.T) {
 	t.Cleanup(upstream.Close)
 	manager := downloadTestManager(t)
 	key := []byte("0123456789abcdef")
-	manager.resolve = func(context.Context, nativeDownloadJob) (providerMedia, error) {
-		return providerMedia{URL: upstream.URL + "/media.mp4", Referer: "https://synthetic.test/watch",
+	manager.resolve = func(context.Context, nativeDownloadJob) (ProviderMedia, error) {
+		return ProviderMedia{URL: upstream.URL + "/media.mp4", Referer: "https://synthetic.test/watch",
 			CENCKey: key, Quality: 1080}, nil
 	}
 	input := downloadTestInput(2)
@@ -298,7 +298,7 @@ func TestNativeDownloadsBoundedQueueCancelAndPlaybackIsolation(t *testing.T) {
 	var active, peak atomic.Int32
 	started := make(chan int, 20)
 	release := make(chan struct{})
-	manager.resolve = func(ctx context.Context, job nativeDownloadJob) (providerMedia, error) {
+	manager.resolve = func(ctx context.Context, job nativeDownloadJob) (ProviderMedia, error) {
 		current := active.Add(1)
 		defer active.Add(-1)
 		for previous := peak.Load(); current > previous; previous = peak.Load() {
@@ -309,9 +309,9 @@ func TestNativeDownloadsBoundedQueueCancelAndPlaybackIsolation(t *testing.T) {
 		started <- job.Index
 		select {
 		case <-ctx.Done():
-			return providerMedia{}, ctx.Err()
+			return ProviderMedia{}, ctx.Err()
 		case <-release:
-			return providerMedia{URL: upstream.URL + "/media.mp4", Quality: 1080}, nil
+			return ProviderMedia{URL: upstream.URL + "/media.mp4", Quality: 1080}, nil
 		}
 	}
 	input := downloadTestInput(4)
@@ -387,9 +387,9 @@ func TestNativeDownloadsBoundedQueueCancelAndPlaybackIsolation(t *testing.T) {
 
 func TestNativeDownloadsPauseSourceOnlyPausesThatSource(t *testing.T) {
 	manager := downloadTestManager(t)
-	manager.resolve = func(ctx context.Context, job nativeDownloadJob) (providerMedia, error) {
+	manager.resolve = func(ctx context.Context, job nativeDownloadJob) (ProviderMedia, error) {
 		<-ctx.Done()
-		return providerMedia{}, ctx.Err()
+		return ProviderMedia{}, ctx.Err()
 	}
 	if _, err := manager.enqueue(downloadTestInput(3)); err != nil {
 		t.Fatal(err)
@@ -421,9 +421,9 @@ func TestNativeDownloadsPauseSourceOnlyPausesThatSource(t *testing.T) {
 
 func TestNativeDownloadsRestartPausesPendingJobs(t *testing.T) {
 	manager := downloadTestManager(t)
-	manager.resolve = func(ctx context.Context, job nativeDownloadJob) (providerMedia, error) {
+	manager.resolve = func(ctx context.Context, job nativeDownloadJob) (ProviderMedia, error) {
 		<-ctx.Done()
-		return providerMedia{}, ctx.Err()
+		return ProviderMedia{}, ctx.Err()
 	}
 	input := downloadTestInput(3)
 	if _, err := manager.enqueue(input); err != nil {
@@ -468,7 +468,7 @@ func TestNativeDownloadHLSBundleIncludesSelectedAudioKeysAndByteRanges(t *testin
 	manager := downloadTestManager(t)
 	job := downloadTestInput(1)
 	record := nativeDownloadJob{ID: nativeDownloadID(job.Drama.ID, 1), Drama: job.Drama, Index: 1, Quality: 720}
-	result, err := manager.transferMedia(context.Background(), record, providerMedia{URL: upstream.URL + "/master.m3u8"})
+	result, err := manager.transferMedia(context.Background(), record, ProviderMedia{URL: upstream.URL + "/master.m3u8"})
 	if err != nil || result.file != "index.m3u8" || result.quality != 720 {
 		t.Fatalf("bundle failed: %+v %v", result, err)
 	}
@@ -520,7 +520,7 @@ func TestNativeDownloadHLSRejectsLiveAndUnsupportedEncryption(t *testing.T) {
 		"#EXTM3U\n#EXT-X-KEY:METHOD=SAMPLE-AES,URI=\"key\"\n#EXTINF:2,\nseg.ts\n#EXT-X-ENDLIST\n",
 		"#EXTM3U\n#EXT-X-DEFINE:NAME=\"host\",VALUE=\"x\"\n#EXTINF:2,\nseg.ts\n#EXT-X-ENDLIST\n",
 	} {
-		_, err := manager.downloadBundle(context.Background(), providerMedia{URL: "https://synthetic.test/index.m3u8", Playlist: playlist}, 0)
+		_, err := manager.downloadBundle(context.Background(), ProviderMedia{URL: "https://synthetic.test/index.m3u8", Playlist: playlist}, 0)
 		if err == nil {
 			t.Fatalf("accepted unsupported playlist: %s", playlist)
 		}

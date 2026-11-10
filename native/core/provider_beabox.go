@@ -456,7 +456,7 @@ func beaboxTime(value any) string {
 	return time.Unix(seconds, 0).Format("2006-01-02")
 }
 
-func (d *Downloader) fetchBeaboxCategories(ctx context.Context) ([]nativeCategory, error) {
+func (d *Downloader) fetchBeaboxCategories(ctx context.Context) ([]Category, error) {
 	value, _, err := d.beaboxCall(ctx, "/configs", url.Values{"platformType": {"h5"}}, nil)
 	if err != nil {
 		return nil, err
@@ -465,7 +465,7 @@ func (d *Downloader) fetchBeaboxCategories(ctx context.Context) ([]nativeCategor
 	if !valid {
 		return nil, errors.New("笔盒分类数据格式无效")
 	}
-	var categories []nativeCategory
+	var categories []Category
 	seen := map[string]bool{}
 	for _, name := range strings.Split(mapString(config, "home_tags"), ",") {
 		name = strings.TrimSpace(name)
@@ -474,7 +474,7 @@ func (d *Downloader) fetchBeaboxCategories(ctx context.Context) ([]nativeCategor
 			continue
 		}
 		seen[id] = true
-		categories = append(categories, nativeCategory{ID: id, Name: name})
+		categories = append(categories, Category{ID: id, Name: name})
 		if len(categories) >= 64 {
 			break
 		}
@@ -698,33 +698,33 @@ func (d *Downloader) fetchBeaboxDetail(ctx context.Context, sourceID string) (Dr
 	return drama, chapters, nil
 }
 
-func (d *Downloader) resolveBeaboxMedia(ctx context.Context, task Task) (providerMedia, error) {
+func (d *Downloader) resolveBeaboxMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	source, sourceID, valid := splitProviderDramaID(task.DramaID)
 	prefix := providerChapterID(sourceBeabox, sourceID, "")
 	if !valid || source != sourceBeabox || !validBeaboxID(sourceID) || !strings.HasPrefix(task.Chapter.ID, prefix) {
-		return providerMedia{}, errors.New("笔盒播放信息无效，请刷新详情")
+		return ProviderMedia{}, errors.New("笔盒播放信息无效，请刷新详情")
 	}
 	key := strings.TrimPrefix(task.Chapter.ID, prefix)
 	separator := strings.LastIndex(key, ":")
 	if separator < 0 {
-		return providerMedia{}, errors.New("笔盒播放信息无效，请刷新详情")
+		return ProviderMedia{}, errors.New("笔盒播放信息无效，请刷新详情")
 	}
 	group, indexText := key[:separator], key[separator+1:]
 	index, err := strconv.Atoi(indexText)
 	if err != nil || index < 0 {
-		return providerMedia{}, errors.New("笔盒播放信息无效，请刷新详情")
+		return ProviderMedia{}, errors.New("笔盒播放信息无效，请刷新详情")
 	}
 	value, site, err := d.beaboxCall(ctx, "/vod/detail/"+url.PathEscape(sourceID), nil, nil)
 	if err != nil {
-		return providerMedia{}, err
+		return ProviderMedia{}, err
 	}
 	row, valid := value.(map[string]any)
 	if !valid {
-		return providerMedia{}, errors.New("笔盒详情格式无效")
+		return ProviderMedia{}, errors.New("笔盒详情格式无效")
 	}
 	entry, found := beaboxEntryAt(row, group, index)
 	if !found {
-		return providerMedia{}, errors.New("笔盒分集已变化，请刷新详情")
+		return ProviderMedia{}, errors.New("笔盒分集已变化，请刷新详情")
 	}
 	address := firstNonEmpty(mapString(entry, "url"), mapString(entry, "playUrl"))
 	if beaboxEntryNeedsParse(entry, row) {
@@ -733,15 +733,15 @@ func (d *Downloader) resolveBeaboxMedia(ctx context.Context, task Task) (provide
 			"playUrl":    strings.TrimSpace(mapString(entry, "playUrl")),
 		})
 		if err != nil {
-			return providerMedia{}, err
+			return ProviderMedia{}, err
 		}
 		payload, _ := parsed.(map[string]any)
 		address = mapString(payload, "url")
 	}
 	if !isProviderHTTPMediaURL(address) {
-		return providerMedia{}, errors.New("笔盒未返回有效播放地址，请刷新详情后重试")
+		return ProviderMedia{}, errors.New("笔盒未返回有效播放地址，请刷新详情后重试")
 	}
-	return d.prepareWebProviderMedia(ctx, providerMedia{URL: address, Referer: site + "/"}, "笔盒")
+	return d.prepareWebProviderMedia(ctx, ProviderMedia{URL: address, Referer: site + "/"}, "笔盒")
 }
 
 type beaboxProvider struct{ d *Downloader }
@@ -757,14 +757,14 @@ var beaboxDescriptor = SourceDescriptor{
 }
 
 func init() {
-	Register(beaboxDescriptor, func(d *Downloader) Provider { return &beaboxProvider{d: d} })
+	Register(beaboxDescriptor, func(host Host) Provider { return &beaboxProvider{d: host.(*Downloader)} })
 }
 
 func (p *beaboxProvider) Descriptor() SourceDescriptor { return beaboxDescriptor }
 
 func (p *beaboxProvider) BaseURL() string { return firstNonEmpty(p.d.cfg.BeaboxURL, beaboxBaseURL) }
 
-func (p *beaboxProvider) Categories(ctx context.Context, force bool) ([]nativeCategory, error) {
+func (p *beaboxProvider) Categories(ctx context.Context, force bool) ([]Category, error) {
 	return p.d.fetchBeaboxCategories(ctx)
 }
 
@@ -780,6 +780,6 @@ func (p *beaboxProvider) Detail(ctx context.Context, sourceID string) (Drama, []
 	return p.d.fetchBeaboxDetail(ctx, sourceID)
 }
 
-func (p *beaboxProvider) ResolveMedia(ctx context.Context, task Task) (providerMedia, error) {
+func (p *beaboxProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	return p.d.resolveBeaboxMedia(ctx, task)
 }

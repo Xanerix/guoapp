@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func rankingMergedFixture(board rankingBoard, page int, rows []map[string]any) string {
+func rankingMergedFixture(board RankingBoard, page int, rows []map[string]any) string {
 	key := "rank_" + board.path + "/page"
 	base := rankingFixture(board, page, rows)
 	base = strings.Split(base, "</script>")[0] + "</script>"

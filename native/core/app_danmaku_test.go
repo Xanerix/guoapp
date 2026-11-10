@@ -201,7 +201,7 @@ func TestNativeDanmakuUsesPlaybackIdentityAcrossRoutes(t *testing.T) {
 		return rankingHTTPResponse(request, 200, danmakuTestJSON(30000,
 			danmakuTestRow(danmakuTestVideo, "first", "合成弹幕", 0))), nil
 	})
-	media := providerMedia{URL: "https://media.example.test/first.mp4", Variants: []providerMedia{{URL: "https://media.example.test/second.mp4"}}}
+	media := ProviderMedia{URL: "https://media.example.test/first.mp4", Variants: []ProviderMedia{{URL: "https://media.example.test/second.mp4"}}}
 	choice := nativePlaybackChoices(media, 0)
 	task := Task{DramaID: "hongguo:" + danmakuTestSeries,
 		Chapter: Chapter{Source: sourceHongguo, VideoURL: "hongguo-cenc://" + danmakuTestVideo}}
@@ -265,7 +265,7 @@ func TestNativeDanmakuCancellationDoesNotCancelPlayback(t *testing.T) {
 		<-request.Context().Done()
 		return nil, request.Context().Err()
 	})
-	choice := nativePlaybackChoices(providerMedia{URL: "https://media.example.test/synthetic.mp4"}, 0)
+	choice := nativePlaybackChoices(ProviderMedia{URL: "https://media.example.test/synthetic.mp4"}, 0)
 	choice.danmakuSource, choice.danmakuSeries, choice.danmakuVideo = sourceHongguo, danmakuTestSeries, danmakuTestVideo
 	plan, err := engine.nativeOpenPlayback(context.Background(), choice)
 	if err != nil {

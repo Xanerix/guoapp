@@ -21,7 +21,7 @@ var hongguoDescriptor = SourceDescriptor{
 	BaseURL:        hongguoBaseURL,
 	ContinuousFeed: true,
 	ValidCategory:  validHongguoCategory,
-	Rankings: []rankingBoard{
+	Rankings: []RankingBoard{
 		{ID: "hongguo-hot", Source: sourceHongguo, Name: "总热播榜", Description: "红果观看、互动等综合热度；每日更新。", path: "hot-drama", upstreamKey: "hongguo"},
 		{ID: "hongguo-real", Source: sourceHongguo, Name: "真人剧榜", Description: "红果真人剧热播榜；每日更新。", path: "hot-real-drama", upstreamKey: "real"},
 		{ID: "hongguo-comic", Source: sourceHongguo, Name: "漫剧榜", Description: "红果漫剧热播榜；每日更新。", path: "hot-comic-drama", upstreamKey: "comic"},
@@ -30,7 +30,7 @@ var hongguoDescriptor = SourceDescriptor{
 }
 
 func init() {
-	Register(hongguoDescriptor, func(d *Downloader) Provider { return &hongguoProvider{d: d} })
+	Register(hongguoDescriptor, func(host Host) Provider { return &hongguoProvider{d: host.(*Downloader)} })
 }
 
 func validHongguoCategory(category string) bool {
@@ -42,10 +42,10 @@ func validHongguoCategory(category string) bool {
 	return hongguoTagPattern.MatchString(category)
 }
 
-func hongguoGenreCategories() []nativeCategory {
-	genres := make([]nativeCategory, 0, len(hongguoAppGenres))
+func hongguoGenreCategories() []Category {
+	genres := make([]Category, 0, len(hongguoAppGenres))
 	for _, genre := range hongguoAppGenres {
-		genres = append(genres, nativeCategory{ID: genre.key, Name: genre.name})
+		genres = append(genres, Category{ID: genre.key, Name: genre.name})
 	}
 	return genres
 }
@@ -54,7 +54,7 @@ func (p *hongguoProvider) Descriptor() SourceDescriptor { return hongguoDescript
 
 func (p *hongguoProvider) BaseURL() string { return firstNonEmpty(p.d.cfg.HongguoURL, hongguoBaseURL) }
 
-func (p *hongguoProvider) Categories(ctx context.Context, force bool) ([]nativeCategory, error) {
+func (p *hongguoProvider) Categories(ctx context.Context, force bool) ([]Category, error) {
 	genres := hongguoGenreCategories()
 	tags, err := p.d.fetchHongguoTagCategories(ctx)
 	if err != nil {
@@ -106,16 +106,16 @@ func (p *hongguoProvider) Detail(ctx context.Context, sourceID string) (Drama, [
 	return raw, chapters, nil
 }
 
-func (p *hongguoProvider) ResolveMedia(ctx context.Context, task Task) (providerMedia, error) {
+func (p *hongguoProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	chapter := task.Chapter
 	if strings.HasPrefix(chapter.VideoURL, "hongguo-cenc://") {
 		return p.d.resolveHongguoMedia(ctx, task)
 	}
-	media := providerMedia{URL: chapter.VideoURL, Referer: firstNonEmpty(chapter.Referer, p.d.providerBaseURL(sourceHongguo)+"/")}
+	media := ProviderMedia{URL: chapter.VideoURL, Referer: firstNonEmpty(chapter.Referer, p.d.providerBaseURL(sourceHongguo)+"/")}
 	return p.d.finishProviderMedia(ctx, media, sourceHongguo)
 }
 
-func (p *hongguoProvider) RankingPage(ctx context.Context, board rankingBoard, page int) (rankingPage, error) {
+func (p *hongguoProvider) RankingPage(ctx context.Context, board RankingBoard, page int) (RankingPage, error) {
 	return p.d.fetchHongguoRankingPage(ctx, board, page)
 }
 

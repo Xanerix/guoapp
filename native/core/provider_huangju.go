@@ -107,7 +107,7 @@ func huangjuDramaFromMap(row map[string]any, site, sourceID string) (Drama, erro
 	}, nil
 }
 
-func (d *Downloader) fetchHuangjuCategories(ctx context.Context) ([]nativeCategory, error) {
+func (d *Downloader) fetchHuangjuCategories(ctx context.Context) ([]Category, error) {
 	response, err := d.huangjuClient().get(ctx, "/categories", nil, 256<<10)
 	if err != nil {
 		return nil, err
@@ -116,7 +116,7 @@ func (d *Downloader) fetchHuangjuCategories(ctx context.Context) ([]nativeCatego
 	if !valid || len(rows) > 300 {
 		return nil, errors.New("剧果分类数据格式无效")
 	}
-	categories := []nativeCategory{{ID: huangjuNewestCategory, Name: "最新"}}
+	categories := []Category{{ID: huangjuNewestCategory, Name: "最新"}}
 	seen := map[string]bool{huangjuNewestCategory: true}
 	for _, entry := range rows {
 		row, _ := entry.(map[string]any)
@@ -128,7 +128,7 @@ func (d *Downloader) fetchHuangjuCategories(ctx context.Context) ([]nativeCatego
 			return nil, errors.New("剧果分类数据包含无效或重复条目")
 		}
 		seen[id] = true
-		categories = append(categories, nativeCategory{ID: id, Name: name})
+		categories = append(categories, Category{ID: id, Name: name})
 	}
 	return categories, nil
 }
@@ -317,32 +317,32 @@ func huangjuMediaCredentials(headers http.Header, address, site string, expirati
 	}, nil
 }
 
-func (d *Downloader) resolveHuangjuMedia(ctx context.Context, task Task) (providerMedia, error) {
+func (d *Downloader) resolveHuangjuMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	source, sourceID, valid := splitProviderDramaID(task.DramaID)
 	prefix := providerChapterID(sourceHuangju, sourceID, "")
 	if !valid || source != sourceHuangju || !validHuangjuID(sourceID) || !strings.HasPrefix(task.Chapter.ID, prefix) {
-		return providerMedia{}, errors.New("剧果播放分集信息无效，请刷新详情")
+		return ProviderMedia{}, errors.New("剧果播放分集信息无效，请刷新详情")
 	}
 	id := strings.TrimPrefix(task.Chapter.ID, prefix)
 	if !validHuangjuID(id) {
-		return providerMedia{}, errors.New("剧果分集地址无效")
+		return ProviderMedia{}, errors.New("剧果分集地址无效")
 	}
 	response, err := d.huangjuClient().get(ctx, "/play/"+url.PathEscape(id), nil, 64<<10)
 	if err != nil {
-		return providerMedia{}, err
+		return ProviderMedia{}, err
 	}
 	row, _ := huangjuPayload(response.value).(map[string]any)
 	address, _ := row["url"].(string)
 	credentials, err := huangjuMediaCredentials(response.headers, address, d.providerBaseURL(sourceHuangju), row["expiresAt"])
 	if err != nil {
-		return providerMedia{}, err
+		return ProviderMedia{}, err
 	}
-	media := providerMedia{URL: address, Referer: credentials.referer, credentials: credentials}
+	media := ProviderMedia{URL: address, Referer: credentials.referer, credentials: credentials}
 	parsed, _ := url.Parse(address)
 	if strings.HasSuffix(strings.ToLower(parsed.Path), ".m3u8") {
 		media.Playlist, media.URL, err = d.fetchMediaPlaylist(providerMediaContext(ctx, credentials), media.URL, media.Referer)
 		if err != nil {
-			return providerMedia{}, fmt.Errorf("获取剧果播放列表失败：%w", err)
+			return ProviderMedia{}, fmt.Errorf("获取剧果播放列表失败：%w", err)
 		}
 		media.Duration = m3u8Duration(media.Playlist)
 	}
@@ -365,14 +365,14 @@ var huangjuDescriptor = SourceDescriptor{
 }
 
 func init() {
-	Register(huangjuDescriptor, func(d *Downloader) Provider { return &huangjuProvider{d: d} })
+	Register(huangjuDescriptor, func(host Host) Provider { return &huangjuProvider{d: host.(*Downloader)} })
 }
 
 func (p *huangjuProvider) Descriptor() SourceDescriptor { return huangjuDescriptor }
 
 func (p *huangjuProvider) BaseURL() string { return firstNonEmpty(p.d.cfg.HuangjuURL, huangjuBaseURL) }
 
-func (p *huangjuProvider) Categories(ctx context.Context, force bool) ([]nativeCategory, error) {
+func (p *huangjuProvider) Categories(ctx context.Context, force bool) ([]Category, error) {
 	return p.d.fetchHuangjuCategories(ctx)
 }
 
@@ -388,7 +388,7 @@ func (p *huangjuProvider) Detail(ctx context.Context, sourceID string) (Drama, [
 	return p.d.fetchHuangjuDetail(ctx, sourceID)
 }
 
-func (p *huangjuProvider) ResolveMedia(ctx context.Context, task Task) (providerMedia, error) {
+func (p *huangjuProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	return p.d.resolveHuangjuMedia(ctx, task)
 }
 

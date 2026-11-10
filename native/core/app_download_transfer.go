@@ -37,7 +37,7 @@ type nativeDownloadFileState struct {
 	Complete  bool   `json:"complete"`
 }
 
-func (manager *nativeDownloads) transferMedia(ctx context.Context, job nativeDownloadJob, media providerMedia) (nativeDownloadResult, error) {
+func (manager *nativeDownloads) transferMedia(ctx context.Context, job nativeDownloadJob, media ProviderMedia) (nativeDownloadResult, error) {
 	ctx = providerMediaContext(ctx, media.credentials)
 	bundle := nativeDownloadBundle{quality: media.Quality, playlists: map[string][]byte{}}
 	parsed, err := url.Parse(media.URL)

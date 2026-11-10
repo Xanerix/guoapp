@@ -51,7 +51,7 @@ func TestNativeStreamDiagnosticsRewriteAndReadFailures(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer stream.server.Close()
-	for _, media := range []providerMedia{
+	for _, media := range []ProviderMedia{
 		{URL: upstream.URL + "/truncated.m3u8"},
 		{URL: upstream.URL + "/invalid.m3u8"},
 		{URL: upstream.URL + "/cached.m3u8", Playlist: "#EXTM3U\nftp://invalid.test/segment.ts\n"},
@@ -115,7 +115,7 @@ func TestNativeStreamDiagnosticsHLSAssetsAndPrivacy(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer stream.server.Close()
-	address, token := stream.nativeOpen(providerMedia{URL: upstream.URL + "/master.m3u8?token=hidden-query", HLSKey: []byte("hidden-key-bytes")})
+	address, token := stream.nativeOpen(ProviderMedia{URL: upstream.URL + "/master.m3u8?token=hidden-query", HLSKey: []byte("hidden-key-bytes")})
 	fetch := func(address string) (int, string) {
 		t.Helper()
 		request, _ := http.NewRequest(http.MethodGet, address, nil)
@@ -207,7 +207,7 @@ func TestNativeStreamDiagnosticsCancellationAndHTTPFailure(t *testing.T) {
 	}
 	defer stream.server.Close()
 	for _, name := range []string{"forbidden.m3u8", "slow.m3u8"} {
-		address, token := stream.nativeOpen(providerMedia{URL: upstream.URL + "/" + name})
+		address, token := stream.nativeOpen(ProviderMedia{URL: upstream.URL + "/" + name})
 		done := make(chan int, 1)
 		go func() {
 			response, err := http.Get(address)

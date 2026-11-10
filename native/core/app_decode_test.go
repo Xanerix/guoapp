@@ -59,7 +59,7 @@ func TestNativeHLSDecodesEncryptedSyntheticMedia(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer stream.server.Close()
-	address, token := stream.nativeOpen(providerMedia{URL: upstream.URL + "/index.m3u8", HLSKey: key, Referer: "https://example.test/watch"})
+	address, token := stream.nativeOpen(ProviderMedia{URL: upstream.URL + "/index.m3u8", HLSKey: key, Referer: "https://example.test/watch"})
 	defer stream.nativeRelease(token)
 	decode := exec.CommandContext(ctx, ffmpeg, "-v", "error", "-i", address, "-f", "null", "-")
 	if output, err := decode.CombinedOutput(); err != nil {

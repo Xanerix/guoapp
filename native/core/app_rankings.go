@@ -13,7 +13,7 @@ import (
 
 func (d *Downloader) loadRankingCache() {
 	cache := &d.rankings
-	cache.pages, cache.pending = map[string]rankingPage{}, map[string]*rankingCall{}
+	cache.pages, cache.pending = map[string]RankingPage{}, map[string]*rankingCall{}
 	file, err := os.Open(filepath.Join(d.cfg.dataDir, "rankings.json"))
 	if err != nil {
 		return
@@ -23,7 +23,7 @@ func (d *Downloader) loadRankingCache() {
 	if err != nil || len(body) > 8<<20 {
 		return
 	}
-	var pages map[string]rankingPage
+	var pages map[string]RankingPage
 	if json.Unmarshal(body, &pages) != nil {
 		return
 	}

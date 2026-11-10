@@ -13,18 +13,18 @@ type nativePlaybackChoice struct {
 	danmakuSource string
 	danmakuSeries string
 	danmakuVideo  string
-	media         []providerMedia
+	media         []ProviderMedia
 	index         int
 	qualities     []int
 	streamSession string
 	created       time.Time
 }
 
-func nativePlaybackChoices(media providerMedia, quality int) nativePlaybackChoice {
+func nativePlaybackChoices(media ProviderMedia, quality int) nativePlaybackChoice {
 	choice := nativePlaybackChoice{qualities: []int{}}
 	seen := map[string]bool{}
 	qualities := map[int]bool{}
-	for _, option := range append([]providerMedia{media}, media.Variants...) {
+	for _, option := range append([]ProviderMedia{media}, media.Variants...) {
 		if !isProviderHTTPMediaURL(option.URL) {
 			continue
 		}
@@ -45,7 +45,7 @@ func nativePlaybackChoices(media providerMedia, quality int) nativePlaybackChoic
 	}
 	sort.Sort(sort.Reverse(sort.IntSlice(choice.qualities)))
 	if quality > 0 && qualities[quality] {
-		filtered := make([]providerMedia, 0, len(choice.media))
+		filtered := make([]ProviderMedia, 0, len(choice.media))
 		for _, option := range choice.media {
 			if option.Quality == quality {
 				filtered = append(filtered, option)

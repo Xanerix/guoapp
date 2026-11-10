@@ -998,7 +998,7 @@ var huangguoVideoDescriptor = SourceDescriptor{
 }
 
 func init() {
-	Register(huangguoVideoDescriptor, func(d *Downloader) Provider { return &huangguoVideoProvider{d: d} })
+	Register(huangguoVideoDescriptor, func(host Host) Provider { return &huangguoVideoProvider{d: host.(*Downloader)} })
 }
 
 func (p *huangguoVideoProvider) Descriptor() SourceDescriptor { return huangguoVideoDescriptor }
@@ -1007,7 +1007,7 @@ func (p *huangguoVideoProvider) BaseURL() string {
 	return firstNonEmpty(p.d.cfg.HuangguoVideoURL, huangguoVideoBaseURL)
 }
 
-func (p *huangguoVideoProvider) Categories(ctx context.Context, force bool) ([]nativeCategory, error) {
+func (p *huangguoVideoProvider) Categories(ctx context.Context, force bool) ([]Category, error) {
 	address := p.d.providerBaseURL(sourceHuangguoVideo) + "/videos"
 	body, err := p.d.fetchProviderText(ctx, address, p.d.providerBaseURL(sourceHuangguoVideo)+"/")
 	if err != nil {
@@ -1033,13 +1033,13 @@ func (p *huangguoVideoProvider) Detail(ctx context.Context, sourceID string) (Dr
 	return p.d.fetchHuangguoVideoDetail(ctx, sourceID)
 }
 
-func (p *huangguoVideoProvider) ResolveMedia(ctx context.Context, task Task) (providerMedia, error) {
+func (p *huangguoVideoProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	chapter := task.Chapter
 	if chapter.PageURL == "" {
 		if _, sourceID, valid := splitProviderDramaID(task.DramaID); valid {
 			_, chapters, err := p.Detail(ctx, sourceID)
 			if err != nil {
-				return providerMedia{}, fmt.Errorf("刷新旧任务播放地址失败: %w", err)
+				return ProviderMedia{}, fmt.Errorf("刷新旧任务播放地址失败: %w", err)
 			}
 			matched := false
 			for _, fresh := range chapters {
@@ -1050,17 +1050,17 @@ func (p *huangguoVideoProvider) ResolveMedia(ctx context.Context, task Task) (pr
 				}
 			}
 			if !matched {
-				return providerMedia{}, fmt.Errorf("原章节已变化，请更新该合集后重新下载")
+				return ProviderMedia{}, fmt.Errorf("原章节已变化，请更新该合集后重新下载")
 			}
 		}
 	}
-	media := providerMedia{URL: chapter.VideoURL, Referer: firstNonEmpty(chapter.Referer, p.d.providerBaseURL(sourceHuangguoVideo)+"/")}
+	media := ProviderMedia{URL: chapter.VideoURL, Referer: firstNonEmpty(chapter.Referer, p.d.providerBaseURL(sourceHuangguoVideo)+"/")}
 	if chapter.PageURL != "" {
 		responses := &playbackResponseURLs{}
 		pageContext := context.WithValue(ctx, playbackResponseURLsKey{}, responses)
 		body, err := p.d.fetchProviderText(pageContext, chapter.PageURL, media.Referer)
 		if err != nil {
-			return providerMedia{}, err
+			return ProviderMedia{}, err
 		}
 		pageURL := chapter.PageURL
 		if actual, ok := responses.values.Load(chapter.PageURL); ok {
@@ -1093,8 +1093,8 @@ func (p *huangguoVideoProvider) CoverAddress(ctx context.Context, drama nativeDr
 var categoryAnchorPattern = regexp.MustCompile(`(?is)<a\b([^>]*)>(.*?)</a>`)
 var categoryTextPattern = regexp.MustCompile(`(?s)<[^>]*>`)
 
-func parseHuangguoVideoCategories(body string) []nativeCategory {
-	var categories []nativeCategory
+func parseHuangguoVideoCategories(body string) []Category {
+	var categories []Category
 	seen := map[string]bool{}
 	for _, match := range categoryAnchorPattern.FindAllStringSubmatch(body, -1) {
 		href := html.UnescapeString(extractAttr("<a "+match[1]+">", "href"))
@@ -1108,7 +1108,7 @@ func parseHuangguoVideoCategories(body string) []nativeCategory {
 			continue
 		}
 		seen[id] = true
-		categories = append(categories, nativeCategory{ID: id, Name: name})
+		categories = append(categories, Category{ID: id, Name: name})
 	}
 	return categories
 }

@@ -141,32 +141,32 @@ func (d *Downloader) fetchHuangdouChapters(ctx context.Context, sourceID string)
 	return title, uniqueChapters(chapters), nil
 }
 
-func (d *Downloader) resolveHuangdouPlayback(ctx context.Context, client *huangdouAPIClient, sourceID string, seq int) (providerMedia, error) {
+func (d *Downloader) resolveHuangdouPlayback(ctx context.Context, client *huangdouAPIClient, sourceID string, seq int) (ProviderMedia, error) {
 	var decoded any
 	if err := client.call(ctx, "/drama/play", map[string]any{"id": sourceID, "seq": strconv.Itoa(seq)}, &decoded); err != nil {
-		return providerMedia{}, err
+		return ProviderMedia{}, err
 	}
 	data := huangdouDataMap(decoded)
 	media := firstNonEmpty(mapString(data, "m3u8"), mapString(data, "url"), mapString(data, "play_url"), mapString(data, "playUrl"))
 	if huangdouPreviewOnly(data, media, client.host) {
-		return providerMedia{}, &huangdouAPIError{code: "preview", message: "黄豆仅提供试看，未取得该集正片；不会把试看内容当作完整分集"}
+		return ProviderMedia{}, &huangdouAPIError{code: "preview", message: "黄豆仅提供试看，未取得该集正片；不会把试看内容当作完整分集"}
 	}
 	if media == "" {
 		media = fmt.Sprintf("%s/api/drama/hls/%s/%d/play.m3u8?line=free", client.host, url.PathEscape(sourceID), seq)
 		playlist, err := d.fetchProviderText(ctx, media, client.host+"/home")
 		if err != nil || !strings.HasPrefix(strings.TrimSpace(playlist), "#EXTM3U") {
-			return providerMedia{}, errors.New("黄豆未提供有效的播放地址，备用播放列表也不可用")
+			return ProviderMedia{}, errors.New("黄豆未提供有效的播放地址，备用播放列表也不可用")
 		}
 	}
 	media = resolveProviderURL(client.host+"/", media)
 	if !isProviderHTTPMediaURL(media) {
-		return providerMedia{}, errors.New("黄豆播放地址不是 HTTP/HTTPS URL")
+		return ProviderMedia{}, errors.New("黄豆播放地址不是 HTTP/HTTPS URL")
 	}
-	result := providerMedia{URL: media, Referer: client.host + "/home"}
+	result := ProviderMedia{URL: media, Referer: client.host + "/home"}
 	if rawKey := mapString(data, "hls_key"); rawKey != "" {
 		key, err := hex.DecodeString(rawKey)
 		if err != nil || len(key) != aes.BlockSize {
-			return providerMedia{}, errors.New("黄豆返回了无效的 HLS 密钥")
+			return ProviderMedia{}, errors.New("黄豆返回了无效的 HLS 密钥")
 		}
 		result.HLSKey = key
 	}
@@ -530,7 +530,7 @@ var huangdouDescriptor = SourceDescriptor{
 	Aliases:     []string{"tideember.cc", "xqjurgek.top"},
 	MatchesHost: isHuangdouHost,
 	BaseURL:     huangdouBaseURL,
-	Rankings: []rankingBoard{
+	Rankings: []RankingBoard{
 		{ID: "huangdou-all", Source: sourceHuangdou, Name: "总榜", Description: "黄豆短剧总榜，保留站点返回的顺序。", upstreamKey: "all"},
 		{ID: "huangdou-mogai", Source: sourceHuangdou, Name: "魔改榜", Description: "黄豆站点魔改榜。", upstreamKey: "mogai"},
 		{ID: "huangdou-search", Source: sourceHuangdou, Name: "搜索榜", Description: "黄豆站点搜索榜。", upstreamKey: "search"},
@@ -540,7 +540,7 @@ var huangdouDescriptor = SourceDescriptor{
 }
 
 func init() {
-	Register(huangdouDescriptor, func(d *Downloader) Provider { return &huangdouProvider{d: d} })
+	Register(huangdouDescriptor, func(host Host) Provider { return &huangdouProvider{d: host.(*Downloader)} })
 }
 
 func (p *huangdouProvider) Descriptor() SourceDescriptor { return huangdouDescriptor }
@@ -549,7 +549,7 @@ func (p *huangdouProvider) BaseURL() string {
 	return firstNonEmpty(p.d.cfg.HuangdouURL, huangdouBaseURL)
 }
 
-func (p *huangdouProvider) Categories(context.Context, bool) ([]nativeCategory, error) {
+func (p *huangdouProvider) Categories(context.Context, bool) ([]Category, error) {
 	return nil, errCategoriesIncomplete
 }
 
@@ -585,28 +585,28 @@ func (p *huangdouProvider) Detail(ctx context.Context, sourceID string) (Drama, 
 	return raw, chapters, nil
 }
 
-func (p *huangdouProvider) ResolveMedia(ctx context.Context, task Task) (providerMedia, error) {
+func (p *huangdouProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	chapter := task.Chapter
-	media := providerMedia{URL: chapter.VideoURL, Referer: firstNonEmpty(chapter.Referer, p.d.providerBaseURL(sourceHuangdou)+"/")}
+	media := ProviderMedia{URL: chapter.VideoURL, Referer: firstNonEmpty(chapter.Referer, p.d.providerBaseURL(sourceHuangdou)+"/")}
 	if _, sourceID, valid := splitProviderDramaID(task.DramaID); valid {
 		sequence, err := strconv.Atoi(chapter.EpisodeString(task.Index))
 		if err != nil || sequence < 1 {
-			return providerMedia{}, fmt.Errorf("黄豆集数无效")
+			return ProviderMedia{}, fmt.Errorf("黄豆集数无效")
 		}
 		client := newHuangdouAPIClient(p.d)
 		media, err = p.d.resolveHuangdouPlayback(ctx, client, sourceID, sequence)
 		if err != nil {
-			return providerMedia{}, err
+			return ProviderMedia{}, err
 		}
 		media.Referer = client.host + "/home"
 	}
 	return p.d.finishProviderMedia(ctx, media, sourceHuangdou)
 }
 
-func (p *huangdouProvider) RankingPage(ctx context.Context, board rankingBoard, page int) (rankingPage, error) {
+func (p *huangdouProvider) RankingPage(ctx context.Context, board RankingBoard, page int) (RankingPage, error) {
 	var decoded any
 	if err := newHuangdouAPIClient(p.d).call(ctx, "/drama/rank", map[string]any{"tab": board.upstreamKey, "page": strconv.Itoa(page)}, &decoded); err != nil {
-		return rankingPage{}, err
+		return RankingPage{}, err
 	}
 	return parseHuangdouRanking(decoded, page)
 }

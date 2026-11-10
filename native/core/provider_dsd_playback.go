@@ -509,61 +509,61 @@ func dsdMediaFromPagePath(cover, pageURL string) string {
 	return address.String()
 }
 
-func (d *Downloader) resolveDSDMedia(ctx context.Context, task Task) (providerMedia, error) {
+func (d *Downloader) resolveDSDMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	source, sourceID, valid := splitProviderDramaID(task.DramaID)
 	prefix := providerChapterID(sourceDSD, sourceID, "")
 	if !valid || source != sourceDSD || !webProviderNumericID.MatchString(sourceID) || !strings.HasPrefix(task.Chapter.ID, prefix) {
-		return providerMedia{}, errors.New("帝果播放信息无效，请刷新详情")
+		return ProviderMedia{}, errors.New("帝果播放信息无效，请刷新详情")
 	}
 	parts := strings.Split(strings.TrimPrefix(task.Chapter.ID, prefix), "-")
 	if len(parts) != 2 {
-		return providerMedia{}, errors.New("帝果播放分集无效")
+		return ProviderMedia{}, errors.New("帝果播放分集无效")
 	}
 	line, lineValid := webProviderInteger(parts[0], 1000000)
 	episode, episodeValid := webProviderInteger(parts[1], 1000000)
 	if !lineValid || line < 1 || !episodeValid || episode < 1 {
-		return providerMedia{}, errors.New("帝果播放分集无效")
+		return ProviderMedia{}, errors.New("帝果播放分集无效")
 	}
 	site := d.providerBaseURL(sourceDSD)
 	document, pageURL, err := d.fetchProviderPage(ctx, dsdEpisodePage(site, sourceID, line, episode), site+"/", dsdUserAgent)
 	if err != nil {
-		return providerMedia{}, err
+		return ProviderMedia{}, err
 	}
 	player, found, err := parseDSDPlayer(document)
 	if err != nil {
-		return providerMedia{}, err
+		return ProviderMedia{}, err
 	}
 	if err := dsdDetailIdentity(document, sourceID, player, found); err != nil {
-		return providerMedia{}, err
+		return ProviderMedia{}, err
 	}
 	address := ""
 	if found {
 		actualLine, actualEpisode, _ := dsdPlayerIdentity(player, sourceID)
 		if line != actualLine || episode != actualEpisode {
-			return providerMedia{}, errors.New("帝果返回的播放地址与请求分集不符")
+			return ProviderMedia{}, errors.New("帝果返回的播放地址与请求分集不符")
 		}
 		if preview, valid := webProviderInteger(player["trysee"], 86400); valid && preview > 0 {
-			return providerMedia{}, errors.New("帝果仅提供试看，暂未取得正片播放地址")
+			return ProviderMedia{}, errors.New("帝果仅提供试看，暂未取得正片播放地址")
 		}
 		address, err = dsdIssuedMedia(player, pageURL)
 		if err != nil {
-			return providerMedia{}, err
+			return ProviderMedia{}, err
 		}
 	}
 	if address == "" {
 		if line != 1 || episode != 1 {
-			return providerMedia{}, errors.New("帝果未提供该分集的播放地址")
+			return ProviderMedia{}, errors.New("帝果未提供该分集的播放地址")
 		}
 		box := providerHTMLFirstClass(document, "video-box")
 		cover := firstNonEmpty(providerCoverAddress(player["poster"], pageURL), dsdCardCover(box, pageURL))
 		address = dsdMediaFromPagePath(cover, pageURL)
 	}
 	if address == "" {
-		return providerMedia{}, errors.New("帝果未提供播放地址，请重试或确认站源权限")
+		return ProviderMedia{}, errors.New("帝果未提供播放地址，请重试或确认站源权限")
 	}
 	signed, signedByVplayer, err := d.signDSDMedia(ctx, address, pageURL, site)
 	if err != nil {
-		return providerMedia{}, err
+		return ProviderMedia{}, err
 	}
 	address = signed
 	parsed, _ := url.Parse(address)
@@ -571,7 +571,7 @@ func (d *Downloader) resolveDSDMedia(ctx context.Context, task Task) (providerMe
 	if signedByVplayer || strings.Contains(address, "sign=") {
 		referer = dsdVplayerReferer(site)
 	}
-	media := providerMedia{URL: address, Referer: referer, credentials: &providerMediaCredentials{
+	media := ProviderMedia{URL: address, Referer: referer, credentials: &providerMediaCredentials{
 		origin: providerMediaOrigin(parsed), referer: referer, userAgent: dsdUserAgent,
 	}}
 	return d.prepareWebProviderMedia(ctx, media, "帝果")
@@ -592,14 +592,14 @@ var dSDDescriptor = SourceDescriptor{
 }
 
 func init() {
-	Register(dSDDescriptor, func(d *Downloader) Provider { return &dSDProvider{d: d} })
+	Register(dSDDescriptor, func(host Host) Provider { return &dSDProvider{d: host.(*Downloader)} })
 }
 
 func (p *dSDProvider) Descriptor() SourceDescriptor { return dSDDescriptor }
 
 func (p *dSDProvider) BaseURL() string { return firstNonEmpty(p.d.cfg.DSDURL, dsdBaseURL) }
 
-func (p *dSDProvider) Categories(ctx context.Context, force bool) ([]nativeCategory, error) {
+func (p *dSDProvider) Categories(ctx context.Context, force bool) ([]Category, error) {
 	return p.d.fetchDSDCategories(ctx, force)
 }
 
@@ -615,6 +615,6 @@ func (p *dSDProvider) Detail(ctx context.Context, sourceID string) (Drama, []Cha
 	return p.d.fetchDSDDetail(ctx, sourceID)
 }
 
-func (p *dSDProvider) ResolveMedia(ctx context.Context, task Task) (providerMedia, error) {
+func (p *dSDProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	return p.d.resolveDSDMedia(ctx, task)
 }

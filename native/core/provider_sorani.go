@@ -21,7 +21,7 @@ const (
 	soraniMaxID       = 64
 )
 
-var soraniCategories = []nativeCategory{
+var soraniCategories = []Category{
 	{ID: "1", Name: "TV番剧"},
 	{ID: "2", Name: "剧场动画"},
 	{ID: "5", Name: "特摄剧场"},
@@ -179,8 +179,8 @@ func (d *Downloader) soraniRequest(ctx context.Context, route string, query url.
 	return d.soraniClient().get(ctx, route, query, limit)
 }
 
-func (d *Downloader) fetchSoraniCategories() []nativeCategory {
-	return append([]nativeCategory(nil), soraniCategories...)
+func (d *Downloader) fetchSoraniCategories() []Category {
+	return append([]Category(nil), soraniCategories...)
 }
 
 func (d *Downloader) fetchSoraniCatalogPage(ctx context.Context, page int, category, query string) ([]Drama, bool, error) {
@@ -322,21 +322,21 @@ func soraniLoginRejected(row map[string]any) bool {
 	return ok && !canPlay && strings.Contains(mapString(row, "message"), "登录")
 }
 
-func (d *Downloader) resolveSoraniMedia(ctx context.Context, task Task) (providerMedia, error) {
+func (d *Downloader) resolveSoraniMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	source, sourceID, valid := splitProviderDramaID(task.DramaID)
 	prefix := providerChapterID(sourceSorani, sourceID, "")
 	if !valid || source != sourceSorani || !soraniNumericID(sourceID) || !strings.HasPrefix(task.Chapter.ID, prefix) {
-		return providerMedia{}, errors.New("青空次元播放分集信息无效，请刷新详情")
+		return ProviderMedia{}, errors.New("青空次元播放分集信息无效，请刷新详情")
 	}
 	episodeID := strings.TrimPrefix(task.Chapter.ID, prefix)
 	if !soraniNumericID(episodeID) {
-		return providerMedia{}, errors.New("青空次元分集 ID 无效")
+		return ProviderMedia{}, errors.New("青空次元分集 ID 无效")
 	}
 	lineCode := soraniLineCodeDefault
 	client := d.soraniClient()
 	token, err := client.accessToken(ctx)
 	if err != nil {
-		return providerMedia{}, err
+		return ProviderMedia{}, err
 	}
 	row, err := client.play(ctx, episodeID, lineCode, token)
 	if err == nil && token != "" && soraniLoginRejected(row) {
@@ -345,36 +345,36 @@ func (d *Downloader) resolveSoraniMedia(ctx context.Context, task Task) (provide
 		}
 	}
 	if err != nil {
-		return providerMedia{}, err
+		return ProviderMedia{}, err
 	}
 	if canPlay, ok := row["canPlay"].(bool); ok && !canPlay {
 		switch {
 		case soraniLoginRejected(row) && token == "":
-			return providerMedia{}, errSoraniLoginRequired
+			return ProviderMedia{}, errSoraniLoginRequired
 		case soraniLoginRejected(row):
-			return providerMedia{}, errSoraniLoginExpired
+			return ProviderMedia{}, errSoraniLoginExpired
 		case mapString(row, "message") != "":
-			return providerMedia{}, errors.New("青空次元：" + truncate(mapString(row, "message"), 120))
+			return ProviderMedia{}, errors.New("青空次元：" + truncate(mapString(row, "message"), 120))
 		default:
-			return providerMedia{}, errors.New("青空次元该分集暂不可播放")
+			return ProviderMedia{}, errors.New("青空次元该分集暂不可播放")
 		}
 	}
 	address := mapString(row, "playUrl", "url")
 	if address == "" {
-		return providerMedia{}, fmt.Errorf("青空次元该分集暂无可用播放地址（线路 %s）", lineCode)
+		return ProviderMedia{}, fmt.Errorf("青空次元该分集暂无可用播放地址（线路 %s）", lineCode)
 	}
-	media := providerMedia{URL: address, Referer: soraniSiteBaseURL + "/"}
+	media := ProviderMedia{URL: address, Referer: soraniSiteBaseURL + "/"}
 	parsed, err := url.Parse(address)
 	if err != nil || !isProviderHTTPMediaURL(address) {
-		return providerMedia{}, errors.New("青空次元播放地址无效")
+		return ProviderMedia{}, errors.New("青空次元播放地址无效")
 	}
 	if strings.HasSuffix(strings.ToLower(parsed.Path), ".m3u8") {
 		playlist, finalURL, err := d.fetchMediaPlaylist(ctx, media.URL, media.Referer)
 		if err != nil {
-			return providerMedia{}, fmt.Errorf("获取青空次元播放列表失败：%w", err)
+			return ProviderMedia{}, fmt.Errorf("获取青空次元播放列表失败：%w", err)
 		}
 		if !strings.HasPrefix(strings.TrimSpace(strings.TrimPrefix(playlist, "\ufeff")), "#EXTM3U") {
-			return providerMedia{}, errors.New("青空次元未返回有效 M3U8，链接可能已失效")
+			return ProviderMedia{}, errors.New("青空次元未返回有效 M3U8，链接可能已失效")
 		}
 		media.Playlist, media.URL = playlist, finalURL
 		media.Duration = m3u8Duration(playlist)
@@ -395,12 +395,12 @@ var soraniDescriptor = SourceDescriptor{
 }
 
 func init() {
-	Register(soraniDescriptor, func(d *Downloader) Provider { return &soraniProvider{d: d} })
+	Register(soraniDescriptor, func(host Host) Provider { return &soraniProvider{d: host.(*Downloader)} })
 }
 
 func (p *soraniProvider) Descriptor() SourceDescriptor { return soraniDescriptor }
 
-func (p *soraniProvider) Categories(ctx context.Context, force bool) ([]nativeCategory, error) {
+func (p *soraniProvider) Categories(ctx context.Context, force bool) ([]Category, error) {
 	return p.d.fetchSoraniCategories(), nil
 }
 
@@ -416,7 +416,7 @@ func (p *soraniProvider) Detail(ctx context.Context, sourceID string) (Drama, []
 	return p.d.fetchSoraniDetail(ctx, sourceID)
 }
 
-func (p *soraniProvider) ResolveMedia(ctx context.Context, task Task) (providerMedia, error) {
+func (p *soraniProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	return p.d.resolveSoraniMedia(ctx, task)
 }
 

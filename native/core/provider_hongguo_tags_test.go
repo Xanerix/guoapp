@@ -32,11 +32,11 @@ func TestHongguoTagCategoriesFollowThePanel(t *testing.T) {
 		}}}})
 		return sourceFixtureResponse(request, http.StatusOK, string(body)), nil
 	})
-	want := []nativeCategory{{Name: "全部"}}
+	want := []Category{{Name: "全部"}}
 	for _, genre := range hongguoAppGenres {
-		want = append(want, nativeCategory{ID: genre.key, Name: genre.name})
+		want = append(want, Category{ID: genre.key, Name: genre.name})
 	}
-	want = append(want, nativeCategory{ID: "tag:cate_96", Name: "甜宠"}, nativeCategory{ID: "tag:cate_36", Name: "重生"}, nativeCategory{ID: "tag:cate_1", Name: "都市"})
+	want = append(want, Category{ID: "tag:cate_96", Name: "甜宠"}, Category{ID: "tag:cate_36", Name: "重生"}, Category{ID: "tag:cate_1", Name: "都市"})
 	for range 2 {
 		got, err := engine.nativeCategories(context.Background(), sourceHongguo, false)
 		if err != nil || !reflect.DeepEqual(got, want) {

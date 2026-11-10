@@ -173,7 +173,7 @@ type nativeEngine struct {
 	mu               sync.Mutex
 	catalogs         map[string][]nativeDrama
 	catalogStates    map[string]nativeCatalogState
-	categoryOptions  map[string][]nativeCategory
+	categoryOptions  map[string][]Category
 	providerStates   map[string]json.RawMessage
 	recommendations  map[string]nativeRecommendationState
 	catalogSaveError error
@@ -406,7 +406,7 @@ func nativeDispatch(input nativeInput) (any, error) {
 	case "soraniAccount", "sourceAccount":
 		return engine.sourceAccount(ctx, nativeActionSource(input), input.Command, input.Account)
 	case "rankingBoards":
-		boards := []rankingBoard{}
+		boards := []RankingBoard{}
 		for _, board := range allRankingBoards() {
 			if nativeSourceAvailable(board.Source) {
 				boards = append(boards, board)

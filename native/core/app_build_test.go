@@ -72,10 +72,10 @@ func TestNativeBuildPreservesForeignDownloadRecordsAndRestrictsScheduling(t *tes
 		t.Fatal("changing edition discarded saved downloads")
 	}
 	started := make(chan string, 4)
-	reopened.resolve = func(ctx context.Context, job nativeDownloadJob) (providerMedia, error) {
+	reopened.resolve = func(ctx context.Context, job nativeDownloadJob) (ProviderMedia, error) {
 		started <- job.Drama.Source
 		<-ctx.Done()
-		return providerMedia{}, ctx.Err()
+		return ProviderMedia{}, ctx.Err()
 	}
 	if err := reopened.control("", "resumeAll"); err != nil {
 		t.Fatal(err)

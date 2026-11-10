@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-func rankingFixture(board rankingBoard, page int, rows []map[string]any) string {
+func rankingFixture(board RankingBoard, page int, rows []map[string]any) string {
 	key := "rank_" + board.path + "/page"
 	loader, _ := json.Marshal(map[string]any{"loaderData": map[string]any{key: map[string]any{"rankKey": board.upstreamKey, "pageNum": page, "updatedText": "9月13日已更新", "content": map[string]any{}}}})
 	args, _ := json.Marshal([]any{key, "content", map[string]any{"isSuccess": true, "rankList": rows, "pagination": map[string]int{"pageNum": page, "totalPages": 2}}})

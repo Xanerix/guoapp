@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-type providerMedia struct {
+type ProviderMedia struct {
 	credentials *providerMediaCredentials
 	URL         string
 	Referer     string
@@ -17,7 +17,7 @@ type providerMedia struct {
 	HLSKey      []byte
 	CENCKey     []byte
 	Quality     int
-	Variants    []providerMedia
+	Variants    []ProviderMedia
 }
 
 func (d *Downloader) providerBaseURL(source string) string {
@@ -83,7 +83,7 @@ func (d *Downloader) providerURLCandidates(raw string) []string {
 	return candidates
 }
 
-func (d *Downloader) resolveProviderMedia(ctx context.Context, task Task) (providerMedia, error) {
+func (d *Downloader) resolveProviderMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	chapter := task.Chapter
 	chapter.Source = canonicalProviderSource(chapter.Source)
 	if chapter.Source == "" {
@@ -91,23 +91,23 @@ func (d *Downloader) resolveProviderMedia(ctx context.Context, task Task) (provi
 	}
 	p, ok := d.provider(chapter.Source)
 	if !ok {
-		return providerMedia{}, fmt.Errorf("unsupported provider source: %s", chapter.Source)
+		return ProviderMedia{}, fmt.Errorf("unsupported provider source: %s", chapter.Source)
 	}
 	return p.ResolveMedia(ctx, task)
 }
 
-func (d *Downloader) finishProviderMedia(ctx context.Context, media providerMedia, source string) (providerMedia, error) {
+func (d *Downloader) finishProviderMedia(ctx context.Context, media ProviderMedia, source string) (ProviderMedia, error) {
 	if !isProviderHTTPMediaURL(media.URL) {
-		return providerMedia{}, fmt.Errorf("%s 未返回有效播放地址，请刷新章节或确认站点访问权限", source)
+		return ProviderMedia{}, fmt.Errorf("%s 未返回有效播放地址，请刷新章节或确认站点访问权限", source)
 	}
 	parsed, _ := url.Parse(media.URL)
 	if strings.HasSuffix(strings.ToLower(parsed.Path), ".m3u8") {
 		playlist, finalURL, err := d.fetchMediaPlaylist(ctx, media.URL, media.Referer)
 		if err != nil {
-			return providerMedia{}, fmt.Errorf("获取播放列表失败: %w", err)
+			return ProviderMedia{}, fmt.Errorf("获取播放列表失败: %w", err)
 		}
 		if !strings.HasPrefix(strings.TrimSpace(strings.TrimPrefix(playlist, "\ufeff")), "#EXTM3U") {
-			return providerMedia{}, fmt.Errorf("站点未返回有效 M3U8，可能需要登录或链接已失效")
+			return ProviderMedia{}, fmt.Errorf("站点未返回有效 M3U8，可能需要登录或链接已失效")
 		}
 		if duration := m3u8Duration(playlist); duration > 0 {
 			media.Duration = duration

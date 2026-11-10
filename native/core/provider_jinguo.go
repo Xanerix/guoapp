@@ -71,14 +71,14 @@ func (d *Downloader) fetchJinguoTabs(ctx context.Context) ([]Tab, error) {
 	return valid, nil
 }
 
-func (d *Downloader) fetchJinguoCategories(ctx context.Context) ([]nativeCategory, error) {
+func (d *Downloader) fetchJinguoCategories(ctx context.Context) ([]Category, error) {
 	tabs, err := d.fetchJinguoTabs(ctx)
 	if err != nil {
 		return nil, err
 	}
-	categories := []nativeCategory{{ID: jinguoChooseCategory, Name: "精选"}, {ID: jinguoNewCategory, Name: "最新"}}
+	categories := []Category{{ID: jinguoChooseCategory, Name: "精选"}, {ID: jinguoNewCategory, Name: "最新"}}
 	for _, tab := range tabs {
-		categories = append(categories, nativeCategory{ID: jinguoTabPrefix + tab.ID, Name: tab.Name})
+		categories = append(categories, Category{ID: jinguoTabPrefix + tab.ID, Name: tab.Name})
 	}
 	return categories, nil
 }
@@ -229,19 +229,19 @@ func jinguoPlaylistPath(videoURL string) (string, bool) {
 	return strings.Join(segments, "/"), true
 }
 
-func (d *Downloader) resolveJinguoMedia(ctx context.Context, task Task) (providerMedia, error) {
+func (d *Downloader) resolveJinguoMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	if strings.TrimSpace(task.Chapter.VideoURL) == "" {
-		return providerMedia{}, errors.New("禁果该集需要金币或会员解锁后才能播放")
+		return ProviderMedia{}, errors.New("禁果该集需要金币或会员解锁后才能播放")
 	}
 	path, ok := jinguoPlaylistPath(task.Chapter.VideoURL)
 	if !ok {
-		return providerMedia{}, errors.New("禁果分集播放地址无效")
+		return ProviderMedia{}, errors.New("禁果分集播放地址无效")
 	}
 	client := d.jinguoClient()
 	for attempt := 0; attempt < 2; attempt++ {
 		token, _, err := client.credentials(ctx)
 		if err != nil {
-			return providerMedia{}, err
+			return ProviderMedia{}, err
 		}
 		var lastErr error
 		expired := false
@@ -251,7 +251,7 @@ func (d *Downloader) resolveJinguoMedia(ctx context.Context, task Task) (provide
 			playlist, finalURL, err := d.fetchMediaPlaylist(ctx, address, referer)
 			if err == nil {
 				client.rememberBase(base)
-				return providerMedia{URL: finalURL, Playlist: playlist, Referer: referer, Duration: m3u8Duration(playlist)}, nil
+				return ProviderMedia{URL: finalURL, Playlist: playlist, Referer: referer, Duration: m3u8Duration(playlist)}, nil
 			}
 			lastErr = err
 			if expired = jinguoSessionExpired(err); expired || ctx.Err() != nil {
@@ -262,9 +262,9 @@ func (d *Downloader) resolveJinguoMedia(ctx context.Context, task Task) (provide
 			client.invalidate(token)
 			continue
 		}
-		return providerMedia{}, lastErr
+		return ProviderMedia{}, lastErr
 	}
-	return providerMedia{}, errors.New("禁果播放会话已失效，请稍后重试")
+	return ProviderMedia{}, errors.New("禁果播放会话已失效，请稍后重试")
 }
 
 type jinguoProvider struct{ d *Downloader }
@@ -280,12 +280,12 @@ var jinguoDescriptor = SourceDescriptor{
 }
 
 func init() {
-	Register(jinguoDescriptor, func(d *Downloader) Provider { return &jinguoProvider{d: d} })
+	Register(jinguoDescriptor, func(host Host) Provider { return &jinguoProvider{d: host.(*Downloader)} })
 }
 
 func (p *jinguoProvider) Descriptor() SourceDescriptor { return jinguoDescriptor }
 
-func (p *jinguoProvider) Categories(ctx context.Context, force bool) ([]nativeCategory, error) {
+func (p *jinguoProvider) Categories(ctx context.Context, force bool) ([]Category, error) {
 	return p.d.fetchJinguoCategories(ctx)
 }
 
@@ -301,6 +301,6 @@ func (p *jinguoProvider) Detail(ctx context.Context, sourceID string) (Drama, []
 	return p.d.fetchJinguoDetail(ctx, sourceID)
 }
 
-func (p *jinguoProvider) ResolveMedia(ctx context.Context, task Task) (providerMedia, error) {
+func (p *jinguoProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	return p.d.resolveJinguoMedia(ctx, task)
 }

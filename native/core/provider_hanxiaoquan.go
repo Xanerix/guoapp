@@ -17,7 +17,7 @@ const (
 	hanxiaoquanPageSize    = 24
 )
 
-var hanxiaoquanCategories = []nativeCategory{
+var hanxiaoquanCategories = []Category{
 	{ID: "1", Name: "最新韩剧"},
 	{ID: "2", Name: "韩国电影"},
 	{ID: "3", Name: "韩国综艺"},
@@ -94,8 +94,8 @@ func hanxiaoquanFixURL(raw string) string {
 	return parsed.String()
 }
 
-func (d *Downloader) fetchHanxiaoquanCategories() []nativeCategory {
-	return append([]nativeCategory(nil), hanxiaoquanCategories...)
+func (d *Downloader) fetchHanxiaoquanCategories() []Category {
+	return append([]Category(nil), hanxiaoquanCategories...)
 }
 
 func (d *Downloader) hanxiaoquanGet(ctx context.Context, path string) (string, error) {
@@ -378,22 +378,22 @@ func (d *Downloader) fetchHanxiaoquanDetail(ctx context.Context, sourceID string
 	return drama, chapters, nil
 }
 
-func (d *Downloader) resolveHanxiaoquanMedia(ctx context.Context, task Task) (providerMedia, error) {
+func (d *Downloader) resolveHanxiaoquanMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	source, sourceID, valid := splitProviderDramaID(task.DramaID)
 	prefix := providerChapterID(sourceHanxiaoquan, sourceID, "")
 	if !valid || source != sourceHanxiaoquan || !hanxiaoquanNumericID(sourceID) || !strings.HasPrefix(task.Chapter.ID, prefix) {
-		return providerMedia{}, errors.New("韩小圈播放分集信息无效，请刷新详情")
+		return ProviderMedia{}, errors.New("韩小圈播放分集信息无效，请刷新详情")
 	}
 	playURL := strings.TrimPrefix(task.Chapter.ID, prefix)
 	if playURL == "" {
 		playURL = task.Chapter.PageURL
 	}
 	if hanxiaoquanPlayURL(playURL) == "" {
-		return providerMedia{}, errors.New("韩小圈播放页地址无效")
+		return ProviderMedia{}, errors.New("韩小圈播放页地址无效")
 	}
 	body, err := d.hanxiaoquanGet(ctx, playURL)
 	if err != nil {
-		return providerMedia{}, err
+		return ProviderMedia{}, err
 	}
 	address := ""
 	if match := reHanxiaoquanNow.FindStringSubmatch(body); len(match) > 1 {
@@ -403,19 +403,19 @@ func (d *Downloader) resolveHanxiaoquanMedia(ctx context.Context, task Task) (pr
 		address = reHanxiaoquanMediaAny.FindString(body)
 	}
 	if address == "" {
-		return providerMedia{}, errors.New("韩小圈该集暂无可用播放地址")
+		return ProviderMedia{}, errors.New("韩小圈该集暂无可用播放地址")
 	}
 	if strings.HasPrefix(address, "//") {
 		address = "https:" + address
 	}
 	if !isProviderHTTPMediaURL(address) {
-		return providerMedia{}, errors.New("韩小圈播放地址无效")
+		return ProviderMedia{}, errors.New("韩小圈播放地址无效")
 	}
 	parsed, err := url.Parse(address)
 	if err != nil {
-		return providerMedia{}, errors.New("韩小圈播放地址无效")
+		return ProviderMedia{}, errors.New("韩小圈播放地址无效")
 	}
-	media := providerMedia{URL: address, Referer: hanxiaoquanSiteBaseURL + "/"}
+	media := ProviderMedia{URL: address, Referer: hanxiaoquanSiteBaseURL + "/"}
 	if strings.HasSuffix(strings.ToLower(parsed.Path), ".m3u8") {
 		return d.prepareWebProviderMedia(ctx, media, "韩小圈")
 	}
@@ -450,12 +450,12 @@ var hanxiaoquanDescriptor = SourceDescriptor{
 }
 
 func init() {
-	Register(hanxiaoquanDescriptor, func(d *Downloader) Provider { return &hanxiaoquanProvider{d: d} })
+	Register(hanxiaoquanDescriptor, func(host Host) Provider { return &hanxiaoquanProvider{d: host.(*Downloader)} })
 }
 
 func (p *hanxiaoquanProvider) Descriptor() SourceDescriptor { return hanxiaoquanDescriptor }
 
-func (p *hanxiaoquanProvider) Categories(ctx context.Context, force bool) ([]nativeCategory, error) {
+func (p *hanxiaoquanProvider) Categories(ctx context.Context, force bool) ([]Category, error) {
 	return p.d.fetchHanxiaoquanCategories(), nil
 }
 
@@ -471,6 +471,6 @@ func (p *hanxiaoquanProvider) Detail(ctx context.Context, sourceID string) (Dram
 	return p.d.fetchHanxiaoquanDetail(ctx, sourceID)
 }
 
-func (p *hanxiaoquanProvider) ResolveMedia(ctx context.Context, task Task) (providerMedia, error) {
+func (p *hanxiaoquanProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	return p.d.resolveHanxiaoquanMedia(ctx, task)
 }
