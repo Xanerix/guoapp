@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -21,19 +20,19 @@ var apiFallbackHosts = []string{
 	"https://d37n0wjehmw08f.cloudfront.net",
 }
 
-func (d *Downloader) apiEndpoint(ctx context.Context) (string, error) {
-	d.apiMu.Lock()
-	defer d.apiMu.Unlock()
-	if d.apiBase != "" {
-		return d.apiBase, nil
+func (p *legacyProvider) apiEndpoint(ctx context.Context) (string, error) {
+	p.apiMu.Lock()
+	defer p.apiMu.Unlock()
+	if p.apiBase != "" {
+		return p.apiBase, nil
 	}
-	configured := strings.TrimRight(firstNonEmpty(d.cfg.APIBase, defaultAPIBase), "/")
+	configured := strings.TrimRight(firstNonEmpty(p.cfg.APIBase, defaultAPIBase), "/")
 	parsed, err := url.Parse(configured)
 	if err != nil || !isProviderHTTPMediaURL(configured) {
 		return "", errors.New("API 地址无效")
 	}
 	if !strings.HasSuffix(strings.ToLower(parsed.Hostname()), ".cloudfront.net") {
-		d.apiBase = configured
+		p.apiBase = configured
 		return configured, nil
 	}
 	candidates := append([]string{configured}, apiFallbackHosts...)
@@ -41,65 +40,63 @@ func (d *Downloader) apiEndpoint(ctx context.Context) (string, error) {
 	var lastErr error
 	for pass := 0; pass < 2; pass++ {
 		if pass == 1 {
-			candidates, err = d.discoverAPIHosts(ctx)
+			candidates, err = p.discoverAPIHosts(ctx)
 			if err != nil {
 				lastErr = err
 				break
 			}
 		}
 		for _, candidate := range candidates {
-			if seen[candidate] || time.Now().Before(d.apiFailures[candidate]) {
+			if seen[candidate] || time.Now().Before(p.apiFailures[candidate]) {
 				continue
 			}
 			seen[candidate] = true
 			if err := ctx.Err(); err != nil {
 				return "", err
 			}
-			if err := d.probeAPIHost(ctx, candidate); err != nil {
+			if err := p.probeAPIHost(ctx, candidate); err != nil {
 				lastErr = err
 				continue
 			}
-			d.apiBase = candidate
+			p.apiBase = candidate
 			return candidate, nil
 		}
 	}
 	return "", fmt.Errorf("黄果原 API 的候选域名均不可用: %w", publicError(lastErr))
 }
 
-func (d *Downloader) resetAPIEndpoint(failed string) {
-	d.apiMu.Lock()
-	if d.apiFailures == nil {
-		d.apiFailures = map[string]time.Time{}
+func (p *legacyProvider) resetAPIEndpoint(failed string) {
+	p.apiMu.Lock()
+	if p.apiFailures == nil {
+		p.apiFailures = map[string]time.Time{}
 	}
-	d.apiFailures[failed] = time.Now().Add(time.Minute)
-	if d.apiBase == failed {
-		d.apiBase = ""
+	p.apiFailures[failed] = time.Now().Add(time.Minute)
+	if p.apiBase == failed {
+		p.apiBase = ""
 	}
-	d.apiMu.Unlock()
+	p.apiMu.Unlock()
 }
 
-func (d *Downloader) probeAPIHost(ctx context.Context, host string) error {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, host+"/api/app/ping/check", nil)
+func (p *legacyProvider) probeAPIHost(ctx context.Context, host string) error {
+	response, err := p.host.Fetch(ctx, HTTPRequest{
+		Label: "黄果", Method: http.MethodGet, URL: host + "/api/app/ping/check", Header: map[string]string{"User-Agent": userAgent},
+		Limit: 64 * 1024, Timeout: 4 * time.Second, FollowRedirects: true, AnyStatus: true,
+	})
 	if err != nil {
 		return err
 	}
-	request.Header.Set("User-Agent", userAgent)
-	response, err := d.doCatalogRequestWithTimeout(request, 4*time.Second)
-	if err != nil {
-		return publicError(err)
-	}
-	defer response.Body.Close()
 	var envelope struct {
 		Code int `json:"code"`
 	}
-	if response.StatusCode != http.StatusOK || json.NewDecoder(io.LimitReader(response.Body, 64*1024)).Decode(&envelope) != nil || envelope.Code != 200 {
-		return fmt.Errorf("%s API 健康检查失败 (HTTP %d)", request.URL.Hostname(), response.StatusCode)
+	if response.Status != http.StatusOK || json.Unmarshal(response.Body, &envelope) != nil || envelope.Code != 200 {
+		address, _ := url.Parse(host)
+		return fmt.Errorf("%s API 健康检查失败 (HTTP %d)", address.Hostname(), response.Status)
 	}
 	return nil
 }
 
-func (d *Downloader) discoverAPIHosts(ctx context.Context) ([]string, error) {
-	body, err := d.fetchLegacyFrontendScript(ctx)
+func (p *legacyProvider) discoverAPIHosts(ctx context.Context) ([]string, error) {
+	body, err := p.fetchLegacyFrontendScript(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -109,8 +106,8 @@ func (d *Downloader) discoverAPIHosts(ctx context.Context) ([]string, error) {
 	return nil, errors.New("官网前端未提供可识别的 API 地址，请稍后重试或更新应用")
 }
 
-func (d *Downloader) fetchLegacyFrontendScript(ctx context.Context) (string, error) {
-	page, err := d.fetchProviderText(ctx, legacyFrontendURL+"/", legacyFrontendURL+"/")
+func (p *legacyProvider) fetchLegacyFrontendScript(ctx context.Context) (string, error) {
+	page, err := p.text(ctx, legacyFrontendURL+"/", legacyFrontendURL+"/")
 	if err != nil {
 		return "", err
 	}
@@ -124,7 +121,7 @@ func (d *Downloader) fetchLegacyFrontendScript(ctx context.Context) (string, err
 		if err != nil || asset.Hostname() != "d2pypzndaqisk.cloudfront.net" {
 			continue
 		}
-		body, err := d.fetchProviderText(ctx, assetURL, legacyFrontendURL+"/")
+		body, err := p.text(ctx, assetURL, legacyFrontendURL+"/")
 		if err != nil {
 			return "", err
 		}

@@ -23,7 +23,7 @@ var fixtureLegacyProtocol = legacyProtocol{InterfaceKey: "fixture-interface", Pa
 func legacyFixtureDownloader(t *testing.T, transport sourceFixtureTransport) *Downloader {
 	t.Helper()
 	d := sourceFixtureDownloader(t, transport)
-	d.cfg.APIBase = "https://legacy.example.test"
+	legacyFixtureProvider(d).cfg.APIBase = "https://legacy.example.test"
 	d.cfg.MaxPagesPerSort, d.cfg.PageSize = 1, 3
 	return d
 }
@@ -89,15 +89,15 @@ func TestLegacyAnonymousCatalogAndSessionReuse(t *testing.T) {
 		}
 	})
 	d := legacyFixtureDownloader(t, transport)
-	items, _, err := d.fetchLegacyCatalogPage(context.Background(), 1)
+	items, _, err := legacyFixtureProvider(d).fetchLegacyCatalogPage(context.Background(), 1)
 	if err != nil || len(items) != 1 || items[0].Source != "cloudfront" || items[0].ChannelName != "当前分类" {
 		t.Fatalf("catalog: count=%d error=%v", len(items), err)
 	}
-	_, chapters, err := d.fetchLegacyChapters(context.Background(), "current-drama")
+	_, chapters, err := legacyFixtureProvider(d).fetchLegacyChapters(context.Background(), "current-drama")
 	if err != nil || len(chapters) != 1 {
 		t.Fatalf("chapters: count=%d error=%v", len(chapters), err)
 	}
-	if d.cfg.Token != "" || d.cfg.AESKeyHex != "" || d.cfg.InterfaceKey != "" {
+	if legacyFixtureProvider(d).cfg.Token != "" || legacyFixtureProvider(d).cfg.AESKeyHex != "" || legacyFixtureProvider(d).cfg.InterfaceKey != "" {
 		t.Fatal("automatic session changed user configuration")
 	}
 	info, err := os.Stat(filepath.Join(d.cfg.dataDir, "huangguo-session.json"))
@@ -107,7 +107,8 @@ func TestLegacyAnonymousCatalogAndSessionReuse(t *testing.T) {
 	restarted := &Downloader{cfg: d.cfg, providerHosts: map[string]string{}}
 	restarted.client = &http.Client{Transport: transport}
 	restarted.limiter = newRequestLimiter(8, time.Nanosecond)
-	if _, err := restarted.legacyCredentials(context.Background()); err != nil {
+	legacyFixtureProvider(restarted).cfg.APIBase = legacyFixtureProvider(d).cfg.APIBase
+	if _, err := legacyFixtureProvider(restarted).legacyCredentials(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if loginCalls.Load() != 1 || scriptCalls.Load() != 1 {
@@ -128,26 +129,26 @@ func TestLegacyLoginWaiterCancellationAndSingleFlight(t *testing.T) {
 		}
 		return legacyFixtureResponse(request, map[string]string{"token": "shared-own-session"}), nil
 	})
-	d.cfg.InterfaceKey, d.cfg.ParamKey, d.cfg.ParamIV = fixtureLegacyProtocol.InterfaceKey, fixtureLegacyProtocol.ParamKey, fixtureLegacyProtocol.ParamIV
+	legacyFixtureProvider(d).cfg.InterfaceKey, legacyFixtureProvider(d).cfg.ParamKey, legacyFixtureProvider(d).cfg.ParamIV = fixtureLegacyProtocol.InterfaceKey, fixtureLegacyProtocol.ParamKey, fixtureLegacyProtocol.ParamIV
 	var group sync.WaitGroup
 	group.Add(1)
 	go func() {
 		defer group.Done()
-		if _, err := d.legacyCredentials(context.Background()); err != nil {
+		if _, err := legacyFixtureProvider(d).legacyCredentials(context.Background()); err != nil {
 			t.Error(err)
 		}
 	}()
 	<-started
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
-	if _, err := d.legacyCredentials(ctx); !errors.Is(err, context.DeadlineExceeded) {
+	if _, err := legacyFixtureProvider(d).legacyCredentials(ctx); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatal("a waiting caller cannot be canceled", err)
 	}
 	for i := 0; i < 8; i++ {
 		group.Add(1)
 		go func() {
 			defer group.Done()
-			if _, err := d.legacyCredentials(context.Background()); err != nil {
+			if _, err := legacyFixtureProvider(d).legacyCredentials(context.Background()); err != nil {
 				t.Error(err)
 			}
 		}()
@@ -171,12 +172,12 @@ func TestLegacyExpiredAnonymousSessionRefreshesOnce(t *testing.T) {
 		}
 		return legacyFixtureResponse(request, []Tab{{ID: "valid", Name: "当前分类"}}), nil
 	})
-	state := legacySessionState{Version: 1, Scope: d.legacySessionScope(), DeviceID: "0123456789ABCDEF1789290000000", Token: "expired-session", Protocol: fixtureLegacyProtocol, UpdatedAt: time.Now()}
-	if err := d.saveLegacySession(state); err != nil {
+	state := legacySessionState{Version: 1, Scope: legacyFixtureProvider(d).legacySessionScope(), DeviceID: "0123456789ABCDEF1789290000000", Token: "expired-session", Protocol: fixtureLegacyProtocol, UpdatedAt: time.Now()}
+	if err := legacyFixtureProvider(d).saveLegacySession(state); err != nil {
 		t.Fatal(err)
 	}
 	var tabs legacyTabList
-	if err := d.fetchAPI(context.Background(), "/api/app/playlet-tab/all", nil, &tabs); err != nil || len(tabs) != 1 {
+	if err := legacyFixtureProvider(d).fetchAPI(context.Background(), "/api/app/playlet-tab/all", nil, &tabs); err != nil || len(tabs) != 1 {
 		t.Fatal("anonymous recovery failed", err)
 	}
 	if logins.Load() != 1 {
@@ -193,13 +194,13 @@ func TestLegacyExplicitTokenIsPreservedWithoutMediaKey(t *testing.T) {
 		}
 		return sourceFixtureResponse(request, 200, `{"code":5005,"msg":"expired configured session"}`), nil
 	})
-	d.cfg.Token = "configured-session"
-	d.cfg.InterfaceKey, d.cfg.ParamKey, d.cfg.ParamIV = fixtureLegacyProtocol.InterfaceKey, fixtureLegacyProtocol.ParamKey, fixtureLegacyProtocol.ParamIV
+	legacyFixtureProvider(d).cfg.Token = "configured-session"
+	legacyFixtureProvider(d).cfg.InterfaceKey, legacyFixtureProvider(d).cfg.ParamKey, legacyFixtureProvider(d).cfg.ParamIV = fixtureLegacyProtocol.InterfaceKey, fixtureLegacyProtocol.ParamKey, fixtureLegacyProtocol.ParamIV
 	var tabs legacyTabList
-	if err := d.fetchAPI(context.Background(), "/api/app/playlet-tab/all", nil, &tabs); err == nil {
+	if err := legacyFixtureProvider(d).fetchAPI(context.Background(), "/api/app/playlet-tab/all", nil, &tabs); err == nil {
 		t.Fatal("expired explicit token was ignored")
 	}
-	if calls.Load() != 1 || d.cfg.Token != "configured-session" {
+	if calls.Load() != 1 || legacyFixtureProvider(d).cfg.Token != "configured-session" {
 		t.Fatal("explicit token was silently renewed")
 	}
 }
@@ -216,4 +217,11 @@ func TestLegacyPublicProtocolValidation(t *testing.T) {
 			t.Fatal("tab response format not supported")
 		}
 	}
+}
+
+func legacyFixtureProvider(d *Downloader) *legacyProvider {
+	p, _ := d.provider(sourceCloudFront)
+	legacy := p.(*legacyProvider)
+	legacy.cfg.Retries = d.cfg.Retries
+	return legacy
 }

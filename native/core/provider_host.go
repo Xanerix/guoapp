@@ -47,15 +47,17 @@ type HTTPRequest struct {
 }
 
 type HTTPResponse struct {
-	Status  int
-	Header  map[string][]string
-	Body    []byte
-	Blocked bool
+	Status    int
+	Header    map[string][]string
+	Body      []byte
+	Blocked   bool
+	Oversized bool
 }
 
 type Host interface {
 	Reserve(ctx context.Context, address string) (ticket uint64, err error)
 	Fetch(ctx context.Context, request HTTPRequest) (HTTPResponse, error)
+	BaseURL(source string) string
 	PreferredSite(source string) string
 	RememberSite(source, site string)
 	FetchText(ctx context.Context, request TextRequest) (TextResponse, error)
@@ -182,7 +184,7 @@ func (d *Downloader) Fetch(ctx context.Context, input HTTPRequest) (HTTPResponse
 		return result, d.catalogResponseError(request, response, data)
 	}
 	if oversized {
-		return HTTPResponse{}, fmt.Errorf("%s返回的数据过大或读取失败", input.Label)
+		return HTTPResponse{Oversized: true}, fmt.Errorf("%s返回的数据过大或读取失败", input.Label)
 	}
 	return result, nil
 }
@@ -317,3 +319,5 @@ func (d *Downloader) RememberSite(source, site string) {
 	}
 	d.providerHosts[source] = site
 }
+
+func (d *Downloader) BaseURL(source string) string { return d.providerBaseURL(source) }

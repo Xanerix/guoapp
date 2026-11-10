@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -186,16 +185,16 @@ func decryptResponse(dataStr string, interfaceKey []byte) ([]byte, error) {
 	return pkcs7Unpad(plain, block.BlockSize())
 }
 
-func (d *Downloader) fetchAPI(ctx context.Context, apiPath string, params any, out any) error {
+func (p *legacyProvider) fetchAPI(ctx context.Context, apiPath string, params any, out any) error {
 	for attempt := 0; attempt < 2; attempt++ {
-		access, err := d.legacyCredentials(ctx)
+		access, err := p.legacyCredentials(ctx)
 		if err != nil {
 			return err
 		}
-		payload, err := d.legacyRequest(ctx, http.MethodGet, apiPath, params, access)
+		payload, err := p.legacyRequest(ctx, http.MethodGet, apiPath, params, access)
 		var apiErr *legacyAPIError
 		if attempt == 0 && access.Anonymous && errors.As(err, &apiErr) && apiErr.code == "5005" {
-			d.invalidateLegacyToken(access)
+			p.invalidateLegacyToken(access)
 			continue
 		}
 		if err != nil {
@@ -212,9 +211,9 @@ func (err *legacyAPIError) Error() string {
 	return fmt.Sprintf("黄果 API 错误 %s: %s", err.code, err.message)
 }
 
-func (d *Downloader) legacyRequest(ctx context.Context, method, apiPath string, params any, access legacyAccess) ([]byte, error) {
+func (p *legacyProvider) legacyRequest(ctx context.Context, method, apiPath string, params any, access legacyAccess) ([]byte, error) {
 	var lastErr error
-	attempts := d.cfg.Retries
+	attempts := p.cfg.Retries
 	if attempts < 1 {
 		attempts = 1
 	}
@@ -227,7 +226,7 @@ func (d *Downloader) legacyRequest(ctx context.Context, method, apiPath string, 
 			}
 		}
 		fullPath := apiPath
-		var requestBody io.Reader
+		var requestBody []byte
 		if params != nil {
 			enc, err := encryptParam(params, []byte(access.ParamKey), []byte(access.ParamIV))
 			if err != nil {
@@ -240,61 +239,47 @@ func (d *Downloader) legacyRequest(ctx context.Context, method, apiPath string, 
 				}
 				fullPath += sep + "data=" + url.QueryEscape(enc)
 			} else {
-				body, _ := json.Marshal(map[string]string{"data": enc})
-				requestBody = bytes.NewReader(body)
+				requestBody, _ = json.Marshal(map[string]string{"data": enc})
 			}
 		}
-		base, err := d.apiEndpoint(ctx)
+		base, err := p.apiEndpoint(ctx)
 		if err != nil {
 			return nil, err
 		}
-		req, err := http.NewRequestWithContext(ctx, method, base+fullPath, requestBody)
-		if err != nil {
-			return nil, err
+		header := map[string]string{
+			"Accept":       "application/json",
+			"temp":         "test",
+			"X-User-Agent": access.userAgent(),
+			"Origin":       legacyFrontendURL,
+			"Referer":      legacyFrontendURL + "/",
+			"User-Agent":   userAgent,
 		}
 		if access.Token != "" {
-			req.Header.Set("Authorization", access.Token)
+			header["Authorization"] = access.Token
 		}
 		if requestBody != nil {
-			req.Header.Set("Content-Type", "application/json")
+			header["Content-Type"] = "application/json"
 		}
-		req.Header.Set("Accept", "application/json")
-		req.Header.Set("temp", "test")
-		req.Header.Set("X-User-Agent", access.userAgent())
-		req.Header.Set("Origin", legacyFrontendURL)
-		req.Header.Set("Referer", legacyFrontendURL+"/")
-		req.Header.Set("User-Agent", userAgent)
-
-		resp, err := d.doCatalogRequestWithTimeout(req, providerTimeout)
+		response, err := p.host.Fetch(ctx, HTTPRequest{Label: "黄果", Method: method, URL: base + fullPath, Header: header, Body: requestBody, Limit: providerMaxBodyBytes, Timeout: providerTimeout, FollowRedirects: true})
 		if err != nil {
-			lastErr = publicError(err)
-			var backoff *requestBackoff
-			if errors.As(err, &backoff) || ctx.Err() != nil {
-				return nil, lastErr
-			}
-			d.resetAPIEndpoint(base)
-			continue
-		}
-		body, readErr := io.ReadAll(io.LimitReader(resp.Body, providerMaxBodyBytes+1))
-		_ = resp.Body.Close()
-		if readErr != nil {
-			lastErr = readErr
-			continue
-		}
-		if len(body) > providerMaxBodyBytes {
-			return nil, errors.New("API 响应过大")
-		}
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			lastErr = d.catalogResponseError(req, resp, body)
-			if resp.StatusCode >= 500 {
-				d.resetAPIEndpoint(base)
-				continue
-			}
-			if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+			lastErr = err
+			switch {
+			case response.Oversized:
+				return nil, errors.New("API 响应过大")
+			case response.Status == 0:
+				var backoff *requestBackoff
+				if errors.As(err, &backoff) || ctx.Err() != nil {
+					return nil, lastErr
+				}
+				p.resetAPIEndpoint(base)
+			case response.Status >= 500:
+				p.resetAPIEndpoint(base)
+			case response.Status >= 400:
 				return nil, lastErr
 			}
 			continue
 		}
+		body := response.Body
 		var env apiEnvelope
 		if err := json.Unmarshal(body, &env); err != nil {
 			lastErr = err

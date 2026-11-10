@@ -1,14 +1,12 @@
 package core
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -48,13 +46,8 @@ type legacyAPIClient struct {
 	retryAt time.Time
 }
 
-func (d *Downloader) legacyClient() *legacyAPIClient {
-	d.legacyOnce.Do(func() { d.legacy = &legacyAPIClient{} })
-	return d.legacy
-}
-
-func (d *Downloader) legacyCredentials(ctx context.Context) (legacyAccess, error) {
-	client := d.legacyClient()
+func (p *legacyProvider) legacyCredentials(ctx context.Context) (legacyAccess, error) {
+	client := p.client
 	for {
 		if err := ctx.Err(); err != nil {
 			return legacyAccess{}, err
@@ -80,7 +73,7 @@ func (d *Downloader) legacyCredentials(ctx context.Context) (legacyAccess, error
 			return legacyAccess{}, err
 		}
 		if !client.loaded {
-			client.state = d.loadLegacySession()
+			client.state = p.loadLegacySession()
 			client.loaded = true
 		}
 		state := client.state
@@ -88,7 +81,7 @@ func (d *Downloader) legacyCredentials(ctx context.Context) (legacyAccess, error
 		client.pending = pending
 		client.mu.Unlock()
 
-		access, updated, err := d.bootstrapLegacySession(ctx, state)
+		access, updated, err := p.bootstrapLegacySession(ctx, state)
 		client.mu.Lock()
 		client.state = updated
 		client.err = err
@@ -105,19 +98,18 @@ func (d *Downloader) legacyCredentials(ctx context.Context) (legacyAccess, error
 	}
 }
 
-func (d *Downloader) legacySessionScope() string {
-	return strings.TrimRight(firstNonEmpty(d.cfg.APIBase, defaultAPIBase), "/")
+func (p *legacyProvider) legacySessionScope() string {
+	return strings.TrimRight(firstNonEmpty(p.cfg.APIBase, defaultAPIBase), "/")
 }
 
-func (d *Downloader) loadLegacySession() legacySessionState {
-	empty := legacySessionState{Version: 1, Scope: d.legacySessionScope()}
-	file, err := os.Open(filepath.Join(d.cfg.dataDir, "huangguo-session.json"))
-	if err != nil {
+func (p *legacyProvider) loadLegacySession() legacySessionState {
+	empty := legacySessionState{Version: 1, Scope: p.legacySessionScope()}
+	data, err := p.host.LoadState(legacySessionFile)
+	if err != nil || len(data) == 0 || len(data) > 16*1024 {
 		return empty
 	}
-	defer file.Close()
 	var state legacySessionState
-	if json.NewDecoder(io.LimitReader(file, 16*1024)).Decode(&state) != nil || state.Version != 1 || state.Scope != empty.Scope ||
+	if json.NewDecoder(bytes.NewReader(data)).Decode(&state) != nil || state.Version != 1 || state.Scope != empty.Scope ||
 		!regexp.MustCompile(`^[A-Fa-f0-9]{16}[0-9]{13}$`).MatchString(state.DeviceID) || !validLegacyToken(state.Token) {
 		return empty
 	}
@@ -128,32 +120,20 @@ func validLegacyToken(token string) bool {
 	return len(token) <= 4096 && !strings.ContainsAny(token, "\r\n\t ")
 }
 
-func (d *Downloader) saveLegacySession(state legacySessionState) error {
-	directory := d.cfg.dataDir
-	if err := os.MkdirAll(directory, 0o700); err != nil {
-		return err
-	}
-	file, err := os.CreateTemp(directory, ".huangguo-session-*.tmp")
+func (p *legacyProvider) saveLegacySession(state legacySessionState) error {
+	data, err := json.Marshal(state)
 	if err != nil {
 		return err
 	}
-	defer os.Remove(file.Name())
-	if err := json.NewEncoder(file).Encode(state); err != nil {
-		file.Close()
-		return err
-	}
-	if err := file.Close(); err != nil {
-		return err
-	}
-	return os.Rename(file.Name(), filepath.Join(directory, "huangguo-session.json"))
+	return p.host.SaveState(legacySessionFile, data)
 }
 
-func (d *Downloader) bootstrapLegacySession(ctx context.Context, state legacySessionState) (legacyAccess, legacySessionState, error) {
-	access := legacyAccess{Token: d.cfg.Token, Anonymous: d.cfg.Token == ""}
+func (p *legacyProvider) bootstrapLegacySession(ctx context.Context, state legacySessionState) (legacyAccess, legacySessionState, error) {
+	access := legacyAccess{Token: p.cfg.Token, Anonymous: p.cfg.Token == ""}
 	protocol := state.Protocol
-	needsProtocol := d.cfg.InterfaceKey == "" || d.cfg.ParamKey == "" || d.cfg.ParamIV == ""
+	needsProtocol := p.cfg.InterfaceKey == "" || p.cfg.ParamKey == "" || p.cfg.ParamIV == ""
 	if needsProtocol && (!validLegacyProtocol(protocol) || time.Since(state.UpdatedAt) > 24*time.Hour) {
-		script, err := d.fetchLegacyFrontendScript(ctx)
+		script, err := p.fetchLegacyFrontendScript(ctx)
 		if err != nil {
 			return access, state, fmt.Errorf("获取黄果官网协议失败: %w", publicError(err))
 		}
@@ -164,9 +144,9 @@ func (d *Downloader) bootstrapLegacySession(ctx context.Context, state legacySes
 		state.Protocol, state.UpdatedAt = protocol, time.Now()
 	}
 	access.legacyProtocol = legacyProtocol{
-		InterfaceKey: firstNonEmpty(d.cfg.InterfaceKey, protocol.InterfaceKey),
-		ParamKey:     firstNonEmpty(d.cfg.ParamKey, protocol.ParamKey),
-		ParamIV:      firstNonEmpty(d.cfg.ParamIV, protocol.ParamIV),
+		InterfaceKey: firstNonEmpty(p.cfg.InterfaceKey, protocol.InterfaceKey),
+		ParamKey:     firstNonEmpty(p.cfg.ParamKey, protocol.ParamKey),
+		ParamIV:      firstNonEmpty(p.cfg.ParamIV, protocol.ParamIV),
 	}
 	if !validLegacyProtocol(access.legacyProtocol) || !validLegacyToken(access.Token) {
 		return access, state, errors.New("黄果 API 协议配置无效，请更新应用后重试")
@@ -181,7 +161,7 @@ func (d *Downloader) bootstrapLegacySession(ctx context.Context, state legacySes
 		}
 		access.DeviceID, access.Token = state.DeviceID, state.Token
 		if access.Token == "" {
-			payload, err := d.legacyRequest(ctx, http.MethodPost, "/api/app/mine/login/h5", map[string]any{
+			payload, err := p.legacyRequest(ctx, http.MethodPost, "/api/app/mine/login/h5", map[string]any{
 				"devID": access.DeviceID, "sysType": "ios", "isAppStore": false,
 			}, access)
 			if err != nil {
@@ -197,7 +177,7 @@ func (d *Downloader) bootstrapLegacySession(ctx context.Context, state legacySes
 		}
 	}
 	if access.Anonymous {
-		if err := d.saveLegacySession(state); err != nil {
+		if err := p.saveLegacySession(state); err != nil {
 			fmt.Println("黄果访客会话未能保存，本次会话仍可使用")
 		}
 	}
@@ -224,8 +204,8 @@ func parseLegacyProtocol(script string) (legacyProtocol, error) {
 	return protocol, nil
 }
 
-func (d *Downloader) invalidateLegacyToken(access legacyAccess) {
-	client := d.legacyClient()
+func (p *legacyProvider) invalidateLegacyToken(access legacyAccess) {
+	client := p.client
 	client.mu.Lock()
 	defer client.mu.Unlock()
 	if access.Anonymous && client.access != nil && client.access.Token == access.Token {

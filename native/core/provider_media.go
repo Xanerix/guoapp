@@ -72,7 +72,13 @@ func (d *Downloader) providerURLCandidates(raw string) []string {
 	if providerSourceForURL(configured) == "" {
 		return candidates
 	}
-	for _, candidate := range providerURLCandidates(raw) {
+	rotated := []string{raw}
+	if p, ok := d.provider(source); ok {
+		if rotator, ok := p.(URLRotator); ok {
+			rotated = rotator.URLCandidates(raw)
+		}
+	}
+	for _, candidate := range rotated {
 		add(candidate)
 	}
 	return candidates

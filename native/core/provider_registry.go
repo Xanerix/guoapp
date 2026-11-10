@@ -49,6 +49,10 @@ type Sited interface {
 	BaseURL() string
 }
 
+type URLRotator interface {
+	URLCandidates(rawURL string) []string
+}
+
 type Searcher interface {
 	Search(ctx context.Context, page int, query string) ([]Drama, bool, error)
 }

@@ -20,15 +20,7 @@ type Config struct {
 	PageSize        int
 	Retries         int
 	InsecureTLS     bool
-	HuangguoAIURL   string
 	HongguoURL      string
-	Token           string
-	AESKeyHex       string
-	InterfaceKey    string
-	ParamKey        string
-	ParamIV         string
-	APIBase         string
-	CDNURL          string
 }
 
 type Downloader struct {
@@ -49,11 +41,6 @@ type Downloader struct {
 	directOnce      sync.Once
 	direct          *http.Client
 	diagnostics     *diagnosticLog
-	apiMu           sync.Mutex
-	apiBase         string
-	apiFailures     map[string]time.Time
-	legacyOnce      sync.Once
-	legacy          *legacyAPIClient
 	previewMu       sync.Mutex
 	previewSessions map[string]*huangguoPreviewSession
 }

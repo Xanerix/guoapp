@@ -8,21 +8,23 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 )
 
-func (d *Downloader) fetchLegacyCatalogPage(ctx context.Context, page int) ([]Drama, bool, error) {
-	return d.fetchLegacyCatalogCategoryPage(ctx, page, "")
+func (p *legacyProvider) fetchLegacyCatalogPage(ctx context.Context, page int) ([]Drama, bool, error) {
+	return p.fetchLegacyCatalogCategoryPage(ctx, page, "")
 }
 
-func (d *Downloader) fetchLegacyCatalogCategoryPage(ctx context.Context, page int, category string) ([]Drama, bool, error) {
+func (p *legacyProvider) fetchLegacyCatalogCategoryPage(ctx context.Context, page int, category string) ([]Drama, bool, error) {
 	var tabs legacyTabList
-	if err := d.fetchAPI(ctx, "/api/app/playlet-tab/all", nil, &tabs); err != nil {
+	if err := p.fetchAPI(ctx, "/api/app/playlet-tab/all", nil, &tabs); err != nil {
 		return nil, false, err
 	}
 	if len(tabs) == 0 {
 		return nil, false, errors.New("黄果旧 API 未返回可用分类")
 	}
-	pageSize := max(1, d.cfg.PageSize)
+	pageSize := max(1, legacyPageSize)
 	seen := map[string]bool{}
 	var items []Drama
 	var failures []error
@@ -32,7 +34,7 @@ func (d *Downloader) fetchLegacyCatalogCategoryPage(ctx context.Context, page in
 			continue
 		}
 		var result listResponse
-		err := d.fetchAPI(ctx, "/api/app/playlet/home/tab/"+url.PathEscape(tab.ID), map[string]string{
+		err := p.fetchAPI(ctx, "/api/app/playlet/home/tab/"+url.PathEscape(tab.ID), map[string]string{
 			"pageNumber": strconv.Itoa(page), "pageSize": strconv.Itoa(pageSize), "tabSortType": "1",
 		}, &result)
 		if err != nil {
@@ -74,19 +76,19 @@ func (d *Downloader) fetchLegacyCatalogCategoryPage(ctx context.Context, page in
 	return items, hasMore, errors.Join(failures...)
 }
 
-func (d *Downloader) fetchLegacyChapters(ctx context.Context, sourceID string) (string, []Chapter, error) {
-	drama, chapters, err := d.fetchLegacyDetail(ctx, sourceID)
+func (p *legacyProvider) fetchLegacyChapters(ctx context.Context, sourceID string) (string, []Chapter, error) {
+	drama, chapters, err := p.fetchLegacyDetail(ctx, sourceID)
 	return drama.DisplayTitle(), chapters, err
 }
 
-func (d *Downloader) fetchLegacyDetail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
+func (p *legacyProvider) fetchLegacyDetail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
 	var detail detailResponse
-	if err := d.fetchAPI(ctx, "/api/app/playlet/detail/"+url.PathEscape(sourceID), nil, &detail); err != nil {
+	if err := p.fetchAPI(ctx, "/api/app/playlet/detail/"+url.PathEscape(sourceID), nil, &detail); err != nil {
 		return Drama{}, nil, err
 	}
 	chapters := detail.Chapters
 	if len(chapters) == 0 {
-		if err := d.fetchAPI(ctx, "/api/app/playlet-chapter/list/"+url.PathEscape(sourceID), nil, &chapters); err != nil {
+		if err := p.fetchAPI(ctx, "/api/app/playlet-chapter/list/"+url.PathEscape(sourceID), nil, &chapters); err != nil {
 			return Drama{}, nil, err
 		}
 	}
@@ -117,38 +119,38 @@ func (d *Downloader) fetchLegacyDetail(ctx context.Context, sourceID string) (Dr
 	return drama, chapters, nil
 }
 
-func (d *Downloader) resolveLegacyMedia(ctx context.Context, task Task) (ProviderMedia, error) {
+func (p *legacyProvider) resolveLegacyMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	if task.Chapter.VideoURL == "" {
 		return ProviderMedia{}, errors.New("此分集没有可用的播放地址")
 	}
 	var key []byte
-	if d.cfg.AESKeyHex != "" {
+	if p.cfg.AESKeyHex != "" {
 		var err error
-		key, err = hex.DecodeString(d.cfg.AESKeyHex)
+		key, err = hex.DecodeString(p.cfg.AESKeyHex)
 		if err != nil || len(key) != 16 {
 			return ProviderMedia{}, errors.New("aesKeyHex 必须是 16 字节 AES 密钥的 hex 编码")
 		}
 	}
 	for attempt := 0; attempt < 2; attempt++ {
-		access, err := d.legacyCredentials(ctx)
+		access, err := p.legacyCredentials(ctx)
 		if err != nil {
 			return ProviderMedia{}, err
 		}
-		base, err := d.apiEndpoint(ctx)
+		base, err := p.apiEndpoint(ctx)
 		if err != nil {
 			return ProviderMedia{}, err
 		}
 		address := task.Chapter.VideoURL
 		if !isProviderHTTPMediaURL(address) {
 			address = base + "/api/app/vid/h5/m3u8/" + url.PathEscape(strings.Trim(address, "/")) + "?" + url.Values{
-				"token": {access.Token}, "c": {firstNonEmpty(d.cfg.CDNURL, defaultCDNURL)},
+				"token": {access.Token}, "c": {firstNonEmpty(p.cfg.CDNURL, defaultCDNURL)},
 			}.Encode()
 		}
-		playlist, finalURL, err := d.fetchMediaPlaylist(ctx, address, legacyFrontendURL+"/")
+		playlist, finalURL, err := p.host.FetchPlaylist(ctx, address, legacyFrontendURL+"/", nil)
 		if err != nil {
 			var expired *legacyAPIError
 			if attempt == 0 && access.Anonymous && errors.As(err, &expired) && expired.code == "5005" {
-				d.invalidateLegacyToken(access)
+				p.invalidateLegacyToken(access)
 				continue
 			}
 			return ProviderMedia{}, err
@@ -158,7 +160,35 @@ func (d *Downloader) resolveLegacyMedia(ctx context.Context, task Task) (Provide
 	return ProviderMedia{}, errors.New("黄果旧 API 的播放会话已失效，请稍后重试")
 }
 
-type legacyProvider struct{ d *Downloader }
+const (
+	legacySessionFile = "huangguo-session.json"
+	legacyPageSize    = 30
+)
+
+type legacyConfig struct {
+	Token        string
+	AESKeyHex    string
+	InterfaceKey string
+	ParamKey     string
+	ParamIV      string
+	APIBase      string
+	CDNURL       string
+	Retries      int
+}
+
+type legacyProvider struct {
+	host        Host
+	cfg         legacyConfig
+	client      *legacyAPIClient
+	apiMu       sync.Mutex
+	apiBase     string
+	apiFailures map[string]time.Time
+}
+
+func (p *legacyProvider) text(ctx context.Context, address, referer string) (string, error) {
+	response, err := p.host.FetchText(ctx, TextRequest{URL: address, Referer: referer})
+	return response.Body, err
+}
 
 var legacyDescriptor = SourceDescriptor{
 	ID:            sourceCloudFront,
@@ -173,14 +203,16 @@ var legacyDescriptor = SourceDescriptor{
 }
 
 func init() {
-	Register(legacyDescriptor, func(host Host) Provider { return &legacyProvider{d: host.(*Downloader)} })
+	Register(legacyDescriptor, func(host Host) Provider {
+		return &legacyProvider{host: host, cfg: legacyConfig{Retries: 2}, client: &legacyAPIClient{}}
+	})
 }
 
 func (p *legacyProvider) Descriptor() SourceDescriptor { return legacyDescriptor }
 
 func (p *legacyProvider) Categories(ctx context.Context, force bool) ([]Category, error) {
 	var tabs legacyTabList
-	if err := p.d.fetchAPI(ctx, "/api/app/playlet-tab/all", nil, &tabs); err != nil {
+	if err := p.fetchAPI(ctx, "/api/app/playlet-tab/all", nil, &tabs); err != nil {
 		return nil, err
 	}
 	var categories []Category
@@ -193,15 +225,15 @@ func (p *legacyProvider) Categories(ctx context.Context, force bool) ([]Category
 }
 
 func (p *legacyProvider) CatalogPage(ctx context.Context, page int, category string) ([]Drama, bool, error) {
-	return p.d.fetchLegacyCatalogCategoryPage(ctx, page, category)
+	return p.fetchLegacyCatalogCategoryPage(ctx, page, category)
 }
 
 func (p *legacyProvider) Detail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
-	return p.d.fetchLegacyDetail(ctx, sourceID)
+	return p.fetchLegacyDetail(ctx, sourceID)
 }
 
 func (p *legacyProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
-	return p.d.resolveLegacyMedia(ctx, task)
+	return p.resolveLegacyMedia(ctx, task)
 }
 
 func (p *legacyProvider) CoverAddress(ctx context.Context, drama LibraryDrama, id string) (string, error) {
@@ -209,7 +241,7 @@ func (p *legacyProvider) CoverAddress(ctx context.Context, drama LibraryDrama, i
 		return "", errors.New("无效的黄果剧集 ID")
 	}
 	var raw Drama
-	if err := p.d.fetchAPI(ctx, "/api/app/playlet/detail/"+url.PathEscape(id), nil, &raw); err != nil {
+	if err := p.fetchAPI(ctx, "/api/app/playlet/detail/"+url.PathEscape(id), nil, &raw); err != nil {
 		return "", err
 	}
 	if raw.ID != "" && raw.ID != id && raw.ID != drama.ID {
@@ -225,9 +257,9 @@ func (p *legacyProvider) CoverAddress(ctx context.Context, drama LibraryDrama, i
 
 func (p *legacyProvider) CoverReferer(address string) string {
 	if parsed, err := url.Parse(address); err == nil && (strings.HasSuffix(strings.ToLower(parsed.Hostname()), ".zdmhyg.cn") || strings.EqualFold(parsed.Hostname(), "pic.tuafjz.cn")) {
-		return p.d.providerBaseURL(sourceHuangguoAI) + "/"
+		return p.host.BaseURL(sourceHuangguoAI) + "/"
 	}
-	return p.d.providerBaseURL(sourceCloudFront) + "/"
+	return p.host.BaseURL(sourceCloudFront) + "/"
 }
 
 const sourceCloudFront = "cloudfront"

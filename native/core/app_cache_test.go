@@ -213,7 +213,7 @@ func TestNativeCatalogCacheFreshnessPagingAndRefresh(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		engine.downloader.cfg.HuangguoAIURL = upstream.URL
+		huangguoAIFixtureProvider(engine.downloader).configured = upstream.URL
 		engine.downloader.limiter = newRequestLimiter(3, 0)
 		return engine
 	}

@@ -82,7 +82,7 @@ func TestHuangguoAIDetailAndPlaybackUseEdgeAPI(t *testing.T) {
 		}
 		return sourceFixtureResponse(request, 200, `{"status":0,"msg":"合成剧集不存在"}`), nil
 	})
-	drama, chapters, err := d.fetchHuangguoAIDetail(context.Background(), "12")
+	drama, chapters, err := huangguoAIFixtureProvider(d).fetchHuangguoAIDetail(context.Background(), "12")
 	if err != nil || drama.ID != "huangguoai:12" || drama.Title != "合成剧" || drama.Desc != "合成简介" || drama.ReleaseStatus != "ongoing" || drama.Cover != "https://huangguoai.com/covers/12.jpg" {
 		t.Fatal("detail metadata was not read from the API")
 	}
@@ -93,7 +93,7 @@ func TestHuangguoAIDetailAndPlaybackUseEdgeAPI(t *testing.T) {
 	if err != nil || media.URL != "https://media.example.test/12/2.mp4?auth_key=synthetic" {
 		t.Fatal("playback did not use the play API")
 	}
-	if _, _, err := d.fetchHuangguoAIDetail(context.Background(), "13"); err == nil || !strings.Contains(err.Error(), "合成剧集不存在") {
+	if _, _, err := huangguoAIFixtureProvider(d).fetchHuangguoAIDetail(context.Background(), "13"); err == nil || !strings.Contains(err.Error(), "合成剧集不存在") {
 		t.Fatal("upstream failure message was discarded")
 	}
 }
@@ -118,4 +118,9 @@ func TestHuangguoAISearchUsesSitePagination(t *testing.T) {
 	if err != nil || len(last.Items) != 1 || last.Items[0].ID != "huangguoai:52" || last.HasMore {
 		t.Fatal("search pagination ignored the site total")
 	}
+}
+
+func huangguoAIFixtureProvider(d *Downloader) *huangguoAIProvider {
+	p, _ := d.provider(sourceHuangguoAI)
+	return p.(*huangguoAIProvider)
 }

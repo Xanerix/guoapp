@@ -15,16 +15,17 @@ import (
 
 const huangguoAISearchPageSize = 20
 
-func (d *Downloader) huangguoAIAPI(ctx context.Context, path string, out any) error {
+func (p *huangguoAIProvider) huangguoAIAPI(ctx context.Context, path string, out any) error {
 	envelope, err := json.Marshal(map[string]string{"method": http.MethodGet, "path": path, "body": "", "content_type": ""})
 	if err != nil {
 		return err
 	}
-	base := d.providerBaseURL(sourceHuangguoAI)
-	body, err := d.fetchProviderRequest(ctx, base+"/api/edge/request", base+"/", envelope)
+	base := p.site()
+	response, err := p.host.FetchText(ctx, TextRequest{URL: base + "/api/edge/request", Referer: base + "/", Body: envelope})
 	if err != nil {
 		return err
 	}
+	body := response.Body
 	var reply struct {
 		Status int             `json:"status"`
 		Msg    string          `json:"msg"`
@@ -42,16 +43,16 @@ func (d *Downloader) huangguoAIAPI(ctx context.Context, path string, out any) er
 	return nil
 }
 
-func (d *Downloader) fetchHuangguoAIDetail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
+func (p *huangguoAIProvider) fetchHuangguoAIDetail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
 	sourceID = strings.TrimPrefix(strings.Trim(strings.TrimSpace(sourceID), "/"), "detail/")
 	if !rankingSourceID.MatchString(sourceID) {
 		return Drama{}, nil, errors.New("无效的黄果剧集 ID")
 	}
 	var detail map[string]any
-	if err := d.huangguoAIAPI(ctx, "/api/videos/"+url.PathEscape(sourceID), &detail); err != nil {
+	if err := p.huangguoAIAPI(ctx, "/api/videos/"+url.PathEscape(sourceID), &detail); err != nil {
 		return Drama{}, nil, err
 	}
-	base := d.providerBaseURL(sourceHuangguoAI)
+	base := p.site()
 	drama, ok := dramaFromAIMap(detail, base+"/", "")
 	if !ok || drama.SourceID != sourceID {
 		return Drama{}, nil, errors.New("黄果详情与请求剧集不符")
@@ -83,7 +84,7 @@ func huangguoAIChapter(base, sourceID string, episode int, title string) Chapter
 		Title: firstNonEmpty(title, fmt.Sprintf("第%d集", episode)), PageURL: pageURL, CurrentEpisode: rawEpisode(episode)}
 }
 
-func (d *Downloader) fetchHuangguoAIPlayURL(ctx context.Context, sourceID string, episode int) (string, error) {
+func (p *huangguoAIProvider) fetchHuangguoAIPlayURL(ctx context.Context, sourceID string, episode int) (string, error) {
 	if !rankingSourceID.MatchString(sourceID) || episode < 1 {
 		return "", errors.New("黄果集数无效")
 	}
@@ -91,13 +92,13 @@ func (d *Downloader) fetchHuangguoAIPlayURL(ctx context.Context, sourceID string
 		VideoURL string `json:"video_url"`
 	}
 	path := fmt.Sprintf("/api/videos/%s/play?ep=%d&page_texts=0", url.PathEscape(sourceID), episode)
-	if err := d.huangguoAIAPI(ctx, path, &play); err != nil {
+	if err := p.huangguoAIAPI(ctx, path, &play); err != nil {
 		return "", err
 	}
-	return normalizeProviderMediaURL(d.providerBaseURL(sourceHuangguoAI)+"/", play.VideoURL), nil
+	return normalizeProviderMediaURL(p.site()+"/", play.VideoURL), nil
 }
 
-func (d *Downloader) searchHuangguoAI(ctx context.Context, page int, query string) ([]Drama, bool, error) {
+func (p *huangguoAIProvider) searchHuangguoAI(ctx context.Context, page int, query string) ([]Drama, bool, error) {
 	query = strings.TrimSpace(query)
 	if query == "" || len(query) > 256 {
 		return nil, false, errors.New("黄果搜索关键词无效")
@@ -109,10 +110,10 @@ func (d *Downloader) searchHuangguoAI(ctx context.Context, page int, query strin
 		} `json:"pagination"`
 	}
 	path := "/api/search?" + url.Values{"q": {query}, "page": {strconv.Itoa(page)}, "size": {strconv.Itoa(huangguoAISearchPageSize)}}.Encode()
-	if err := d.huangguoAIAPI(ctx, path, &result); err != nil {
+	if err := p.huangguoAIAPI(ctx, path, &result); err != nil {
 		return nil, false, err
 	}
-	items := parseHuangguoAIJSONCards(result.Items, d.providerBaseURL(sourceHuangguoAI)+"/", "")
+	items := parseHuangguoAIJSONCards(result.Items, p.site()+"/", "")
 	return items, page < result.Pagination.Pages, nil
 }
 
@@ -151,7 +152,18 @@ func huangguoRankingMetric(row map[string]any) string {
 	return label + " " + strconv.FormatFloat(value, 'f', -1, 64)
 }
 
-type huangguoAIProvider struct{ d *Downloader }
+type huangguoAIProvider struct {
+	host       Host
+	configured string
+}
+
+func (p *huangguoAIProvider) site() string {
+	return strings.TrimRight(firstNonEmpty(p.configured, huangguoAIBaseURL), "/")
+}
+
+func (p *huangguoAIProvider) URLCandidates(rawURL string) []string {
+	return providerURLCandidates(rawURL)
+}
 
 var huangguoAIDescriptor = SourceDescriptor{
 	ID:          sourceHuangguoAI,
@@ -180,13 +192,13 @@ var huangguoAIDescriptor = SourceDescriptor{
 }
 
 func init() {
-	Register(huangguoAIDescriptor, func(host Host) Provider { return &huangguoAIProvider{d: host.(*Downloader)} })
+	Register(huangguoAIDescriptor, func(host Host) Provider { return &huangguoAIProvider{host: host} })
 }
 
 func (p *huangguoAIProvider) Descriptor() SourceDescriptor { return huangguoAIDescriptor }
 
 func (p *huangguoAIProvider) BaseURL() string {
-	return firstNonEmpty(p.d.cfg.HuangguoAIURL, huangguoAIBaseURL)
+	return firstNonEmpty(p.configured, huangguoAIBaseURL)
 }
 
 func (p *huangguoAIProvider) Categories(context.Context, bool) ([]Category, error) {
@@ -194,15 +206,15 @@ func (p *huangguoAIProvider) Categories(context.Context, bool) ([]Category, erro
 }
 
 func (p *huangguoAIProvider) CatalogPage(ctx context.Context, page int, category string) ([]Drama, bool, error) {
-	return p.d.fetchHuangguoAICatalogPage(ctx, page, category)
+	return p.fetchHuangguoAICatalogPage(ctx, page, category)
 }
 
 func (p *huangguoAIProvider) Search(ctx context.Context, page int, query string) ([]Drama, bool, error) {
-	return p.d.searchHuangguoAI(ctx, page, query)
+	return p.searchHuangguoAI(ctx, page, query)
 }
 
 func (p *huangguoAIProvider) Detail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
-	return p.d.fetchHuangguoAIDetail(ctx, sourceID)
+	return p.fetchHuangguoAIDetail(ctx, sourceID)
 }
 
 func (p *huangguoAIProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
@@ -211,12 +223,12 @@ func (p *huangguoAIProvider) ResolveMedia(ctx context.Context, task Task) (Provi
 	if !valid {
 		return ProviderMedia{}, fmt.Errorf("黄果剧集信息无效")
 	}
-	address, err := p.d.fetchHuangguoAIPlayURL(ctx, sourceID, chapterEpisodeNumber(chapter, task.Index))
+	address, err := p.fetchHuangguoAIPlayURL(ctx, sourceID, chapterEpisodeNumber(chapter, task.Index))
 	if err != nil {
 		return ProviderMedia{}, err
 	}
-	media := ProviderMedia{URL: address, Referer: firstNonEmpty(chapter.Referer, p.d.providerBaseURL(sourceHuangguoAI)+"/")}
-	return p.d.finishProviderMedia(ctx, media, sourceHuangguoAI)
+	media := ProviderMedia{URL: address, Referer: firstNonEmpty(chapter.Referer, p.site()+"/")}
+	return p.host.FinishMedia(ctx, media, sourceHuangguoAI)
 }
 
 func (p *huangguoAIProvider) RankingPage(ctx context.Context, board RankingBoard, page int) (RankingPage, error) {
@@ -226,10 +238,10 @@ func (p *huangguoAIProvider) RankingPage(ctx context.Context, board RankingBoard
 	var ranking struct {
 		Items []map[string]any `json:"items"`
 	}
-	if err := p.d.huangguoAIAPI(ctx, "/api/ranks/"+board.path, &ranking); err != nil {
+	if err := p.huangguoAIAPI(ctx, "/api/ranks/"+board.path, &ranking); err != nil {
 		return RankingPage{}, err
 	}
-	result, err := parseHuangguoRanking(ranking.Items, p.d.providerBaseURL(sourceHuangguoAI)+"/")
+	result, err := parseHuangguoRanking(ranking.Items, p.site()+"/")
 	if err != nil {
 		return RankingPage{}, fmt.Errorf("%s: %w", board.Name, err)
 	}
@@ -243,7 +255,7 @@ var nativeAICategories = []Category{
 	{ID: "ai-mogai", Name: "AI 魔改"},
 }
 
-func (d *Downloader) fetchHuangguoAICatalogPage(ctx context.Context, page int, category string) ([]Drama, bool, error) {
+func (p *huangguoAIProvider) fetchHuangguoAICatalogPage(ctx context.Context, page int, category string) ([]Drama, bool, error) {
 	categories := nativeAICategories
 	if category != "" {
 		for _, entry := range categories {
@@ -273,9 +285,9 @@ func (d *Downloader) fetchHuangguoAICatalogPage(ctx context.Context, page int, c
 			}
 			path := fmt.Sprintf("/api/videos/category/%s?sort=hot&page=%d&size=24", url.PathEscape(entry.ID), page)
 			var body json.RawMessage
-			err := d.huangguoAIAPI(ctx, path, &body)
+			err := p.huangguoAIAPI(ctx, path, &body)
 			if err == nil {
-				results[index].items = parseHuangguoAIJSONCards(body, d.providerBaseURL(sourceHuangguoAI)+"/", entry.Name)
+				results[index].items = parseHuangguoAIJSONCards(body, p.site()+"/", entry.Name)
 			}
 			if err != nil {
 				results[index].err = fmt.Errorf("%s: %w", entry.Name, err)

@@ -171,9 +171,9 @@ func TestLegacyPlaybackAndDownloadUseAuthenticatedPlaylistAndSourceKey(t *testin
 			return nil, errors.New("blocked")
 		}
 	})
-	d.cfg.APIBase = "https://legacy.example.test"
-	d.cfg.Token = "fixture-session"
-	d.cfg.InterfaceKey, d.cfg.ParamKey, d.cfg.ParamIV = fixtureLegacyProtocol.InterfaceKey, fixtureLegacyProtocol.ParamKey, fixtureLegacyProtocol.ParamIV
+	legacyFixtureProvider(d).cfg.APIBase = "https://legacy.example.test"
+	legacyFixtureProvider(d).cfg.Token = "fixture-session"
+	legacyFixtureProvider(d).cfg.InterfaceKey, legacyFixtureProvider(d).cfg.ParamKey, legacyFixtureProvider(d).cfg.ParamIV = fixtureLegacyProtocol.InterfaceKey, fixtureLegacyProtocol.ParamKey, fixtureLegacyProtocol.ParamIV
 	media, err := d.resolveProviderMedia(context.Background(), Task{DramaID: "cloudfront:fixture", Chapter: Chapter{Source: sourceCloudFront, VideoURL: "opaque-video"}})
 	if err != nil || media.Duration.Seconds() != 4 {
 		t.Fatal("legacy resolver failed", err)
@@ -198,12 +198,12 @@ func TestLegacyDiscoverySkipsFailedHost(t *testing.T) {
 		}
 		return sourceFixtureResponse(request, 200, `{"code":200}`), nil
 	})
-	first, err := d.apiEndpoint(context.Background())
+	first, err := legacyFixtureProvider(d).apiEndpoint(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	d.resetAPIEndpoint(first)
-	next, err := d.apiEndpoint(context.Background())
+	legacyFixtureProvider(d).resetAPIEndpoint(first)
+	next, err := legacyFixtureProvider(d).apiEndpoint(context.Background())
 	if err != nil || next == first {
 		t.Fatal("failed host was immediately reselected", next, err)
 	}

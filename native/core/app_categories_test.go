@@ -78,18 +78,18 @@ func TestLegacyResource404KeepsHealthyEndpoint(t *testing.T) {
 		}
 		return legacyFixtureResponse(request, []Tab{{ID: "active", Name: "合成分类"}}), nil
 	})
-	d.cfg.Token = "fixture-session"
-	d.cfg.InterfaceKey, d.cfg.ParamKey, d.cfg.ParamIV = fixtureLegacyProtocol.InterfaceKey, fixtureLegacyProtocol.ParamKey, fixtureLegacyProtocol.ParamIV
-	d.apiBase = d.cfg.APIBase
+	legacyFixtureProvider(d).cfg.Token = "fixture-session"
+	legacyFixtureProvider(d).cfg.InterfaceKey, legacyFixtureProvider(d).cfg.ParamKey, legacyFixtureProvider(d).cfg.ParamIV = fixtureLegacyProtocol.InterfaceKey, fixtureLegacyProtocol.ParamKey, fixtureLegacyProtocol.ParamIV
+	legacyFixtureProvider(d).apiBase = legacyFixtureProvider(d).cfg.APIBase
 	var detail detailResponse
-	if err := d.fetchAPI(context.Background(), "/api/app/playlet/detail/removed", nil, &detail); err == nil {
+	if err := legacyFixtureProvider(d).fetchAPI(context.Background(), "/api/app/playlet/detail/removed", nil, &detail); err == nil {
 		t.Fatal("a missing drama was treated as available")
 	}
-	if d.apiBase != d.cfg.APIBase || len(d.apiFailures) != 0 {
+	if legacyFixtureProvider(d).apiBase != legacyFixtureProvider(d).cfg.APIBase || len(legacyFixtureProvider(d).apiFailures) != 0 {
 		t.Fatal("one removed drama disabled a healthy API host")
 	}
 	var tabs legacyTabList
-	if err := d.fetchAPI(context.Background(), "/api/app/playlet-tab/all", nil, &tabs); err != nil || len(tabs) != 1 {
+	if err := legacyFixtureProvider(d).fetchAPI(context.Background(), "/api/app/playlet-tab/all", nil, &tabs); err != nil || len(tabs) != 1 {
 		t.Fatal("catalog did not remain usable", err)
 	}
 }
