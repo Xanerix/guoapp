@@ -740,6 +740,7 @@ class PlaybackSession extends ChangeNotifier {
         if (plan.url.isEmpty) throw AppFailure('站源未返回播放地址，请重试');
         await _configure(player, plan);
         await _limitCache(player, !_engaged);
+        await _selectAudio(player, true);
         _plan = plan;
         installed = true;
         _acceptErrors = true;
@@ -821,7 +822,7 @@ class PlaybackSession extends ChangeNotifier {
     _bind();
     _openedIndex = index;
     _acceptErrors = true;
-    unawaited(previous.stop().catchError((Object _) {}));
+    final stopping = previous.stop().catchError((Object _) {});
     if (previousPlan != null) unawaited(_release(previousPlan.session));
     danmaku.setPlan(plan);
     _notify();
@@ -830,6 +831,8 @@ class PlaybackSession extends ChangeNotifier {
       await _limitCache(next, false);
       await next.setVolume(volume);
       await _setRate(_rate);
+      await stopping;
+      await _selectAudio(next, true);
       if (_current(ticket) && _foreground && _playIntent) await next.play();
     } catch (_) {
       if (_current(ticket)) _queueRecovery('open_exception');
@@ -865,6 +868,7 @@ class PlaybackSession extends ChangeNotifier {
     try {
       await _configure(standby, plan);
       await _limitCache(standby, true);
+      await _selectAudio(standby, false);
       await standby.open(
         Media(plan.url, httpHeaders: plan.headers),
         play: false,
@@ -896,6 +900,12 @@ class PlaybackSession extends ChangeNotifier {
       'demuxer-max-bytes',
       '${(limited ? 4 : 32) * 1024 * 1024}',
     );
+  }
+
+  Future<void> _selectAudio(Player target, bool enabled) async {
+    final platform = target.platform;
+    if (platform is! NativePlayer || !Platform.isIOS) return;
+    await platform.setProperty('aid', enabled ? 'auto' : 'no');
   }
 
   void start(int index, {double position = 0}) {
