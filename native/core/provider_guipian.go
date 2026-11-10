@@ -530,3 +530,41 @@ func (d *Downloader) searchGuipian(ctx context.Context, page int, query string) 
 	}
 	return matched[start:end], end < len(matched), nil
 }
+
+type guipianProvider struct{ d *Downloader }
+
+var guipianDescriptor = SourceDescriptor{
+	ID:                sourceGuipian,
+	Name:              "鬼片",
+	Description:       "鬼片 · 电视剧 · 动漫",
+	Aliases:           []string{"guipianwu.com", "www.guipianwu.com"},
+	BaseURL:           guipianSiteBaseURL,
+	AllowEmptyCatalog: true,
+	ValidCategory:     validGuipianCategory,
+}
+
+func init() {
+	Register(guipianDescriptor, func(d *Downloader) Provider { return &guipianProvider{d: d} })
+}
+
+func (p *guipianProvider) Descriptor() SourceDescriptor { return guipianDescriptor }
+
+func (p *guipianProvider) Categories(context.Context, bool) ([]nativeCategory, error) {
+	return p.d.fetchGuipianCategories(), nil
+}
+
+func (p *guipianProvider) CatalogPage(ctx context.Context, page int, category string) ([]Drama, bool, error) {
+	return p.d.fetchGuipianCatalogPage(ctx, page, category, "")
+}
+
+func (p *guipianProvider) Search(ctx context.Context, page int, query string) ([]Drama, bool, error) {
+	return p.d.fetchGuipianCatalogPage(ctx, page, "", query)
+}
+
+func (p *guipianProvider) Detail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
+	return p.d.fetchGuipianDetail(ctx, sourceID)
+}
+
+func (p *guipianProvider) ResolveMedia(ctx context.Context, task Task) (providerMedia, error) {
+	return p.d.resolveGuipianMedia(ctx, task)
+}

@@ -40,6 +40,9 @@ func validNativeCategory(source, category string) bool {
 	if len(category) > 128 || strings.ContainsAny(category, "|/\\\x00\r\n") {
 		return false
 	}
+	if descriptor, ok := registeredDescriptor(source); ok {
+		return descriptor.ValidCategory != nil && descriptor.ValidCategory(category)
+	}
 	switch source {
 	case sourceHongguo:
 		for _, genre := range hongguoAppGenres {
@@ -71,8 +74,6 @@ func validNativeCategory(source, category string) bool {
 		return webProviderNumericID.MatchString(category)
 	case sourceSorani:
 		return validSoraniCategory(category)
-	case sourceGuipian:
-		return validGuipianCategory(category)
 	case sourceHanxiaoquan:
 		return validHanxiaoquanCategory(category)
 	case sourceHeitao:
@@ -105,72 +106,78 @@ func (engine *nativeEngine) nativeCategories(ctx context.Context, source string,
 	}
 	d := engine.downloader
 	var err error
-	switch source {
-	case sourceCloudFront:
-		var tabs legacyTabList
-		err = d.fetchAPI(ctx, "/api/app/playlet-tab/all", nil, &tabs)
-		for _, tab := range tabs {
-			if validNativeCategory(source, tab.ID) && tab.ID != "" && tab.Name != "" {
-				all = append(all, nativeCategory{ID: tab.ID, Name: tab.Name})
+	if p, ok := d.provider(source); ok {
+		var categories []nativeCategory
+		categories, err = p.Categories(ctx, force)
+		if err == nil {
+			all = append(all, categories...)
+		}
+	} else {
+		switch source {
+		case sourceCloudFront:
+			var tabs legacyTabList
+			err = d.fetchAPI(ctx, "/api/app/playlet-tab/all", nil, &tabs)
+			for _, tab := range tabs {
+				if validNativeCategory(source, tab.ID) && tab.ID != "" && tab.Name != "" {
+					all = append(all, nativeCategory{ID: tab.ID, Name: tab.Name})
+				}
 			}
+		case sourceHuangguoVideo:
+			address := d.providerBaseURL(source) + "/videos"
+			var body string
+			body, err = d.fetchProviderText(ctx, address, d.providerBaseURL(source)+"/")
+			if err == nil {
+				all = append(all, parseHuangguoVideoCategories(body)...)
+			}
+		case sourceHuangju:
+			var categories []nativeCategory
+			categories, err = d.fetchHuangjuCategories(ctx)
+			if err == nil {
+				all = append(all, categories...)
+			}
+		case sourceYeguo:
+			var categories []nativeCategory
+			categories, err = d.fetchYeguoCategories(ctx)
+			if err == nil {
+				all = append(all, categories...)
+			}
+		case sourceJinguoDuanju:
+			var categories []nativeCategory
+			categories, err = d.fetchJinguoDuanjuCategories(ctx)
+			if err == nil {
+				all = append(all, categories...)
+			}
+		case sourceJinguo:
+			var categories []nativeCategory
+			categories, err = d.fetchJinguoCategories(ctx)
+			if err == nil {
+				all = append(all, categories...)
+			}
+		case sourceDSD:
+			var categories []nativeCategory
+			categories, err = d.fetchDSDCategories(ctx, force)
+			if err == nil {
+				all = append(all, categories...)
+			}
+		case sourceSorani:
+			all = append(all, d.fetchSoraniCategories()...)
+		case sourceHanxiaoquan:
+			all = append(all, d.fetchHanxiaoquanCategories()...)
+		case sourceHeitao:
+			var categories []nativeCategory
+			categories, err = d.fetchHeitaoCategories(ctx)
+			if err == nil {
+				all = append(all, categories...)
+			}
+		case sourceBeabox:
+			var categories []nativeCategory
+			categories, err = d.fetchBeaboxCategories(ctx)
+			if err == nil {
+				all = append(all, categories...)
+			}
+		default:
+			return nil, errors.New("请选择有效站源")
 		}
-	case sourceHuangguoVideo:
-		address := d.providerBaseURL(source) + "/videos"
-		var body string
-		body, err = d.fetchProviderText(ctx, address, d.providerBaseURL(source)+"/")
-		if err == nil {
-			all = append(all, parseHuangguoVideoCategories(body)...)
-		}
-	case sourceHuangju:
-		var categories []nativeCategory
-		categories, err = d.fetchHuangjuCategories(ctx)
-		if err == nil {
-			all = append(all, categories...)
-		}
-	case sourceYeguo:
-		var categories []nativeCategory
-		categories, err = d.fetchYeguoCategories(ctx)
-		if err == nil {
-			all = append(all, categories...)
-		}
-	case sourceJinguoDuanju:
-		var categories []nativeCategory
-		categories, err = d.fetchJinguoDuanjuCategories(ctx)
-		if err == nil {
-			all = append(all, categories...)
-		}
-	case sourceJinguo:
-		var categories []nativeCategory
-		categories, err = d.fetchJinguoCategories(ctx)
-		if err == nil {
-			all = append(all, categories...)
-		}
-	case sourceDSD:
-		var categories []nativeCategory
-		categories, err = d.fetchDSDCategories(ctx, force)
-		if err == nil {
-			all = append(all, categories...)
-		}
-	case sourceSorani:
-		all = append(all, d.fetchSoraniCategories()...)
-	case sourceGuipian:
-		all = append(all, d.fetchGuipianCategories()...)
-	case sourceHanxiaoquan:
-		all = append(all, d.fetchHanxiaoquanCategories()...)
-	case sourceHeitao:
-		var categories []nativeCategory
-		categories, err = d.fetchHeitaoCategories(ctx)
-		if err == nil {
-			all = append(all, categories...)
-		}
-	case sourceBeabox:
-		var categories []nativeCategory
-		categories, err = d.fetchBeaboxCategories(ctx)
-		if err == nil {
-			all = append(all, categories...)
-		}
-	default:
-		return nil, errors.New("请选择有效站源")
 	}
 	if err != nil {
 		return nil, err

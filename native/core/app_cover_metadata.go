@@ -16,6 +16,10 @@ func (d *Downloader) nativeCoverAddress(ctx context.Context, drama nativeDrama) 
 	if !valid {
 		return "", errors.New("无效的剧集 ID")
 	}
+	if p, ok := d.provider(source); ok {
+		fresh, _, err := p.Detail(ctx, id)
+		return nativeNormalize(fresh).Cover, err
+	}
 	switch source {
 	case sourceHongguo:
 		if !hongguoNumericID.MatchString(id) {
@@ -57,9 +61,6 @@ func (d *Downloader) nativeCoverAddress(ctx context.Context, drama nativeDrama) 
 		return nativeNormalize(fresh).Cover, err
 	case sourceSorani:
 		fresh, _, err := d.fetchSoraniDetail(ctx, id)
-		return nativeNormalize(fresh).Cover, err
-	case sourceGuipian:
-		fresh, _, err := d.fetchGuipianDetail(ctx, id)
 		return nativeNormalize(fresh).Cover, err
 	case sourceHanxiaoquan:
 		fresh, _, err := d.fetchHanxiaoquanDetail(ctx, id)

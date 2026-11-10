@@ -23,6 +23,9 @@ type providerMedia struct {
 
 func (d *Downloader) providerBaseURL(source string) string {
 	source = canonicalProviderSource(source)
+	if descriptor, ok := registeredDescriptor(source); ok {
+		return strings.TrimRight(descriptor.BaseURL, "/")
+	}
 	var configured, fallback string
 	switch source {
 	case sourceHuangguoAI:
@@ -43,8 +46,6 @@ func (d *Downloader) providerBaseURL(source string) string {
 		configured, fallback = d.cfg.DSDURL, dsdBaseURL
 	case sourceSorani:
 		configured, fallback = d.cfg.SoraniURL, soraniSiteBaseURL
-	case sourceGuipian:
-		configured, fallback = d.cfg.GuipianURL, guipianSiteBaseURL
 	case sourceHanxiaoquan:
 		configured, fallback = d.cfg.HanxiaoquanURL, hanxiaoquanSiteBaseURL
 	case sourceHeitao:
@@ -63,6 +64,9 @@ func providerSourceForURL(raw string) string {
 		return ""
 	}
 	host := strings.ToLower(parsed.Hostname())
+	if id, ok := registeredSource(host); ok {
+		return id
+	}
 	switch {
 	case host == "huangguoai.com" || isHuangguoAIMirrorHost(host):
 		return sourceHuangguoAI
@@ -86,8 +90,6 @@ func providerSourceForURL(raw string) string {
 		return sourceDSD
 	case host == "sorani.net" || host == "www.sorani.net" || host == "api.sorani.cc" || host == "sorani.cc":
 		return sourceSorani
-	case host == "guipianwu.com" || host == "www.guipianwu.com":
-		return sourceGuipian
 	case host == "jennyhow.com" || host == "www.jennyhow.com":
 		return sourceHanxiaoquan
 	case host == "heitaodj.com" || host == "www.heitaodj.com":
@@ -141,6 +143,9 @@ func (d *Downloader) resolveProviderMedia(ctx context.Context, task Task) (provi
 	if chapter.Source == "" {
 		chapter.Source = sourceFromDramaID(task.DramaID)
 	}
+	if p, ok := d.provider(chapter.Source); ok {
+		return p.ResolveMedia(ctx, task)
+	}
 	if chapter.Source == sourceCloudFront {
 		return d.resolveLegacyMedia(ctx, task)
 	}
@@ -161,9 +166,6 @@ func (d *Downloader) resolveProviderMedia(ctx context.Context, task Task) (provi
 	}
 	if chapter.Source == sourceSorani {
 		return d.resolveSoraniMedia(ctx, task)
-	}
-	if chapter.Source == sourceGuipian {
-		return d.resolveGuipianMedia(ctx, task)
 	}
 	if chapter.Source == sourceHanxiaoquan {
 		return d.resolveHanxiaoquanMedia(ctx, task)

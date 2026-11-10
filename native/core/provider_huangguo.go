@@ -91,8 +91,12 @@ func splitProviderDramaID(id string) (source, sourceID string, ok bool) {
 }
 
 func isHuangguoProviderSource(source string) bool {
-	switch canonicalProviderSource(source) {
-	case sourceHuangguoAI, sourceHuangguoVideo, sourceHuangdou, sourceHongguo, sourceHuangju, sourceYeguo, sourceJinguoDuanju, sourceJinguo, sourceDSD, sourceCloudFront, sourceSorani, sourceGuipian, sourceHanxiaoquan, sourceHeitao, sourceBeabox:
+	source = canonicalProviderSource(source)
+	if _, ok := registeredDescriptor(source); ok {
+		return true
+	}
+	switch source {
+	case sourceHuangguoAI, sourceHuangguoVideo, sourceHuangdou, sourceHongguo, sourceHuangju, sourceYeguo, sourceJinguoDuanju, sourceJinguo, sourceDSD, sourceCloudFront, sourceSorani, sourceHanxiaoquan, sourceHeitao, sourceBeabox:
 		return true
 	default:
 		return false
@@ -101,6 +105,9 @@ func isHuangguoProviderSource(source string) bool {
 
 func canonicalProviderSource(source string) string {
 	trimmed := strings.ToLower(strings.TrimSpace(source))
+	if id, ok := registeredSource(trimmed); ok {
+		return id
+	}
 	if isHuangdouHost(trimmed) {
 		return sourceHuangdou
 	}
@@ -127,8 +134,6 @@ func canonicalProviderSource(source string) string {
 		return sourceCloudFront
 	case "sorani", "sorani.net", "www.sorani.net", "api.sorani.cc", "sorani.cc":
 		return sourceSorani
-	case "guipian", "guipianwu.com", "www.guipianwu.com":
-		return sourceGuipian
 	case "hanxiaoquan", "jennyhow.com", "www.jennyhow.com":
 		return sourceHanxiaoquan
 	case "heitao", "heitaodj.com", "www.heitaodj.com":
@@ -226,6 +231,10 @@ func valueEmpty(v any) bool {
 }
 
 func (d *Downloader) GetHuangguoChapters(ctx context.Context, source, sourceID string) (string, []Chapter, error) {
+	if p, ok := d.provider(source); ok {
+		drama, chapters, err := p.Detail(ctx, sourceID)
+		return drama.DisplayTitle(), chapters, err
+	}
 	switch canonicalProviderSource(source) {
 	case sourceHuangguoAI:
 		return d.fetchHuangguoAIChapters(ctx, sourceID)
@@ -252,9 +261,6 @@ func (d *Downloader) GetHuangguoChapters(ctx context.Context, source, sourceID s
 		return drama.DisplayTitle(), chapters, err
 	case sourceSorani:
 		drama, chapters, err := d.fetchSoraniDetail(ctx, sourceID)
-		return drama.DisplayTitle(), chapters, err
-	case sourceGuipian:
-		drama, chapters, err := d.fetchGuipianDetail(ctx, sourceID)
 		return drama.DisplayTitle(), chapters, err
 	case sourceHanxiaoquan:
 		drama, chapters, err := d.fetchHanxiaoquanDetail(ctx, sourceID)
