@@ -91,7 +91,13 @@ class PlaybackSession extends ChangeNotifier {
       (_) => saveProgress(quiet: true),
     );
     _healthTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (_closed || !_acceptErrors || _loading || _error != null) return;
+      if (_closed ||
+          _restoring ||
+          !_acceptErrors ||
+          _loading ||
+          _error != null) {
+        return;
+      }
       if (_health.stalled(
         position: player.state.position,
         playing: player.state.playing && _playIntent,
@@ -193,6 +199,9 @@ class PlaybackSession extends ChangeNotifier {
   double _queuedPosition = 0;
   bool _queuedPlay = true;
   int _restoreToken = 0;
+  int _restores = 0;
+  bool _surfaceCover = false;
+  Timer? _surfaceTimer;
   bool _forceSoftwareDecode = false;
   bool _boosting = false;
   bool _boostLocked = false;
@@ -233,6 +242,12 @@ class PlaybackSession extends ChangeNotifier {
   bool get ready => !_loading && _error == null;
 
   bool get stalled => _stalled;
+
+  /// 正在执行前后台恢复：期间不让健康检查再触发一次恢复，避免互相打断。
+  bool get _restoring => _restores > 0;
+
+  /// 恢复瞬间纹理重建会出现一两帧花屏，用一个短黑幕遮住。
+  bool get surfaceCover => _surfaceCover;
 
   bool get paused => !_playIntent;
   bool get boosting => _boosting;
@@ -845,9 +860,12 @@ class PlaybackSession extends ChangeNotifier {
 
   /// iOS 上预加载的待机播放器切集后会偶发停在暂停态：首帧播约 1 秒就卡住，
   /// 用户点一下才真正继续。2 倍速或弱网下更容易触发。
-  /// 起播后短时间轮询一次真实播放状态，没有真正播放就补发 play。
+  /// 起播后短时间轮询一次真实播放状态，位置没推进就补发 play 或轻踢解码器。
   Future<void> _ensurePlaying(int ticket) async {
-    for (var attempt = 0; attempt < 4; attempt++) {
+    var last = player.state.position;
+    var nudges = 0;
+    var resynced = false;
+    for (var attempt = 0; attempt < 6; attempt++) {
       await Future<void>.delayed(const Duration(milliseconds: 800));
       if (_closed ||
           ticket != _generation ||
@@ -856,13 +874,39 @@ class PlaybackSession extends ChangeNotifier {
           _pausedByUser) {
         return;
       }
-      if (player.state.playing) return;
+      final state = player.state;
+      final advanced =
+          state.position > last + const Duration(milliseconds: 120);
+      last = state.position;
+      if (state.playing && advanced) return;
+      // 正在缓冲说明网络在拉数据，别打断它。
+      if (state.buffering) continue;
+      // 第一轮只观察，避免打断正常的起播流程。
+      if (attempt == 0) continue;
       try {
-        await player.play();
+        if (!state.playing) {
+          await player.play();
+        } else if (nudges < 2) {
+          nudges++;
+          await _kickPlayer();
+        } else if (!resynced) {
+          // 仍不推进：回到当前位置重新 seek 一次，唤醒解码器。
+          resynced = true;
+          await player.seek(state.position);
+          await player.play();
+        }
       } catch (_) {
         return;
       }
     }
+  }
+
+  /// 状态显示"播放中"但画面定住时，暂停再播放把卡住的解码器踢一下。
+  Future<void> _kickPlayer() async {
+    try {
+      await player.pause();
+      await player.play();
+    } catch (_) {}
   }
 
   void _prime() {
@@ -1238,6 +1282,7 @@ class PlaybackSession extends ChangeNotifier {
       return;
     }
     _iosRebuilds = 0;
+    _coverSurface();
     if (Platform.isIOS) {
       // 先尝试原地恢复（秒级出画面），1.5s 内位置没推进再走兜底链路。
       unawaited(_tryResumeInPlace(_restoreToken));
@@ -1249,10 +1294,34 @@ class PlaybackSession extends ChangeNotifier {
   bool _restorable(int token) =>
       !_closed && _foreground && token == _restoreToken;
 
+  /// 回前台后短暂盖黑幕，遮住纹理重建时的花屏帧。
+  void _coverSurface() {
+    _surfaceTimer?.cancel();
+    if (!_surfaceCover) {
+      _surfaceCover = true;
+      _notify();
+    }
+    _surfaceTimer = Timer(const Duration(milliseconds: 320), () {
+      _surfaceTimer = null;
+      if (_closed || !_surfaceCover) return;
+      _surfaceCover = false;
+      _notify();
+    });
+  }
+
   /// iOS 前台快速路径：跳过探活，直接激活音频会话 + play()，
   /// 1.8s 内 position 推进即视为秒级恢复；失败自动 fallback 到
   /// [_restoreAfterBackground] 走完整探活 + 重建链路。
   Future<void> _tryResumeInPlace(int token) async {
+    _restores++;
+    try {
+      await _resumeFast(token);
+    } finally {
+      _restores--;
+    }
+  }
+
+  Future<void> _resumeFast(int token) async {
     final watch = Stopwatch()..start();
     final index = _index;
     final playIntent = _resumeIntent;
@@ -1296,9 +1365,10 @@ class PlaybackSession extends ChangeNotifier {
     }
     var advanced = false;
     if (failure == null) {
-      // 快速观察窗口：3 × 600ms = 1.8s 内 position 推进即算成功。
-      for (var attempt = 0; attempt < 3; attempt++) {
-        await Future<void>.delayed(const Duration(milliseconds: 600));
+      // 快速观察窗口：4 × 500ms = 2s 内 position 推进即算成功。
+      var nudges = 0;
+      for (var attempt = 0; attempt < 4; attempt++) {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
         if (!_restorable(token) ||
             generation != _generation ||
             index != _index) {
@@ -1312,7 +1382,19 @@ class PlaybackSession extends ChangeNotifier {
           advanced = true;
           break;
         }
-        if (!state.buffering && !state.playing) break;
+        // 缓冲中属于正常等待，不要打断。
+        if (state.buffering) continue;
+        if (!state.playing) {
+          try {
+            await player.play();
+          } catch (_) {
+            break;
+          }
+        } else if (nudges < 2 && attempt >= 1) {
+          // 状态是"播放中"但位置不走：多半是系统挂起后解码器卡死，轻踢一次。
+          nudges++;
+          await _kickPlayer();
+        }
       }
     }
     if (advanced) {
@@ -1349,6 +1431,15 @@ class PlaybackSession extends ChangeNotifier {
   }
 
   Future<void> _restoreAfterBackground(int token) async {
+    _restores++;
+    try {
+      await _restoreFromBackground(token);
+    } finally {
+      _restores--;
+    }
+  }
+
+  Future<void> _restoreFromBackground(int token) async {
     final watch = Stopwatch()..start();
     final index = _index;
     final position = _resumePosition;
@@ -1604,15 +1695,18 @@ class PlaybackSession extends ChangeNotifier {
         );
         return;
       }
-      if (_closed || !_foreground || !_current(ticket)) return;
+      // play() 内部会自增 generation，这里必须用新的 ticket 判断有效性，
+      // 否则每次重建都会被当成"已过期"跳过确认，卡住也只能等 20s 健康检查。
+      final live = _generation;
+      if (_closed || !_foreground || !_current(live)) return;
       // open() 返回不代表真的在播：必须看到位置从恢复点继续推进。
       final baseline =
           Duration(milliseconds: (position * 1000).round()) - _restoreProgress;
       final playing = await _confirmProgress(
         baseline,
-        alive: () => _current(ticket),
+        alive: () => _current(live),
       );
-      if (_closed || !_foreground || !_current(ticket)) return;
+      if (_closed || !_foreground || !_current(live)) return;
       if (playing) {
         DiaryService.add(
           '[Play] 重建恢复成功 重置=${resetMs}ms 打开=${watch.elapsedMilliseconds - resetMs}ms '
@@ -1690,6 +1784,7 @@ class PlaybackSession extends ChangeNotifier {
     _boostTimer?.cancel();
     _stallTimer?.cancel();
     _volumeTimer?.cancel();
+    _surfaceTimer?.cancel();
     if (_volumeTimer != null) _saveVolume();
     for (final subscription in _subscriptions) {
       unawaited(subscription.cancel());

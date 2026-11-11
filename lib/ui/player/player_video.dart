@@ -9,9 +9,21 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'playback_handle.dart';
 
 class PlayerVideo extends StatelessWidget {
-  const PlayerVideo({super.key, required this.handle, required this.player});
+  const PlayerVideo({
+    super.key,
+    required this.handle,
+    required this.player,
+    this.fit = BoxFit.contain,
+    this.covered = false,
+  });
   final PlaybackHandle handle;
   final Player player;
+
+  /// 竖屏视频用 [BoxFit.cover] 铺满屏幕，横屏视频用 [BoxFit.contain] 保留完整画面。
+  final BoxFit fit;
+
+  /// 恢复瞬间遮住重建纹理的花屏帧。
+  final bool covered;
 
   @override
   Widget build(BuildContext context) {
@@ -20,16 +32,37 @@ class PlayerVideo extends StatelessWidget {
       controller: controller,
       controls: NoVideoControls,
       fill: Colors.black,
+      fit: fit,
       pauseUponEnteringBackgroundMode: false,
     );
-    if (!Platform.isWindows) return video;
-    final ratio = MediaQuery.devicePixelRatioOf(context);
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final box = constraints.biggest * ratio;
-        if (!box.isFinite || box.isEmpty) return video;
-        return _OutputSize(controller: controller, box: box, child: video);
-      },
+    final surface = Platform.isWindows
+        ? LayoutBuilder(
+            builder: (context, constraints) {
+              final ratio = MediaQuery.devicePixelRatioOf(context);
+              final box = constraints.biggest * ratio;
+              if (!box.isFinite || box.isEmpty) return video;
+              return _OutputSize(
+                controller: controller,
+                box: box,
+                child: video,
+              );
+            },
+          )
+        : video;
+    // 黑幕始终在同一位置，只改变透明度：来回切换 widget 结构会让 Video
+    // 重新挂载纹理，反而制造新的花屏帧。
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        surface,
+        IgnorePointer(
+          child: AnimatedOpacity(
+            opacity: covered ? 1 : 0,
+            duration: const Duration(milliseconds: 120),
+            child: const ColoredBox(color: Colors.black),
+          ),
+        ),
+      ],
     );
   }
 }

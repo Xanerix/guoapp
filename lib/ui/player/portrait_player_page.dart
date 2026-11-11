@@ -264,6 +264,11 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
 
   bool get _pinching => _pinchFrom != null;
 
+  /// 竖屏影片铺满屏幕（裁掉少量边缘），横屏影片保持完整画面。
+  BoxFit get _videoFit => _session.aspectKnown && _session.aspectRatio > 1
+      ? BoxFit.contain
+      : BoxFit.cover;
+
   double get _span {
     final [first, second, ...] = _pointers.values.toList();
     return (first - second).distance;
@@ -440,6 +445,8 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
                   key: ValueKey(player),
                   handle: widget.handle,
                   player: player,
+                  fit: _videoFit,
+                  covered: session.surfaceCover,
                 ),
               ),
             ),

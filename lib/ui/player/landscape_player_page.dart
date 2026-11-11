@@ -50,7 +50,6 @@ class LandscapePlayerPage extends StatefulWidget {
 class _LandscapePlayerPageState extends State<LandscapePlayerPage>
     with WidgetsBindingObserver {
   final List<StreamSubscription<dynamic>> _subscriptions = [];
-  final _selected = <int>{};
   final _links = {_Panel.speed: LayerLink(), _Panel.quality: LayerLink()};
   late final _pages = PageController(initialPage: _session.index);
   Player? _bound;
@@ -62,14 +61,13 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
   bool? _full;
   bool _visible = true;
   bool _scrolling = false;
-  bool _selecting = false;
   bool _holding = false;
   bool _dragging = false;
   double? _seekValue;
   double? _seekTarget;
   int _streak = 0;
   int _streakTaps = 0;
-  int _tab = 1;
+  bool _descExpanded = false;
   _Panel? _panel;
   int _sidePanelMount = 0;
   bool _sidePanelShown = false;
@@ -106,6 +104,15 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
     );
     _clockTimer?.cancel();
     _clockTimer = null;
+    // 横竖切换会把 PageView 挪到另一个子树，滚动位置按 initialPage 重建，
+    // 这里在布局完成后重新对齐到当前集，避免画面和实际集数不一致。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_pages.hasClients) return;
+      if ((_pages.page ?? _session.index.toDouble()).round() !=
+          _session.index) {
+        _pages.jumpToPage(_session.index);
+      }
+    });
     if (full) {
       _tick();
       _clockTimer = Timer.periodic(const Duration(seconds: 20), (_) => _tick());
@@ -195,10 +202,14 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
       _hideTimer?.cancel();
       if (!_scrolling) setState(() => _scrolling = true);
     } else if (notification is ScrollEndNotification) {
+      // 只有用户真正拖动过的滚动才切集：横竖切换重建 PageView、
+      // jumpToPage 等程序化滚动同样会发 ScrollEnd，误判会导致跳回第一集。
+      final dragged = _scrolling;
+      if (_scrolling) setState(() => _scrolling = false);
+      if (!dragged) return false;
       final page = metrics.viewportDimension <= 0
           ? _session.index
           : (metrics.pixels / metrics.viewportDimension).round();
-      if (_scrolling) setState(() => _scrolling = false);
       if (page != _session.index &&
           page >= 0 &&
           page < _session.detail.episodes.length) {
@@ -345,8 +356,6 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
       _scheduleHide();
     } else if (full) {
       _rotate(true);
-    } else if (_selecting) {
-      _select(false);
     }
   }
 
@@ -359,11 +368,6 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
     setState(() => _panel = null);
     _scheduleHide();
   }
-
-  void _select(bool selecting) => setState(() {
-    _selecting = selecting;
-    _selected.clear();
-  });
 
   void _saveFailed() {
     if (!mounted) return;
@@ -391,30 +395,18 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
     });
   }
 
-  bool get _canDownload =>
-      AppScope.of(context).repository.supportsDownloads &&
-      widget.store.canDownload;
-
-  void _download() {
-    final detail = _session.detail;
-    final episodes = [
-      for (final index in _selected.toList()..sort()) detail.episodes[index],
-    ];
-    _select(false);
-    unawaited(downloadEpisodes(context, widget.store, detail, episodes));
-  }
-
   @override
   Widget build(BuildContext context) {
     final full = MediaQuery.orientationOf(context) == Orientation.landscape;
     final theme = Theme.of(context);
     final dark = playerTheme(context);
+    final visible = _visible || _pinned;
     final video = Theme(
       data: dark,
       child: Builder(builder: (context) => _video(context, full)),
     );
     return PopScope(
-      canPop: !full && !_selecting && _panel == null,
+      canPop: !full && _panel == null,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) _back(full);
       },
@@ -431,18 +423,39 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
                 backgroundColor: theme.colorScheme.surface,
                 body: Column(
                   children: [
+                    _appBar(context),
                     // 横屏比例的影片在竖屏下居中显示，上下留黑，可上下滑动换集。
                     SizedBox(
                       width: double.infinity,
                       height: _videoBandHeight(context),
                       child: ColoredBox(
                         color: Colors.black,
-                        child: Center(
-                          child: AspectRatio(aspectRatio: 16 / 9, child: video),
+                        child: Stack(
+                          children: [
+                            Center(
+                              child: AspectRatio(
+                                aspectRatio: 16 / 9,
+                                child: video,
+                              ),
+                            ),
+                            Positioned(
+                              left: 16,
+                              bottom: 12,
+                              child: AnimatedOpacity(
+                                opacity: visible ? 0 : 1,
+                                duration: const Duration(milliseconds: 180),
+                                child: IgnorePointer(
+                                  ignoring: visible,
+                                  child: _fullscreenPill(),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
-                    Expanded(child: _details(context)),
+                    Expanded(child: _feed(context)),
+                    _episodeBar(context),
                   ],
                 ),
               ),
@@ -601,6 +614,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
             key: ValueKey(player),
             handle: widget.handle,
             player: player,
+            covered: session.surfaceCover,
           )
         else
           IgnorePointer(
@@ -656,33 +670,8 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
       children: [
         const IgnorePointer(
           child: Align(
-            alignment: Alignment.topCenter,
-            child: _Shade(height: 64, top: true),
-          ),
-        ),
-        const IgnorePointer(
-          child: Align(
             alignment: Alignment.bottomCenter,
             child: _Shade(height: 96, top: false),
-          ),
-        ),
-        Positioned(
-          left: 4,
-          right: 4,
-          top: 0,
-          height: 48,
-          child: Row(
-            children: [
-              _icon(
-                Icons.arrow_back_rounded,
-                '返回',
-                () => unawaited(Navigator.maybePop(context)),
-              ),
-              const Spacer(),
-              if (widget.onMiniWindow case final onMiniWindow?)
-                _icon(Icons.picture_in_picture_alt_rounded, '小窗', onMiniWindow),
-              _icon(Icons.settings_rounded, '播放设置', _openSettings),
-            ],
           ),
         ),
         Positioned(
@@ -1404,76 +1393,99 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
     );
   }
 
-  Widget _details(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return SafeArea(
-      top: false,
-      child: Column(
-        children: [
-          DecoratedBox(
-            decoration: BoxDecoration(
-              border: Border(bottom: BorderSide(color: colors.outlineVariant)),
-            ),
-            child: SizedBox(
-              height: 48,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  for (final (index, label) in const ['简介', '选集'].indexed)
-                    Expanded(child: _tabButton(context, index, label)),
-                ],
+  Widget _appBar(BuildContext context) {
+    final session = _session;
+    final padding = MediaQuery.paddingOf(context);
+    return ColoredBox(
+      color: Colors.black,
+      child: Padding(
+        padding: EdgeInsets.only(top: padding.top),
+        child: SizedBox(
+          height: 52,
+          child: Row(
+            children: [
+              IconButton(
+                onPressed: () => unawaited(Navigator.maybePop(context)),
+                icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+                color: Colors.white,
+                tooltip: '返回',
               ),
-            ),
-          ),
-          Expanded(child: _tab == 0 ? _intro(context) : _episodes(context)),
-        ],
-      ),
-    );
-  }
-
-  Widget _tabButton(BuildContext context, int index, String label) {
-    final colors = Theme.of(context).colorScheme;
-    final selected = _tab == index;
-    return Semantics(
-      selected: selected,
-      child: InkWell(
-        onTap: () => setState(() {
-          _tab = index;
-          _selecting = false;
-          _selected.clear();
-        }),
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                color: selected ? colors.primary : colors.onSurfaceVariant,
+              Text(
+                '第 ${session.episode.number} 集',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-            ),
-            if (selected)
-              Positioned(
-                bottom: 0,
-                child: Container(
-                  width: 32,
-                  height: 3,
-                  decoration: BoxDecoration(
-                    color: colors.primary,
-                    borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(3),
-                    ),
+              const Spacer(),
+              TextButton.icon(
+                onPressed: _openSettings,
+                icon: const Icon(Icons.speed_rounded, size: 18),
+                label: Text('${_speedLabel(session.speed)}x'),
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  textStyle: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
-          ],
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
+                tooltip: '更多',
+                onSelected: (value) {
+                  if (value == 'settings') {
+                    unawaited(_openSettings());
+                  } else if (value == 'mini') {
+                    widget.onMiniWindow?.call();
+                  }
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(value: 'settings', child: Text('播放设置')),
+                  if (widget.onMiniWindow != null)
+                    const PopupMenuItem(value: 'mini', child: Text('小窗播放')),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _intro(BuildContext context) {
+  String _speedLabel(double speed) => speed == speed.roundToDouble()
+      ? speed.toStringAsFixed(0)
+      : speed.toString();
+
+  Widget _fullscreenPill() => Material(
+    color: Colors.white.withValues(alpha: .18),
+    borderRadius: BorderRadius.circular(16),
+    child: InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: widget.onFullscreen ?? () => _rotate(false),
+      child: const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          spacing: 4,
+          children: [
+            Icon(Icons.fullscreen_rounded, size: 16, color: Colors.white),
+            Text(
+              '全屏观看',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+
+  Widget _feed(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final session = _session;
     final drama = session.detail.drama;
@@ -1484,138 +1496,197 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
       if (drama.category.isNotEmpty) drama.category,
     ];
     final description = drama.description.trim();
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+    return Stack(
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(
+        Positioned.fill(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 14, 84, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
                   drama.title,
                   style: const TextStyle(
                     fontSize: 19,
                     fontWeight: FontWeight.w800,
+                    height: 1.35,
                   ),
                 ),
-              ),
+                const SizedBox(height: 6),
+                Text(
+                  meta.join(' · '),
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        description.isEmpty ? '暂无简介' : description,
+                        maxLines: _descExpanded ? null : 3,
+                        overflow: _descExpanded ? null : TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 14,
+                          height: 1.6,
+                          color: description.isEmpty
+                              ? colors.onSurfaceVariant
+                              : colors.onSurface,
+                        ),
+                      ),
+                    ),
+                    if (description.length > 40)
+                      TextButton(
+                        onPressed: () =>
+                            setState(() => _descExpanded = !_descExpanded),
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.only(left: 8),
+                          minimumSize: const Size(0, 32),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: Text(_descExpanded ? '收起' : '展开'),
+                      ),
+                  ],
+                ),
+              ],
             ),
-            Transform.translate(
-              offset: const Offset(8, 0),
-              child: FollowIcon(
-                store: widget.store,
-                drama: drama,
-                color: colors.onSurfaceVariant,
-                activeColor: colors.primary,
-                extent: 44,
-              ),
-            ),
-          ],
-        ),
-        Text(
-          meta.join(' · '),
-          style: TextStyle(fontSize: 13, color: colors.onSurfaceVariant),
-        ),
-        const SizedBox(height: 10),
-        Text(
-          description.isEmpty ? '暂无简介' : description,
-          style: TextStyle(
-            fontSize: 14,
-            height: 1.6,
-            color: description.isEmpty
-                ? colors.onSurfaceVariant
-                : colors.onSurface,
           ),
+        ),
+        Positioned(top: 8, right: 4, child: _rail(context)),
+      ],
+    );
+  }
+
+  Widget _rail(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        FollowIcon(
+          store: widget.store,
+          drama: _session.detail.drama,
+          color: colors.onSurfaceVariant,
+          activeColor: colors.primary,
+          size: 26,
+        ),
+        Text(
+          '收藏',
+          style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
+        ),
+        const SizedBox(height: 6),
+        IconButton(
+          onPressed: _share,
+          icon: const Icon(Icons.share_outlined, size: 24),
+          color: colors.onSurfaceVariant,
+          tooltip: '分享',
+        ),
+        Text(
+          '分享',
+          style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
         ),
       ],
     );
   }
 
-  Widget _episodes(BuildContext context) {
+  Future<void> _share() async {
+    final drama = _session.detail.drama;
+    await Clipboard.setData(
+      ClipboardData(
+        text: '${drama.title}（${SourceSite.byId(drama.source).name}）',
+      ),
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('已复制剧名，可粘贴分享')));
+  }
+
+  Widget _episodeBar(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final session = _session;
-    final episodes = session.detail.episodes;
-    final drama = session.detail.drama;
-    final all = _selected.length == episodes.length;
-    final status = drama.releaseLabel == '状态未知'
-        ? ''
-        : '${drama.releaseLabel} · ';
-    final header = SizedBox(
-      height: 48,
+    final count = _session.detail.episodes.length;
+    return SafeArea(
+      top: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 4, 0),
+        padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
         child: Row(
           children: [
             Expanded(
-              child: Text(
-                _selecting
-                    ? '已选 ${_selected.length} 集'
-                    : '$status共 ${episodes.length} 集',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 13, color: colors.onSurfaceVariant),
+              child: SizedBox(
+                height: 48,
+                child: Material(
+                  color: colors.surfaceContainerHigh,
+                  borderRadius: BorderRadius.circular(12),
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    onTap: () => unawaited(_openEpisodes()),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      child: Row(
+                        spacing: 8,
+                        children: [
+                          Text(
+                            '选集',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: colors.onSurface,
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              '共 $count 集 · 免费观看',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: colors.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                          Icon(
+                            Icons.keyboard_arrow_up_rounded,
+                            size: 20,
+                            color: colors.onSurfaceVariant,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
-            if (_canDownload && !_selecting)
-              IconButton(
-                onPressed: () => _select(true),
-                icon: const Icon(Icons.download_rounded),
-                tooltip: '下载选集',
+            const SizedBox(width: 8),
+            SizedBox.square(
+              dimension: 48,
+              child: Material(
+                color: colors.surfaceContainerHigh,
+                borderRadius: BorderRadius.circular(12),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: () => unawaited(_openSettings()),
+                  child: Icon(
+                    Icons.tune_rounded,
+                    size: 22,
+                    color: colors.onSurface,
+                  ),
+                ),
               ),
+            ),
           ],
         ),
       ),
     );
-    return Column(
-      children: [
-        Expanded(
-          child: EpisodeGrid(
-            header: header,
-            episodes: episodes,
-            current: session.index,
-            selecting: _selecting,
-            selected: _selected,
-            touch: true,
-            onSelectionChanged: () => setState(() {}),
-            onPick: (index) {
-              if (index != session.index) unawaited(session.play(index));
-            },
-          ),
-        ),
-        if (_selecting)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-            child: Row(
-              spacing: 8,
-              children: [
-                TextButton(
-                  onPressed: () => _select(false),
-                  child: const Text('取消'),
-                ),
-                TextButton(
-                  onPressed: () => setState(() {
-                    all
-                        ? _selected.clear()
-                        : _selected.addAll(
-                            List.generate(episodes.length, (i) => i),
-                          );
-                  }),
-                  child: Text(all ? '取消全选' : '全选'),
-                ),
-                const Spacer(),
-                FilledButton.icon(
-                  onPressed: _selected.isEmpty ? null : _download,
-                  icon: const Icon(Icons.download_rounded, size: 18),
-                  label: const Text('下载'),
-                ),
-              ],
-            ),
-          ),
-      ],
-    );
   }
+
+  Future<void> _openEpisodes() => showPlayerSheet(
+    context,
+    (_) => _EpisodeSheet(session: _session, store: widget.store),
+    dark: false,
+  );
 }
 
 String _two(int value) => value.toString().padLeft(2, '0');
@@ -1639,4 +1710,132 @@ class _Shade extends StatelessWidget {
       ),
     ),
   );
+}
+
+class _EpisodeSheet extends StatefulWidget {
+  const _EpisodeSheet({required this.session, required this.store});
+  final PlaybackSession session;
+  final LocalStore store;
+
+  @override
+  State<_EpisodeSheet> createState() => _EpisodeSheetState();
+}
+
+class _EpisodeSheetState extends State<_EpisodeSheet> {
+  final _selected = <int>{};
+  bool _selecting = false;
+
+  PlaybackSession get _session => widget.session;
+
+  bool get _canDownload =>
+      AppScope.of(context).repository.supportsDownloads &&
+      widget.store.canDownload;
+
+  void _select(bool selecting) => setState(() {
+    _selecting = selecting;
+    _selected.clear();
+  });
+
+  void _download() {
+    final detail = _session.detail;
+    final episodes = [
+      for (final index in _selected.toList()..sort()) detail.episodes[index],
+    ];
+    _select(false);
+    unawaited(downloadEpisodes(context, widget.store, detail, episodes));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final session = _session;
+    final episodes = session.detail.episodes;
+    final drama = session.detail.drama;
+    final all = _selected.length == episodes.length;
+    final status = drama.releaseLabel == '状态未知'
+        ? ''
+        : '${drama.releaseLabel} · ';
+    return PopScope(
+      canPop: !_selecting,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _select(false);
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SheetHeader(
+            children: _selecting
+                ? [
+                    Expanded(
+                      child: Text(
+                        '已选 ${_selected.length} 集',
+                        style: sheetTitle,
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => _select(false),
+                      child: const Text('取消'),
+                    ),
+                    TextButton(
+                      onPressed: () => setState(() {
+                        all
+                            ? _selected.clear()
+                            : _selected.addAll(
+                                List.generate(episodes.length, (i) => i),
+                              );
+                      }),
+                      child: Text(all ? '取消全选' : '全选'),
+                    ),
+                    FilledButton(
+                      onPressed: _selected.isEmpty ? null : _download,
+                      child: const Text('下载'),
+                    ),
+                  ]
+                : [
+                    const Text('选集', style: sheetTitle),
+                    Expanded(
+                      child: Text(
+                        '$status共 ${episodes.length} 集',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                    if (_canDownload)
+                      IconButton(
+                        onPressed: () => _select(true),
+                        icon: const Icon(Icons.download_rounded),
+                        tooltip: '下载选集',
+                      ),
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close_rounded),
+                      tooltip: '关闭',
+                    ),
+                  ],
+          ),
+          Expanded(
+            child: ListenableBuilder(
+              listenable: session,
+              builder: (context, _) => EpisodeGrid(
+                episodes: episodes,
+                current: session.index,
+                selecting: _selecting,
+                selected: _selected,
+                touch: true,
+                onSelectionChanged: () => setState(() {}),
+                onPick: (index) {
+                  Navigator.pop(context);
+                  if (index != session.index) unawaited(session.play(index));
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
