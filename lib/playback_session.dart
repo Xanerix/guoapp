@@ -913,6 +913,9 @@ class PlaybackSession extends ChangeNotifier {
           state.position > last + const Duration(milliseconds: 120);
       last = state.position;
 
+      // playing=true 且 position 推进 → 确认。
+      // buffering 不清 advancedCount，因为刚起播 demux 会抖几次。
+      // 只有 playing=false 才清——那是真的暂停了。
       if (state.playing) {
         if (advanced) {
           advancedCount++;
@@ -924,17 +927,16 @@ class PlaybackSession extends ChangeNotifier {
             );
             return;
           }
-          // 只推进了一轮，继续观察下一轮（不触发救援）
           continue;
-        } else {
-          // playing=true 但 position 不动了 → 之前那轮"成功"是假的
-          advancedCount = 0;
         }
+        // playing=true 但 position 不动了，不清 advancedCount，继续观察。
+        // 如果是解码卡住，下面的救援分支会踢。
       } else {
-        advancedCount = 0;
+        // playing=false 且非 buffering → 真的停了，清计数
+        if (!state.buffering) advancedCount = 0;
       }
 
-      // 正在缓冲说明网络在拉数据，别打断它。
+      // 正在缓冲说明网络在拉数据，别打断它，buffering 也不清 advancedCount。
       if (state.buffering) continue;
 
       // 触发救援

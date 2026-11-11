@@ -1600,8 +1600,8 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
               ),
             ),
           ),
-          if (current) _portraitPlayerBar(context),
           _feed(context),
+          if (current) _portraitPlayerBar(context),
         ],
       ),
     );
