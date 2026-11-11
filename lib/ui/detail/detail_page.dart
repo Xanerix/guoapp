@@ -1209,6 +1209,7 @@ class _DetailPageState extends State<DetailPage> {
 
   Widget _seasonSelector(DramaDetails details, _Metrics m) {
     final seasons = details.seasons;
+    final scheme = Theme.of(context).colorScheme;
     // iOS 上用参考稿的「系列多季」卡片条，其余平台保持一行标签。
     if (!Platform.isIOS) {
       return Wrap(
@@ -1222,13 +1223,19 @@ class _DetailPageState extends State<DetailPage> {
               ),
               selected: season.drama.id == details.drama.id,
               visualDensity: VisualDensity.compact,
-              labelStyle: TextStyle(fontSize: m.meta),
-              onSelected: (_) => unawaited(_selectSeason(details, season)),
+              labelStyle: TextStyle(
+                fontSize: m.meta,
+                color: season.upcoming
+                    ? scheme.onSurface.withValues(alpha: .5)
+                    : null,
+              ),
+              onSelected: season.upcoming
+                  ? null
+                  : (_) => unawaited(_selectSeason(details, season)),
             ),
         ],
       );
     }
-    final scheme = Theme.of(context).colorScheme;
     _seasonStrip ??= ScrollController();
     // 圆角卡片铺满整宽：外边距 12 + 内边距 8，内容仍与「选集」的 20 对齐。
     return Container(
@@ -1288,97 +1295,103 @@ class _DetailPageState extends State<DetailPage> {
                 final selected = season.drama.id == details.drama.id;
                 final watched = widget.store.watched(season.drama.id);
                 final online = season.onlineLabel;
+                final disabled = season.upcoming && !selected;
                 return GestureDetector(
-                  onTap: () => unawaited(_selectSeason(details, season)),
-                  child: Container(
-                    width: 116,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: selected ? scheme.primary : scheme.surface,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Row(
-                          children: [
-                            Flexible(
-                              child: Text(
-                                season.label,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: m.meta,
-                                  fontWeight: FontWeight.w700,
-                                  color: selected
-                                      ? scheme.onPrimary
-                                      : scheme.onSurface,
-                                ),
-                              ),
-                            ),
-                            if (selected) ...[
-                              const SizedBox(width: 4),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 5,
-                                  vertical: 1,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: scheme.onPrimary.withValues(
-                                    alpha: .24,
-                                  ),
-                                  borderRadius: BorderRadius.circular(999),
-                                ),
+                  onTap: disabled
+                      ? null
+                      : () => unawaited(_selectSeason(details, season)),
+                  child: Opacity(
+                    opacity: disabled ? .55 : 1,
+                    child: Container(
+                      width: 116,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: selected ? scheme.primary : scheme.surface,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Row(
+                            children: [
+                              Flexible(
                                 child: Text(
-                                  '当前',
+                                  season.label,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
-                                    fontSize: m.tag * .85,
-                                    color: scheme.onPrimary,
+                                    fontSize: m.meta,
+                                    fontWeight: FontWeight.w700,
+                                    color: selected
+                                        ? scheme.onPrimary
+                                        : scheme.onSurface,
                                   ),
                                 ),
                               ),
+                              if (selected) ...[
+                                const SizedBox(width: 4),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 5,
+                                    vertical: 1,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: scheme.onPrimary.withValues(
+                                      alpha: .24,
+                                    ),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: Text(
+                                    '当前',
+                                    style: TextStyle(
+                                      fontSize: m.tag * .85,
+                                      color: scheme.onPrimary,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ],
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          selected
-                              ? '正在浏览'
-                              : watched != null && !watched.finished
-                              ? '看至第${watched.episode}集'
-                              : season.episodes > 0
-                              ? '共 ${season.episodes} 集'
-                              : '待上线',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: m.tag,
-                            color: selected
-                                ? scheme.onPrimary.withValues(alpha: .84)
-                                : scheme.onSurfaceVariant,
                           ),
-                        ),
-                        if (online != null) ...[
-                          const SizedBox(height: 1),
+                          const SizedBox(height: 4),
                           Text(
-                            online,
+                            selected
+                                ? '正在浏览'
+                                : watched != null && !watched.finished
+                                ? '看至第${watched.episode}集'
+                                : season.episodes > 0
+                                ? '共 ${season.episodes} 集'
+                                : '待上线',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              fontSize: m.tag * .85,
+                              fontSize: m.tag,
                               color: selected
-                                  ? scheme.onPrimary.withValues(alpha: .7)
-                                  : scheme.onSurfaceVariant.withValues(
-                                      alpha: .7,
-                                    ),
+                                  ? scheme.onPrimary.withValues(alpha: .84)
+                                  : scheme.onSurfaceVariant,
                             ),
                           ),
+                          if (online != null) ...[
+                            const SizedBox(height: 1),
+                            Text(
+                              online,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: m.tag * .85,
+                                color: selected
+                                    ? scheme.onPrimary.withValues(alpha: .7)
+                                    : scheme.onSurfaceVariant.withValues(
+                                        alpha: .7,
+                                      ),
+                              ),
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
                   ),
                 );

@@ -4,6 +4,7 @@ import 'dart:ui' show Size;
 
 import 'package:flutter/foundation.dart';
 import 'package:media_kit/media_kit.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import 'app_device.dart';
 import 'core_bridge.dart';
@@ -101,6 +102,8 @@ class PlaybackSession extends ChangeNotifier {
       }
     });
     unawaited(play(index, position: position, playWhenReady: autoplay));
+    // 播放时保持屏幕常亮，避免息屏后还要手动解锁才能秒恢复。
+    unawaited(WakelockPlus.enable().catchError((Object _) {}));
   }
 
   void _bind() {
@@ -976,6 +979,12 @@ class PlaybackSession extends ChangeNotifier {
     _playIntent = !player.state.playing;
     _pausedByUser = !_playIntent;
     _health.reset();
+    // 播放时保持屏幕常亮，暂停时释放。
+    unawaited(
+      (_playIntent ? WakelockPlus.enable() : WakelockPlus.disable()).catchError(
+        (Object _) {},
+      ),
+    );
     if (_playIntent && _playerSuspect) {
       // 离开过前台的实例可能已失效，直接重建并从当前位置续播。
       unawaited(_rebuildAndResume(currentPosition, true));
@@ -1214,14 +1223,12 @@ class PlaybackSession extends ChangeNotifier {
       }
       // 只信用户意图：系统挂起/恢复期间底层 playing 可能与实际操作不一致。
       _resumeIntent = _playIntent;
-      if (Platform.isIOS) {
-        // iOS 会随挂起回收播放器、备用实例与取流会话，留着会命中死实例。
-        _playerSuspect = true;
-        _dropStandby();
-        _preloader.clear();
-      }
+      // iOS: 保留 Player/standby/preloader 原样，前台先尝试原地 play()，
+      // 失败再走 _restoreAfterBackground 兜底。pause 已省电，不用主动丢实例。
       endBoost();
       _playIntent = false;
+      // 锁屏/切后台时释放屏幕常亮，省电。
+      unawaited(WakelockPlus.disable().catchError((Object _) {}));
       DiaryService.add(
         '[Play] 进入后台，保存恢复状态 集数=${_index + 1} '
         '位置=${_resumePosition.toStringAsFixed(1)} 续播=$_resumeIntent',
@@ -1232,8 +1239,8 @@ class PlaybackSession extends ChangeNotifier {
     }
     _iosRebuilds = 0;
     if (Platform.isIOS) {
-      // 锁屏可能破坏播放器与渲染上下文，但不一定；先由原生取流服务探活决定。
-      unawaited(_restoreAfterBackground(_restoreToken));
+      // 先尝试原地恢复（秒级出画面），1.5s 内位置没推进再走兜底链路。
+      unawaited(_tryResumeInPlace(_restoreToken));
     } else if (_pendingError) {
       _queueRecovery('foreground_pending_error');
     }
@@ -1241,6 +1248,83 @@ class PlaybackSession extends ChangeNotifier {
 
   bool _restorable(int token) =>
       !_closed && _foreground && token == _restoreToken;
+
+  /// iOS 前台快速路径：跳过探活，直接激活音频会话 + play()，
+  /// 1.8s 内 position 推进即视为秒级恢复；失败自动 fallback 到
+  /// [_restoreAfterBackground] 走完整探活 + 重建链路。
+  Future<void> _tryResumeInPlace(int token) async {
+    final watch = Stopwatch()..start();
+    final index = _index;
+    final playIntent = _resumeIntent;
+    final activated = await AppDevice.activateAudio();
+    if (!_restorable(token)) return;
+    if (!activated) {
+      DiaryService.add('[Play] iOS 音频会话激活失败，继续尝试原地恢复');
+    }
+    if (!playIntent) {
+      // 用户主动暂停且回来想继续暂停：不动实例，只清理状态。
+      _playerSuspect = false;
+      _pendingError = false;
+      _errorTimer?.cancel();
+      DiaryService.add(
+        '[Play] 续播=false，保留原实例不动 耗时=${watch.elapsedMilliseconds}ms',
+      );
+      return;
+    }
+    final generation = _generation;
+    final before = player.state.position;
+    _playerSuspect = false;
+    _pendingError = false;
+    _errorTimer?.cancel();
+    _recovery.reset();
+    _health.reset();
+    _playIntent = true;
+    _resumeIntent = true;
+    _sync();
+    _notify();
+    Object? failure;
+    try {
+      await player.play();
+    } catch (error) {
+      failure = error;
+    }
+    if (!_restorable(token) || generation != _generation) {
+      if (_pausedByUser && player.state.playing) {
+        unawaited(player.pause());
+      }
+      return;
+    }
+    var advanced = false;
+    if (failure == null) {
+      // 快速观察窗口：3 × 600ms = 1.8s 内 position 推进即算成功。
+      for (var attempt = 0; attempt < 3; attempt++) {
+        await Future<void>.delayed(const Duration(milliseconds: 600));
+        if (!_restorable(token) ||
+            generation != _generation ||
+            index != _index) {
+          if (_pausedByUser && player.state.playing) {
+            unawaited(player.pause());
+          }
+          return;
+        }
+        final state = player.state;
+        if (state.playing && state.position > before + _restoreProgress) {
+          advanced = true;
+          break;
+        }
+        if (!state.buffering && !state.playing) break;
+      }
+    }
+    if (advanced) {
+      DiaryService.add('[Play] 原地秒恢复成功 耗时=${watch.elapsedMilliseconds}ms');
+      return;
+    }
+    final reason = failure != null ? 'play_exception' : 'no_progress';
+    DiaryService.add(
+      '[Play] 快速路径失败 原因=$reason 耗时=${watch.elapsedMilliseconds}ms，走兜底',
+    );
+    await _restoreAfterBackground(token);
+  }
 
   /// 取流探活结果：只有两次都明确返回 false 才算确认失效。
   Future<_StreamProbe> _probeStream() async {
@@ -1594,6 +1678,7 @@ class PlaybackSession extends ChangeNotifier {
   @override
   void dispose() {
     unawaited(saveProgress());
+    unawaited(WakelockPlus.disable().catchError((Object _) {}));
     _closed = true;
     _generation++;
     _restoreToken++;
