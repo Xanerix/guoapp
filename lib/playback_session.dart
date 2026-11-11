@@ -836,6 +836,8 @@ class PlaybackSession extends ChangeNotifier {
     final volume = previous.state.volume;
     unawaited(saveProgress());
     _preloader.clear();
+    // 换集时新 player 纹理重建也会花屏，盖黑幕遮住。
+    _coverSurface();
     final ticket = ++_generation;
     _seekSequence++;
     _pendingError = false;
@@ -1368,13 +1370,14 @@ class PlaybackSession extends ChangeNotifier {
       !_closed && _foreground && token == _restoreToken;
 
   /// 回前台后短暂盖黑幕，遮住纹理重建时的花屏帧。
+  /// iOS 后台回来纹理重建可能需要 500-800ms，用 800ms 覆盖。
   void _coverSurface() {
     _surfaceTimer?.cancel();
     if (!_surfaceCover) {
       _surfaceCover = true;
       _notify();
     }
-    _surfaceTimer = Timer(const Duration(milliseconds: 320), () {
+    _surfaceTimer = Timer(const Duration(milliseconds: 800), () {
       _surfaceTimer = null;
       if (_closed || !_surfaceCover) return;
       _surfaceCover = false;
