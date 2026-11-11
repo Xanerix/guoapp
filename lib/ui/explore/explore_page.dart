@@ -73,6 +73,21 @@ class ExplorePageState extends State<ExplorePage> {
     );
   }
 
+  void _selectTab(String id) {
+    if (id != _explore!.tab.id) {
+      _explore!.select(id);
+      return;
+    }
+    if (!_scroll.hasClients || _scroll.offset <= 0) return;
+    unawaited(
+      _scroll.animateTo(
+        0,
+        duration: Motion.of(context, Motion.long),
+        curve: Motion.enter,
+      ),
+    );
+  }
+
   void _open(Drama drama) => openPage<void>(
     context,
     (_) => DetailPage(store: widget.store, drama: drama),
@@ -150,7 +165,7 @@ class ExplorePageState extends State<ExplorePage> {
             for (final tab in explore.tabs) ChoiceOption(tab.id, tab.name),
           ],
           selected: explore.tab.id,
-          onSelected: explore.select,
+          onSelected: _selectTab,
           onShowAll: _pickCategory,
         ),
       );
