@@ -138,14 +138,34 @@ class _StorageViewState extends State<StorageView> {
         ),
       ),
     );
+    var leftover = '';
+    String? failed;
     try {
-      await repository.moveDownloads(parent);
+      leftover = await repository.moveDownloads(parent);
     } catch (failure) {
-      if (mounted) setState(() => _error = '$failure');
+      failed = '$failure';
     } finally {
       navigator.pop();
     }
     await _refresh();
+    if (failed != null && mounted) setState(() => _error = failed);
+    if (leftover.isEmpty || !mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('旧下载目录没有删干净'),
+        content: SelectableText(
+          '下载内容已迁移到新位置，但旧目录里有文件正在被占用，没能删除，仍然占用空间：\n$leftover\n\n请关闭正在使用这些文件的程序后手动删除该文件夹。',
+        ),
+        actions: [
+          FilledButton(
+            autofocus: true,
+            onPressed: () => Navigator.pop(context),
+            child: const Text('知道了'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override

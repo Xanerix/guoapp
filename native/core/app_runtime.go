@@ -384,7 +384,8 @@ func nativeDispatch(input nativeInput) (any, error) {
 	case "storage":
 		return engine.storage()
 	case "moveDownloads":
-		return true, engine.moveDownloads(ctx, input.Directory)
+		leftover, err := engine.moveDownloads(ctx, input.Directory)
+		return map[string]string{"leftover": leftover}, err
 	case "workLease":
 		count, err := engine.workLease(input.JobID, input.Command)
 		return map[string]int{"count": count}, err
