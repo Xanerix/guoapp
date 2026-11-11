@@ -37,6 +37,7 @@ const _backupFlags = {
   'deleteAfterManualExport',
   'televisionKeyboard',
   'historyTab',
+  'pureBlack',
 };
 const _blocked = '本地用户配置损坏，已锁定访问。原始记录已保留，请重新读取或从备份恢复。';
 
@@ -404,6 +405,7 @@ class LocalStore extends ChangeNotifier {
 
   bool get televisionKeyboard => _flag('televisionKeyboard', false);
   bool get historyTab => _flag('historyTab', true);
+  bool get pureBlack => _flag('pureBlack', false);
   bool get checkUpdates => _flag('checkUpdates', true);
   bool get autoExport => _flag('exportAfterDownload', false);
   bool get deleteAfterAutoExport => _flag('deleteAfterAutoExport', false);
@@ -545,6 +547,7 @@ class LocalStore extends ChangeNotifier {
   Future<void> setTelevisionKeyboard(bool value) =>
       _setting('televisionKeyboard', value);
   Future<void> setHistoryTab(bool value) => _setting('historyTab', value);
+  Future<void> setPureBlack(bool value) => _setting('pureBlack', value);
   Future<void> setCheckUpdates(bool value) => _setting('checkUpdates', value);
   Future<void> setAutoExport(bool value) =>
       _setting('exportAfterDownload', value);
@@ -961,6 +964,7 @@ class LocalStore extends ChangeNotifier {
       'themeMode': themeMode,
       'followSystemColor': followSystemColor,
       'themeColor': themeColor.name,
+      'pureBlack': pureBlack,
       'forceLogin': forceLogin,
       'checkUpdates': checkUpdates,
       'shareUsage': shareUsage,

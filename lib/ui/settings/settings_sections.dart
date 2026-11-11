@@ -254,6 +254,26 @@ class SettingsSection extends StatelessWidget {
             ),
           ],
         ),
+      if (!television)
+        SettingsCard(
+          children: [
+            SwitchTile(
+              title: '全屏显示时间',
+              subtitle: '全屏播放时在画面顶部显示当前时间',
+              value: preferences.showClock,
+              onChanged: (value) =>
+                  savePreferences(preferences.copyWith(showClock: value)),
+            ),
+            SwitchTile(
+              title: '全屏显示网速',
+              subtitle: '全屏播放时在画面顶部显示当前下载速度',
+              value: preferences.showNetworkSpeed,
+              onChanged: (value) => savePreferences(
+                preferences.copyWith(showNetworkSpeed: value),
+              ),
+            ),
+          ],
+        ),
       if (Platform.isAndroid && !television)
         SettingsCard(
           children: [

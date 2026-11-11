@@ -91,6 +91,7 @@ abstract class AppRepository {
   Future<void> cancelSuggestions() async {}
   Future<void> cancelRecommendations() async {}
   Future<Drama?> supplementMetadata(Drama drama) async => null;
+  Future<List<DramaSeason>> seasons(Drama drama) async => const [];
   Future<Drama> followCheck(Drama drama) async => (await detail(drama)).drama;
   Future<CatalogPage> recommendations(
     String genre, {
@@ -562,6 +563,7 @@ class NativeRepository extends AppRepository {
         'cover',
         'prepareCover',
         'detail',
+        'seasons',
         'metadata',
         'resolve',
         'preload',
@@ -763,6 +765,16 @@ class NativeRepository extends AppRepository {
   Future<DramaDetail> detail(Drama drama) async => DramaDetail.fromJson(
     await _call({'action': 'detail', 'drama': drama.toJson()}),
   );
+
+  @override
+  Future<List<DramaSeason>> seasons(Drama drama) async {
+    final result = await _call({'action': 'seasons', 'drama': drama.toJson()});
+    return [
+      for (final row in result['items'] as List? ?? const [])
+        DramaSeason.fromJson(Map<String, dynamic>.from(row as Map)),
+    ];
+  }
+
   @override
   Future<PlaybackPlan> resolve(
     Drama drama,

@@ -30,11 +30,23 @@ abstract final class AppTheme {
     Color seed,
     Brightness brightness, {
     required bool television,
+    bool pureBlack = false,
   }) {
-    final scheme = ColorScheme.fromSeed(
+    final seeded = ColorScheme.fromSeed(
       seedColor: seed,
       brightness: brightness,
     );
+    final scheme = pureBlack && brightness == Brightness.dark
+        ? seeded.copyWith(
+            surface: Colors.black,
+            surfaceDim: Colors.black,
+            surfaceContainerLowest: Colors.black,
+            surfaceContainerLow: const Color(0xFF0B0B0B),
+            surfaceContainer: const Color(0xFF121212),
+            surfaceContainerHigh: const Color(0xFF1A1A1A),
+            surfaceContainerHighest: const Color(0xFF242424),
+          )
+        : seeded;
     final theme = ThemeData(
       useMaterial3: true,
       colorScheme: scheme,

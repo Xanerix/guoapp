@@ -146,6 +146,21 @@ class PlaybackSettings extends StatelessWidget {
                             ),
                         ],
                 ),
+                const SizedBox(height: 18),
+                Text(sleepTimerLabel(session), style: label),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final choice in sleepChoices)
+                      _Choice(
+                        label: choice.label,
+                        selected: choice.selected(session),
+                        onSelected: () => choice.apply(session),
+                      ),
+                  ],
+                ),
                 if (session.danmakuSupported) ...[
                   const SizedBox(height: 8),
                   SwitchListTile(
@@ -188,6 +203,41 @@ class PlaybackSettings extends StatelessWidget {
       );
     },
   );
+}
+
+typedef SleepChoice = ({
+  String label,
+  bool Function(PlaybackSession) selected,
+  void Function(PlaybackSession) apply,
+});
+
+final List<SleepChoice> sleepChoices = [
+  (
+    label: '关闭',
+    selected: (session) =>
+        session.sleepMinutes == 0 && !session.sleepAtEpisodeEnd,
+    apply: (session) => session.setSleepTimer(),
+  ),
+  (
+    label: '播完本集',
+    selected: (session) => session.sleepAtEpisodeEnd,
+    apply: (session) => session.setSleepTimer(episodeEnd: true),
+  ),
+  for (final minutes in const [15, 30, 60, 90])
+    (
+      label: '$minutes 分钟',
+      selected: (session) => session.sleepMinutes == minutes,
+      apply: (session) => session.setSleepTimer(minutes: minutes),
+    ),
+];
+
+String sleepTimerLabel(PlaybackSession session) {
+  if (session.sleepAtEpisodeEnd) return '定时停止 · 本集播完后暂停';
+  final at = session.sleepAt;
+  if (at == null) return '定时停止';
+  final time =
+      '${at.hour.toString().padLeft(2, '0')}:${at.minute.toString().padLeft(2, '0')}';
+  return '定时停止 · $time 暂停';
 }
 
 class _Choice extends StatelessWidget {

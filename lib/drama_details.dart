@@ -21,6 +21,7 @@ class DramaDetails extends ChangeNotifier {
   final int _epoch;
   Drama _drama;
   List<Episode> _episodes = const [];
+  List<DramaSeason> _seasons = const [];
   String _warning = '';
   String? _error;
   bool _loading = false;
@@ -30,6 +31,7 @@ class DramaDetails extends ChangeNotifier {
 
   Drama get drama => _drama;
   List<Episode> get episodes => _episodes;
+  List<DramaSeason> get seasons => _seasons;
   String get warning => _warning;
   String? get error => _error;
   bool get loading => _loading;
@@ -78,6 +80,9 @@ class DramaDetails extends ChangeNotifier {
       repository.catalogUpdates.publish(_drama, retryCover: true);
       unawaited(store.refreshDrama(_drama).catchError((Object _) {}));
       unawaited(_supplement(generation));
+      if (!_seasons.any((season) => season.drama.id == _drama.id)) {
+        unawaited(_loadSeasons(generation));
+      }
     } catch (error) {
       if (!_current(generation)) return;
       _error = error.toString();
@@ -85,6 +90,25 @@ class DramaDetails extends ChangeNotifier {
       _notify();
       repository.catalogUpdates.publish(_drama, retryCover: true);
     }
+  }
+
+  Future<void> _loadSeasons(int generation) async {
+    try {
+      final seasons = await repository.seasons(_drama);
+      if (!_current(generation)) return;
+      _seasons = seasons;
+      _notify();
+    } catch (_) {}
+  }
+
+  Future<void> selectSeason(DramaSeason season) async {
+    if (!allowed || season.drama.id == _drama.id) return;
+    _drama = repository.catalogUpdates.current(season.drama);
+    _episodes = const [];
+    _warning = '';
+    _group = 0;
+    _notify();
+    await load();
   }
 
   Future<void> _supplement(int generation) async {

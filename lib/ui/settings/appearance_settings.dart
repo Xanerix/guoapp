@@ -61,6 +61,14 @@ class AppearanceSettings extends StatelessWidget {
               },
             ),
             const Divider(indent: 16, endIndent: 16),
+            SwitchTile(
+              title: '纯黑深色模式',
+              subtitle: '深色时背景改为纯黑，适合 OLED 屏幕',
+              value: store.pureBlack,
+              onChanged: (value) =>
+                  saveSetting(context, () => store.setPureBlack(value)),
+            ),
+            const Divider(indent: 16, endIndent: 16),
             TileFocus(
               builder: (focusNode) => SwitchListTile(
                 focusNode: focusNode,

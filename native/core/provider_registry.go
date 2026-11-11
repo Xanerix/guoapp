@@ -141,6 +141,15 @@ type MetadataEnricher interface {
 	ExtraMetadata(ctx context.Context, drama LibraryDrama, sourceID string) (LibraryDrama, error)
 }
 
+type Season struct {
+	Number int
+	Drama  Drama
+}
+
+type SeasonProvider interface {
+	Seasons(ctx context.Context, sourceID string) ([]Season, error)
+}
+
 var ErrCategoriesIncomplete = errors.New("categories incomplete")
 
 type ProviderFactory func(host Host) Provider

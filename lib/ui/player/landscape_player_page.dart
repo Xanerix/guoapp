@@ -23,6 +23,7 @@ import 'episode_grid.dart';
 import 'mini_player.dart';
 import 'playback_handle.dart';
 import 'playback_sheets.dart';
+import 'player_status.dart';
 import 'fade_presence.dart';
 import 'player_surface.dart';
 import 'player_video.dart';
@@ -642,6 +643,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
 
   Widget _fullControls(BuildContext context) {
     final session = _session;
+    final preferences = session.store.playbackPreferences;
     final padding = MediaQuery.viewPaddingOf(context);
     final left = math.max(padding.left, 20.0);
     final right = math.max(padding.right, 20.0);
@@ -707,19 +709,31 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
                 extent: 44,
               ),
               const SizedBox(width: 8),
+              if (preferences.showNetworkSpeed) ...[
+                NetworkSpeedText(
+                  session: session,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: .78),
+                    fontSize: 12,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+                const SizedBox(width: 12),
+              ],
               if (_battery case final battery?) ...[
                 _batteryMark(battery),
                 const SizedBox(width: 12),
               ],
-              Text(
-                '${_two(_now.hour)}:${_two(_now.minute)}',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  fontFeatures: [FontFeature.tabularFigures()],
+              if (preferences.showClock)
+                Text(
+                  '${_two(_now.hour)}:${_two(_now.minute)}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                  ),
                 ),
-              ),
               const SizedBox(width: 4),
               if (session.danmakuSupported) _danmakuButton(context),
               if (widget.onMiniWindow case final onMiniWindow?)

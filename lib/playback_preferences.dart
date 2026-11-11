@@ -55,6 +55,8 @@ class PlaybackPreferences {
     this.swipeLevels = true,
     this.swipeEpisodes = false,
     this.progressLine = true,
+    this.showClock = true,
+    this.showNetworkSpeed = true,
     this.autoHideControls = true,
     this.hideSystemBars = true,
     this.autoPictureInPicture = false,
@@ -79,6 +81,8 @@ class PlaybackPreferences {
   final bool swipeLevels;
   final bool swipeEpisodes;
   final bool progressLine;
+  final bool showClock;
+  final bool showNetworkSpeed;
   final bool autoHideControls;
   final bool hideSystemBars;
   final bool autoPictureInPicture;
@@ -105,6 +109,8 @@ class PlaybackPreferences {
     bool? swipeLevels,
     bool? swipeEpisodes,
     bool? progressLine,
+    bool? showClock,
+    bool? showNetworkSpeed,
     bool? autoHideControls,
     bool? hideSystemBars,
     bool? autoPictureInPicture,
@@ -128,6 +134,8 @@ class PlaybackPreferences {
     swipeLevels: swipeLevels ?? this.swipeLevels,
     swipeEpisodes: swipeEpisodes ?? this.swipeEpisodes,
     progressLine: progressLine ?? this.progressLine,
+    showClock: showClock ?? this.showClock,
+    showNetworkSpeed: showNetworkSpeed ?? this.showNetworkSpeed,
     autoHideControls: autoHideControls ?? this.autoHideControls,
     hideSystemBars: hideSystemBars ?? this.hideSystemBars,
     autoPictureInPicture: autoPictureInPicture ?? this.autoPictureInPicture,
@@ -153,6 +161,8 @@ class PlaybackPreferences {
     'swipeLevels': swipeLevels,
     'swipeEpisodes': swipeEpisodes,
     'progressLine': progressLine,
+    'showClock': showClock,
+    'showNetworkSpeed': showNetworkSpeed,
     'autoHideControls': autoHideControls,
     'hideSystemBars': hideSystemBars,
     'autoPictureInPicture': autoPictureInPicture,
@@ -204,6 +214,8 @@ class PlaybackPreferences {
       swipeLevels: value['swipeLevels'] as bool? ?? true,
       swipeEpisodes: value['swipeEpisodes'] as bool? ?? false,
       progressLine: value['progressLine'] as bool? ?? true,
+      showClock: value['showClock'] as bool? ?? true,
+      showNetworkSpeed: value['showNetworkSpeed'] as bool? ?? true,
       autoHideControls: value['autoHideControls'] as bool? ?? true,
       hideSystemBars: value['hideSystemBars'] as bool? ?? true,
       autoPictureInPicture: value['autoPictureInPicture'] as bool? ?? false,

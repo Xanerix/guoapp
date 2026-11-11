@@ -136,6 +136,7 @@ Flutter 界面 + Go 原生核心。站源请求、解析、签名、缓存、下
 | `Sited`、`URLRotator` | 运行时决定的站点地址；同一地址的候选镜像 |
 | `CoverResolver`、`CoverRepairer`、`CoverRefererProvider` | 按需解析封面地址；修复旧数据的封面；封面请求的 Referer |
 | `MetadataEnricher` | 详情之外再补齐剧集元数据 |
+| `SeasonProvider` | 同一部剧的各季，按季序返回；详情页显示季标签，本季播完自动接下一季 |
 | `MediaAuthorizer` | 播放请求需要临时授权头时由站源签发，失效时被告知 |
 
 返回 `core.SourceLoginError` 表示要先登录站源账号；`Categories` 同时返回已取到的分类和 `core.ErrCategoriesIncomplete` 表示分类不完整，本次照常显示但不写入缓存，下次重新获取。

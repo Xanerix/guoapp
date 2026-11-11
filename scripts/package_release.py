@@ -247,6 +247,7 @@ elif options.platform == 'windows':
                 if relative == bundle_executable:
                     relative = variant.slug + '.exe'
                 archive.write(source, relative)
+        archive.writestr('userdata/', '')
     artifacts.append(target)
     artifacts.append(package_windows_installer(bundle, bundle_executable))
 else:

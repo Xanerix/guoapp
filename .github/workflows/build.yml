@@ -320,7 +320,7 @@ jobs:
 
           Windows：
           - *-windows-x64-setup.exe：安装包，默认安装到当前用户，无需管理员权限；安装时可改为所有用户
-          - *-windows-x64.zip：便携版，解压后运行 hongguojian.exe 或 zhenguojian.exe
+          - *-windows-x64.zip：便携版，解压后运行 hongguojian.exe 或 zhenguojian.exe；设置、记录、海报缓存和默认下载都保存在程序旁的 userdata 目录，升级时把旧版的 userdata 目录复制过来即可
 
           macOS：
           - *-macos-universal.dmg：适用于 macOS 12 及以上的 Apple 芯片和 Intel 电脑，打开后拖入 Applications；未经公证，首次打开前在终端执行 xattr -dr com.apple.quarantine /Applications/红果鉴.app（${name}为 ${name}.app）

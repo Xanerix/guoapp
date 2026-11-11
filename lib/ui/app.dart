@@ -46,7 +46,7 @@ class _DuanjuAppState extends State<DuanjuApp> with WidgetsBindingObserver {
   int? _profileEpoch;
   var _television = false;
   var _phone = false;
-  (Color, bool)? _themeKey;
+  (Color, bool, bool)? _themeKey;
   late (ThemeData, ThemeData) _themes;
 
   @override
@@ -185,11 +185,17 @@ class _DuanjuAppState extends State<DuanjuApp> with WidgetsBindingObserver {
         : null;
     final seed =
         systemColor ?? Color((store?.themeColor ?? ThemeColor.orange).seed);
-    if ((seed, television) != _themeKey) {
-      _themeKey = (seed, television);
+    final pureBlack = store?.pureBlack ?? false;
+    if ((seed, television, pureBlack) != _themeKey) {
+      _themeKey = (seed, television, pureBlack);
       _themes = (
         AppTheme.build(seed, Brightness.light, television: television),
-        AppTheme.build(seed, Brightness.dark, television: television),
+        AppTheme.build(
+          seed,
+          Brightness.dark,
+          television: television,
+          pureBlack: pureBlack,
+        ),
       );
     }
     WidgetsBinding.instance.addPostFrameCallback(

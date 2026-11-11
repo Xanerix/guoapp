@@ -122,7 +122,7 @@ class PlaybackSession extends ChangeNotifier {
 
   final AppRepository repository;
   final LocalStore store;
-  final DramaDetail detail;
+  DramaDetail detail;
   Player _player;
   Player? _standby;
   late final DanmakuController danmaku;
@@ -138,6 +138,11 @@ class PlaybackSession extends ChangeNotifier {
   Timer? _boostTimer;
   Timer? _stallTimer;
   Timer? _volumeTimer;
+  Timer? _sleepTimer;
+  DateTime? _sleepAt;
+  int _sleepMinutes = 0;
+  bool _sleepAtEpisodeEnd = false;
+  bool _advancingSeason = false;
   Future<void> _operations = Future<void>.value();
   Future<void> _rates = Future<void>.value();
   int _index;
@@ -199,6 +204,9 @@ class PlaybackSession extends ChangeNotifier {
   double get aspectRatio => _aspectRatio;
   bool get aspectKnown => _aspectKnown;
   double get speed => _speed;
+  DateTime? get sleepAt => _sleepAt;
+  int get sleepMinutes => _sleepMinutes;
+  bool get sleepAtEpisodeEnd => _sleepAtEpisodeEnd;
   int get quality => _quality;
   bool get local => _plan?.local == true;
   List<int> get qualities => _plan?.qualities ?? const [];
@@ -353,14 +361,99 @@ class PlaybackSession extends ChangeNotifier {
     if (duration <= Duration.zero ||
         player.state.position < duration - const Duration(seconds: 2)) {
       _queueRecovery('early_completion');
-    } else if (_foreground && hasNext) {
+    } else if (_foreground && hasNext && !_sleepAtEpisodeEnd) {
       unawaited(play(_index + 1));
+    } else if (_foreground &&
+        !_sleepAtEpisodeEnd &&
+        detail.nextSeason != null) {
+      unawaited(_playNextSeason());
     } else {
-      _playIntent = false;
-      endBoost();
-      unawaited(player.pause());
-      unawaited(saveProgress());
+      final sleeping = _sleepAtEpisodeEnd;
+      if (sleeping) _clearSleep();
+      _stop();
+      if (sleeping) _notify();
     }
+  }
+
+  void _stop() {
+    _playIntent = false;
+    endBoost();
+    unawaited(player.pause());
+    unawaited(saveProgress());
+  }
+
+  void syncSeasons(List<DramaSeason> seasons) {
+    if (_closed ||
+        seasons.isEmpty ||
+        identical(seasons, detail.seasons) ||
+        !seasons.any((season) => season.drama.id == detail.drama.id)) {
+      return;
+    }
+    detail = DramaDetail(
+      detail.drama,
+      detail.episodes,
+      warning: detail.warning,
+      seasons: seasons,
+    );
+  }
+
+  Future<void> _playNextSeason() async {
+    final season = detail.nextSeason;
+    if (_advancingSeason || season == null || !_usable) return;
+    _advancingSeason = true;
+    final ticket = _generation;
+    DiaryService.add('[Play] 本季播完，切换到${season.label}');
+    _dropStandby();
+    _preloader.clear();
+    try {
+      await saveProgress();
+      final next = await repository.detail(season.drama);
+      if (!_current(ticket) || !_foreground) return;
+      if (next.episodes.isEmpty) throw AppFailure('下一季暂时没有可播放的分集');
+      detail = DramaDetail(
+        repository.catalogUpdates.current(season.drama).merge(next.drama),
+        next.episodes,
+        warning: next.warning,
+        seasons: detail.seasons,
+      );
+      _openedIndex = -1;
+      _index = 0;
+      _online = false;
+      _notify();
+      await play(0);
+    } catch (error) {
+      DiaryService.add('[Play] 切换下一季失败：${_diagnostic(error)}');
+      if (_current(ticket)) _stop();
+      _notify();
+    } finally {
+      _advancingSeason = false;
+    }
+  }
+
+  void _clearSleep() {
+    _sleepTimer?.cancel();
+    _sleepTimer = null;
+    _sleepAt = null;
+    _sleepMinutes = 0;
+    _sleepAtEpisodeEnd = false;
+  }
+
+  void setSleepTimer({int minutes = 0, bool episodeEnd = false}) {
+    if (_closed) return;
+    _clearSleep();
+    if (episodeEnd) {
+      _sleepAtEpisodeEnd = true;
+    } else if (minutes > 0) {
+      final after = Duration(minutes: minutes);
+      _sleepMinutes = minutes;
+      _sleepAt = DateTime.now().add(after);
+      _sleepTimer = Timer(after, () {
+        _clearSleep();
+        if (!_closed) _stop();
+        _notify();
+      });
+    }
+    _notify();
   }
 
   void _queueRecovery(String reason) {
@@ -731,6 +824,17 @@ class PlaybackSession extends ChangeNotifier {
     );
   }
 
+  Future<int?> networkSpeed() async {
+    final platform = player.platform;
+    if (_closed || local || platform is! NativePlayer) return null;
+    try {
+      final value = await platform.getProperty('cache-speed');
+      return double.tryParse(value)?.round();
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> _selectAudio(Player target, bool enabled) async {
     final platform = target.platform;
     if (platform is! NativePlayer || !Platform.isIOS) return;
@@ -1058,6 +1162,7 @@ class PlaybackSession extends ChangeNotifier {
     _boostTimer?.cancel();
     _stallTimer?.cancel();
     _volumeTimer?.cancel();
+    _sleepTimer?.cancel();
     if (_volumeTimer != null) _saveVolume();
     for (final subscription in _subscriptions) {
       unawaited(subscription.cancel());
