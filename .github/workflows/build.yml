@@ -20,6 +20,8 @@ concurrency:
 env:
   GOPROXY: https://proxy.golang.org,direct
   GOSUMDB: sum.golang.org
+  PUB_HOSTED_URL: https://pub.flutter-io.cn
+  FLUTTER_STORAGE_BASE_URL: https://storage.flutter-io.cn
   UPDATE_SERVER_URL: ${{ vars.UPDATE_SERVER_URL }}
   ZHENGUOJIAN_PACKAGE_NAME: ${{ vars.ZHENGUOJIAN_PACKAGE_NAME }}
   ZHENGUOJIAN_DISPLAY_NAME: ${{ vars.ZHENGUOJIAN_DISPLAY_NAME }}
