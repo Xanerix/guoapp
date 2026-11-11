@@ -147,6 +147,17 @@ class PlaybackSession extends ChangeNotifier {
       }),
       stream.playing.listen((playing) {
         if (!playing) endBoost();
+        // playing=true 说明视频解码器已经出帧了 → texture 有画面 → 揭黑幕。
+        // 比 position>0 更可靠——position 还没推进但 playing=true 时画面已经出了。
+        if (playing &&
+            _surfaceCover &&
+            _surfaceCoverAt != null &&
+            DateTime.now().difference(_surfaceCoverAt!).inMilliseconds > 150) {
+          _surfaceTimer?.cancel();
+          _surfaceTimer = null;
+          _surfaceCover = false;
+          _notify();
+        }
         _sync();
       }),
       stream.buffering.listen((buffering) {
@@ -1367,9 +1378,11 @@ class PlaybackSession extends ChangeNotifier {
         '[Play] 进入后台，保存恢复状态 集数=${_index + 1} '
         '位置=${_resumePosition.toStringAsFixed(1)} 续播=$_resumeIntent',
       );
-      // Android 的 libmpv 不会像 iOS AVPlayer 那样被系统自动挂起，
-      // 必须主动 pause 才能停掉音频/省电。iOS 则保留 texture 最后一帧无缝恢复。
-      if (Platform.isAndroid) unawaited(player.pause());
+      // 所有平台都主动 pause，停音频/省电。
+      // iOS 即使不 pause，后台几秒内音频也会继续响（系统不会立即挂起）。
+      // texture 重建靠回前台时的黑幕（_coverSurface）遮花屏帧，position/playing
+      // 推进后自动揭开，不影响视觉。
+      unawaited(player.pause());
       unawaited(saveProgress());
       return;
     }
