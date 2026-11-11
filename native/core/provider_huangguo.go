@@ -32,10 +32,6 @@ var reAnyArticle = regexp.MustCompile(`(?is)<article\b[^>]*>.*?</article>`)
 
 var reHuangguoLink = regexp.MustCompile(`(?is)<a\b[^>]*href=["']([^"']*/(?:series|video)/([^"'/?#]+)[^"']*)["'][^>]*>.*?</a>`)
 
-var reResolution = regexp.MustCompile(`(?i)RESOLUTION\s*=\s*(\d+)x(\d+)`)
-
-var reBandwidth = regexp.MustCompile(`(?i)(?:AVERAGE-)?BANDWIDTH\s*=\s*(\d+)`)
-
 var reDataHLS = regexp.MustCompile(`(?is)data-hls=["']([^"']+)["']`)
 
 type providerEpisode struct {
@@ -302,15 +298,6 @@ func extractClosestAttr(raw string, start, end int, names ...string) string {
 		}
 	}
 	return ""
-}
-
-func titleNearDetail(raw, sourceID string) string {
-	needle := "/detail/" + sourceID
-	idx := strings.Index(raw, needle)
-	if idx < 0 {
-		return ""
-	}
-	return extractByClassText(contextBlock(raw, idx, idx+len(needle), 1800), "hg-drama-card__title")
 }
 
 type huangguoPreviewSession struct {

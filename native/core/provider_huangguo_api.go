@@ -314,8 +314,6 @@ var huangguoAIBaseMirrors = []string{"https://huangguoai.com", "https://thu.lbvr
 
 var huangguoAIMirrorDomains = []string{"lbvrhyir.cc", "xxbgwypx.cc", "ediayikma.cc", "agdkczeyx.cc"}
 
-var huangguoAISlugs = []string{"recommend", "newest", "ai-duanju", "ai-manju", "ai-huanlian", "ai-mogai", "ranks/hot"}
-
 func providerURLCandidates(rawURL string) []string {
 	u, err := url.Parse(rawURL)
 	if err != nil || u.Hostname() != "huangguoai.com" {

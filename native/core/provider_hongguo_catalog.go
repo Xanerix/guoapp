@@ -24,10 +24,6 @@ var hongguoAppGenres = []struct {
 
 type libraryUpdateKey struct{}
 
-func (p *hongguoProvider) fetchHongguoAppCatalog(ctx context.Context) ([]Drama, error) {
-	return p.fetchHongguoAppCatalogCategory(ctx, "")
-}
-
 func (p *hongguoProvider) fetchHongguoAppCatalogCategory(ctx context.Context, category string) ([]Drama, error) {
 	genres := hongguoAppGenres
 	if category != "" {

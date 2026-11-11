@@ -22,7 +22,6 @@ type soraniAPIClient struct {
 	host      Host
 	base      string
 	site      string
-	once      sync.Once
 	accountMu sync.Mutex
 	loaded    bool
 	session   soraniSession

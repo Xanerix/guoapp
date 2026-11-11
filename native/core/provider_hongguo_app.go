@@ -117,17 +117,6 @@ func (p *hongguoProvider) hongguoCatalogSnapshot() *hongguoCatalogState {
 	return cloneHongguoCatalogState(&client.state)
 }
 
-func hongguoCatalogInitialized(state *hongguoCatalogState) bool {
-	if state != nil && state.Version == 1 {
-		for _, cursor := range state.Feeds {
-			if cursor.Initialized {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 func hongguoCatalogHasMore(state *hongguoCatalogState) bool {
 	for _, genre := range hongguoAppGenres {
 		if state == nil || !state.Feeds[genre.key].Exhausted {

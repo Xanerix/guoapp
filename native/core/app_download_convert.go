@@ -138,8 +138,8 @@ func (manager *nativeDownloads) beginConversion(id string) (nativeDownloadConver
 	if manager.loadErr != nil {
 		return nativeDownloadConversion{}, manager.loadErr
 	}
-	if manager.closed || manager.moving {
-		return nativeDownloadConversion{}, errors.New("下载目录正在迁移或队列已关闭，请稍后重试")
+	if manager.moving {
+		return nativeDownloadConversion{}, errors.New("下载目录正在迁移，请稍后重试")
 	}
 	record := manager.jobs[id]
 	if record == nil || record.State != "converting" {

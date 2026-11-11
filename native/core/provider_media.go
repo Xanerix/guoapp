@@ -119,10 +119,6 @@ func (d *Downloader) finishProviderMedia(ctx context.Context, media ProviderMedi
 	return media, nil
 }
 
-func (d *Downloader) fetchProviderText(ctx context.Context, rawURL, referer string) (string, error) {
-	return d.fetchProviderRequest(ctx, rawURL, referer, nil)
-}
-
 func (d *Downloader) fetchProviderRequest(ctx context.Context, rawURL, referer string, payload []byte) (string, error) {
 	retries := d.cfg.Retries
 	if retries <= 0 {

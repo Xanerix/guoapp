@@ -60,7 +60,6 @@ type nativeDownloads struct {
 	jobs        map[string]*nativeDownloadRecord
 	active      map[string]context.CancelFunc
 	converting  map[string]bool
-	closed      bool
 	moving      bool
 	loadErr     error
 	workers     sync.WaitGroup
@@ -264,7 +263,7 @@ func (manager *nativeDownloads) enqueueContext(ctx context.Context, input native
 	}
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
-	if manager.closed || manager.moving {
+	if manager.moving {
 		return 0, errors.New("下载目录正在迁移或队列已关闭，请稍后重试")
 	}
 	if manager.loadErr != nil {
@@ -336,7 +335,7 @@ func (manager *nativeDownloads) control(id, action string) error {
 	if manager.loadErr != nil {
 		return manager.loadErr
 	}
-	if manager.closed || manager.moving {
+	if manager.moving {
 		return errors.New("下载目录正在迁移或队列已关闭，请稍后重试")
 	}
 	previous := map[string]nativeDownloadRecord{}
@@ -422,7 +421,7 @@ func (manager *nativeDownloads) control(id, action string) error {
 }
 
 func (manager *nativeDownloads) scheduleLocked() {
-	if manager.closed || manager.moving {
+	if manager.moving {
 		return
 	}
 	for len(manager.active) < max(1, manager.concurrency) {
@@ -560,20 +559,6 @@ func (manager *nativeDownloads) localPlan(drama string, index int) (nativePlan, 
 	}
 	return nativePlan{URL: path, Key: record.Key, Local: true, Quality: record.ActualQuality,
 		Qualities: []int{}, Headers: map[string]string{}, RouteCount: 1}, true, nil
-}
-
-func (manager *nativeDownloads) close() {
-	manager.mu.Lock()
-	manager.closed = true
-	for id, cancel := range manager.active {
-		if job := manager.jobs[id]; job != nil && job.State == "downloading" {
-			job.State = "paused"
-		}
-		cancel()
-	}
-	_ = manager.saveLocked()
-	manager.mu.Unlock()
-	manager.workers.Wait()
 }
 
 func nativeDownloadError(status int) error {

@@ -8,104 +8,12 @@ import (
 	"net/url"
 	"regexp"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
 )
 
 const hongguoBaseURL = "https://hongguoduanju.com"
-
-func (p *hongguoProvider) fetchHongguoDramas(ctx context.Context) ([]Drama, error) {
-	initialized := hongguoCatalogInitialized(p.hongguoCatalogSnapshot())
-	dramas, appErr := p.fetchHongguoAppCatalog(ctx)
-	if len(dramas) > 0 || appErr == nil && initialized {
-		return dramas, appErr
-	}
-	if ctx.Err() != nil {
-		return dramas, ctx.Err()
-	}
-	webDramas, webErr := p.fetchHongguoWebDramas(ctx)
-	if len(webDramas) > 0 && webErr == nil {
-		return webDramas, nil
-	}
-	return webDramas, errors.Join(appErr, webErr)
-}
-
-func (p *hongguoProvider) fetchHongguoWebDramas(ctx context.Context) ([]Drama, error) {
-	routes := []struct {
-		path string
-		name string
-	}{
-		{path: "real-drama", name: "真人剧"},
-		{path: "comic-drama", name: "漫剧"},
-		{path: "ai-drama", name: "AI剧"},
-		{path: "comic", name: "动漫"},
-	}
-	type routeResult struct {
-		dramas []Drama
-		err    error
-	}
-	results := make(chan routeResult, len(routes))
-	for _, route := range routes {
-		route := route
-		go func() {
-			dramas, err := p.fetchHongguoRoute(ctx, route.path, route.name)
-			results <- routeResult{dramas: dramas, err: err}
-		}()
-	}
-	seen := map[string]bool{}
-	var out []Drama
-	var failures []error
-	for range routes {
-		result := <-results
-		if result.err != nil {
-			failures = append(failures, result.err)
-		}
-		for _, drama := range result.dramas {
-			if drama.ID != "" && !seen[drama.ID] {
-				seen[drama.ID] = true
-				out = append(out, drama)
-			}
-		}
-	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].DisplayTitle() < out[j].DisplayTitle() })
-	return out, errors.Join(failures...)
-}
-
-func (p *hongguoProvider) fetchHongguoRoute(ctx context.Context, route, category string) ([]Drama, error) {
-	pages := p.host.MaxPages()
-	if pages < 1 {
-		pages = 1
-	}
-	var dramas []Drama
-	seen := map[string]bool{}
-	for page := 1; page <= pages; page++ {
-		items, totalPages, err := p.fetchHongguoCategoryPage(ctx, route+"?page="+strconv.Itoa(page), category)
-		if err != nil {
-			return dramas, fmt.Errorf("%s: %w", category, err)
-		}
-		if totalPages > pages {
-			pages = totalPages
-			if pages > 500 {
-				pages = 500
-			}
-		}
-		ReportLibraryProgress(ctx, sourceHongguo, items, nil, false)
-		added := 0
-		for _, drama := range items {
-			if !seen[drama.ID] {
-				seen[drama.ID] = true
-				dramas = append(dramas, drama)
-				added++
-			}
-		}
-		if added == 0 || len(items) < 24 {
-			break
-		}
-	}
-	return dramas, nil
-}
 
 func (p *hongguoProvider) fetchHongguoCategoryPage(ctx context.Context, route, category string) ([]Drama, int, error) {
 	body, err := p.text(ctx, hongguoBaseURL+"/category/"+route, hongguoBaseURL+"/")

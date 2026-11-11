@@ -88,10 +88,6 @@ func ProviderHTMLText(root *html.Node) string {
 	return strings.Join(strings.Fields(text.String()), " ")
 }
 
-func (d *Downloader) fetchProviderPage(ctx context.Context, address, referer, agent string) (*html.Node, string, error) {
-	return FetchHostPage(ctx, d, address, referer, agent)
-}
-
 func FetchHostPage(ctx context.Context, host Host, address, referer, agent string) (*html.Node, string, error) {
 	response, err := host.FetchText(ctx, TextRequest{URL: address, Referer: referer, UserAgent: agent})
 	if err != nil {

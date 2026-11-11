@@ -10,9 +10,8 @@ import (
 )
 
 var (
-	badNameChars = regexp.MustCompile(`[\\/\?%\*:|"<>\x00-\x1f]+`)
-	spaceChars   = regexp.MustCompile(`\s+`)
-	rePublicURL  = regexp.MustCompile(`(?i)(?:https?|socks5h?)://[^\s"'<>]+`)
+	spaceChars  = regexp.MustCompile(`\s+`)
+	rePublicURL = regexp.MustCompile(`(?i)(?:https?|socks5h?)://[^\s"'<>]+`)
 )
 
 func PublicError(err error) error {

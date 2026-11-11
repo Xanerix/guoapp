@@ -13,8 +13,6 @@ import (
 	"unicode"
 )
 
-const danmakuWindowMS = 30_000
-
 type hongguoDanmakuCacheEntry struct {
 	page    DanmakuPage
 	err     error

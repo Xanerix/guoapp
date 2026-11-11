@@ -161,7 +161,7 @@ func (engine *nativeEngine) moveDownloads(ctx context.Context, parent string) er
 		manager.mu.Unlock()
 		return errors.New("下载记录无法读取，已停止迁移并保留原索引和文件；请先恢复下载记录")
 	}
-	if manager.closed || manager.moving {
+	if manager.moving {
 		manager.mu.Unlock()
 		return errors.New("下载目录正在处理，请稍后重试")
 	}

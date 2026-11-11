@@ -34,7 +34,6 @@ var (
 	reHanxiaoquanOgImage  = regexp.MustCompile(`(?is)property="og:image"\s+content="([^"]+)"`)
 	reHanxiaoquanCoverSrc = regexp.MustCompile(`(?is)<div class="video-cover">.*?<img[^>]*data-src="([^"]+)"`)
 	reHanxiaoquanInfoItem = regexp.MustCompile(`(?is)<span class="video-info-itemtitle">([^<]*)</span>\s*<div class="video-info-item[^"]*">(.*?)</div>`)
-	reHanxiaoquanAnchor   = regexp.MustCompile(`(?is)<a[^>]*>([^<]+)</a>`)
 	reHanxiaoquanLineTab  = regexp.MustCompile(`(?is)href="#playlist(\d+)"[^>]*>\s*<i[^>]*></i>\s*([^<]+)`)
 	reHanxiaoquanEpisodes = regexp.MustCompile(`(?is)<a title="([^"]*)" href="(/play/\d+-\d+-\d+\.html)"`)
 	reHanxiaoquanNow      = regexp.MustCompile(`(?is)var\s+now\s*=\s*["']([^"']+)["']`)
