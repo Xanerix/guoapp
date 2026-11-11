@@ -287,22 +287,17 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
     }
     if (_tapTimer?.isActive ?? false) {
       _tapTimer!.cancel();
-      // 双击：中间 → 暂停/恢复；左右 → 快进/快退
+      // 双击：中间 → 暂停/恢复 + 切控制条；左右 → 快进/快退
       if (side == 0) {
         _session.togglePlayback();
-        _toggleControls();
-      } else {
-        _startStreak(side);
       }
+      _toggleControls();
+      if (side != 0) _startStreak(side);
       return;
     }
-    // 单击：中间区域暂停/恢复 + 切控制条；左右区域留给双击快进快退
-    if (side == 0) {
-      _session.togglePlayback();
-      _toggleControls();
-    } else {
-      _tapTimer = Timer(const Duration(milliseconds: 300), _toggleControls);
-    }
+    // 单击：只切控制条显示/隐藏，不暂停（红果行为）。
+    // 单击左右区域留给双击快进快退。
+    _tapTimer = Timer(const Duration(milliseconds: 300), _toggleControls);
   }
 
   void _startStreak(int side) {
