@@ -1674,6 +1674,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
                     fontSize: 19,
                     fontWeight: FontWeight.w800,
                     height: 1.35,
+                    color: Colors.white,
                   ),
                 ),
                 const SizedBox(height: 6),
@@ -1799,7 +1800,6 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
   }
 
   Widget _episodeBar(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
     final count = _session.detail.episodes.length;
     return SafeArea(
       top: false,
@@ -1811,7 +1811,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
               child: SizedBox(
                 height: 48,
                 child: Material(
-                  color: colors.surfaceContainerHigh,
+                  color: const Color(0xFF1C1C1E),
                   borderRadius: BorderRadius.circular(12),
                   clipBehavior: Clip.antiAlias,
                   child: InkWell(
@@ -1821,12 +1821,12 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
                       child: Row(
                         spacing: 8,
                         children: [
-                          Text(
+                          const Text(
                             '选集',
                             style: TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w700,
-                              color: colors.onSurface,
+                              color: Colors.white,
                             ),
                           ),
                           Expanded(
@@ -1836,14 +1836,14 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 fontSize: 13,
-                                color: colors.onSurfaceVariant,
+                                color: Colors.white.withValues(alpha: .6),
                               ),
                             ),
                           ),
                           Icon(
                             Icons.keyboard_arrow_up_rounded,
                             size: 20,
-                            color: colors.onSurfaceVariant,
+                            color: Colors.white.withValues(alpha: .6),
                           ),
                         ],
                       ),
@@ -1856,15 +1856,15 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
             SizedBox.square(
               dimension: 48,
               child: Material(
-                color: colors.surfaceContainerHigh,
+                color: const Color(0xFF1C1C1E),
                 borderRadius: BorderRadius.circular(12),
                 clipBehavior: Clip.antiAlias,
                 child: InkWell(
                   onTap: () => unawaited(_openSettings()),
-                  child: Icon(
+                  child: const Icon(
                     Icons.tune_rounded,
                     size: 22,
-                    color: colors.onSurface,
+                    color: Colors.white,
                   ),
                 ),
               ),
