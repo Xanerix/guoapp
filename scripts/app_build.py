@@ -2,8 +2,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-SOURCES_MODULE = 'guoapp/sources'
 NATIVE_ROOT = Path(__file__).resolve().parents[1] / 'native'
+EXAMPLE_SOURCES = NATIVE_ROOT / 'sources_example'
 ENVIRONMENT_DEFINES = ['PROJECT_URL', 'TELEGRAM_GROUP_URL', 'TELEGRAM_CHANNEL_URL',
                        'ZHENGUOJIAN_DISPLAY_NAME', 'ZHENGUOJIAN_LATIN_NAME']
 
@@ -63,20 +63,30 @@ def add_variant_argument(parser):
 
 
 def add_sources_argument(parser):
-    parser.add_argument('--sources', type=Path,
-                        help='站源仓库路径；接入一次后会记住，之后可省略')
+    parser.add_argument('--sources', type=Path, action='append',
+                        help='站源仓库路径，可多次指定；接入一次后会记住，之后可省略；从未接入时使用示例站源')
 
 
-def link_sources(path):
+def source_module(directory):
+    manifest = directory / 'go.mod'
+    declared = manifest.read_text(encoding='utf-8').splitlines() if manifest.is_file() else []
+    for line in declared:
+        if line.startswith('module '):
+            return line.removeprefix('module ').strip()
+    raise SystemExit('站源仓库路径无效，找不到 go.mod 的 module 声明：' + str(directory))
+
+
+def link_sources(paths):
     workspace = NATIVE_ROOT / 'go.work'
     anchor = NATIVE_ROOT / 'bridge' / 'sources_gen.go'
-    if path:
-        directory = path.expanduser().resolve()
-        manifest = directory / 'go.mod'
-        declared = manifest.read_text(encoding='utf-8').splitlines() if manifest.is_file() else []
-        if f'module {SOURCES_MODULE}' not in (line.strip() for line in declared):
-            raise SystemExit(f'站源仓库路径无效，需要模块 {SOURCES_MODULE} 所在目录：' + str(directory))
-        workspace.write_text(f'go 1.24.1\n\nuse (\n\t.\n\t{directory.as_posix()}\n)\n', encoding='utf-8')
-        anchor.write_text(f'package main\n\nimport _ "{SOURCES_MODULE}"\n', encoding='utf-8')
-    if not workspace.is_file() or not anchor.is_file():
-        raise SystemExit('尚未接入站源仓库，请加上 --sources <站源仓库路径>。')
+    if not paths and workspace.is_file() and anchor.is_file():
+        return
+    if not paths:
+        print('尚未接入站源仓库，改用只有假数据的示例站源；接入真实站源请加 --sources <站源仓库路径>。', flush=True)
+        paths = [EXAMPLE_SOURCES]
+    directories = [path.expanduser().resolve() for path in paths]
+    modules = [source_module(directory) for directory in directories]
+    uses = ''.join(f'\t{directory.as_posix()}\n' for directory in directories)
+    workspace.write_text(f'go 1.24.1\n\nuse (\n\t.\n{uses})\n', encoding='utf-8')
+    imports = ''.join(f'\t_ "{module}"\n' for module in modules)
+    anchor.write_text(f'package main\n\nimport (\n{imports})\n', encoding='utf-8')

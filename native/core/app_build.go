@@ -15,7 +15,10 @@ type buildFlavorSpec struct {
 var activeFlavor buildFlavorSpec
 
 func RegisterFlavor(name string, sources []string) {
-	activeFlavor = buildFlavorSpec{name: name, sources: sources}
+	if activeFlavor.name != "" && activeFlavor.name != name {
+		panic("core.RegisterFlavor: conflicting flavors " + activeFlavor.name + " and " + name)
+	}
+	activeFlavor = buildFlavorSpec{name: name, sources: append(activeFlavor.sources, sources...)}
 }
 
 func buildFlavor() string { return activeFlavor.name }

@@ -13,7 +13,9 @@ Flutter `3.47.9`、Dart `3.12+`、Go `1.24.1+`、Python `3.10+`。
 
 ## 调试运行
 
-站源不在本仓库，放在单独的站源仓库里（Go 模块 `guoapp/sources`）。第一次编译 Go 核心时加 `--sources <站源仓库路径>`，脚本会在 `native/` 下生成不入库的 `go.work` 与 `bridge/sources_gen.go`，之后可以省略；没接入站源时构建脚本直接报错。所有出包脚本都接受同一个参数。
+官方站源不在本仓库，放在单独的私有站源仓库里（Go 模块 `guoapp/sources`）。编译 Go 核心时用 `--sources <站源仓库路径>` 接入站源，可以多次指定以同时接入多个站源模块；脚本会在 `native/` 下生成不入库的 `go.work` 与 `bridge/sources_gen.go`，之后可以省略。从未接入过站源时自动使用 `native/sources_example` 的示例站源，它只返回假数据、不访问网络、不能播放，用来在没有站源仓库时调试界面；想换回示例站源，传 `--sources native/sources_example`。所有出包脚本都接受同一个参数。
+
+站源模块是任意路径的 Go 模块，根包在 `init` 里调用 `core.Register` 注册站源，并按编译标签调用 `core.RegisterFlavor`：默认（`!zhenguojian`）注册 `hongguojian`，`zhenguojian` 标签下注册 `zhenguojian`，列出本模块要在该版本启用的站源 ID。多个模块注册的同名版本会合并站源名单，版本名不一致或站源 ID 重复时原生库加载即 panic。写法参照 `native/sources_example`。
 
 Flutter 运行前必须先编译对应平台 / 架构的 Go 核心：
 
@@ -61,7 +63,7 @@ Flutter 测试一律带 `DISABLE_REMOTE_IMAGES=true`，避免加载站源图片�
 Flutter 界面 + Go 原生核心。站源请求、解析、签名、缓存、下载调度和播放代理都在 Go 里完成，Dart 只负责界面、播放器和本地用户数据。
 
 - **FFI**：`native/bridge` 以 `-buildmode=c-shared` 只导出 `DuanjuRequest(json) -> json` 与 `DuanjuFree`。`lib/core_bridge.dart` 的 `NativeRepository` 把每次调用编码成 `{"action": ...}`，在 `Isolate.run` 中调用；Go 侧在 `native/core/app_runtime.go` 的 `NativeRequest` 里按 action 分派。新增能力两端都要改。Android 与 Windows 动态加载（`libduanju_core.so` / `duanju_core.dll`）；iOS 与 macOS 改成 `-buildmode=c-archive` 静态库（`ios/DuanjuCore`、`macos/DuanjuCore`）链进主程序，Dart 侧用 `DynamicLibrary.process()` 查符号，避免 dylib 的签名与库校验问题。
-- **Go 核心**：`native/core` 是运行时，站源只经它导出的接口（`Provider`、`Host` 及各可选接口）访问。全部站源与各版本的站源名单在站源仓库里，只单向依赖 core，由构建脚本生成的 `native/bridge/sources_gen.go` 空白导入接入。core 里 `app_*.go` 运行时与业务（目录缓存、下载、弹幕、存储、设置），`network_*.go` HTTP 客户端、DNS、CDN、限流。`app_stream.go` 在本机起播放代理，重写 HLS playlist、透传 Range，并处理带密钥的媒体。
+- **Go 核心**：`native/core` 是运行时，站源只经它导出的接口（`Provider`、`Host` 及各可选接口）访问。站源与各版本的站源名单放在站源模块里（官方站源模块是私有站源仓库，示例站源模块是 `native/sources_example`），只单向依赖 core，由构建脚本生成的 `native/bridge/sources_gen.go` 空白导入接入。core 里 `app_*.go` 运行时与业务（目录缓存、下载、弹幕、存储、设置），`network_*.go` HTTP 客户端、DNS、CDN、限流。`app_stream.go` 在本机起播放代理，重写 HLS playlist、透传 Range，并处理带密钥的媒体。
 - **Flutter**：界面在 `lib/ui/`（按页面分子目录，入口 `lib/main.dart` → `lib/ui/app.dart`），逻辑层平铺在 `lib/`，状态管理只用 ChangeNotifier。
 - **播放与下载**：播放器用 [media_kit](https://github.com/media-kit/media-kit) / libmpv；每集下载完由 [FFmpegKit min-gpl](https://github.com/sk3llo/ffmpeg_kit_flutter)（含 GPL 媒体组件）转成单个 mp4，只换封装、不重新编码，不参与正常播放。
 - **本地数据**：存储格式须兼容旧版。本地快照遇到未知键会整体报错，新增设置若要兼容旧版须存为快照外的独立键。
@@ -73,6 +75,7 @@ Flutter 界面 + Go 原生核心。站源请求、解析、签名、缓存、下
 | `lib/ui` | 界面：主题、导航壳、各页面、播放器、公共组件 |
 | `lib` | 逻辑层：FFI、站源目录、播放、下载、本地存储与用户 |
 | `native/core`、`native/bridge` | Go 运行时（缓存、下载、播放代理）及 C ABI |
+| `native/sources_example` | 示例站源模块（假数据，不访问网络） |
 | `android`、`windows`、`ios`、`macos` | 平台工程与资源 |
 | `packages/media_kit_libs_windows_video` | 本地覆盖的 Windows 媒体依赖插件 |
 | `scripts` | 构建、图标生成与数据清理脚本 |
@@ -80,7 +83,7 @@ Flutter 界面 + Go 原生核心。站源请求、解析、签名、缓存、下
 
 ## 站源开发约定
 
-站源是站源仓库里的 Go 原生 provider，不是运行期加载的脚本。新增站源实现 `core.Provider`（按需实现可选接口），在 `init` 里用 `core.Register` 登记描述符和工厂，并加进站源仓库 `flavor_*.go` 的版本名单；运行时与界面代码都不用改，界面的站源列表由核心在初始化时下发。
+站源是站源模块里的 Go 原生 provider，不是运行期加载的脚本。新增站源实现 `core.Provider`（按需实现可选接口），在 `init` 里用 `core.Register` 登记描述符和工厂，并加进所在模块 `flavor_*.go` 的版本名单；运行时与界面代码都不用改，界面的站源列表由核心在初始化时下发。
 
 ## 发布
 
@@ -99,7 +102,7 @@ Flutter 界面 + Go 原生核心。站源请求、解析、签名、缓存、下
 | `*-ios-unsigned` | arm64 iPhone 未签名 IPA |
 | `*-macos` | arm64 + x86_64 通用 dmg，ad-hoc 签名、未公证 |
 
-各平台出包任务用仓库 Secret `SOURCES_DEPLOY_KEY`（站源仓库只读 deploy key 的私钥）把站源仓库检出到 `guoapp-sources/`，再以 `--sources guoapp-sources` 构建。
+各平台出包任务用仓库 Secret `SOURCES_DEPLOY_KEY`（站源仓库只读 deploy key 的私钥）把站源仓库检出到 `guoapp-sources/`，再以 `--sources guoapp-sources` 构建，示例站源不会进入发布包。检查任务会对示例站源单独做编译检查。
 
 格式、分析、测试不阻塞出包；Android、Windows、iOS、macOS 全部成功后才创建 tag 和 Release，任一平台失败就不发布，已有 Release 不会被覆盖。
 

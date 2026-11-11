@@ -53,6 +53,12 @@ jobs:
       - run: go test -race -tags=zhenguojian ./...
         working-directory: native
         continue-on-error: true
+      - run: |
+          go work init . ./sources_example
+          go vet guoapp/sources-example
+          go vet -tags=zhenguojian guoapp/sources-example
+        working-directory: native
+        continue-on-error: true
 
   prepare:
     runs-on: ubuntu-latest
