@@ -326,6 +326,7 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
                 session: _session,
                 enabled: widget.fullscreen,
                 levels: _session.store.playbackPreferences.swipeLevels,
+                episodes: _session.store.playbackPreferences.swipeEpisodes,
                 child: LayoutBuilder(
                   builder: (context, constraints) => GestureDetector(
                     behavior: HitTestBehavior.opaque,

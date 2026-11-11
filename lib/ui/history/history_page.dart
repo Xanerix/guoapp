@@ -12,6 +12,7 @@ import '../widgets/drama_grid.dart';
 import '../widgets/drama_tile.dart';
 import '../widgets/focus_ring.dart';
 import '../widgets/motion/motion_widgets.dart';
+import '../widgets/page_header.dart';
 import '../widgets/search_field.dart';
 import '../widgets/status_view.dart';
 
@@ -24,8 +25,9 @@ typedef _View = ({
 });
 
 class HistoryPage extends StatefulWidget {
-  const HistoryPage({super.key, required this.store});
+  const HistoryPage({super.key, required this.store, this.root = false});
   final LocalStore store;
+  final bool root;
 
   @override
   State<HistoryPage> createState() => _HistoryPageState();
@@ -43,7 +45,7 @@ class _HistoryPageState extends State<HistoryPage> {
   @override
   void initState() {
     super.initState();
-    _keepFocus(_firstPoster);
+    if (!widget.root) _keepFocus(_firstPoster);
   }
 
   @override
@@ -307,48 +309,68 @@ class _HistoryPageState extends State<HistoryPage> {
 
   Widget _phone(BuildContext context, _View view) {
     final selection = view.selection;
+    final root = widget.root;
     return Scaffold(
-      appBar: AppBar(
-        leading: selection == null
-            ? null
-            : IconButton(
-                tooltip: '退出编辑',
-                onPressed: _finishEditing,
-                icon: const Icon(Icons.close_rounded),
+      appBar: root
+          ? null
+          : AppBar(
+              leading: selection == null
+                  ? null
+                  : IconButton(
+                      tooltip: '退出编辑',
+                      onPressed: _finishEditing,
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+              title: FadeSwitcher(
+                duration: Motion.short,
+                alignment: AlignmentDirectional.centerStart,
+                child: Text(
+                  key: ValueKey(selection == null),
+                  selection == null ? '观看记录' : '已选择 ${selection.length} 部',
+                ),
               ),
-        title: FadeSwitcher(
-          duration: Motion.short,
-          alignment: AlignmentDirectional.centerStart,
-          child: Text(
-            key: ValueKey(selection == null),
-            selection == null ? '观看记录' : '已选择 ${selection.length} 部',
-          ),
-        ),
-        actions: [
-          FadeSwitcher(
-            duration: Motion.short,
-            alignment: AlignmentDirectional.centerEnd,
-            child: Row(
-              key: ValueKey(selection == null),
-              mainAxisSize: MainAxisSize.min,
-              children: selection == null
-                  ? _browseActions(view, icons: false)
-                  : [_selectAll(view)],
+              actions: [
+                FadeSwitcher(
+                  duration: Motion.short,
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: Row(
+                    key: ValueKey(selection == null),
+                    mainAxisSize: MainAxisSize.min,
+                    children: selection == null
+                        ? _browseActions(view, icons: false)
+                        : [_selectAll(view)],
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
             ),
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
       body: SafeArea(
-        top: false,
+        top: root,
         bottom: false,
         child: _content(
           context,
           view,
           inset: 16,
           header: [
+            if (root)
+              FadeSwitcher(
+                child: selection == null
+                    ? PageHeader(
+                        key: const ValueKey(false),
+                        title: '观看记录',
+                        actions: _browseActions(view, icons: false),
+                      )
+                    : PageHeader(
+                        key: const ValueKey(true),
+                        title: '已选择 ${selection.length} 部',
+                        actions: [
+                          _selectAll(view),
+                          _textButton('完成', _finishEditing),
+                        ],
+                      ),
+              ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+              padding: EdgeInsets.fromLTRB(16, root ? 0 : 4, 16, 8),
               child: _search(),
             ),
             ?_sources(view, inset: 16, scroll: true),
@@ -384,7 +406,9 @@ class _HistoryPageState extends State<HistoryPage> {
                   children: [
                     ToggleIconSwitcher(
                       child: view.selection == null
-                          ? const BackButton(key: ValueKey(false))
+                          ? widget.root
+                                ? const SizedBox(key: ValueKey(false), width: 8)
+                                : const BackButton(key: ValueKey(false))
                           : IconButton(
                               key: const ValueKey(true),
                               tooltip: '退出编辑',

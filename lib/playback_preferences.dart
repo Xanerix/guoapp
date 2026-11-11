@@ -53,6 +53,8 @@ class PlaybackPreferences {
     this.preopen,
     this.doubleTapSeek = true,
     this.swipeLevels = true,
+    this.swipeEpisodes = false,
+    this.progressLine = true,
     this.autoHideControls = true,
     this.hideSystemBars = true,
     this.autoPictureInPicture = false,
@@ -75,6 +77,8 @@ class PlaybackPreferences {
   final bool? preopen;
   final bool doubleTapSeek;
   final bool swipeLevels;
+  final bool swipeEpisodes;
+  final bool progressLine;
   final bool autoHideControls;
   final bool hideSystemBars;
   final bool autoPictureInPicture;
@@ -99,6 +103,8 @@ class PlaybackPreferences {
     bool? preopen,
     bool? doubleTapSeek,
     bool? swipeLevels,
+    bool? swipeEpisodes,
+    bool? progressLine,
     bool? autoHideControls,
     bool? hideSystemBars,
     bool? autoPictureInPicture,
@@ -120,6 +126,8 @@ class PlaybackPreferences {
     preopen: preopen ?? this.preopen,
     doubleTapSeek: doubleTapSeek ?? this.doubleTapSeek,
     swipeLevels: swipeLevels ?? this.swipeLevels,
+    swipeEpisodes: swipeEpisodes ?? this.swipeEpisodes,
+    progressLine: progressLine ?? this.progressLine,
     autoHideControls: autoHideControls ?? this.autoHideControls,
     hideSystemBars: hideSystemBars ?? this.hideSystemBars,
     autoPictureInPicture: autoPictureInPicture ?? this.autoPictureInPicture,
@@ -143,6 +151,8 @@ class PlaybackPreferences {
     if (preopen != null) 'preopen': preopen,
     'doubleTapSeek': doubleTapSeek,
     'swipeLevels': swipeLevels,
+    'swipeEpisodes': swipeEpisodes,
+    'progressLine': progressLine,
     'autoHideControls': autoHideControls,
     'hideSystemBars': hideSystemBars,
     'autoPictureInPicture': autoPictureInPicture,
@@ -192,6 +202,8 @@ class PlaybackPreferences {
       preopen: value['preopen'] as bool?,
       doubleTapSeek: value['doubleTapSeek'] as bool? ?? true,
       swipeLevels: value['swipeLevels'] as bool? ?? true,
+      swipeEpisodes: value['swipeEpisodes'] as bool? ?? false,
+      progressLine: value['progressLine'] as bool? ?? true,
       autoHideControls: value['autoHideControls'] as bool? ?? true,
       hideSystemBars: value['hideSystemBars'] as bool? ?? true,
       autoPictureInPicture: value['autoPictureInPicture'] as bool? ?? false,

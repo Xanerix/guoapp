@@ -442,6 +442,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
           session: session,
           enabled: full,
           levels: session.store.playbackPreferences.swipeLevels,
+          episodes: session.store.playbackPreferences.swipeEpisodes,
           child: LayoutBuilder(
             builder: (context, constraints) => GestureDetector(
               behavior: HitTestBehavior.opaque,
@@ -486,7 +487,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
             ),
           ),
         ),
-        if (full && !visible)
+        if (full && !visible && session.store.playbackPreferences.progressLine)
           Positioned(
             left: 0,
             right: 0,

@@ -120,6 +120,17 @@ class SettingsSection extends StatelessWidget {
     return [
       SettingsCard(
         children: [
+          SwitchTile(
+            title: '显示弹幕',
+            subtitle: '与播放页的弹幕开关同步',
+            value: preferences.danmaku,
+            onChanged: (value) =>
+                savePreferences(preferences.copyWith(danmaku: value)),
+          ),
+        ],
+      ),
+      SettingsCard(
+        children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
             child: DanmakuSettings(
@@ -203,6 +214,18 @@ class SettingsSection extends StatelessWidget {
                   savePreferences(preferences.copyWith(swipeLevels: value)),
             ),
             SwitchTile(
+              title: '上下滑动切换剧集',
+              subtitle: preferences.swipeLevels
+                  ? '需先关闭滑动调节亮度/音量'
+                  : '横屏全屏时上滑播放下一集，下滑播放上一集',
+              value: preferences.swipeEpisodes,
+              onChanged: preferences.swipeLevels
+                  ? null
+                  : (value) => savePreferences(
+                      preferences.copyWith(swipeEpisodes: value),
+                    ),
+            ),
+            SwitchTile(
               title: '竖屏自动隐藏播控',
               subtitle: '竖屏播放几秒后隐藏标题、进度条和选集，单击暂停时重新显示',
               value: preferences.autoHideControls,
@@ -221,6 +244,13 @@ class SettingsSection extends StatelessWidget {
                       preferences.copyWith(hideSystemBars: value),
                     )
                   : null,
+            ),
+            SwitchTile(
+              title: '横屏底部进度线',
+              subtitle: '横屏全屏播控隐藏后，在画面底边保留一条细进度线',
+              value: preferences.progressLine,
+              onChanged: (value) =>
+                  savePreferences(preferences.copyWith(progressLine: value)),
             ),
           ],
         ),

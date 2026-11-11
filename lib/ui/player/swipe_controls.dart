@@ -10,6 +10,7 @@ import 'fade_presence.dart';
 import 'player_surface.dart';
 
 const _seekSpan = 120000;
+const _episodeSwipeDistance = 60.0;
 
 enum _Level { brightness, volume }
 
@@ -19,11 +20,13 @@ class SwipeControls extends StatefulWidget {
     required this.session,
     this.enabled = true,
     this.levels = false,
+    this.episodes = false,
     required this.child,
   });
   final PlaybackSession session;
   final bool enabled;
   final bool levels;
+  final bool episodes;
   final Widget child;
 
   @override
@@ -36,6 +39,7 @@ class _SwipeControlsState extends State<SwipeControls> {
   _Level? _level;
   double? _value;
   double _pending = 0;
+  double? _episodeOffset;
 
   PlaybackSession get _session => widget.session;
 
@@ -45,6 +49,7 @@ class _SwipeControlsState extends State<SwipeControls> {
     if (widget.enabled) return;
     _seekCancel();
     _levelEnd();
+    _episodeCancel();
   }
 
   int get _duration => _session.player.state.duration.inMilliseconds;
@@ -121,6 +126,36 @@ class _SwipeControlsState extends State<SwipeControls> {
     if (_level != null) setState(() => _level = null);
   }
 
+  int get _episodeStep {
+    final offset = _episodeOffset ?? 0;
+    if (offset.abs() < _episodeSwipeDistance) return 0;
+    return offset < 0 ? 1 : -1;
+  }
+
+  void _episodeStart(DragStartDetails _) => setState(() => _episodeOffset = 0);
+
+  void _episodeUpdate(DragUpdateDetails details) {
+    final offset = _episodeOffset;
+    if (offset == null) return;
+    setState(() => _episodeOffset = offset + details.delta.dy);
+  }
+
+  void _episodeEnd(DragEndDetails _) {
+    final step = _episodeStep;
+    _episodeCancel();
+    if (step != 0) unawaited(_session.play(_session.index + step));
+  }
+
+  void _episodeCancel() {
+    if (_episodeOffset != null) setState(() => _episodeOffset = null);
+  }
+
+  String? _episodeLabel() => switch (_episodeStep) {
+    1 => _session.hasNext ? '松手播放下一集' : '已经是最后一集',
+    -1 => _session.hasPrevious ? '松手播放上一集' : '已经是第一集',
+    _ => null,
+  };
+
   @override
   Widget build(BuildContext context) {
     final seek =
@@ -128,6 +163,8 @@ class _SwipeControlsState extends State<SwipeControls> {
         (defaultTargetPlatform == TargetPlatform.android ||
             defaultTargetPlatform == TargetPlatform.iOS);
     final levels = seek && widget.levels;
+    final episodes = seek && !levels && widget.episodes;
+    final episodeLabel = _episodeLabel();
     final level = _level;
     final value = _value;
     return Stack(
@@ -140,10 +177,24 @@ class _SwipeControlsState extends State<SwipeControls> {
           onHorizontalDragCancel: seek ? _seekCancel : null,
           onVerticalDragStart: levels
               ? (details) => unawaited(_levelStart(details))
+              : episodes
+              ? _episodeStart
               : null,
-          onVerticalDragUpdate: levels ? _levelUpdate : null,
-          onVerticalDragEnd: levels ? (_) => _levelEnd() : null,
-          onVerticalDragCancel: levels ? _levelEnd : null,
+          onVerticalDragUpdate: levels
+              ? _levelUpdate
+              : episodes
+              ? _episodeUpdate
+              : null,
+          onVerticalDragEnd: levels
+              ? (_) => _levelEnd()
+              : episodes
+              ? _episodeEnd
+              : null,
+          onVerticalDragCancel: levels
+              ? _levelEnd
+              : episodes
+              ? _episodeCancel
+              : null,
           child: widget.child,
         ),
         FadePresence(
@@ -151,6 +202,17 @@ class _SwipeControlsState extends State<SwipeControls> {
               ? _badge(_seekLabel())
               : level != null && value != null
               ? _badge(_levelBar(level, value))
+              : episodeLabel != null
+              ? _badge(
+                  Text(
+                    episodeLabel,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                )
               : null,
         ),
       ],
