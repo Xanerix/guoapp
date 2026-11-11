@@ -781,6 +781,14 @@ class PlaybackSession extends ChangeNotifier {
           ),
           play: _foreground && _playIntent,
         );
+        // open(play: true) 只是在 mpv open 之前先设 pause=false。
+        // mpv 真正进入播放态要等 demux/decoder init 完成。
+        // 显式再 play 一次，确保指令不会被 mpv 初始化覆盖。
+        if (_playIntent && _foreground) {
+          try {
+            await player.play();
+          } catch (_) {}
+        }
         if (!_current(ticket)) return;
         _openedIndex = index;
         _health.reset();
@@ -891,40 +899,39 @@ class PlaybackSession extends ChangeNotifier {
       if (state.playing && advanced) return;
       // 正在缓冲说明网络在拉数据，别打断它。
       if (state.buffering) continue;
-      // 第一轮只观察，避免打断正常的起播流程。
-      if (attempt == 0) continue;
+      // open(play: true) 可能被 mpv 初始化覆盖，第一轮就开始救援，
+      // 不再空等 800ms。
       try {
         if (!state.playing) {
+          DiaryService.add(
+            '[Play] 起播救援 #${attempt + 1} playing=false 补发play '
+            '位置=${state.position} 集=${_index + 1}',
+          );
           await player.play();
         } else if (nudges < 2) {
           nudges++;
+          DiaryService.add(
+            '[Play] 起播救援 #${attempt + 1} playing=true 位置不动 踢解码器 '
+            '位置=${state.position} 集=${_index + 1}',
+          );
           await _kickPlayer();
         } else if (!resynced) {
-          // 仍不推进：回到当前位置重新 seek 一次，唤醒解码器。
           resynced = true;
+          DiaryService.add(
+            '[Play] 起播救援 #${attempt + 1} 位置不动 seek+play 集=${_index + 1}',
+          );
           await player.seek(state.position);
           await player.play();
         }
       } catch (_) {
-        return;
+        // 不要因为一次临时异常就放弃——继续下一轮救援，总有人能打中。
       }
     }
-    // 6 次踢解码器 + seek 都没能让位置推进：播放器真卡了，
-    // 直接走恢复链路（换线路/刷新地址），不要等 20 秒健康检查。
-    if (_closed ||
-        ticket != _generation ||
-        !_foreground ||
-        !_playIntent ||
-        _pausedByUser) {
-      return;
-    }
-    final state = player.state;
-    if (state.buffering || state.completed) return;
     DiaryService.add(
-      '[Play] 起播救援耗尽，触发恢复 playing=${state.playing} '
-      '位置=${state.position} 集=${_index + 1}',
+      '[Play] 起播救援耗尽 playing=${player.state.playing} '
+      '位置=${player.state.position} buffering=${player.state.buffering} '
+      'duration=${player.state.duration} 集=${_index + 1}',
     );
-    _queueRecovery('ensure_playing_exhausted');
   }
 
   /// 状态显示"播放中"但画面定住时，暂停再播放把卡住的解码器踢一下。
