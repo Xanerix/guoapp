@@ -860,8 +860,9 @@ class PlaybackSession extends ChangeNotifier {
     _bind();
     _openedIndex = index;
     _acceptErrors = true;
+    final stopping = previous.stop().catchError((Object _) {});
     unawaited(
-      previous.stop().catchError((Object _) {}).whenComplete(() {
+      stopping.whenComplete(() {
         _standbyBusy = false;
         _prime(); // stop 完了，立刻尝试预加载下一集
       }),
@@ -874,6 +875,11 @@ class PlaybackSession extends ChangeNotifier {
       await _limitCache(next, false);
       await next.setVolume(volume);
       await _setRate(_rate);
+
+      // 等待上一集播放器完全停止，再启动新一集，避免两个播放器
+      // 在换集瞬间同时处于播放启动阶段造成状态竞争。
+      await stopping;
+
       if (_current(ticket) && _foreground && _playIntent) {
         await next.play();
         unawaited(_ensurePlaying(ticket));
