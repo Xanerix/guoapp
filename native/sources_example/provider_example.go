@@ -33,6 +33,8 @@ var exampleDescriptor = core.SourceDescriptor{
 
 var errExamplePlayback = errors.New("示例站源只有假数据，不能播放")
 
+var _ core.SourceAPI1
+
 type exampleProvider struct{}
 
 func init() {
