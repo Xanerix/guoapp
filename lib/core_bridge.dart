@@ -775,6 +775,7 @@ class NativeRepository extends AppRepository {
         DramaSeason.fromJson(Map<String, dynamic>.from(row as Map)),
     ];
   }
+
   @override
   Future<PlaybackPlan> resolve(
     Drama drama,

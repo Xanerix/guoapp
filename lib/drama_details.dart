@@ -32,6 +32,7 @@ class DramaDetails extends ChangeNotifier {
 
   Drama get drama => _drama;
   List<Episode> get episodes => _episodes;
+
   /// 同站源内的季列表；长度 ≤ 1 时 UI 不展示季切换。
   List<DramaSeason> get seasons => _seasons;
   bool get seasonsLoading => _seasonsLoading;

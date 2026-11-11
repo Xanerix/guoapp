@@ -203,9 +203,8 @@ class ExplorePageState extends State<ExplorePage> {
       count: tabs.length,
       ready: switch (explore.feed) {
         // 有内容时等首屏海报就绪再揭幕，避免新分类先闪一片灰色占位。
-        final feed? => feed.items.isEmpty
-            ? !feed.loading
-            : explore.postersReady,
+        final feed? =>
+          feed.items.isEmpty ? !feed.loading : explore.postersReady,
         null => true,
       },
       onSwitch: (index) => explore.select(tabs[index].id),

@@ -233,10 +233,7 @@ class ExploreFeed extends ChangeNotifier {
       try {
         await Future.wait([
           for (final drama in posters)
-            CoverLoader.preload(
-              repository,
-              drama,
-            ).catchError((Object _) => ''),
+            CoverLoader.preload(repository, drama).catchError((Object _) => ''),
         ]).timeout(_posterWarmTimeout);
       } catch (_) {}
       if (_disposed || token != _warmToken) return;
