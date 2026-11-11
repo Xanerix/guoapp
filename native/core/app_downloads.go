@@ -244,10 +244,6 @@ func (manager *nativeDownloads) snapshotSince(since string) (map[string]any, err
 	return map[string]any{"jobs": json.RawMessage(data), "fingerprint": fingerprint}, nil
 }
 
-func (manager *nativeDownloads) enqueue(input nativeInput) (int, error) {
-	return manager.enqueueContext(context.Background(), input)
-}
-
 func (manager *nativeDownloads) enqueueContext(ctx context.Context, input nativeInput) (int, error) {
 	if !nativeDramaAvailable(input.Drama) {
 		return 0, errNativeBuildSource

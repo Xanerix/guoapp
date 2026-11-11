@@ -12,10 +12,6 @@ import (
 	"time"
 )
 
-func (p *legacyProvider) fetchLegacyCatalogPage(ctx context.Context, page int) ([]Drama, bool, error) {
-	return p.fetchLegacyCatalogCategoryPage(ctx, page, "")
-}
-
 func (p *legacyProvider) fetchLegacyCatalogCategoryPage(ctx context.Context, page int, category string) ([]Drama, bool, error) {
 	var tabs legacyTabList
 	if err := p.fetchAPI(ctx, "/api/app/playlet-tab/all", nil, &tabs); err != nil {
@@ -74,11 +70,6 @@ func (p *legacyProvider) fetchLegacyCatalogCategoryPage(ctx context.Context, pag
 		}
 	}
 	return items, hasMore, errors.Join(failures...)
-}
-
-func (p *legacyProvider) fetchLegacyChapters(ctx context.Context, sourceID string) (string, []Chapter, error) {
-	drama, chapters, err := p.fetchLegacyDetail(ctx, sourceID)
-	return drama.DisplayTitle(), chapters, err
 }
 
 func (p *legacyProvider) fetchLegacyDetail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {

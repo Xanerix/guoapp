@@ -38,11 +38,6 @@ func newDNSResolver(transport *http.Transport) *dnsResolver {
 	}
 }
 
-func (resolver *dnsResolver) lookup(ctx context.Context, host string) ([]string, error) {
-	entry, err := resolver.lookupEntry(ctx, host, "")
-	return entry.addresses, err
-}
-
 func (resolver *dnsResolver) lookupEntry(ctx context.Context, host, subnet string) (dnsCacheEntry, error) {
 	cacheKey := host + "|" + subnet
 	for {
