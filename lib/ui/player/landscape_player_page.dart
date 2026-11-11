@@ -1510,89 +1510,107 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
       child: Column(
         children: [
           Expanded(
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  AspectRatio(
-                    aspectRatio: 16 / 9,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        if (player != null)
-                          PlayerVideo(
-                            key: ValueKey(player),
-                            handle: widget.handle,
-                            player: player,
-                            covered: session.surfaceCover,
-                          )
-                        else
-                          IgnorePointer(
-                            child: Center(
-                              child: Text(
-                                '第 ${session.detail.episodes[index].number} 集',
-                                style: TextStyle(
-                                  color: Colors.white.withValues(alpha: .72),
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ),
-                        if (current) ...[
-                          DanmakuOverlay(
-                            controller: session.danmaku,
-                            aspectRatio: session.aspectRatio,
-                            style: session.danmakuStyle,
-                          ),
-                          IgnorePointer(
-                            child: AnimatedScale(
-                              duration: Motion.short,
-                              scale: session.paused ? 1 : .8,
-                              child: AnimatedOpacity(
-                                duration: Motion.short,
-                                opacity: session.paused ? 1 : 0,
-                                child: Container(
-                                  padding: const EdgeInsets.all(14),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black.withValues(alpha: .45),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(
-                                    Icons.play_arrow_rounded,
-                                    color: Colors.white,
-                                    size: 48,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          SwipeControls(
-                            session: session,
-                            enabled: false,
-                            child: LayoutBuilder(
-                              builder: (context, constraints) =>
-                                  GestureDetector(
-                                    behavior: HitTestBehavior.opaque,
-                                    onTapUp: (details) => _tapUp(
-                                      details,
-                                      constraints.maxWidth,
-                                      false,
-                                    ),
-                                    onLongPressStart: (_) => _pressStart(),
-                                    onLongPressEnd: (_) => _pressEnd(),
-                                    onLongPressCancel: _pressEnd,
-                                  ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                // 给 AspectRatio 明确约束，避免 Column(mainAxisSize: min)
+                // 把它的 intrinsic height 算成 0。
+                final maxWidth = constraints.maxWidth;
+                final maxHeight = constraints.maxHeight;
+                final videoHeight = math.min(
+                  maxHeight,
+                  maxWidth * 9 / 16,
+                );
+                final topPadding = (maxHeight - videoHeight) / 2;
+                return Padding(
+                  padding: EdgeInsets.only(
+                    top: topPadding > 0 ? topPadding : 0,
+                    bottom: topPadding > 0 ? topPadding * 0.5 : 0,
                   ),
-                  const SizedBox(height: 10),
-                  _fullscreenPill(),
-                ],
-              ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        height: videoHeight,
+                        child: AspectRatio(
+                          aspectRatio: 16 / 9,
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              if (player != null)
+                                PlayerVideo(
+                                  key: ValueKey(player),
+                                  handle: widget.handle,
+                                  player: player,
+                                  covered: session.surfaceCover,
+                                )
+                              else
+                                IgnorePointer(
+                                  child: Center(
+                                    child: Text(
+                                      '第 ${session.detail.episodes[index].number} 集',
+                                      style: TextStyle(
+                                        color: Colors.white.withValues(alpha: .72),
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              if (current) ...[
+                                DanmakuOverlay(
+                                  controller: session.danmaku,
+                                  aspectRatio: session.aspectRatio,
+                                  style: session.danmakuStyle,
+                                ),
+                                IgnorePointer(
+                                  child: AnimatedScale(
+                                    duration: Motion.short,
+                                    scale: session.paused ? 1 : .8,
+                                    child: AnimatedOpacity(
+                                      duration: Motion.short,
+                                      opacity: session.paused ? 1 : 0,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(14),
+                                        decoration: BoxDecoration(
+                                          color: Colors.black.withValues(alpha: .45),
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(
+                                          Icons.play_arrow_rounded,
+                                          color: Colors.white,
+                                          size: 48,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                SwipeControls(
+                                  session: session,
+                                  enabled: false,
+                                  child: LayoutBuilder(
+                                    builder: (context, constraints) =>
+                                        GestureDetector(
+                                          behavior: HitTestBehavior.opaque,
+                                          onTapUp: (details) => _tapUp(
+                                            details,
+                                            constraints.maxWidth,
+                                            false,
+                                          ),
+                                          onLongPressStart: (_) => _pressStart(),
+                                          onLongPressEnd: (_) => _pressEnd(),
+                                          onLongPressCancel: _pressEnd,
+                                        ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        )),
+                        const SizedBox(height: 10),
+                        _fullscreenPill(),
+                      ],
+                    ));
+              },
             ),
           ),
           _feed(context),
