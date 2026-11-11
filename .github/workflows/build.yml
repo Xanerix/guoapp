@@ -100,6 +100,12 @@ jobs:
             signing: ZHENGUOJIAN
     steps:
       - uses: actions/checkout@v4
+      - &checkout-sources
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/guoapp-sources
+          ssh-key: ${{ secrets.SOURCES_DEPLOY_KEY }}
+          path: guoapp-sources
       - &setup-python
         uses: actions/setup-python@v5
         with:
@@ -127,7 +133,7 @@ jobs:
           fi
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -d '[:space:]' | base64 -d > "$RUNNER_TEMP/release.jks"
           echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
-      - run: python scripts/build_android.py ${{ matrix.arguments }}
+      - run: python scripts/build_android.py ${{ matrix.arguments }} --sources guoapp-sources
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets[format('{0}_KEYSTORE_PASSWORD', matrix.signing)] }}
           ANDROID_KEY_ALIAS: ${{ secrets[format('{0}_KEY_ALIAS', matrix.signing)] }}
@@ -174,6 +180,7 @@ jobs:
     strategy: *editions
     steps:
       - uses: actions/checkout@v4
+      - *checkout-sources
       - *setup-go
       - *setup-python
       - *setup-flutter
@@ -191,7 +198,7 @@ jobs:
       - name: Set up Inno Setup
         shell: pwsh
         run: choco upgrade innosetup --no-progress -y
-      - run: python scripts/build_windows.py ${{ matrix.arguments }}
+      - run: python scripts/build_windows.py ${{ matrix.arguments }} --sources guoapp-sources
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.edition }}-windows
@@ -206,6 +213,7 @@ jobs:
     strategy: *editions
     steps:
       - uses: actions/checkout@v4
+      - *checkout-sources
       - *setup-python
       - *setup-go
       - *setup-flutter
@@ -225,7 +233,7 @@ jobs:
           flutter --version
           flutter precache --ios
       - name: Build unsigned iOS packages
-        run: python scripts/build_ios.py ${{ matrix.arguments }}
+        run: python scripts/build_ios.py ${{ matrix.arguments }} --sources guoapp-sources
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.edition }}-ios-unsigned
@@ -240,6 +248,7 @@ jobs:
     strategy: *editions
     steps:
       - uses: actions/checkout@v4
+      - *checkout-sources
       - *setup-python
       - *setup-go
       - *setup-flutter
@@ -259,7 +268,7 @@ jobs:
           flutter --version
           flutter precache --macos
       - name: Build macOS packages
-        run: python scripts/build_macos.py ${{ matrix.arguments }}
+        run: python scripts/build_macos.py ${{ matrix.arguments }} --sources guoapp-sources
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.edition }}-macos

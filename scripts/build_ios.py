@@ -9,7 +9,7 @@ import sys
 import zipfile
 from pathlib import Path
 
-from app_build import BuildVariant, add_variant_argument
+from app_build import BuildVariant, add_variant_argument, add_sources_argument, link_sources
 
 root = Path(__file__).resolve().parents[1]
 
@@ -103,8 +103,10 @@ def main():
     parser.add_argument('--simulator', action='store_true', help='额外生成模拟器核心；不启动模拟器')
     parser.add_argument('--export-options', type=Path, help='使用自己的 Xcode 签名配置导出 IPA')
     add_variant_argument(parser)
+    add_sources_argument(parser)
     options = parser.parse_args()
     variant = BuildVariant(options.all_sources)
+    link_sources(options.sources)
     write_variant_config(variant)
     build_core(options.simulator, variant)
     if options.core_only:

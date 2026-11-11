@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from app_build import BuildVariant, add_variant_argument
+from app_build import BuildVariant, add_variant_argument, add_sources_argument, link_sources
 
 root = Path(__file__).resolve().parents[1]
 
@@ -76,8 +76,10 @@ def repair_media_kit(env):
 def main():
     parser = argparse.ArgumentParser(description='构建红果鉴 / 全站源版 macOS 应用与 dmg')
     add_variant_argument(parser)
+    add_sources_argument(parser)
     options = parser.parse_args()
     variant = BuildVariant(options.all_sources)
+    link_sources(options.sources)
     if platform.system() != 'Darwin':
         raise SystemExit('macOS 构建需要 macOS 与完整 Xcode。')
     env = toolchain_environment(developer_directory())

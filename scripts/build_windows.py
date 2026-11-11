@@ -5,13 +5,15 @@ import subprocess
 import sys
 from pathlib import Path
 
-from app_build import BuildVariant, add_variant_argument
+from app_build import BuildVariant, add_variant_argument, add_sources_argument, link_sources
 
 root = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
 add_variant_argument(parser)
+add_sources_argument(parser)
 options = parser.parse_args()
 variant = BuildVariant(options.all_sources)
+link_sources(options.sources)
 env = os.environ.copy()
 env.setdefault('GOPROXY', 'https://goproxy.cn,direct')
 env.setdefault('GOSUMDB', 'off')

@@ -1,6 +1,9 @@
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
+SOURCES_MODULE = 'guoapp/sources'
+NATIVE_ROOT = Path(__file__).resolve().parents[1] / 'native'
 ENVIRONMENT_DEFINES = ['PROJECT_URL', 'TELEGRAM_GROUP_URL', 'TELEGRAM_CHANNEL_URL',
                        'ZHENGUOJIAN_DISPLAY_NAME', 'ZHENGUOJIAN_LATIN_NAME']
 
@@ -57,3 +60,23 @@ class BuildVariant:
 def add_variant_argument(parser):
     parser.add_argument('--all-sources', action='store_true',
                         help='构建包含全部站源的全站源版；默认构建仅红果的红果鉴')
+
+
+def add_sources_argument(parser):
+    parser.add_argument('--sources', type=Path,
+                        help='站源仓库路径；接入一次后会记住，之后可省略')
+
+
+def link_sources(path):
+    workspace = NATIVE_ROOT / 'go.work'
+    anchor = NATIVE_ROOT / 'bridge' / 'sources_gen.go'
+    if path:
+        directory = path.expanduser().resolve()
+        manifest = directory / 'go.mod'
+        declared = manifest.read_text(encoding='utf-8').splitlines() if manifest.is_file() else []
+        if f'module {SOURCES_MODULE}' not in (line.strip() for line in declared):
+            raise SystemExit(f'站源仓库路径无效，需要模块 {SOURCES_MODULE} 所在目录：' + str(directory))
+        workspace.write_text(f'go 1.24.1\n\nuse (\n\t.\n\t{directory.as_posix()}\n)\n', encoding='utf-8')
+        anchor.write_text(f'package main\n\nimport _ "{SOURCES_MODULE}"\n', encoding='utf-8')
+    if not workspace.is_file() or not anchor.is_file():
+        raise SystemExit('尚未接入站源仓库，请加上 --sources <站源仓库路径>。')
