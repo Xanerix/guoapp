@@ -1515,6 +1515,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
       child: Column(
         children: [
           Expanded(
+            flex: 3,
             child: Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -1600,7 +1601,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
               ),
             ),
           ),
-          _feed(context),
+          Expanded(flex: 2, child: _feed(context)),
           if (current) _portraitPlayerBar(context),
         ],
       ),

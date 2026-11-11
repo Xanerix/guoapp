@@ -1366,6 +1366,9 @@ class PlaybackSession extends ChangeNotifier {
         '[Play] 进入后台，保存恢复状态 集数=${_index + 1} '
         '位置=${_resumePosition.toStringAsFixed(1)} 续播=$_resumeIntent',
       );
+      // Android 的 libmpv 不会像 iOS AVPlayer 那样被系统自动挂起，
+      // 必须主动 pause 才能停掉音频/省电。iOS 则保留 texture 最后一帧无缝恢复。
+      if (Platform.isAndroid) unawaited(player.pause());
       unawaited(saveProgress());
       return;
     }
