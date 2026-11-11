@@ -282,6 +282,11 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
     }
     if (_tapTimer?.isActive ?? false) {
       _tapTimer!.cancel();
+      if (!full) {
+        // 竖屏信息流页面里双击不暂停、也不快进，只保持控制条可见。
+        _toggleControls();
+        return;
+      }
       if (side == 0) {
         _session.togglePlayback();
       } else {
@@ -404,7 +409,6 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
     final full = MediaQuery.orientationOf(context) == Orientation.landscape;
     final theme = Theme.of(context);
     final dark = playerTheme(context);
-    final visible = _visible || _pinned;
     final video = Theme(
       data: dark,
       child: Builder(builder: (context) => _video(context, full)),
@@ -424,43 +428,17 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
         child: full
             ? Scaffold(backgroundColor: Colors.black, body: video)
             : Scaffold(
-                backgroundColor: theme.colorScheme.surface,
-                body: Column(
-                  children: [
-                    _appBar(context),
-                    // 横屏比例的影片在竖屏下居中显示，上下留黑，可上下滑动换集。
-                    SizedBox(
-                      width: double.infinity,
-                      height: _videoBandHeight(context),
-                      child: ColoredBox(
-                        color: Colors.black,
-                        child: Stack(
-                          children: [
-                            Center(
-                              child: AspectRatio(
-                                aspectRatio: 16 / 9,
-                                child: video,
-                              ),
-                            ),
-                            Positioned(
-                              left: 16,
-                              bottom: 12,
-                              child: AnimatedOpacity(
-                                opacity: visible ? 0 : 1,
-                                duration: const Duration(milliseconds: 180),
-                                child: IgnorePointer(
-                                  ignoring: visible,
-                                  child: _fullscreenPill(),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    Expanded(child: _feed(context)),
-                    _episodeBar(context),
-                  ],
+                backgroundColor: Colors.black,
+                body: Theme(
+                  data: dark,
+                  child: Column(
+                    children: [
+                      _appBar(context),
+                      // 整块区域（视频 + 信息流）都在 PageView 里，整屏上下滑。
+                      Expanded(child: video),
+                      _episodeBar(context),
+                    ],
+                  ),
                 ),
               ),
       ),
@@ -487,7 +465,9 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
             itemCount:
                 session.detail.episodes.length +
                 (session.nextSeason != null ? 1 : 0),
-            itemBuilder: (context, index) => _episode(context, index, full),
+            itemBuilder: (context, index) => full
+                ? _episode(context, index, full)
+                : _pageContent(context, index),
           ),
         ),
         FadePresence(
@@ -513,17 +493,18 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
           scaleFrom: .9,
           child: _streak != 0 ? _streakBadge(full) : null,
         ),
-        IgnorePointer(
-          ignoring: !visible,
-          child: AnimatedOpacity(
-            opacity: visible ? 1 : 0,
-            duration: const Duration(milliseconds: 180),
-            child: Listener(
-              onPointerDown: (_) => _scheduleHide(),
-              child: full ? _fullControls(context) : _miniControls(context),
+        if (full)
+          IgnorePointer(
+            ignoring: !visible,
+            child: AnimatedOpacity(
+              opacity: visible ? 1 : 0,
+              duration: const Duration(milliseconds: 180),
+              child: Listener(
+                onPointerDown: (_) => _scheduleHide(),
+                child: _fullControls(context),
+              ),
             ),
           ),
-        ),
         if (full && !visible)
           Positioned(
             left: 0,
@@ -594,13 +575,6 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
             ),
       ],
     );
-  }
-
-  /// 竖屏下给横向影片预留的高度：至少能完整放下 16:9，最多占半屏。
-  double _videoBandHeight(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
-    final band = size.width * 9 / 16 + MediaQuery.paddingOf(context).top;
-    return band.clamp(size.height * .34, size.height * .52);
   }
 
   /// 最后一集之后的一页：继续上滑衔接下一季。
@@ -1540,6 +1514,105 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
       ),
     ),
   );
+
+  /// 竖屏手持时的一页：视频在上方垂直居中，下方是「全屏观看」与信息流。
+  /// 整页都在 PageView 里，所以手指放在任何位置上下滑都能换集。
+  Widget _pageContent(BuildContext context, int index) {
+    final session = _session;
+    if (index >= session.detail.episodes.length) {
+      return _nextSeasonPage(context);
+    }
+    final current = index == session.index;
+    final player = current
+        ? session.player
+        : index == session.standbyIndex
+        ? session.standby
+        : null;
+    return ColoredBox(
+      color: Colors.black,
+      child: Column(
+        children: [
+          Expanded(
+            flex: 6,
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AspectRatio(
+                    aspectRatio: 16 / 9,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        if (player != null)
+                          PlayerVideo(
+                            key: ValueKey(player),
+                            handle: widget.handle,
+                            player: player,
+                            covered: session.surfaceCover,
+                          )
+                        else
+                          IgnorePointer(
+                            child: Center(
+                              child: Text(
+                                '第 ${session.detail.episodes[index].number} 集',
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: .72),
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                        if (current) ...[
+                          DanmakuOverlay(
+                            controller: session.danmaku,
+                            aspectRatio: session.aspectRatio,
+                            style: session.danmakuStyle,
+                          ),
+                          SwipeControls(
+                            session: session,
+                            enabled: false,
+                            child: LayoutBuilder(
+                              builder: (context, constraints) =>
+                                  GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
+                                    onTapUp: (details) => _tapUp(
+                                      details,
+                                      constraints.maxWidth,
+                                      false,
+                                    ),
+                                    onLongPressStart: (_) => _pressStart(),
+                                    onLongPressEnd: (_) => _pressEnd(),
+                                    onLongPressCancel: _pressEnd,
+                                  ),
+                            ),
+                          ),
+                          Listener(
+                            onPointerDown: (_) => _scheduleHide(),
+                            child: IgnorePointer(
+                              ignoring: !_visible,
+                              child: AnimatedOpacity(
+                                opacity: _visible ? 1 : 0,
+                                duration: const Duration(milliseconds: 180),
+                                child: _miniControls(context),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  _fullscreenPill(),
+                ],
+              ),
+            ),
+          ),
+          Expanded(flex: 4, child: _feed(context)),
+        ],
+      ),
+    );
+  }
 
   Widget _feed(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
