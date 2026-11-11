@@ -1356,8 +1356,8 @@ class PlaybackSession extends ChangeNotifier {
       }
       // 只信用户意图：系统挂起/恢复期间底层 playing 可能与实际操作不一致。
       _resumeIntent = _playIntent;
-      // iOS: 保留 Player/standby/preloader 原样，前台先尝试原地 play()，
-      // 失败再走 _restoreAfterBackground 兜底。pause 已省电，不用主动丢实例。
+      // 不主动 pause player——iOS 切后台时系统会挂起 AVPlayer 并保留
+      // 最后一帧 pixel buffer。回前台直接 play() 就能无缝接上，不会花屏。
       endBoost();
       _playIntent = false;
       // 锁屏/切后台时释放屏幕常亮，省电。
@@ -1366,7 +1366,6 @@ class PlaybackSession extends ChangeNotifier {
         '[Play] 进入后台，保存恢复状态 集数=${_index + 1} '
         '位置=${_resumePosition.toStringAsFixed(1)} 续播=$_resumeIntent',
       );
-      unawaited(player.pause());
       unawaited(saveProgress());
       return;
     }
