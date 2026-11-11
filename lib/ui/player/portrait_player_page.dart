@@ -304,6 +304,18 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
     if (_pointers.isEmpty && from != null) setState(() => _pinchFrom = null);
   }
 
+  bool get _fillable => _session.aspectKnown && _fillZoom > 1.01;
+
+  bool get _filled => _fillable && _zoom >= _fillZoom - .01;
+
+  void _toggleFill() {
+    if (!_fillable) return;
+    final filled = !_filled;
+    setState(() => _zoom = filled ? _fillZoom : 1);
+    unawaited(HapticFeedback.selectionClick());
+    _say(filled ? '已铺满屏幕' : '已恢复完整画面');
+  }
+
   void _settleZoom() {
     final fill = _fillZoom;
     final filled = _pinchBase > 1
@@ -610,7 +622,15 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
           right: 16,
           bottom: bottom + 16,
           height: 44,
-          child: _chrome(_episodeStrip()),
+          child: _chrome(
+            Row(
+              spacing: 8,
+              children: [
+                Expanded(child: _episodeStrip()),
+                _fillButton(),
+              ],
+            ),
+          ),
         ),
         Positioned(
           left: 0,
@@ -866,6 +886,35 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
               setState(_endSeek);
             }
           },
+        ),
+      ),
+    );
+  }
+
+  Widget _fillButton() {
+    final filled = _filled;
+    final primary = Theme.of(context).colorScheme.primary;
+    return Semantics(
+      button: true,
+      toggled: filled,
+      label: filled ? '恢复完整画面' : '铺满屏幕',
+      child: Material(
+        color: filled
+            ? primary.withValues(alpha: .9)
+            : Colors.white.withValues(alpha: .14),
+        borderRadius: BorderRadius.circular(12),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: _fillable ? _toggleFill : null,
+          child: SizedBox(
+            width: 44,
+            height: 44,
+            child: Icon(
+              Icons.height_rounded,
+              size: 22,
+              color: Colors.white.withValues(alpha: _fillable ? 1 : .36),
+            ),
+          ),
         ),
       ),
     );
