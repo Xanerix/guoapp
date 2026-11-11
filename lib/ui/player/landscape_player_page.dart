@@ -1518,103 +1518,101 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
       child: Column(
         children: [
           Expanded(
+            flex: 3,
             child: LayoutBuilder(
               builder: (context, constraints) {
-                // 给 AspectRatio 明确约束，避免 Column(mainAxisSize: min)
-                // 把它的 intrinsic height 算成 0。
+                // 用显式宽度算 16:9 高度：AspectRatio 单独放在 Column
+                // (mainAxisSize: min) 里会被算成 0 高度，所以外面套 SizedBox。
                 final maxWidth = constraints.maxWidth;
                 final maxHeight = constraints.maxHeight;
-                final videoHeight = math.min(maxHeight, maxWidth * 9 / 16);
-                final topPadding = (maxHeight - videoHeight) / 2;
-                return Padding(
-                  padding: EdgeInsets.only(
-                    top: topPadding > 0 ? topPadding : 0,
-                    bottom: topPadding > 0 ? topPadding * 0.5 : 0,
-                  ),
+                final videoHeight = math.min(
+                  maxWidth * 9 / 16,
+                  maxHeight * .78,
+                );
+                return Align(
+                  // 视频整体偏下：上方留更多黑边，贴近红果的排版。
+                  alignment: const Alignment(0, .6),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       SizedBox(
+                        width: maxWidth,
                         height: videoHeight,
-                        child: AspectRatio(
-                          aspectRatio: 16 / 9,
-                          child: Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              if (player != null)
-                                PlayerVideo(
-                                  key: ValueKey(player),
-                                  handle: widget.handle,
-                                  player: player,
-                                  covered: session.surfaceCover,
-                                )
-                              else
-                                IgnorePointer(
-                                  child: Center(
-                                    child: Text(
-                                      '第 ${session.detail.episodes[index].number} 集',
-                                      style: TextStyle(
-                                        color: Colors.white.withValues(
-                                          alpha: .72,
-                                        ),
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w600,
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            if (player != null)
+                              PlayerVideo(
+                                key: ValueKey(player),
+                                handle: widget.handle,
+                                player: player,
+                                covered: session.surfaceCover,
+                              )
+                            else
+                              IgnorePointer(
+                                child: Center(
+                                  child: Text(
+                                    '第 ${session.detail.episodes[index].number} 集',
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(
+                                        alpha: .72,
                                       ),
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
                                     ),
                                   ),
                                 ),
-                              if (current) ...[
-                                DanmakuOverlay(
-                                  controller: session.danmaku,
-                                  aspectRatio: session.aspectRatio,
-                                  style: session.danmakuStyle,
-                                ),
-                                IgnorePointer(
-                                  child: AnimatedScale(
+                              ),
+                            if (current) ...[
+                              DanmakuOverlay(
+                                controller: session.danmaku,
+                                aspectRatio: session.aspectRatio,
+                                style: session.danmakuStyle,
+                              ),
+                              IgnorePointer(
+                                child: AnimatedScale(
+                                  duration: Motion.short,
+                                  scale: session.paused ? 1 : .8,
+                                  child: AnimatedOpacity(
                                     duration: Motion.short,
-                                    scale: session.paused ? 1 : .8,
-                                    child: AnimatedOpacity(
-                                      duration: Motion.short,
-                                      opacity: session.paused ? 1 : 0,
-                                      child: Container(
-                                        padding: const EdgeInsets.all(14),
-                                        decoration: BoxDecoration(
-                                          color: Colors.black.withValues(
-                                            alpha: .45,
-                                          ),
-                                          shape: BoxShape.circle,
+                                    opacity: session.paused ? 1 : 0,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(14),
+                                      decoration: BoxDecoration(
+                                        color: Colors.black.withValues(
+                                          alpha: .45,
                                         ),
-                                        child: const Icon(
-                                          Icons.play_arrow_rounded,
-                                          color: Colors.white,
-                                          size: 48,
-                                        ),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(
+                                        Icons.play_arrow_rounded,
+                                        color: Colors.white,
+                                        size: 48,
                                       ),
                                     ),
                                   ),
                                 ),
-                                SwipeControls(
-                                  session: session,
-                                  enabled: false,
-                                  child: LayoutBuilder(
-                                    builder: (context, constraints) =>
-                                        GestureDetector(
-                                          behavior: HitTestBehavior.opaque,
-                                          onTapUp: (details) => _tapUp(
-                                            details,
-                                            constraints.maxWidth,
-                                            false,
-                                          ),
-                                          onLongPressStart: (_) =>
-                                              _pressStart(),
-                                          onLongPressEnd: (_) => _pressEnd(),
-                                          onLongPressCancel: _pressEnd,
+                              ),
+                              SwipeControls(
+                                session: session,
+                                enabled: false,
+                                child: LayoutBuilder(
+                                  builder: (context, constraints) =>
+                                      GestureDetector(
+                                        behavior: HitTestBehavior.opaque,
+                                        onTapUp: (details) => _tapUp(
+                                          details,
+                                          constraints.maxWidth,
+                                          false,
                                         ),
-                                  ),
+                                        onLongPressStart: (_) => _pressStart(),
+                                        onLongPressEnd: (_) => _pressEnd(),
+                                        onLongPressCancel: _pressEnd,
+                                      ),
                                 ),
-                              ],
+                              ),
                             ],
-                          ),
+                          ],
                         ),
                       ),
                       const SizedBox(height: 10),
@@ -1625,7 +1623,10 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
               },
             ),
           ),
-          _feed(context),
+          // _feed 内部是「全 Positioned 子节点」的 Stack，必须由 Expanded
+          // 给出有限高度约束；否则 Column 传无限高度 → Stack 尺寸无穷大，
+          // 把上面的视频区挤成 0 高度（视频不显示）。
+          Expanded(flex: 2, child: _feed(context)),
           if (current)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),
@@ -1640,13 +1641,13 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
     final colors = Theme.of(context).colorScheme;
     final session = _session;
     final drama = session.detail.drama;
+    final description = drama.description.trim();
+    // 集数已并到下面一行，这里只保留来源/状态/分类。
     final meta = [
       SourceSite.byId(drama.source).name,
-      '共 ${session.detail.episodes.length} 集',
       if (drama.releaseLabel != '状态未知') drama.releaseLabel,
       if (drama.category.isNotEmpty) drama.category,
     ];
-    final description = drama.description.trim();
     return Stack(
       children: [
         Positioned.fill(
@@ -1655,13 +1656,18 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  drama.title,
-                  style: const TextStyle(
-                    fontSize: 19,
-                    fontWeight: FontWeight.w800,
-                    height: 1.35,
-                    color: Colors.white,
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  // 点剧名回到详情页。
+                  onTap: () => unawaited(Navigator.maybePop(context)),
+                  child: Text(
+                    drama.title,
+                    style: const TextStyle(
+                      fontSize: 19,
+                      fontWeight: FontWeight.w800,
+                      height: 1.35,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 6),
@@ -1672,25 +1678,44 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
                     color: colors.onSurfaceVariant,
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
+                // 集数与简介合并成一行（红果排版）。
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
-                      child: Text(
-                        description.isEmpty ? '暂无简介' : description,
-                        maxLines: _descExpanded ? null : 3,
+                      child: Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(
+                              text: '第 ${session.episode.number} 集',
+                              style: TextStyle(color: colors.onSurfaceVariant),
+                            ),
+                            TextSpan(
+                              text: ' | ',
+                              style: TextStyle(
+                                color: colors.onSurfaceVariant.withValues(
+                                  alpha: .5,
+                                ),
+                              ),
+                            ),
+                            TextSpan(
+                              text: description.isEmpty ? '暂无简介' : description,
+                            ),
+                          ],
+                        ),
+                        maxLines: _descExpanded ? null : 1,
                         overflow: _descExpanded ? null : TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 14,
-                          height: 1.6,
+                          height: 1.5,
                           color: description.isEmpty
                               ? colors.onSurfaceVariant
                               : colors.onSurface,
                         ),
                       ),
                     ),
-                    if (description.length > 40)
+                    if (description.length > 20)
                       TextButton(
                         onPressed: () =>
                             setState(() => _descExpanded = !_descExpanded),
