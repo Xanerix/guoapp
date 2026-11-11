@@ -1,0 +1,478 @@
+package sources
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net/url"
+	"regexp"
+	"sort"
+	"strconv"
+	"strings"
+
+	"duanjuapp/native/core"
+)
+
+const (
+	hanxiaoquanSiteBaseURL = "https://www.jennyhow.com"
+	hanxiaoquanUserAgent   = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36"
+	hanxiaoquanPageSize    = 24
+)
+
+var hanxiaoquanCategories = []core.Category{
+	{ID: "1", Name: "最新韩剧"},
+	{ID: "2", Name: "韩国电影"},
+	{ID: "3", Name: "韩国综艺"},
+	{ID: "4", Name: "韩国动漫"},
+}
+
+var (
+	reHanxiaoquanCardPic  = regexp.MustCompile(`(?is)<a href="/hanxiaoquan/(\d+)\.html"[^>]*title="([^"]*)"[^>]*class="module-item-pic"`)
+	reHanxiaoquanCardImg  = regexp.MustCompile(`(?is)<img[^>]*data-src="([^"]+)"`)
+	reHanxiaoquanCardText = regexp.MustCompile(`(?is)<a href="/hanxiaoquan/\d+\.html"[^>]*class="module-item-title"[^>]*>([^<]*)</a>`)
+	reHanxiaoquanCardNote = regexp.MustCompile(`(?is)class="module-item-text"[^>]*>([^<]*)<`)
+	reHanxiaoquanAdText   = regexp.MustCompile(`@[^@]{1,60}@`)
+	reHanxiaoquanTitle    = regexp.MustCompile(`(?is)<h1 class="page-title"[^>]*>(.*?)</h1>`)
+	reHanxiaoquanOgImage  = regexp.MustCompile(`(?is)property="og:image"\s+content="([^"]+)"`)
+	reHanxiaoquanCoverSrc = regexp.MustCompile(`(?is)<div class="video-cover">.*?<img[^>]*data-src="([^"]+)"`)
+	reHanxiaoquanInfoItem = regexp.MustCompile(`(?is)<span class="video-info-itemtitle">([^<]*)</span>\s*<div class="video-info-item[^"]*">(.*?)</div>`)
+	reHanxiaoquanLineTab  = regexp.MustCompile(`(?is)href="#playlist(\d+)"[^>]*>\s*<i[^>]*></i>\s*([^<]+)`)
+	reHanxiaoquanEpisodes = regexp.MustCompile(`(?is)<a title="([^"]*)" href="(/play/\d+-\d+-\d+\.html)"`)
+	reHanxiaoquanNow      = regexp.MustCompile(`(?is)var\s+now\s*=\s*["']([^"']+)["']`)
+	reHanxiaoquanMediaAny = regexp.MustCompile(`(?i)https?://[^"'\s<>\\]+\.(?:m3u8|mp4)(?:\?[^"'\s<>\\]*)?`)
+	reHanxiaoquanTag      = regexp.MustCompile(`<[^>]+>`)
+	reHanxiaoquanLeadNum  = regexp.MustCompile(`(\d+)`)
+)
+
+func validHanxiaoquanCategory(category string) bool {
+	if category == "" {
+		return true
+	}
+	if len(category) > 8 || strings.ContainsAny(category, "|/\\\x00\r\n") {
+		return false
+	}
+	for _, entry := range hanxiaoquanCategories {
+		if entry.ID == category {
+			return true
+		}
+	}
+	return false
+}
+
+func hanxiaoquanNumericID(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" || len(value) > 12 {
+		return false
+	}
+	number, err := strconv.Atoi(value)
+	return err == nil && number > 0
+}
+
+func hanxiaoquanClean(text string) string {
+	if text == "" {
+		return ""
+	}
+	text = reHanxiaoquanTag.ReplaceAllString(text, "")
+	text = guipianUnescape(text)
+	text = strings.ReplaceAll(text, "\u3000", " ")
+	return strings.Join(strings.Fields(text), " ")
+}
+
+func hanxiaoquanFixURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if strings.HasPrefix(raw, "//") {
+		raw = "https:" + raw
+	} else if strings.HasPrefix(raw, "/") {
+		raw = hanxiaoquanSiteBaseURL + raw
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || !core.ValidNativeCoverURL(parsed) {
+		return ""
+	}
+	return parsed.String()
+}
+
+func (p *hanxiaoquanProvider) fetchHanxiaoquanCategories() []core.Category {
+	return append([]core.Category(nil), hanxiaoquanCategories...)
+}
+
+func (p *hanxiaoquanProvider) hanxiaoquanGet(ctx context.Context, path string) (string, error) {
+	address := path
+	if !strings.HasPrefix(address, "http") {
+		address = hanxiaoquanSiteBaseURL + path
+	}
+	response, err := p.host.FetchText(ctx, core.TextRequest{URL: address, Referer: hanxiaoquanSiteBaseURL + "/", UserAgent: hanxiaoquanUserAgent})
+	return response.Body, err
+}
+
+func parseHanxiaoquanCards(body string) []core.Drama {
+	items := make([]core.Drama, 0, hanxiaoquanPageSize)
+	seen := map[string]bool{}
+	for _, match := range reHanxiaoquanCardPic.FindAllStringSubmatchIndex(body, -1) {
+		if len(match) < 6 {
+			continue
+		}
+		id := body[match[2]:match[3]]
+		title := hanxiaoquanClean(body[match[4]:match[5]])
+		if !hanxiaoquanNumericID(id) || seen[id] {
+			continue
+		}
+		chunk := body[match[1]:]
+		if end := len(chunk); end > 600 {
+			chunk = chunk[:600]
+		}
+		cover := ""
+		if coverMatch := reHanxiaoquanCardImg.FindStringSubmatch(chunk); len(coverMatch) > 1 {
+			cover = hanxiaoquanFixURL(coverMatch[1])
+		}
+		note := ""
+		if noteMatch := reHanxiaoquanCardNote.FindStringSubmatch(chunk); len(noteMatch) > 1 {
+			note = hanxiaoquanClean(noteMatch[1])
+		}
+		if title == "" {
+			if titleMatch := reHanxiaoquanCardText.FindStringSubmatch(chunk); len(titleMatch) > 1 {
+				title = hanxiaoquanClean(titleMatch[1])
+			}
+		}
+		if title == "" {
+			continue
+		}
+		seen[id] = true
+		items = append(items, core.Drama{
+			ID: core.ProviderDramaID(sourceHanxiaoquan, id), Source: sourceHanxiaoquan, SourceID: id,
+			Title: core.Truncate(title, 512), Name: core.Truncate(title, 512),
+			Cover: cover, CoverURL: cover, ChannelName: "韩小圈",
+			CategoryName: "韩剧", Remark: core.Truncate(note, 64),
+		})
+		if len(items) > 500 {
+			break
+		}
+	}
+	return items
+}
+
+func hanxiaoquanPageCount(body, category string, page, count int) int {
+	pattern := regexp.MustCompile(fmt.Sprintf(`(?is)/hxq/%s-(\d+)\.html`, regexp.QuoteMeta(category)))
+	maxPage := page
+	for _, match := range pattern.FindAllStringSubmatch(body, -1) {
+		if value, err := strconv.Atoi(match[1]); err == nil && value > maxPage && value < 100000 {
+			maxPage = value
+		}
+	}
+	if maxPage > page {
+		return maxPage
+	}
+	if count >= hanxiaoquanPageSize {
+		return page + 1
+	}
+	return page
+}
+
+func (p *hanxiaoquanProvider) fetchHanxiaoquanCatalogPage(ctx context.Context, page int, category, query string) ([]core.Drama, bool, error) {
+	if page < 1 || page > 100000 {
+		return nil, false, errors.New("韩小圈目录页码无效")
+	}
+	if query != "" {
+		return p.searchHanxiaoquan(ctx, page, query)
+	}
+	if !validHanxiaoquanCategory(category) {
+		return nil, false, errors.New("韩小圈内容分类无效")
+	}
+	if category == "" {
+		category = hanxiaoquanCategories[0].ID
+	}
+	path := "/hxq/" + category + ".html"
+	if page > 1 {
+		path = fmt.Sprintf("/hxq/%s-%d.html", category, page)
+	}
+	body, err := p.hanxiaoquanGet(ctx, path)
+	if err != nil {
+		return nil, false, err
+	}
+	items := parseHanxiaoquanCards(body)
+	if len(items) == 0 {
+		return []core.Drama{}, false, nil
+	}
+	pageCount := hanxiaoquanPageCount(body, category, page, len(items))
+	return items, page < pageCount, nil
+}
+
+func hanxiaoquanInfoFields(body string) map[string]string {
+	fields := map[string]string{}
+	for _, match := range reHanxiaoquanInfoItem.FindAllStringSubmatch(body, -1) {
+		label := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(match[1]), "："))
+		value := hanxiaoquanClean(match[2])
+		if label != "" && value != "" && fields[label] == "" {
+			fields[label] = value
+		}
+	}
+	return fields
+}
+
+func hanxiaoquanPickPlaylist(body string) (string, []core.Chapter, error) {
+	lineNames := map[string]string{}
+	for _, tab := range reHanxiaoquanLineTab.FindAllStringSubmatch(body, -1) {
+		lineNames[tab[1]] = strings.TrimSpace(tab[2])
+	}
+	lineIDs := make([]string, 0, len(lineNames))
+	for id := range lineNames {
+		lineIDs = append(lineIDs, id)
+	}
+	sort.Strings(lineIDs)
+	if len(lineIDs) == 0 {
+		lineIDs = []string{""}
+	}
+	bestName := ""
+	var best []core.Chapter
+	for _, lineID := range lineIDs {
+		segment := body
+		if lineID != "" {
+			marker := `id="playlist` + lineID + `"`
+			start := strings.Index(body, marker)
+			if start < 0 {
+				continue
+			}
+			segment = body[start+len(marker):]
+			if end := strings.Index(segment, `id="playlist`); end >= 0 {
+				segment = segment[:end]
+			} else if end := strings.Index(segment, `class="module-footer"`); end >= 0 {
+				segment = segment[:end]
+			}
+		}
+		var chapters []core.Chapter
+		seenPath := map[string]bool{}
+		for index, ep := range reHanxiaoquanEpisodes.FindAllStringSubmatch(segment, -1) {
+			epTitle := hanxiaoquanClean(ep[1])
+			playURL := hanxiaoquanPlayURL(ep[2])
+			if playURL == "" || seenPath[playURL] {
+				continue
+			}
+			seenPath[playURL] = true
+			order := index + 1
+			if num := reHanxiaoquanLeadNum.FindString(epTitle); num != "" {
+				if parsed, err := strconv.Atoi(num); err == nil && parsed > 0 && parsed <= 100000 {
+					order = parsed
+				}
+			}
+			if epTitle == "" {
+				epTitle = fmt.Sprintf("第 %d 集", order)
+			}
+			chapters = append(chapters, core.Chapter{
+				ID:             core.ProviderChapterID(sourceHanxiaoquan, "", playURL),
+				Source:         sourceHanxiaoquan,
+				Title:          core.Truncate(epTitle, 128),
+				CurrentEpisode: core.RawEpisode(order),
+				VideoURL:       "hanxiaoquan-play://" + playURL,
+				PageURL:        playURL,
+				Referer:        hanxiaoquanSiteBaseURL + "/",
+			})
+		}
+		if len(chapters) > len(best) {
+			best = chapters
+			bestName = lineNames[lineID]
+		}
+	}
+	if len(best) == 0 {
+		return "", nil, errors.New("韩小圈暂无可播放分集")
+	}
+	sort.SliceStable(best, func(i, j int) bool {
+		left, _ := strconv.Atoi(best[i].EpisodeString(i + 1))
+		right, _ := strconv.Atoi(best[j].EpisodeString(j + 1))
+		return left < right
+	})
+	return bestName, best, nil
+}
+
+func hanxiaoquanPlayURL(href string) string {
+	href = strings.TrimSpace(href)
+	if href == "" {
+		return ""
+	}
+	if !strings.HasPrefix(href, "http") {
+		href = hanxiaoquanSiteBaseURL + "/" + strings.TrimPrefix(href, "/")
+	}
+	parsed, err := url.Parse(href)
+	if err != nil || parsed.User != nil {
+		return ""
+	}
+	host := strings.ToLower(parsed.Hostname())
+	if host != "jennyhow.com" && host != "www.jennyhow.com" {
+		return ""
+	}
+	if !strings.HasSuffix(strings.ToLower(parsed.Path), ".html") || !strings.Contains(parsed.Path, "/play/") {
+		return ""
+	}
+	return parsed.String()
+}
+
+func (p *hanxiaoquanProvider) fetchHanxiaoquanDetail(ctx context.Context, sourceID string) (core.Drama, []core.Chapter, error) {
+	if !hanxiaoquanNumericID(sourceID) {
+		return core.Drama{}, nil, errors.New("韩小圈视频 ID 无效")
+	}
+	body, err := p.hanxiaoquanGet(ctx, "/hanxiaoquan/"+sourceID+".html")
+	if err != nil {
+		return core.Drama{}, nil, err
+	}
+	name := ""
+	if match := reHanxiaoquanTitle.FindStringSubmatch(body); len(match) > 1 {
+		name = hanxiaoquanClean(match[1])
+	}
+	if name == "" {
+		return core.Drama{}, nil, errors.New("韩小圈详情缺少视频名称")
+	}
+	cover := ""
+	if match := reHanxiaoquanOgImage.FindStringSubmatch(body); len(match) > 1 {
+		cover = hanxiaoquanFixURL(match[1])
+	}
+	if cover == "" {
+		if match := reHanxiaoquanCoverSrc.FindStringSubmatch(body); len(match) > 1 {
+			cover = hanxiaoquanFixURL(match[1])
+		}
+	}
+	fields := hanxiaoquanInfoFields(body)
+	description := fields["剧情"]
+	if description == "" {
+		description = fields["简介"]
+	}
+	description = reHanxiaoquanAdText.ReplaceAllString(description, "")
+
+	drama := core.Drama{
+		ID: core.ProviderDramaID(sourceHanxiaoquan, sourceID), Source: sourceHanxiaoquan, SourceID: sourceID,
+		Title: core.Truncate(name, 512), Name: core.Truncate(name, 512),
+		Desc: core.Truncate(description, 12000), Intro: core.Truncate(description, 12000),
+		Cover: cover, CoverURL: cover, ChannelName: "韩小圈", CategoryName: "韩剧",
+		Remark:     core.Truncate(core.FirstNonEmpty(fields["更新"], fields["状态"]), 64),
+		OnlineDate: core.Truncate(fields["更新"], 32),
+	}
+	tags := make([]string, 0, 8)
+	seenTag := map[string]bool{}
+	addTag := func(value string) {
+		value = strings.TrimSpace(value)
+		if value != "" && !seenTag[value] && len([]rune(value)) <= 48 && len(tags) < 16 {
+			seenTag[value] = true
+			tags = append(tags, value)
+		}
+	}
+	if year := fields["上映"]; year != "" {
+		addTag(year + "年")
+	}
+	if director := fields["导演"]; director != "" {
+		addTag("导演 " + core.Truncate(director, 32))
+	}
+	if actors := fields["主演"]; actors != "" {
+		addTag("主演 " + core.Truncate(actors, 48))
+	}
+	drama.Tags = tags
+
+	_, chapters, err := hanxiaoquanPickPlaylist(body)
+	if err != nil {
+		return core.Drama{}, nil, err
+	}
+	for index := range chapters {
+		chapters[index].ID = core.ProviderChapterID(sourceHanxiaoquan, sourceID, chapters[index].PageURL)
+	}
+	drama.TotalEpisode, drama.EpisodeCount = len(chapters), len(chapters)
+	return drama, chapters, nil
+}
+
+func (p *hanxiaoquanProvider) resolveHanxiaoquanMedia(ctx context.Context, task core.Task) (core.ProviderMedia, error) {
+	source, sourceID, valid := core.SplitProviderDramaID(task.DramaID)
+	prefix := core.ProviderChapterID(sourceHanxiaoquan, sourceID, "")
+	if !valid || source != sourceHanxiaoquan || !hanxiaoquanNumericID(sourceID) || !strings.HasPrefix(task.Chapter.ID, prefix) {
+		return core.ProviderMedia{}, errors.New("韩小圈播放分集信息无效，请刷新详情")
+	}
+	playURL := strings.TrimPrefix(task.Chapter.ID, prefix)
+	if playURL == "" {
+		playURL = task.Chapter.PageURL
+	}
+	if hanxiaoquanPlayURL(playURL) == "" {
+		return core.ProviderMedia{}, errors.New("韩小圈播放页地址无效")
+	}
+	body, err := p.hanxiaoquanGet(ctx, playURL)
+	if err != nil {
+		return core.ProviderMedia{}, err
+	}
+	address := ""
+	if match := reHanxiaoquanNow.FindStringSubmatch(body); len(match) > 1 {
+		address = strings.TrimSpace(match[1])
+	}
+	if address == "" {
+		address = reHanxiaoquanMediaAny.FindString(body)
+	}
+	if address == "" {
+		return core.ProviderMedia{}, errors.New("韩小圈该集暂无可用播放地址")
+	}
+	if strings.HasPrefix(address, "//") {
+		address = "https:" + address
+	}
+	if !core.IsProviderHTTPMediaURL(address) {
+		return core.ProviderMedia{}, errors.New("韩小圈播放地址无效")
+	}
+	parsed, err := url.Parse(address)
+	if err != nil {
+		return core.ProviderMedia{}, errors.New("韩小圈播放地址无效")
+	}
+	media := core.ProviderMedia{URL: address, Referer: hanxiaoquanSiteBaseURL + "/"}
+	if strings.HasSuffix(strings.ToLower(parsed.Path), ".m3u8") {
+		return p.host.PrepareWebMedia(ctx, media, "韩小圈")
+	}
+	return media, nil
+}
+
+func (p *hanxiaoquanProvider) searchHanxiaoquan(ctx context.Context, page int, query string) ([]core.Drama, bool, error) {
+	query = strings.TrimSpace(query)
+	if query == "" || len(query) > 256 {
+		return nil, false, errors.New("韩小圈搜索关键词无效")
+	}
+	if page > 1 {
+		return []core.Drama{}, false, nil
+	}
+	body, err := p.hanxiaoquanGet(ctx, "/search.php?"+url.Values{"searchword": {query}}.Encode())
+	if err != nil {
+		return nil, false, err
+	}
+	return parseHanxiaoquanCards(body), false, nil
+}
+
+type hanxiaoquanProvider struct{ host core.Host }
+
+var hanxiaoquanDescriptor = core.SourceDescriptor{
+	ID:                sourceHanxiaoquan,
+	Name:              "韩小圈",
+	Description:       "韩剧 · 韩国电影 · 综艺动漫",
+	Aliases:           []string{"jennyhow.com", "www.jennyhow.com"},
+	BaseURL:           hanxiaoquanSiteBaseURL,
+	AllowEmptyCatalog: true,
+	ValidCategory:     validHanxiaoquanCategory,
+}
+
+func init() {
+	core.Register(hanxiaoquanDescriptor, func(host core.Host) core.Provider { return &hanxiaoquanProvider{host: host} })
+}
+
+func (p *hanxiaoquanProvider) Descriptor() core.SourceDescriptor { return hanxiaoquanDescriptor }
+
+func (p *hanxiaoquanProvider) Categories(ctx context.Context, force bool) ([]core.Category, error) {
+	return p.fetchHanxiaoquanCategories(), nil
+}
+
+func (p *hanxiaoquanProvider) CatalogPage(ctx context.Context, page int, category string) ([]core.Drama, bool, error) {
+	return p.fetchHanxiaoquanCatalogPage(ctx, page, category, "")
+}
+
+func (p *hanxiaoquanProvider) Search(ctx context.Context, page int, query string) ([]core.Drama, bool, error) {
+	return p.fetchHanxiaoquanCatalogPage(ctx, page, "", query)
+}
+
+func (p *hanxiaoquanProvider) Detail(ctx context.Context, sourceID string) (core.Drama, []core.Chapter, error) {
+	return p.fetchHanxiaoquanDetail(ctx, sourceID)
+}
+
+func (p *hanxiaoquanProvider) ResolveMedia(ctx context.Context, task core.Task) (core.ProviderMedia, error) {
+	return p.resolveHanxiaoquanMedia(ctx, task)
+}
+
+const sourceHanxiaoquan = "hanxiaoquan"

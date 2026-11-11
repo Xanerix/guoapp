@@ -1,0 +1,360 @@
+package sources
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"net/url"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+	"unicode"
+	"unicode/utf8"
+
+	"duanjuapp/native/core"
+	"golang.org/x/text/unicode/norm"
+)
+
+const (
+	hongguoSearchTimeout      = 40 * time.Second
+	hongguoSearchPageTimeout  = 12 * time.Second
+	hongguoSearchPendingLimit = 32
+	hongguoSearchNameCount    = 50
+	hongguoSearchPageSize     = 10
+	hongguoSearchSeriesTab    = "29"
+	hongguoSearchTabPath      = "/reading/bookapi/search/tab/v/"
+)
+
+type hongguoSearchEntry struct {
+	Dramas    []core.Drama
+	Total     int
+	HasMore   bool
+	Warning   string
+	ExpiresAt time.Time
+}
+
+type hongguoSearchCall struct {
+	done     chan struct{}
+	changed  chan struct{}
+	entry    hongguoSearchEntry
+	snapshot hongguoSearchEntry
+	revision uint64
+	err      error
+}
+
+type hongguoSearchProgressKey struct{}
+
+func reportHongguoSearchProgress(ctx context.Context, entry hongguoSearchEntry) {
+	if progress, ok := ctx.Value(hongguoSearchProgressKey{}).(func(hongguoSearchEntry)); ok && len(entry.Dramas) > 0 {
+		entry.Total = max(entry.Total, len(entry.Dramas))
+		progress(entry)
+	}
+}
+
+func hongguoSearchKeyword(keyword string) (string, error) {
+	keyword = norm.NFKC.String(strings.TrimSpace(keyword))
+	if keyword == "" || !utf8.ValidString(keyword) || utf8.RuneCountInString(keyword) > 80 || strings.IndexFunc(keyword, unicode.IsControl) >= 0 {
+		return "", errors.New("请输入 1 至 80 个字符的搜索词")
+	}
+	return keyword, nil
+}
+
+func (p *hongguoProvider) searchHongguoDramas(ctx context.Context, keyword string) (hongguoSearchEntry, error) {
+	return p.searchHongguoDramasProgress(ctx, keyword, nil)
+}
+
+func (p *hongguoProvider) searchHongguoDramasProgress(ctx context.Context, keyword string, progress func(hongguoSearchEntry)) (hongguoSearchEntry, error) {
+	keyword, err := hongguoSearchKeyword(keyword)
+	if err != nil {
+		return hongguoSearchEntry{}, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, hongguoSearchTimeout)
+	defer cancel()
+	client := p.client
+	for {
+		if err := ctx.Err(); err != nil {
+			return hongguoSearchEntry{}, err
+		}
+		client.mu.Lock()
+		if cached, found := client.searches[keyword]; found && time.Now().Before(cached.ExpiresAt) {
+			client.mu.Unlock()
+			return cloneHongguoSearchEntry(cached), nil
+		}
+		if pending := client.searchPending[keyword]; pending != nil {
+			client.mu.Unlock()
+			entry, err := p.waitHongguoSearch(ctx, pending, progress)
+			if (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)) && ctx.Err() == nil {
+				continue
+			}
+			return entry, err
+		}
+		if len(client.searchPending) >= hongguoSearchPendingLimit {
+			client.mu.Unlock()
+			return hongguoSearchEntry{}, errors.New("红果搜索请求较多，请稍后重试")
+		}
+		pending := &hongguoSearchCall{done: make(chan struct{}), changed: make(chan struct{})}
+		client.searchPending[keyword] = pending
+		client.mu.Unlock()
+		fetchCtx := context.WithValue(ctx, hongguoSearchProgressKey{}, func(entry hongguoSearchEntry) {
+			client.mu.Lock()
+			pending.snapshot = cloneHongguoSearchEntry(entry)
+			pending.revision++
+			close(pending.changed)
+			pending.changed = make(chan struct{})
+			client.mu.Unlock()
+			if progress != nil {
+				progress(cloneHongguoSearchEntry(entry))
+			}
+		})
+		entry, err := p.fetchHongguoSearch(fetchCtx, keyword)
+		client.mu.Lock()
+
+		if err == nil && entry.Warning == "" {
+			if len(client.searches) >= 64 {
+				client.searches = map[string]hongguoSearchEntry{}
+			}
+			entry.ExpiresAt = time.Now().Add(5 * time.Minute)
+			client.searches[keyword] = entry
+		}
+		pending.entry, pending.err = entry, err
+		delete(client.searchPending, keyword)
+		close(pending.done)
+		client.mu.Unlock()
+		return cloneHongguoSearchEntry(entry), err
+	}
+}
+
+func (p *hongguoProvider) waitHongguoSearch(ctx context.Context, pending *hongguoSearchCall, progress func(hongguoSearchEntry)) (hongguoSearchEntry, error) {
+	client := p.client
+	var revision uint64
+	for {
+		client.mu.Lock()
+		changed := pending.changed
+		var update *hongguoSearchEntry
+		if progress != nil && pending.revision > revision {
+			entry := cloneHongguoSearchEntry(pending.snapshot)
+			update = &entry
+			revision = pending.revision
+		}
+		client.mu.Unlock()
+		if update != nil {
+			progress(*update)
+		}
+		select {
+		case <-ctx.Done():
+			return hongguoSearchEntry{}, ctx.Err()
+		case <-pending.done:
+			return cloneHongguoSearchEntry(pending.entry), pending.err
+		case <-changed:
+		}
+	}
+}
+
+func (p *hongguoProvider) fetchHongguoSearch(ctx context.Context, keyword string) (hongguoSearchEntry, error) {
+
+	names, namesErr := p.fetchHongguoSearchNames(ctx, keyword)
+	if err := ctx.Err(); err != nil {
+		if errors.Is(err, context.DeadlineExceeded) && len(names) > 0 {
+			return hongguoSearchEntry{Dramas: names, Total: len(names), Warning: "搜索已到时限，已保留名称匹配结果，可重试"}, nil
+		}
+		return hongguoSearchEntry{}, err
+	}
+	reportHongguoSearchProgress(ctx, hongguoSearchEntry{Dramas: mergeHongguoSearchDramas([]core.Drama{}, names)})
+	pageCtx, cancel := context.WithTimeout(ctx, hongguoSearchPageTimeout)
+	defer cancel()
+	page, pageErr := p.fetchHongguoSearchPage(pageCtx, keyword, 1)
+	if errors.Is(ctx.Err(), context.Canceled) {
+		return hongguoSearchEntry{}, ctx.Err()
+	}
+	if pageErr != nil && namesErr != nil || len(page.Dramas)+len(names) == 0 && (pageErr != nil || namesErr != nil) {
+		return hongguoSearchEntry{}, errors.Join(pageErr, namesErr)
+	}
+	entry := hongguoSearchEntry{Dramas: make([]core.Drama, 0, len(page.Dramas)+len(names)), Total: page.Total, HasMore: page.HasMore}
+	for _, batch := range [][]core.Drama{page.Dramas, names} {
+		entry.Dramas = mergeHongguoSearchDramas(entry.Dramas, batch)
+	}
+	reportHongguoSearchProgress(ctx, entry)
+	seasonsLimited := p.completeHongguoSearchSeasons(ctx, keyword, &entry)
+	if errors.Is(ctx.Err(), context.Canceled) {
+		return hongguoSearchEntry{}, ctx.Err()
+	}
+	seasonsLimited = seasonsLimited || errors.Is(ctx.Err(), context.DeadlineExceeded)
+	query := keyword
+	sort.SliceStable(entry.Dramas, func(left, right int) bool {
+		leftTitle, rightTitle := entry.Dramas[left].DisplayTitle(), entry.Dramas[right].DisplayTitle()
+		leftRank, rightRank := hongguoTitleSearchRank(leftTitle, query), hongguoTitleSearchRank(rightTitle, query)
+		if leftRank != rightRank {
+			return leftRank < rightRank
+		}
+		leftBase, leftSeason, leftUnit, _ := hongguoSearchSeason(leftTitle)
+		rightBase, rightSeason, rightUnit, _ := hongguoSearchSeason(rightTitle)
+		if leftSeason > 0 && rightSeason > 0 && leftUnit == rightUnit && hongguoSearchText(leftBase) == hongguoSearchText(rightBase) {
+			return leftSeason < rightSeason
+		}
+		return false
+	})
+	if pageErr != nil {
+		entry.Warning = "红果综合搜索暂不可用，已保留名称匹配结果，可重试"
+	} else if namesErr != nil {
+		entry.Warning = "红果名称检索暂不可用，结果可能缺少部分剧集，可重试"
+	}
+	if seasonsLimited {
+		if entry.Warning != "" {
+			entry.Warning += "；"
+		}
+		entry.Warning += "部分季数暂未补齐，已保留当前结果，可重试"
+	}
+	if entry.Total < len(entry.Dramas) {
+		entry.Total = len(entry.Dramas)
+	}
+	return entry, nil
+}
+
+func mergeHongguoSearchDramas(dramas, batch []core.Drama) []core.Drama {
+	positions := make(map[string]int, len(dramas)+len(batch))
+	for index, drama := range dramas {
+		positions[drama.ID] = index
+	}
+	for _, drama := range batch {
+		if drama.ID == "" {
+			continue
+		}
+		if index, found := positions[drama.ID]; found {
+			dramas[index] = mergeDramaMetadata(dramas[index], drama)
+		} else {
+			positions[drama.ID] = len(dramas)
+			dramas = append(dramas, drama)
+		}
+	}
+	return dramas
+}
+
+func (p *hongguoProvider) fetchHongguoSearchNames(ctx context.Context, keyword string) ([]core.Drama, error) {
+	records, err := p.fetchHongguoSuggestionRecords(ctx, keyword, hongguoSearchNameCount)
+	if err != nil {
+		return nil, err
+	}
+	dramas := make([]core.Drama, 0, len(records))
+	for _, record := range records {
+
+		if record.WordType != "short_play_name" || !hongguoNumericID.MatchString(core.MapString(record.VideoData, "series_id_str", "series_id")) {
+			continue
+		}
+		drama := hongguoDramaFromAny(map[string]any{"video_data": record.VideoData, "name": record.Name, "keyword": record.Keyword}, "短剧")
+		if drama.ID != "" && drama.DisplayTitle() != drama.SourceID {
+			dramas = append(dramas, drama)
+		}
+	}
+	return dramas, nil
+}
+
+func cloneHongguoSearchEntry(entry hongguoSearchEntry) hongguoSearchEntry {
+	entry.Dramas = append([]core.Drama{}, entry.Dramas...)
+	for index := range entry.Dramas {
+		entry.Dramas[index].Tags = append([]string(nil), entry.Dramas[index].Tags...)
+	}
+	return entry
+}
+
+func hongguoSearchText(text string) string { return core.NativeSearchText(text) }
+
+func hongguoTitleSearchRank(title, query string) int {
+	words := strings.FieldsFunc(norm.NFKC.String(query), func(r rune) bool { return unicode.IsSpace(r) || unicode.IsPunct(r) })
+	query = hongguoSearchText(query)
+	title = hongguoSearchText(title)
+	switch {
+	case title == query:
+		return 0
+	case strings.HasPrefix(title, query):
+		return 1
+	case strings.Contains(title, query):
+		return 2
+	default:
+		matches := 0
+		for _, word := range words {
+			if strings.Contains(title, hongguoSearchText(word)) {
+				matches++
+			}
+		}
+		if len(words) > 0 && matches == len(words) {
+			return 3
+		}
+		return 4
+	}
+}
+
+func (p *hongguoProvider) hongguoSearchScore(ctx context.Context, dramaID, title string) string {
+	keyword, err := hongguoSearchKeyword(title)
+	if err != nil {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(ctx, hongguoSearchPageTimeout)
+	defer cancel()
+	page, err := p.fetchHongguoSearchPage(ctx, keyword, 1)
+	if err != nil {
+		return ""
+	}
+	for _, drama := range page.Dramas {
+		if drama.ID == dramaID {
+			return drama.Score
+		}
+	}
+	return ""
+}
+
+func (p *hongguoProvider) fetchHongguoSearchPage(ctx context.Context, keyword string, pageNum int) (hongguoSearchEntry, error) {
+	client := p.client
+	offset := strconv.Itoa((pageNum - 1) * hongguoSearchPageSize)
+	query := url.Values{"query": {keyword}, "offset": {offset}, "count": {strconv.Itoa(hongguoSearchPageSize)}, "tab_type": {hongguoSearchSeriesTab}}
+	if pageNum > 1 {
+		query.Set("passback", offset)
+		client.mu.Lock()
+		searchID := client.searchIDs[keyword]
+		client.mu.Unlock()
+		if searchID != "" {
+			query.Set("search_id", searchID)
+		}
+	}
+	result, err := p.hongguoAppRequest(ctx, http.MethodGet, hongguoSearchTabPath, query, nil)
+	if err != nil {
+		return hongguoSearchEntry{}, err
+	}
+	var tab map[string]any
+	for _, item := range anyList(result["search_tabs"]) {
+		if candidate, _ := item.(map[string]any); core.MapString(candidate, "tab_type") == hongguoSearchSeriesTab {
+			tab = candidate
+		}
+	}
+	if tab == nil {
+		return hongguoSearchEntry{}, errors.New("红果搜索未返回有效结果")
+	}
+	if searchID := core.MapString(tab, "search_id"); pageNum == 1 && searchID != "" {
+		client.mu.Lock()
+		if len(client.searchIDs) >= 64 {
+			client.searchIDs = map[string]string{}
+		}
+		client.searchIDs[keyword] = searchID
+		client.mu.Unlock()
+	}
+	cells := anyList(tab["data"])
+	entry := hongguoSearchEntry{Dramas: make([]core.Drama, 0, len(cells)), HasMore: tab["has_more"] == true}
+	seen := make(map[string]bool, len(cells))
+	for _, cell := range cells {
+		row, _ := cell.(map[string]any)
+		for _, video := range anyList(row["video_data"]) {
+			drama := hongguoDramaFromAny(map[string]any{"video_data": video}, "短剧")
+			if drama.ID != "" && !seen[drama.ID] {
+				seen[drama.ID] = true
+				entry.Dramas = append(entry.Dramas, drama)
+			}
+		}
+	}
+	if len(cells) > 0 && len(entry.Dramas) == 0 {
+		return hongguoSearchEntry{}, errors.New("红果搜索结果中没有可识别的剧集")
+	}
+	if entry.Total < len(entry.Dramas) {
+		entry.Total = len(entry.Dramas)
+	}
+	return entry, nil
+}
