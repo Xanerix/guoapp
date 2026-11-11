@@ -997,6 +997,7 @@ class PlaybackSession extends ChangeNotifier {
 
   void setForeground(bool visible) {
     if (_closed || _foreground == visible) return;
+    DiaryService.add(visible ? '[Play] 应用回到前台' : '[Play] 应用不可见，暂停播放');
     _foreground = visible;
     _health.reset();
     _sync();
