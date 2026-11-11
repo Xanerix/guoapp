@@ -63,6 +63,7 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
   Timer? _seekTimer;
   Timer? _idleTimer;
   bool _idle = false;
+  bool _quietSwitch = false; // 自动切集时保持播控隐藏
   late bool _lastPaused = _session.paused;
   late int _lastIndex = _session.index;
   bool _immersive = false;
@@ -145,6 +146,7 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
   void _wake() {
     _idleTimer?.cancel();
     _idle = false;
+    _quietSwitch = false;
     _idleTimer = Timer(const Duration(seconds: 3), () {
       if (mounted) setState(() => _idle = true);
     });
@@ -155,7 +157,9 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
       !_idle ||
       _dragging ||
       _session.paused ||
-      !_session.ready;
+      !_session.ready ||
+      _session.error != null ||
+      (_session.loading && !_quietSwitch);
 
   void _syncSystemBars() {
     final immersive =
@@ -185,10 +189,17 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
   }
 
   void _refresh() {
-    if (_session.paused != _lastPaused || _session.index != _lastIndex) {
+    final switched = _session.index != _lastIndex;
+    if (_session.paused != _lastPaused || switched) {
+      final quiet = switched && _idle && !_session.paused;
       _lastPaused = _session.paused;
       _lastIndex = _session.index;
-      _wake();
+      if (quiet) {
+        // 自动连播：用户已经隐藏播控，保持隐藏不弹出来。
+        _quietSwitch = true;
+      } else {
+        _wake();
+      }
     }
     if (mounted) setState(() {});
   }
@@ -390,6 +401,7 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
   @override
   Widget build(BuildContext context) {
     final dark = playerTheme(context);
+    final bottom = MediaQuery.paddingOf(context).bottom;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: AppTheme.systemBars(Brightness.dark),
       child: Theme(
@@ -421,6 +433,19 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
                 ),
               ),
               IgnorePointer(ignoring: _scrolling, child: _controls(context)),
+              if (bottom > 0)
+                Positioned(
+                  key: const ValueKey('system-gesture-guard'),
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  height: bottom,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _session.togglePlayback,
+                    onVerticalDragStart: (_) {},
+                  ),
+                ),
             ],
           ),
         ),

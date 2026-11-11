@@ -56,6 +56,7 @@ class PlaybackPreferences {
     this.autoHideControls = true,
     this.hideSystemBars = true,
     this.autoPictureInPicture = false,
+    this.progressLine = true,
   });
 
   final double speed;
@@ -78,6 +79,7 @@ class PlaybackPreferences {
   final bool autoHideControls;
   final bool hideSystemBars;
   final bool autoPictureInPicture;
+  final bool progressLine;
 
   bool preopens({required bool television}) => preopen ?? !television;
 
@@ -102,6 +104,7 @@ class PlaybackPreferences {
     bool? autoHideControls,
     bool? hideSystemBars,
     bool? autoPictureInPicture,
+    bool? progressLine,
   }) => PlaybackPreferences(
     speed: speed ?? this.speed,
     quality: quality ?? this.quality,
@@ -123,6 +126,7 @@ class PlaybackPreferences {
     autoHideControls: autoHideControls ?? this.autoHideControls,
     hideSystemBars: hideSystemBars ?? this.hideSystemBars,
     autoPictureInPicture: autoPictureInPicture ?? this.autoPictureInPicture,
+    progressLine: progressLine ?? this.progressLine,
   );
 
   Map<String, dynamic> toJson() => {
@@ -146,6 +150,7 @@ class PlaybackPreferences {
     'autoHideControls': autoHideControls,
     'hideSystemBars': hideSystemBars,
     'autoPictureInPicture': autoPictureInPicture,
+    'progressLine': progressLine,
   };
 
   factory PlaybackPreferences.fromJson(Map<String, dynamic> value) {
@@ -195,6 +200,7 @@ class PlaybackPreferences {
       autoHideControls: value['autoHideControls'] as bool? ?? true,
       hideSystemBars: value['hideSystemBars'] as bool? ?? true,
       autoPictureInPicture: value['autoPictureInPicture'] as bool? ?? false,
+      progressLine: value['progressLine'] as bool? ?? true,
     );
   }
 }

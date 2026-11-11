@@ -210,6 +210,13 @@ class SettingsSection extends StatelessWidget {
               ),
             ),
             SwitchTile(
+              title: '横屏底部进度线',
+              subtitle: '横屏全屏且播控隐藏时，在屏幕底部显示一条细进度线',
+              value: preferences.progressLine,
+              onChanged: (value) =>
+                  savePreferences(preferences.copyWith(progressLine: value)),
+            ),
+            SwitchTile(
               title: '状态栏跟随播控隐藏',
               subtitle: preferences.autoHideControls
                   ? '播控隐藏时一起收起系统状态栏和导航栏'

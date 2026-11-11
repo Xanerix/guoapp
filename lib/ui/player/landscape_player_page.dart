@@ -513,7 +513,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
               ),
             ),
           ),
-        if (full && !visible)
+        if (full && !visible && session.store.playbackPreferences.progressLine)
           Positioned(
             left: 0,
             right: 0,
