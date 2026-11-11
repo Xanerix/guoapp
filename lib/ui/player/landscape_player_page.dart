@@ -1515,7 +1515,6 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
       child: Column(
         children: [
           Expanded(
-            flex: 3,
             child: Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -1601,37 +1600,12 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
               ),
             ),
           ),
-          Expanded(flex: 2, child: _feed(context)),
-          if (current) _portraitPlayerBar(context),
-        ],
-      ),
-    );
-  }
-
-  /// 竖屏手持横片的底部播控条：进度线 + 时间 + 全屏按钮。
-  /// 显示在信息流顶部、剧集选项上方。
-  Widget _portraitPlayerBar(BuildContext context) {
-    final session = _session;
-    final colors = Theme.of(context).colorScheme;
-    return Container(
-      color: Colors.black,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(height: 4, child: _thinProgress(context)),
-          Row(
-            children: [
-              _playButton(size: 36, iconSize: 22),
-              const SizedBox(width: 2),
-              _clock(12),
-              const Spacer(),
-              Text(
-                '${session.episode.number}/${session.detail.episodes.length}',
-                style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
-              ),
-            ],
-          ),
+          _feed(context),
+          if (current)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: _thinProgress(context),
+            ),
         ],
       ),
     );

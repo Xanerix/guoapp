@@ -132,11 +132,12 @@ class PlaybackSession extends ChangeNotifier {
           _resumePosition = position.inMilliseconds / 1000;
         }
         // 黑幕揭开：texture 重建后 position 开始推进 = 画面出来了。
-        // 保底 200ms 避免太早揭开，封顶 3s 防永远不揭开。
+        // 只要 position > 0 就说明有画面，不等 300ms（那是在等视频播不是等画面出）。
+        // 保底 150ms 避免刚盖上又揭，封顶 3s 防永远不揭开。
         if (_surfaceCover &&
             _surfaceCoverAt != null &&
-            position > Duration(milliseconds: 300) &&
-            DateTime.now().difference(_surfaceCoverAt!).inMilliseconds > 200) {
+            position > Duration.zero &&
+            DateTime.now().difference(_surfaceCoverAt!).inMilliseconds > 150) {
           _surfaceTimer?.cancel();
           _surfaceTimer = null;
           _surfaceCover = false;
