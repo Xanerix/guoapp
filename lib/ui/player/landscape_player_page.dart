@@ -267,9 +267,8 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
 
   void _tapUp(TapUpDetails details, double width, bool full) {
     if (!full) {
-      // 竖屏手持横片：单击切控制条，不暂停（红果行为）。
-      _tapTimer?.cancel();
-      _tapTimer = Timer(const Duration(milliseconds: 300), _toggleControls);
+      // 竖屏手持横片：单击视频 = 暂停/播放（红果行为）。
+      _session.togglePlayback();
       return;
     }
     final x = details.localPosition.dx;
