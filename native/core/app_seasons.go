@@ -80,10 +80,20 @@ func hongguoSeasonLookup(title string) (string, int, string) {
 }
 
 func (engine *nativeEngine) nativeSeasons(ctx context.Context, input nativeInput) (nativeSeasonResult, error) {
-	source, _, valid := splitProviderDramaID(input.Drama.ID)
+	source, sourceID, valid := splitProviderDramaID(input.Drama.ID)
 	if !valid {
 		return nativeSeasonResult{}, errors.New("剧集信息无效")
 	}
+
+	// 红果：优先用官方多季接口 plan/v，直接返回完整季列表。
+	// 不依赖搜索是否召回了全部季。
+	if source == sourceHongguo && hongguoNumericID.MatchString(sourceID) {
+		result, ok := engine.hongguoOfficialSeasons(ctx, sourceID, input.Drama)
+		if ok {
+			return result, nil
+		}
+	}
+
 	adapter, supported := engine.nativeSeasonAdapter(source)
 	if !supported {
 		// 没有搜索能力的站源无法召回其它季，维持单季体验。
@@ -130,6 +140,69 @@ func (engine *nativeEngine) nativeSeasons(ctx context.Context, input nativeInput
 		result.Items = nil
 	}
 	return result, nil
+}
+
+// hongguoOfficialSeasons 用红果官方 plan/v 接口获取完整季列表。
+// 成功（至少 1 项）直接返回；失败 ok=false 让调用方 fallback。
+func (engine *nativeEngine) hongguoOfficialSeasons(
+	ctx context.Context,
+	sourceID string,
+	current nativeDrama,
+) (nativeSeasonResult, bool) {
+	seasons, ok := engine.downloader.hongguoPlanSeasons(ctx, sourceID)
+	if !ok || len(seasons) == 0 {
+		return nativeSeasonResult{}, false
+	}
+	currentIndex := current.SeasonIndex
+	// 如果 plan/v 没返回当前这一季，把当前季补进去
+	hasCurrent := false
+	for _, s := range seasons {
+		if s.SeriesID == sourceID {
+			hasCurrent = true
+			if currentIndex == 0 {
+				currentIndex = s.SeasonIndex
+			}
+			break
+		}
+	}
+	if !hasCurrent {
+		// 手动补一个
+		seasons = append(seasons, hongguoPlanSeason{
+			SeriesID:    sourceID,
+			Title:       strings.TrimSpace(current.Title),
+			SeasonIndex: currentIndex,
+			Episodes:    current.Episodes,
+		})
+		// 重新排序
+		sort.Slice(seasons, func(i, j int) bool {
+			return seasons[i].SeasonIndex < seasons[j].SeasonIndex
+		})
+	}
+
+	var items []nativeSeason
+	for _, s := range seasons {
+		drama := nativeDrama{
+			ID:       providerDramaID(sourceHongguo, s.SeriesID),
+			Source:   sourceHongguo,
+			SourceID: s.SeriesID,
+			Title:    s.Title,
+			Episodes: s.Episodes,
+			Cover:    s.Cover,
+		}
+		items = append(items, nativeSeason{
+			Number:   s.SeasonIndex,
+			Unit:     "季",
+			Title:    s.Title,
+			Episodes: s.Episodes,
+			Current:  s.SeriesID == sourceID,
+			Drama:    drama,
+		})
+	}
+	if len(items) <= 1 {
+		// 只有 1 季，不显示季列表
+		return nativeSeasonResult{}, true
+	}
+	return nativeSeasonResult{Items: items}, true
 }
 
 // hongguoSeasonList 按季号归并同一部剧，标题必须严格相等（不做包含匹配）。
