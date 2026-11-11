@@ -131,6 +131,17 @@ class PlaybackSession extends ChangeNotifier {
         if (!_closed && _openedIndex == _index && position > Duration.zero) {
           _resumePosition = position.inMilliseconds / 1000;
         }
+        // 黑幕揭开：texture 重建后 position 开始推进 = 画面出来了。
+        // 保底 200ms 避免太早揭开，封顶 3s 防永远不揭开。
+        if (_surfaceCover &&
+            _surfaceCoverAt != null &&
+            position > Duration(milliseconds: 300) &&
+            DateTime.now().difference(_surfaceCoverAt!).inMilliseconds > 200) {
+          _surfaceTimer?.cancel();
+          _surfaceTimer = null;
+          _surfaceCover = false;
+          _notify();
+        }
         _sync();
       }),
       stream.playing.listen((playing) {
@@ -201,6 +212,7 @@ class PlaybackSession extends ChangeNotifier {
   int _restoreToken = 0;
   int _restores = 0;
   bool _surfaceCover = false;
+  DateTime? _surfaceCoverAt;
   Timer? _surfaceTimer;
   bool _forceSoftwareDecode = false;
   bool _boosting = false;
@@ -734,6 +746,8 @@ class PlaybackSession extends ChangeNotifier {
     PlaybackPlan? retained;
     var installed = false;
     try {
+      // open 新 URL 会重建 texture，盖黑幕遮花屏。
+      _coverSurface();
       await _serialize(() async {
         if (!_current(ticket)) return;
         await saveProgress();
@@ -1369,18 +1383,23 @@ class PlaybackSession extends ChangeNotifier {
   bool _restorable(int token) =>
       !_closed && _foreground && token == _restoreToken;
 
-  /// 回前台后短暂盖黑幕，遮住纹理重建时的花屏帧。
-  /// iOS 后台回来纹理重建可能需要 500-800ms，用 800ms 覆盖。
+  /// 盖黑幕遮住纹理重建时的花屏帧。
+  /// 揭开时机：position 推进（画面真出了）→ 立即揭；
+  ///          或最长 3s 封顶（防止永远不揭的 bug）。
+  /// 最小 200ms 保底，避免刚盖上又揭开。
   void _coverSurface() {
     _surfaceTimer?.cancel();
+    _surfaceCoverAt = DateTime.now();
     if (!_surfaceCover) {
       _surfaceCover = true;
       _notify();
     }
-    _surfaceTimer = Timer(const Duration(milliseconds: 800), () {
+    // 3s 封顶保底——正常情况 position listener 会先揭开。
+    _surfaceTimer = Timer(const Duration(seconds: 3), () {
       _surfaceTimer = null;
       if (_closed || !_surfaceCover) return;
       _surfaceCover = false;
+      _surfaceCoverAt = null;
       _notify();
     });
   }
