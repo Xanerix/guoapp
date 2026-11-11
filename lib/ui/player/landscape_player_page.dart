@@ -1550,7 +1550,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
     ),
   );
 
-  /// 竖屏手持时的一页：视频在上方垂直居中，下方是「全屏观看」与信息流。
+  /// 竖屏手持时的一页：视频垂直居中，信息流贴底。
   /// 整页都在 PageView 里，所以手指放在任何位置上下滑都能换集。
   Widget _pageContent(BuildContext context, int index) {
     final session = _session;
@@ -1568,7 +1568,6 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
       child: Column(
         children: [
           Expanded(
-            flex: 6,
             child: Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -1604,6 +1603,28 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
                             aspectRatio: session.aspectRatio,
                             style: session.danmakuStyle,
                           ),
+                          IgnorePointer(
+                            child: AnimatedScale(
+                              duration: Motion.short,
+                              scale: session.paused ? 1 : .8,
+                              child: AnimatedOpacity(
+                                duration: Motion.short,
+                                opacity: session.paused ? 1 : 0,
+                                child: Container(
+                                  padding: const EdgeInsets.all(14),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: .45),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.play_arrow_rounded,
+                                    color: Colors.white,
+                                    size: 48,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
                           SwipeControls(
                             session: session,
                             enabled: false,
@@ -1622,15 +1643,12 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
                                   ),
                             ),
                           ),
-                          Listener(
-                            onPointerDown: (_) => _scheduleHide(),
-                            child: IgnorePointer(
-                              ignoring: !_visible,
-                              child: AnimatedOpacity(
-                                opacity: _visible ? 1 : 0,
-                                duration: const Duration(milliseconds: 180),
-                                child: _miniControls(context),
-                              ),
+                          IgnorePointer(
+                            ignoring: !_visible,
+                            child: AnimatedOpacity(
+                              opacity: _visible ? 1 : 0,
+                              duration: const Duration(milliseconds: 180),
+                              child: _miniControls(context),
                             ),
                           ),
                         ],
@@ -1643,7 +1661,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
               ),
             ),
           ),
-          Expanded(flex: 4, child: _feed(context)),
+          _feed(context),
         ],
       ),
     );

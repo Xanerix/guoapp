@@ -153,6 +153,24 @@ func (engine *nativeEngine) hongguoOfficialSeasons(
 	if !ok || len(seasons) == 0 {
 		return nativeSeasonResult{}, false
 	}
+	// plan/v 会基于 same_ip_series 返回同 IP 但不同作者/不同故事的剧。
+	// 用标题 base 匹配过滤——只有 base title 和当前剧一致的才留。
+	currentBase, _, _ := hongguoSeasonLookup(current.Title)
+	if currentBase != "" {
+		filtered := seasons[:0]
+		for _, s := range seasons {
+			sBase, _, _ := hongguoSeasonLookup(s.Title)
+			// 当前季用 seriesID 确认（避免 title 解析异常误过滤）
+			if s.SeriesID == sourceID || (sBase != "" && sBase == currentBase) {
+				filtered = append(filtered, s)
+			}
+		}
+		seasons = filtered
+		if len(seasons) == 0 {
+			return nativeSeasonResult{}, false
+		}
+	}
+
 	currentIndex := current.SeasonIndex
 	// 如果 plan/v 没返回当前这一季，把当前季补进去
 	hasCurrent := false
