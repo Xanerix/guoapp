@@ -44,13 +44,14 @@ class _Executor implements MediaExecutor {
   final progress = <void Function(double)?>[];
   Completer<void>? running;
   int cancels = 0;
+  List<Map<String, String>> streams = [
+    {'codec_type': 'video', 'codec_name': 'h264'},
+  ];
 
   @override
   Future<MediaProbe> probe(String file) async => MediaProbe({
     'format': {'duration': '12'},
-    'streams': [
-      {'codec_type': 'video', 'codec_name': 'h264'},
-    ],
+    'streams': streams,
   });
 
   @override
@@ -119,7 +120,7 @@ void main() {
       '-i',
       '/work/hongguo:a:1/media.mp4',
       '-map',
-      '0:v:0',
+      '0:v:0?',
       '-map',
       '0:a:0?',
       '-c',
@@ -143,6 +144,31 @@ void main() {
       '0',
       '-i',
     ]);
+  });
+
+  test('audio-only chapters convert without a video track', () async {
+    final repository = _ConvertingRepository()
+      ..jobs = [downloadJob(show, 1, state: 'converting', created: 1)];
+    final executor = _Executor()
+      ..streams = [
+        {'codec_type': 'audio', 'codec_name': 'opus'},
+      ];
+    await start(repository, executor);
+
+    executor.finish();
+    await pumpEventQueue();
+    expect(repository.finished, ['hongguo:a:1|done']);
+  });
+
+  test('output without any media track fails', () async {
+    final repository = _ConvertingRepository()
+      ..jobs = [downloadJob(show, 1, state: 'converting', created: 1)];
+    final executor = _Executor()..streams = [];
+    await start(repository, executor);
+
+    executor.finish();
+    await pumpEventQueue();
+    expect(repository.finished, ['hongguo:a:1|failed']);
   });
 
   test('a failed conversion is reported and logged', () async {

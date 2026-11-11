@@ -19,6 +19,13 @@ class MediaProbe {
   double get duration =>
       double.tryParse('${(raw['format'] as Map?)?['duration']}') ?? 0;
   String get videoCodec => video['codec_name'] as String? ?? '';
+  String get audioCodec =>
+      streams.firstWhere(
+            (s) => s['codec_type'] == 'audio',
+            orElse: () => {},
+          )['codec_name']
+          as String? ??
+      '';
 }
 
 abstract class MediaExecutor {
@@ -118,11 +125,11 @@ class FFmpegExecutor implements MediaExecutor {
 }
 
 void verifyMediaDuration(MediaProbe probe, double expected) {
-  if (probe.videoCodec.isEmpty ||
+  if (probe.videoCodec.isEmpty && probe.audioCodec.isEmpty ||
       !probe.duration.isFinite ||
       probe.duration <= 0 ||
       expected > 0 &&
           (probe.duration - expected).abs() > max(2, expected * .02)) {
-    throw AppFailure('生成的视频时长或视频轨不完整，原分集已保留。');
+    throw AppFailure('生成的文件时长或音视频轨不完整，原分集已保留。');
   }
 }

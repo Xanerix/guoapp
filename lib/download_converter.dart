@@ -43,7 +43,7 @@ class DownloadConverter extends ChangeNotifier {
     '-i',
     work.input,
     '-map',
-    '0:v:0',
+    '0:v:0?',
     '-map',
     '0:a:0?',
     '-c',
