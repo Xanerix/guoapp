@@ -17,7 +17,6 @@ import '../theme/motion.dart';
 import '../widgets/contained_slider.dart';
 import '../widgets/motion/motion_widgets.dart';
 import 'danmaku_overlay.dart';
-import '../widgets/status_view.dart';
 import '../widgets/follow_button.dart';
 import 'episode_grid.dart';
 import 'mini_player.dart';
@@ -1099,7 +1098,8 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
     final colors = Theme.of(context).colorScheme;
     final right = MediaQuery.viewPaddingOf(context).right;
     final session = _session;
-    final episodes = panel == _Panel.episodes;
+    final isEpisodes = panel == _Panel.episodes;
+    final isSettings = panel == _Panel.settings;
     return Material(
       color: colors.surfaceContainerLow.withValues(alpha: .94),
       child: Padding(
@@ -1109,10 +1109,17 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
           children: [
             SheetHeader(
               children: [
-                Text(episodes ? '选集' : '播放设置', style: sheetTitle),
+                Text(
+                  isEpisodes
+                      ? '选集'
+                      : isSettings
+                      ? '播放设置'
+                      : '',
+                  style: sheetTitle,
+                ),
                 Expanded(
                   child: Text(
-                    episodes ? '共 ${session.detail.episodes.length} 集' : '',
+                    isEpisodes ? '共 ${session.detail.episodes.length} 集' : '',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -1129,7 +1136,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
               ],
             ),
             Expanded(
-              child: episodes
+              child: isEpisodes
                   ? EpisodeGrid(
                       episodes: session.detail.episodes,
                       current: session.index,
@@ -1144,12 +1151,100 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
                         }
                       },
                     )
-                  : const StatusView(
-                      title: '「播放设置」正在重建',
-                      icon: Icons.settings_rounded,
-                    ),
+                  : _settingsContent(context),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _settingsContent(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final session = _session;
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '播放速度',
+            style: TextStyle(fontSize: 14, color: colors.onSurfaceVariant),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: playbackSpeeds.reversed
+                .map(
+                  (speed) => _settingChip<double>(
+                    value: speed,
+                    selected: session.speed == speed,
+                    label: '${speed}x',
+                    onTap: () => _change(() => session.setSpeed(speed)),
+                  ),
+                )
+                .toList(),
+          ),
+          if (session.qualities.isNotEmpty) ...[
+            const SizedBox(height: 20),
+            Text(
+              '画质',
+              style: TextStyle(fontSize: 14, color: colors.onSurfaceVariant),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ...session.qualities.map(
+                  (q) => _settingChip<int>(
+                    value: q,
+                    selected: session.quality == q,
+                    label: '${q}P',
+                    onTap: () => _change(() => session.setQuality(q)),
+                  ),
+                ),
+                _settingChip<int>(
+                  value: 0,
+                  selected: session.quality == 0,
+                  label: '自动',
+                  onTap: () => _change(() => session.setQuality(0)),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _settingChip<T>({
+    required T value,
+    required bool selected,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    final colors = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected ? colors.primary : colors.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: selected ? colors.primary : colors.outlineVariant,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: selected ? colors.onPrimary : colors.onSurface,
+          ),
         ),
       ),
     );
