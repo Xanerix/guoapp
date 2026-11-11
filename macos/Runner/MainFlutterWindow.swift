@@ -2,8 +2,20 @@ import CFNetwork
 import Cocoa
 import FlutterMacOS
 
+#if arch(x86_64)
+private func useSkiaRendering() {
+  guard let method = class_getInstanceMethod(
+    FlutterDartProject.self, NSSelectorFromString("enableImpeller")) else { return }
+  let disabled: @convention(block) (AnyObject) -> ObjCBool = { _ in false }
+  method_setImplementation(method, imp_implementationWithBlock(disabled))
+}
+#endif
+
 class MainFlutterWindow: NSWindow {
   override func awakeFromNib() {
+    #if arch(x86_64)
+    useSkiaRendering()
+    #endif
     let flutterViewController = FlutterViewController()
     let windowFrame = self.frame
     self.contentViewController = flutterViewController
