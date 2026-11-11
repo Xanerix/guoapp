@@ -65,7 +65,7 @@ func TestProviderSourceParsesTextFixturesAndRejectsMismatchedIdentity(t *testing
 }
 
 func TestYeguoDomainAliasesAndDefaultEndpoint(t *testing.T) {
-	if got := (&Downloader{cfg: defaultConfig()}).providerBaseURL(sourceYeguo); got != "https://attract.vgbyziuz.cc" {
+	if got := (&Downloader{cfg: defaultConfig()}).providerBaseURL(sourceYeguo); got != "https://yeguodj.com" {
 		t.Fatalf("unexpected default yeguo endpoint: %s", got)
 	}
 	for _, address := range []string{
@@ -77,6 +77,8 @@ func TestYeguoDomainAliasesAndDefaultEndpoint(t *testing.T) {
 		"https://some-backup.fzchosdi.cc/drama/video/1/",
 		"https://some-backup.lwblvxvy.cc/drama/video/1/",
 		"https://delta.ygrwdsgt.cc/",
+		"https://534.zxcrirxx.cc/",
+		"https://adviser.ocdjlxow.cc/",
 		"https://yeguodj.com/",
 		"https://ygdj7.com/",
 		"https://ygdj15.com/",

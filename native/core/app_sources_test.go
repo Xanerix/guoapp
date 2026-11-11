@@ -50,6 +50,9 @@ func sourceFixtureEngine(t *testing.T, transport sourceFixtureTransport) *native
 
 func TestSourceUpdatesPreservePagesOtherSourcesAndMetadata(t *testing.T) {
 	engine := sourceFixtureEngine(t, func(request *http.Request) (*http.Response, error) {
+		if response, ok := sourceFixturePublishScript(request); ok {
+			return response, nil
+		}
 		target := huangguoEdgeTarget(t, request)
 		if !strings.Contains(target.Path, "/api/videos/category/") {
 			return nil, errors.New("only catalog text is allowed")

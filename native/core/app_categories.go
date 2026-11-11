@@ -55,6 +55,12 @@ func validNativeCategory(source, category string) bool {
 			}
 		}
 	case sourceHuangguoVideo:
+		for _, entry := range nativeAICategories {
+			if category == entry.ID {
+				return true
+			}
+		}
+		// 兼容旧版 HTML 站点遗留的数字分类缓存。
 		id, err := strconv.Atoi(category)
 		return err == nil && id > 0
 	case sourceCloudFront:
@@ -83,6 +89,8 @@ func validNativeCategory(source, category string) bool {
 		return validMaccmsCategory(category)
 	case sourceXvideos:
 		return validXvideosCategory(category)
+	case sourceHuanggua:
+		return validHuangguaCategory(category)
 	}
 	return false
 }
@@ -96,8 +104,11 @@ func (engine *nativeEngine) nativeCategories(ctx context.Context, source string,
 			all = append(all, nativeCategory{ID: genre.key, Name: genre.name})
 		}
 		return engine.hongguoCategories(ctx, all, force), nil
-	case sourceHuangguoAI:
+	case sourceHuangguoAI, sourceHuangguoVideo:
+		// 黄果视频沿用黄果 AI 的站点与分类（旧 HTML 版站点已下线）。
 		return append(all, nativeAICategories...), nil
+	case sourceHuanggua:
+		return engine.downloader.fetchHuangguaCategories(), nil
 	case sourceHuangdou:
 		return all, nil
 	}

@@ -11,6 +11,9 @@ import (
 
 func TestNativeCategoryPaginationStaysIndependent(t *testing.T) {
 	engine := sourceFixtureEngine(t, func(request *http.Request) (*http.Response, error) {
+		if response, ok := sourceFixturePublishScript(request); ok {
+			return response, nil
+		}
 		target := huangguoEdgeTarget(t, request)
 		if !strings.HasPrefix(target.Path, "/api/videos/category/ai-") {
 			return nil, errors.New("only catalog JSON is permitted")

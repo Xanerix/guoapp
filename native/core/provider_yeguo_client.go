@@ -29,12 +29,12 @@ import (
 )
 
 const (
-	yeguoBaseURL    = "https://attract.vgbyziuz.cc"
+	yeguoBaseURL    = "https://yeguodj.com"
 	yeguoTransitURL = "https://ygdj15.com"
 )
 
 var (
-	yeguoBackupSites      = []string{"https://as.vgbyziuz.cc", "https://anyway.vgbyziuz.cc", "https://analyze.buxefaex.cc"}
+	yeguoBackupSites      = []string{"https://delta.ygrwdsgt.cc", "https://analyze.buxefaex.cc"}
 	errYeguoDecode        = errors.New("野果接口响应校验或解码失败")
 	yeguoModuleImport     = regexp.MustCompile(`(?s)import\s*\{([^{};]+)\}\s*from\s*["'\x60]([^"'\x60]+)["'\x60]`)
 	yeguoScriptBaseCall   = regexp.MustCompile(`baseURL:([a-zA-Z_$][a-zA-Z0-9_$]*)\([a-zA-Z_$]?[a-zA-Z0-9_$]*\)`)
@@ -113,11 +113,15 @@ func isYeguoActiveSite(raw string) bool {
 		return false
 	}
 	host := strings.ToLower(address.Hostname())
-	return host == "analyze.buxefaex.cc" ||
+	return host == "yeguodj.com" ||
+		host == "analyze.buxefaex.cc" ||
 		strings.HasSuffix(host, ".buxefaex.cc") ||
 		strings.HasSuffix(host, ".fzchosdi.cc") ||
 		strings.HasSuffix(host, ".lwblvxvy.cc") ||
-		strings.HasSuffix(host, ".vgbyziuz.cc")
+		strings.HasSuffix(host, ".vgbyziuz.cc") ||
+		strings.HasSuffix(host, ".ygrwdsgt.cc") ||
+		strings.HasSuffix(host, ".zxcrirxx.cc") ||
+		strings.HasSuffix(host, ".ocdjlxow.cc")
 }
 
 func yeguoTransitDecodedText(body string) string {

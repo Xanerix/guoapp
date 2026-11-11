@@ -43,14 +43,14 @@ func TestHuangguoAILinesCoverEveryMirrorDomain(t *testing.T) {
 	}
 	generated := map[string]bool{}
 	for _, mirror := range generatedHuangguoAIMirrors(address, 8) {
-		for _, domain := range huangguoAIMirrorDomains {
-			if strings.HasSuffix(mirror, "."+domain) {
-				generated[domain] = true
-			}
+		// 随机子域只对当前主域名生成：旧域名整体被封后生成再多也访问不到。
+		if !strings.HasSuffix(mirror, "."+huangguoAIMirrorDomains[0]) {
+			t.Fatalf("generated line %s is not on the current mirror domain", mirror)
 		}
+		generated[huangguoAIMirrorDomains[0]] = true
 	}
-	if len(generated) != len(huangguoAIMirrorDomains) {
-		t.Fatal("generated lines skipped a mirror domain")
+	if len(generated) != 1 {
+		t.Fatal("generated lines should stay on the current mirror domain")
 	}
 	if providerSourceForURL("https://evil-lbvrhyir.cc/") != "" || providerSourceForURL("https://lbvrhyir.cc.example.test/") != "" {
 		t.Fatal("an unrelated host was treated as a huangguoai line")
@@ -62,10 +62,26 @@ func huangguoEdgeReply(data any) string {
 	return string(body)
 }
 
+// sourceFixturePublishScript 放行镜像发布页请求，返回空脚本：
+// 合成用例只验证站内接口，不应被域名刷新请求干扰。
+func sourceFixturePublishScript(request *http.Request) (*http.Response, bool) {
+	if !strings.Contains(request.URL.Path, "publish.js") {
+		return nil, false
+	}
+	return sourceFixtureResponse(request, 200, "var urls=[];\nvar subdomains=[];\n"), true
+}
+
 func TestHuangguoAIDetailAndPlaybackUseEdgeAPI(t *testing.T) {
 	d := sourceFixtureDownloader(t, func(request *http.Request) (*http.Response, error) {
+		if response, ok := sourceFixturePublishScript(request); ok {
+			return response, nil
+		}
 		if request.URL.Hostname() != "huangguoai.com" {
 			return nil, errors.New("only synthetic huangguoai requests are allowed")
+		}
+		// 新版取流是公开 POST 接口，不再经过 edge 信封。
+		if request.URL.Path == "/api/videos/12/episodes/2/playback" && request.Method == http.MethodPost {
+			return sourceFixtureResponse(request, 200, `{"status":1,"msg":"","data":{"streams":{"main":"https://media.example.test/12/2.mp4?auth_key=synthetic"}}}`), nil
 		}
 		target := huangguoEdgeTarget(t, request)
 		switch target.Path {
@@ -74,11 +90,6 @@ func TestHuangguoAIDetailAndPlaybackUseEdgeAPI(t *testing.T) {
 				"id": 12, "title": "合成剧", "description": "合成简介", "cover": "/covers/12.jpg", "episode_count": 2, "is_finished": false,
 				"episodes": []any{map[string]any{"ep_num": 2, "title": "第2集"}, map[string]any{"ep_num": 1, "title": ""}},
 			})), nil
-		case "/api/videos/12/play":
-			if target.Query().Get("ep") != "2" {
-				t.Errorf("requested the wrong episode: %s", target)
-			}
-			return sourceFixtureResponse(request, 200, huangguoEdgeReply(map[string]any{"video_url": "https://media.example.test/12/2.mp4?auth_key=synthetic"})), nil
 		}
 		return sourceFixtureResponse(request, 200, `{"status":0,"msg":"合成剧集不存在"}`), nil
 	})
@@ -98,8 +109,33 @@ func TestHuangguoAIDetailAndPlaybackUseEdgeAPI(t *testing.T) {
 	}
 }
 
+func TestHuangguoVideoResultsReSourceIDs(t *testing.T) {
+	drama := reSourceDrama(Drama{ID: "huangguoai:12", Source: sourceHuangguoAI}, sourceHuangguoVideo)
+	if drama.ID != "huangguo-video:12" || drama.Source != sourceHuangguoVideo {
+		t.Fatalf("drama not re-sourced: %+v", drama)
+	}
+	chapters := reSourceChapters([]Chapter{
+		{ID: "huangguoai:12:auto-1", Source: sourceHuangguoAI},
+		{ID: "huangguoai:12:ep-2", Source: sourceHuangguoAI},
+	}, sourceHuangguoVideo)
+	if chapters[0].ID != "huangguo-video:12:auto-1" || chapters[1].ID != "huangguo-video:12:ep-2" {
+		t.Fatalf("chapters not re-sourced: %+v", chapters)
+	}
+	for _, chapter := range chapters {
+		if chapter.Source != sourceHuangguoVideo {
+			t.Fatalf("chapter source = %s", chapter.Source)
+		}
+	}
+	if (&Downloader{cfg: defaultConfig()}).providerBaseURL(sourceHuangguoVideo) == "https://huangguo.video" {
+		t.Fatal("huangguo video should follow the huangguoai mirror hosts")
+	}
+}
+
 func TestHuangguoAISearchUsesSitePagination(t *testing.T) {
 	engine := sourceFixtureEngine(t, func(request *http.Request) (*http.Response, error) {
+		if response, ok := sourceFixturePublishScript(request); ok {
+			return response, nil
+		}
 		target := huangguoEdgeTarget(t, request)
 		if target.Path != "/api/search" || target.Query().Get("q") != "合成 关键词" {
 			return nil, errors.New("only synthetic search requests are allowed")

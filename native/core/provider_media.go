@@ -23,6 +23,23 @@ type providerMedia struct {
 
 func (d *Downloader) providerBaseURL(source string) string {
 	source = canonicalProviderSource(source)
+	// 黄果视频与黄果 AI 是同一套站点的两个入口：旧域名 huangguo.video 已不可用，
+	// 统一跟随黄果 AI 的镜像域名，取流也改走新播放接口。
+	if source == sourceHuangguoVideo && strings.TrimSpace(d.cfg.HuangguoVideoURL) == "" {
+		if hosts := d.huangguoAIMirrorHosts(); len(hosts) > 0 {
+			return hosts[0]
+		}
+		return huangguoAIBaseMirrors[1]
+	}
+	if source == sourceHuanggua {
+		d.huangguaHost.mu.Lock()
+		host := d.huangguaHost.host
+		d.huangguaHost.mu.Unlock()
+		if host != "" {
+			return host
+		}
+		return huangguaSeedHosts[0]
+	}
 	var configured, fallback string
 	switch source {
 	case sourceHuangguoAI:
@@ -85,13 +102,17 @@ func providerSourceForURL(raw string) string {
 	case host == "ygdj7.com" || host == "www.ygdj7.com" || host == "ygdj15.com" || host == "www.ygdj15.com" ||
 		host == "analyze.buxefaex.cc" || strings.HasSuffix(host, ".buxefaex.cc") ||
 		strings.HasSuffix(host, ".fzchosdi.cc") || strings.HasSuffix(host, ".lwblvxvy.cc") || strings.HasSuffix(host, ".vgbyziuz.cc") ||
-		host == "delta.ygrwdsgt.cc" || host == "yeguodj.com" || host == "www.yeguodj.com":
+		strings.HasSuffix(host, ".ygrwdsgt.cc") || strings.HasSuffix(host, ".zxcrirxx.cc") || strings.HasSuffix(host, ".ocdjlxow.cc") ||
+		host == "yeguodj.com" || host == "www.yeguodj.com":
 		return sourceYeguo
 	case host == "jinguoduanju.app" || host == "www.jinguoduanju.app" || host == "play.jinguoduanju.app" ||
 		host == "jgdj.app" || host == "www.jgdj.app":
 		return sourceJinguoDuanju
-	case host == "dsd.com.se" || host == "www.dsd.com.se":
+	case host == "dsd.com.se" || host == "www.dsd.com.se" || host == "dsd.lol" || host == "dsd901.lol" || host == "www.dsd901.lol":
 		return sourceDSD
+	case host == "hgdja1.com" || host == "www.hgdja1.com" || host == "hgdju.com" || host == "www.hgdju.com" ||
+		strings.HasSuffix(host, ".ywwegfkd.cc") || strings.HasSuffix(host, ".eyrkjyudz.cc"):
+		return sourceHuanggua
 	case host == "sorani.net" || host == "www.sorani.net" || host == "api.sorani.cc" || host == "sorani.cc":
 		return sourceSorani
 	case host == "guipianwu.com" || host == "www.guipianwu.com":
@@ -118,7 +139,8 @@ func isHuangguoAIMirrorHost(host string) bool {
 
 func (d *Downloader) providerURLCandidates(raw string) []string {
 	source := providerSourceForURL(raw)
-	if source == "" || source == sourceHuangju || source == sourceYeguo {
+	if source == "" || source == sourceHuangju || source == sourceYeguo || source == sourceHuanggua {
+		// 黄瓜短剧的域名由自己的入口页轮换，这里不再按站源重写主机。
 		return []string{raw}
 	}
 	parsed, _ := url.Parse(raw)
@@ -133,6 +155,12 @@ func (d *Downloader) providerURLCandidates(raw string) []string {
 			candidates = append(candidates, candidate)
 		}
 	}
+	if source == sourceHuangguoAI {
+		// 官方发布页解析出的域名是最新可用的，排在最前；旧镜像只做兜底。
+		for _, host := range d.huangguoAIMirrorHostsForRequest() {
+			add(rehostProviderURL(parsed, host))
+		}
+	}
 	add(rehostProviderURL(parsed, preferred))
 	configured := d.providerBaseURL(source)
 	add(rehostProviderURL(parsed, configured))
@@ -141,6 +169,10 @@ func (d *Downloader) providerURLCandidates(raw string) []string {
 	}
 	for _, candidate := range providerURLCandidates(raw) {
 		add(candidate)
+	}
+	// 候选过多时逐个 5 秒超时会把首个请求拖到一分钟以上，只保留最可能命中的前几个。
+	if len(candidates) > huangguoAIMaxCandidates {
+		candidates = candidates[:huangguoAIMaxCandidates]
 	}
 	return candidates
 }
@@ -187,10 +219,26 @@ func (d *Downloader) resolveProviderMedia(ctx context.Context, task Task) (provi
 	if chapter.Source == sourceXvideos {
 		return d.resolveXvideosMedia(ctx, task)
 	}
+	if chapter.Source == sourceHuanggua {
+		return d.resolveHuangguaMedia(ctx, task)
+	}
 	if strings.HasPrefix(chapter.VideoURL, "hongguo-cenc://") {
 		return d.resolveHongguoMedia(ctx, task)
 	}
-	if chapter.PageURL == "" && chapter.Source == sourceHuangguoVideo {
+	// 黄果视频已并入黄果 AI 站点，数字 ID 直接走新版播放接口，
+	// 取到地址后清掉旧页地址，避免再走已失效的 data-hls 解析。
+	videoAPIResolved := false
+	if chapter.Source == sourceHuangguoVideo {
+		if _, sourceID, valid := splitProviderDramaID(task.DramaID); valid && rankingSourceID.MatchString(sourceID) {
+			if address, err := d.fetchHuangguoAIPlayURL(ctx, sourceID, chapterEpisodeNumber(chapter, task.Index)); err == nil && address != "" {
+				chapter.VideoURL = address
+				chapter.PageURL = ""
+				chapter.Referer = d.providerBaseURL(sourceHuangguoVideo) + "/"
+				videoAPIResolved = true
+			}
+		}
+	}
+	if chapter.PageURL == "" && chapter.Source == sourceHuangguoVideo && !videoAPIResolved {
 		if source, sourceID, valid := splitProviderDramaID(task.DramaID); valid {
 			_, chapters, err := d.GetHuangguoChapters(ctx, source, sourceID)
 			if err != nil {

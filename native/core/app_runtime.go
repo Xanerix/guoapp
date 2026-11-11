@@ -5,9 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -84,6 +82,11 @@ type Downloader struct {
 	legacy                *legacyAPIClient
 	previewMu             sync.Mutex
 	previewSessions       map[string]*huangguoPreviewSession
+	aiMirrorMu            sync.Mutex
+	aiMirrorHosts         []string
+	aiMirrorAt            time.Time
+	aiMirrorPending       bool
+	huangguaHost          huangguaHostState
 }
 
 func defaultConfig() Config { return Config{MaxPagesPerSort: 50, PageSize: 30, Retries: 2} }
@@ -583,13 +586,13 @@ func (engine *nativeEngine) nativeCatalog(ctx context.Context, input nativeInput
 		result.HasMore = more
 		return result, nil
 	}
-	if query != "" && source == sourceHuangguoAI {
+	if query != "" && (source == sourceHuangguoAI || source == sourceHuangguoVideo) {
 		items, more, err := d.searchHuangguoAI(ctx, page, query)
 		if err != nil {
 			return result, err
 		}
 		for _, drama := range items {
-			result.Items = append(result.Items, nativeNormalize(drama))
+			result.Items = append(result.Items, nativeNormalize(reSourceDrama(drama, source)))
 		}
 		result.HasMore = more
 		return result, nil
@@ -767,23 +770,21 @@ func (engine *nativeEngine) nativeCatalog(ctx context.Context, input nativeInput
 	case sourceXvideos:
 		items, result.HasMore, err = d.fetchXvideosCatalogPage(ctx, page, category, "")
 	case sourceHuangguoVideo:
-		address := fmt.Sprintf("%s/videos?page=%d", d.providerBaseURL(source), page)
-		if category != "" {
-			address += "&category=" + url.QueryEscape(category)
+		// 旧 HTML 版站点已下线，黄果视频改用同站点的公开接口。
+		var rows []Drama
+		rows, result.HasMore, err = d.fetchHuangguoAICatalogPage(ctx, page, category)
+		for _, drama := range rows {
+			items = append(items, reSourceDrama(drama, sourceHuangguoVideo))
 		}
-		var body string
-		body, err = d.fetchProviderText(ctx, address, d.providerBaseURL(source)+"/")
-		if err == nil {
-			items = parseHuangguoVideoCards(body, address)
-		}
-		result.HasMore = len(items) >= 20
 	case sourceCloudFront:
 		items, result.HasMore, err = d.fetchLegacyCatalogCategoryPage(ctx, page, category)
+	case sourceHuanggua:
+		items, result.HasMore, err = d.fetchHuangguaCatalogPage(ctx, page, category)
 	}
 	if err != nil && len(items) == 0 {
 		return result, err
 	}
-	if len(items) == 0 && page == 1 && source != sourceHuangju && source != sourceYeguo && source != sourceJinguoDuanju && source != sourceJinguo && source != sourceDSD && source != sourceSorani && source != sourceGuipian && source != sourceHanxiaoquan && source != sourceHeitao && source != sourceBeabox && source != sourceZuid && source != sourceFfzy && source != sourceRycj && source != sourceXvideos {
+	if len(items) == 0 && page == 1 && source != sourceHuanggua && source != sourceHuangju && source != sourceYeguo && source != sourceJinguoDuanju && source != sourceJinguo && source != sourceDSD && source != sourceSorani && source != sourceGuipian && source != sourceHanxiaoquan && source != sourceHeitao && source != sourceBeabox && source != sourceZuid && source != sourceFfzy && source != sourceRycj && source != sourceXvideos {
 		return result, errors.New("站源暂未返回剧集，请稍后刷新")
 	}
 	if err != nil {
@@ -814,7 +815,14 @@ func (engine *nativeEngine) nativeDetail(ctx context.Context, drama nativeDrama)
 	case sourceHuangguoAI:
 		raw, chapters, err = engine.downloader.fetchHuangguoAIDetail(ctx, sourceID)
 	case sourceHuangguoVideo:
-		raw, chapters, err = engine.downloader.fetchHuangguoVideoDetail(ctx, sourceID)
+		// 新站点与黄果 AI 同源；旧记录里的 series/video 路径继续走 HTML 解析。
+		if rankingSourceID.MatchString(sourceID) {
+			raw, chapters, err = engine.downloader.fetchHuangguoAIDetail(ctx, sourceID)
+			raw = reSourceDrama(raw, sourceHuangguoVideo)
+			chapters = reSourceChapters(chapters, sourceHuangguoVideo)
+		} else {
+			raw, chapters, err = engine.downloader.fetchHuangguoVideoDetail(ctx, sourceID)
+		}
 	case sourceCloudFront:
 		raw, chapters, err = engine.downloader.fetchLegacyDetail(ctx, sourceID)
 	case sourceHuangju:
@@ -841,6 +849,8 @@ func (engine *nativeEngine) nativeDetail(ctx context.Context, drama nativeDrama)
 		raw, chapters, err = engine.downloader.fetchMaccmsDetail(ctx, source, sourceID)
 	case sourceXvideos:
 		raw, chapters, err = engine.downloader.fetchXvideosDetail(ctx, sourceID)
+	case sourceHuanggua:
+		raw, chapters, err = engine.downloader.fetchHuangguaDetail(ctx, sourceID)
 	default:
 		title, chapters, err = engine.downloader.GetHuangguoChapters(ctx, source, sourceID)
 	}

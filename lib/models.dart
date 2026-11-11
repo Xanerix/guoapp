@@ -63,6 +63,7 @@ class SourceSite {
     SourceSite('ffzy', '非凡影视', '电影 · 剧集 · 综艺 · 动漫'),
     SourceSite('rycj', '如意影视', '电影 · 剧集 · 综艺 · 动漫'),
     SourceSite('xvideos', 'XVideos', '分类视频 · 在线搜索'),
+    SourceSite('huanggua', '黄瓜短剧', 'AI 短剧 · 漫剧 · 魔改'),
     SourceSite('huangguo-video', '黄果视频', '视频剧集'),
     SourceSite('huangguoai', '黄果 AI', 'AI 短剧'),
     SourceSite('cloudfront', '黄果旧版', '旧 API 剧库'),

@@ -229,6 +229,9 @@ func TestNativeHongguoStalledCursorKeepsPartialItems(t *testing.T) {
 func TestNativeCatalogPreservesLargeLibraryAndPage501(t *testing.T) {
 	var requested string
 	engine := sourceFixtureEngine(t, func(request *http.Request) (*http.Response, error) {
+		if response, ok := sourceFixturePublishScript(request); ok {
+			return response, nil
+		}
 		target := huangguoEdgeTarget(t, request)
 		if target.Path != "/api/videos/category/ai-duanju" {
 			return nil, errors.New("only synthetic catalog metadata is allowed")

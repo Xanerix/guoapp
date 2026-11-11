@@ -13,6 +13,28 @@ import (
 
 const huangguoAISearchPageSize = 20
 
+// reSourceDrama 把黄果 AI 的结果改挂到同一站点的另一个入口（黄果视频）。
+func reSourceDrama(drama Drama, source string) Drama {
+	if source == "" || source == drama.Source {
+		return drama
+	}
+	if strings.HasPrefix(drama.ID, sourceHuangguoAI+":") {
+		drama.ID = source + strings.TrimPrefix(drama.ID, sourceHuangguoAI)
+	}
+	drama.Source = source
+	return drama
+}
+
+func reSourceChapters(chapters []Chapter, source string) []Chapter {
+	for index := range chapters {
+		if strings.HasPrefix(chapters[index].ID, sourceHuangguoAI+":") {
+			chapters[index].ID = source + strings.TrimPrefix(chapters[index].ID, sourceHuangguoAI)
+		}
+		chapters[index].Source = source
+	}
+	return chapters
+}
+
 func (d *Downloader) huangguoAIAPI(ctx context.Context, path string, out any) error {
 	envelope, err := json.Marshal(map[string]string{"method": http.MethodGet, "path": path, "body": "", "content_type": ""})
 	if err != nil {
@@ -85,6 +107,11 @@ func (d *Downloader) fetchHuangguoAIPlayURL(ctx context.Context, sourceID string
 	if !rankingSourceID.MatchString(sourceID) || episode < 1 {
 		return "", errors.New("黄果集数无效")
 	}
+	// 站点新版把取流改成公开的 POST /api/videos/<id>/episodes/<ep>/playback，
+	// 返回 streams.main；旧版 /api/edge/request + /play 已不再返回 video_url。
+	if address, err := d.huangguoAIPlaybackURL(ctx, sourceID, episode); err == nil && address != "" {
+		return address, nil
+	}
 	var play struct {
 		VideoURL string `json:"video_url"`
 	}
@@ -93,6 +120,38 @@ func (d *Downloader) fetchHuangguoAIPlayURL(ctx context.Context, sourceID string
 		return "", err
 	}
 	return normalizeProviderMediaURL(d.providerBaseURL(sourceHuangguoAI)+"/", play.VideoURL), nil
+}
+
+// huangguoAIPlaybackURL 走新播放接口，拿到带签名的 m3u8 地址。
+func (d *Downloader) huangguoAIPlaybackURL(ctx context.Context, sourceID string, episode int) (string, error) {
+	base := d.providerBaseURL(sourceHuangguoAI)
+	path := fmt.Sprintf("/api/videos/%s/episodes/%d/playback", url.PathEscape(sourceID), episode)
+	body, err := d.fetchProviderRequest(ctx, base+path, base+"/video/"+url.PathEscape(sourceID)+"/", []byte("{}"))
+	if err != nil {
+		return "", err
+	}
+	var reply struct {
+		Status int    `json:"status"`
+		Msg    string `json:"msg"`
+		Data   struct {
+			Streams struct {
+				Main string `json:"main"`
+				Hevc string `json:"hevc"`
+			} `json:"streams"`
+			VideoURL string `json:"video_url"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(body), &reply); err != nil {
+		return "", err
+	}
+	if reply.Status != 1 {
+		return "", fmt.Errorf("黄果取流失败：%s", firstNonEmpty(reply.Msg, "未知错误"))
+	}
+	address := firstNonEmpty(reply.Data.Streams.Main, reply.Data.Streams.Hevc, reply.Data.VideoURL)
+	if address == "" {
+		return "", errors.New("黄果没有返回播放地址")
+	}
+	return normalizeProviderMediaURL(base+"/", address), nil
 }
 
 func (d *Downloader) searchHuangguoAI(ctx context.Context, page int, query string) ([]Drama, bool, error) {

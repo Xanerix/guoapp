@@ -40,6 +40,7 @@ const (
 	sourceFfzy          = "ffzy"
 	sourceRycj          = "rycj"
 	sourceXvideos       = "xvideos"
+	sourceHuanggua      = "huanggua"
 
 	providerMaxBodyBytes = 20 * 1024 * 1024
 	providerTimeout      = 12 * time.Second
@@ -47,9 +48,19 @@ const (
 
 var (
 	huangguoAIBaseURL       = "https://huangguoai.com"
-	huangguoAIBaseMirrors   = []string{"https://huangguoai.com", "https://thu.lbvrhyir.cc", "https://pku.xxbgwypx.cc", "https://ttvoij.ediayikma.cc", "https://thu.ediayikma.cc", "https://pku.ediayikma.cc", "https://fdu.ediayikma.cc", "https://thu.agdkczeyx.cc"}
-	huangguoAIMirrorDomains = []string{"lbvrhyir.cc", "xxbgwypx.cc", "ediayikma.cc", "agdkczeyx.cc"}
+	huangguoAIBaseMirrors   = []string{"https://huangguoai.com", "https://thu.adihsppe.cc", "https://pku.adihsppe.cc", "https://zju.adihsppe.cc", "https://thu.lbvrhyir.cc", "https://pku.xxbgwypx.cc", "https://ttvoij.ediayikma.cc"}
+	huangguoAIMirrorDomains = []string{"adihsppe.cc", "lbvrhyir.cc", "xxbgwypx.cc", "ediayikma.cc", "agdkczeyx.cc"}
 	huangguoVideoBaseURL    = "https://huangguo.video"
+
+	// 官方地址发布页：大陆可直连，里面的 urls/subdomains 会随屏蔽情况更新。
+	huangguoAIPublishURL      = "https://huangguoai.pages.dev/publish.js"
+	huangguoAIMirrorTTL       = 30 * time.Minute
+	huangguoAIMaxCandidates   = 6
+	huangguoAIMirrorHostLimit = 8
+
+	huangguoAIPublishDomains = regexp.MustCompile(`(?s)var\s+urls\s*=\s*\[(.*?)\]`)
+	huangguoAIPublishSubs    = regexp.MustCompile(`(?s)var\s+subdomains\s*=\s*\[(.*?)\]`)
+	huangguoAIPublishToken   = regexp.MustCompile(`['"]([a-zA-Z0-9][a-zA-Z0-9.\-/]*)['"]`)
 
 	huangguoAISlugs = []string{"recommend", "newest", "ai-duanju", "ai-manju", "ai-huanlian", "ai-mogai", "ranks/hot"}
 
@@ -96,7 +107,7 @@ func splitProviderDramaID(id string) (source, sourceID string, ok bool) {
 
 func isHuangguoProviderSource(source string) bool {
 	switch canonicalProviderSource(source) {
-	case sourceHuangguoAI, sourceHuangguoVideo, sourceHuangdou, sourceHongguo, sourceHuangju, sourceYeguo, sourceJinguoDuanju, sourceJinguo, sourceDSD, sourceCloudFront, sourceSorani, sourceGuipian, sourceHanxiaoquan, sourceHeitao, sourceBeabox, sourceZuid, sourceFfzy, sourceRycj, sourceXvideos:
+	case sourceHuangguoAI, sourceHuangguoVideo, sourceHuangdou, sourceHongguo, sourceHuangju, sourceYeguo, sourceJinguoDuanju, sourceJinguo, sourceDSD, sourceCloudFront, sourceSorani, sourceGuipian, sourceHanxiaoquan, sourceHeitao, sourceBeabox, sourceZuid, sourceFfzy, sourceRycj, sourceXvideos, sourceHuanggua:
 		return true
 	default:
 		return false
@@ -125,7 +136,7 @@ func canonicalProviderSource(source string) string {
 		return sourceJinguoDuanju
 	case "jinguo":
 		return sourceJinguo
-	case "dsd", "dsd.com.se", "www.dsd.com.se":
+	case "dsd", "dsd.com.se", "www.dsd.com.se", "dsd.lol", "dsd901.lol", "www.dsd901.lol":
 		return sourceDSD
 	case "cloudfront":
 		return sourceCloudFront
@@ -147,6 +158,8 @@ func canonicalProviderSource(source string) string {
 		return sourceRycj
 	case "xvideos", "xvideos.com", "www.xvideos.com":
 		return sourceXvideos
+	case "huanggua", "hgdja1.com", "www.hgdja1.com", "hgdju.com", "www.hgdju.com":
+		return sourceHuanggua
 	default:
 		return strings.TrimSpace(source)
 	}
@@ -497,9 +510,11 @@ func rehostProviderURL(u *url.URL, mirror string) string {
 }
 
 func generatedHuangguoAIMirrors(seed string, n int) []string {
-	if n <= 0 {
+	if n <= 0 || len(huangguoAIMirrorDomains) == 0 {
 		return nil
 	}
+	// 只对当前主域名生成随机子域：旧域名整体被封后生成再多也没用。
+	domain := huangguoAIMirrorDomains[0]
 	out := make([]string, 0, n)
 	seen := map[string]bool{}
 	for i := 0; len(out) < n && i < n*4; i++ {
@@ -516,7 +531,97 @@ func generatedHuangguoAIMirrors(seed string, n int) []string {
 			continue
 		}
 		seen[sub] = true
-		out = append(out, "https://"+sub+"."+huangguoAIMirrorDomains[len(out)%len(huangguoAIMirrorDomains)])
+		out = append(out, "https://"+sub+"."+domain)
+	}
+	return out
+}
+
+// huangguoAIMirrorHosts 返回发布页解析出的最新镜像主机（形如 https://thu.xxx.cc）。
+func (d *Downloader) huangguoAIMirrorHosts() []string {
+	d.aiMirrorMu.Lock()
+	defer d.aiMirrorMu.Unlock()
+	return append([]string(nil), d.aiMirrorHosts...)
+}
+
+// huangguoAIMirrorHostsForRequest 在拼候选地址前刷新一次镜像域名。
+// 发布页可直连且响应很快，同步刷新能让首次请求就绕开被封锁的旧域名；
+// 失败只保留静态列表，不影响正常请求。
+func (d *Downloader) huangguoAIMirrorHostsForRequest() []string {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	d.refreshHuangguoAIMirrors(ctx)
+	return d.huangguoAIMirrorHosts()
+}
+
+// refreshHuangguoAIMirrors 从官方发布页刷新当前可用域名；失败时保留旧缓存。
+// 发布页 huangguoai.pages.dev 在大陆可直连，域名轮换后不用等发版。
+func (d *Downloader) refreshHuangguoAIMirrors(ctx context.Context) {
+	d.aiMirrorMu.Lock()
+	if d.aiMirrorPending || time.Since(d.aiMirrorAt) < huangguoAIMirrorTTL {
+		d.aiMirrorMu.Unlock()
+		return
+	}
+	d.aiMirrorPending = true
+	d.aiMirrorMu.Unlock()
+	hosts := d.fetchHuangguoAIPublishHosts(ctx)
+	d.aiMirrorMu.Lock()
+	d.aiMirrorPending = false
+	if len(hosts) > 0 {
+		d.aiMirrorHosts = hosts
+		d.aiMirrorAt = time.Now()
+	} else {
+		// 失败后 2 分钟再试，既不阻塞正常请求，也能尽快恢复。
+		d.aiMirrorAt = time.Now().Add(-huangguoAIMirrorTTL + 2*time.Minute)
+	}
+	d.aiMirrorMu.Unlock()
+}
+
+func (d *Downloader) fetchHuangguoAIPublishHosts(ctx context.Context) []string {
+	body, err := d.fetchProviderText(ctx, huangguoAIPublishURL, "https://huangguoai.pages.dev/")
+	if err != nil {
+		return nil
+	}
+	return parseHuangguoAIPublishHosts(body)
+}
+
+// parseHuangguoAIPublishHosts 解析发布页脚本里的 urls（域名）与 subdomains（子域前缀）。
+func parseHuangguoAIPublishHosts(body string) []string {
+	domains := huangguoAIPublishTokens(body, huangguoAIPublishDomains)
+	subs := huangguoAIPublishTokens(body, huangguoAIPublishSubs)
+	var out []string
+	seen := map[string]bool{}
+	add := func(host string) {
+		if host == "" || seen[host] || len(out) >= huangguoAIMirrorHostLimit {
+			return
+		}
+		seen[host] = true
+		out = append(out, host)
+	}
+	for _, domain := range domains {
+		domain = strings.Trim(strings.Trim(strings.TrimSpace(domain), "/"), ".")
+		if domain == "" || !strings.Contains(domain, ".") {
+			continue
+		}
+		for _, sub := range subs {
+			add("https://" + sub + "." + domain)
+		}
+		if len(subs) == 0 {
+			add("https://" + domain)
+		}
+	}
+	return out
+}
+
+func huangguoAIPublishTokens(body string, pattern *regexp.Regexp) []string {
+	match := pattern.FindStringSubmatch(body)
+	if len(match) != 2 {
+		return nil
+	}
+	var out []string
+	for _, token := range huangguoAIPublishToken.FindAllStringSubmatch(match[1], 64) {
+		if value := strings.TrimSpace(token[1]); value != "" {
+			out = append(out, value)
+		}
 	}
 	return out
 }

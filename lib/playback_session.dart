@@ -539,9 +539,7 @@ class PlaybackSession extends ChangeNotifier {
       _iosRebuilds++;
       if (_iosRebuilds >= 2) _forceSoftwareDecode = true;
       _errorTimer?.cancel();
-      DiaryService.add(
-        '[Play] iOS 播放异常，重建播放器 原因=$reason 次数=$_iosRebuilds',
-      );
+      DiaryService.add('[Play] iOS 播放异常，重建播放器 原因=$reason 次数=$_iosRebuilds');
       await _rebuildAndResume(position, _playIntent);
       return;
     }
@@ -612,15 +610,17 @@ class PlaybackSession extends ChangeNotifier {
     final hwdec = _forceSoftwareDecode
         ? 'no'
         : switch (store.playbackPreferences.televisionDecoder) {
-      TelevisionDecoder.software => 'no',
-      TelevisionDecoder.hardware when Platform.isAndroid => 'mediacodec-copy',
-      TelevisionDecoder.hardware when Platform.isIOS || Platform.isMacOS =>
-        'videotoolbox-copy',
-      _ when Platform.isWindows => 'd3d11va-copy',
-      _ when Platform.isAndroid => 'auto-safe',
-      _ when Platform.isMacOS => 'auto-safe',
-      _ => null,
-    };
+            TelevisionDecoder.software => 'no',
+            TelevisionDecoder.hardware when Platform.isAndroid =>
+              'mediacodec-copy',
+            TelevisionDecoder.hardware
+                when Platform.isIOS || Platform.isMacOS =>
+              'videotoolbox-copy',
+            _ when Platform.isWindows => 'd3d11va-copy',
+            _ when Platform.isAndroid => 'auto-safe',
+            _ when Platform.isMacOS => 'auto-safe',
+            _ => null,
+          };
     if (hwdec != null) await platform.setProperty('hwdec', hwdec);
     if (Platform.isAndroid) {
       await platform.setProperty('hwdec-codecs', 'all');
@@ -763,6 +763,7 @@ class PlaybackSession extends ChangeNotifier {
         danmaku.setPlan(plan);
         _syncDanmaku();
       });
+      if (_current(ticket) && _playIntent) unawaited(_ensurePlaying(ticket));
     } catch (error) {
       if (_current(ticket)) {
         if (prepared != null && identical(_plan, prepared)) {
@@ -830,9 +831,34 @@ class PlaybackSession extends ChangeNotifier {
       await _limitCache(next, false);
       await next.setVolume(volume);
       await _setRate(_rate);
-      if (_current(ticket) && _foreground && _playIntent) await next.play();
+      if (_current(ticket) && _foreground && _playIntent) {
+        await next.play();
+        unawaited(_ensurePlaying(ticket));
+      }
     } catch (_) {
       if (_current(ticket)) _queueRecovery('open_exception');
+    }
+  }
+
+  /// iOS 上预加载的待机播放器切集后会偶发停在暂停态：首帧播约 1 秒就卡住，
+  /// 用户点一下才真正继续。2 倍速或弱网下更容易触发。
+  /// 起播后短时间轮询一次真实播放状态，没有真正播放就补发 play。
+  Future<void> _ensurePlaying(int ticket) async {
+    for (var attempt = 0; attempt < 4; attempt++) {
+      await Future<void>.delayed(const Duration(milliseconds: 800));
+      if (_closed ||
+          ticket != _generation ||
+          !_foreground ||
+          !_playIntent ||
+          _pausedByUser) {
+        return;
+      }
+      if (player.state.playing) return;
+      try {
+        await player.play();
+      } catch (_) {
+        return;
+      }
     }
   }
 
@@ -864,7 +890,9 @@ class PlaybackSession extends ChangeNotifier {
   Future<void> _open(Player standby, PlaybackPlan plan) async {
     try {
       await _configure(standby, plan);
-      await _limitCache(standby, true);
+      // 待机播放器也保留完整缓存：限到 4MB 时高倍速/弱网切过去只缓冲了一两秒，
+      // 首帧播完就断流，表现为卡在第 1 秒。
+      await _limitCache(standby, false);
       await standby.open(
         Media(plan.url, httpHeaders: plan.headers),
         play: false,
@@ -1211,7 +1239,8 @@ class PlaybackSession extends ChangeNotifier {
     }
   }
 
-  bool _restorable(int token) => !_closed && _foreground && token == _restoreToken;
+  bool _restorable(int token) =>
+      !_closed && _foreground && token == _restoreToken;
 
   /// 取流探活结果：只有两次都明确返回 false 才算确认失效。
   Future<_StreamProbe> _probeStream() async {
@@ -1222,9 +1251,9 @@ class PlaybackSession extends ChangeNotifier {
         await Future<void>.delayed(const Duration(milliseconds: 150));
       }
       try {
-        final alive = await repository
-            .playbackAlive()
-            .timeout(const Duration(seconds: 2));
+        final alive = await repository.playbackAlive().timeout(
+          const Duration(seconds: 2),
+        );
         if (alive) return _StreamProbe.alive;
         sawDead = true;
       } catch (_) {
@@ -1351,9 +1380,7 @@ class PlaybackSession extends ChangeNotifier {
       advanced = await _confirmProgress(
         before,
         alive: () =>
-            _restorable(token) &&
-            generation == _generation &&
-            index == _index,
+            _restorable(token) && generation == _generation && index == _index,
       );
       // 期间若已切集、暂停或开始别的恢复，旧任务必须放弃。
       if (!_restorable(token) || generation != _generation || index != _index) {
@@ -1495,9 +1522,8 @@ class PlaybackSession extends ChangeNotifier {
       }
       if (_closed || !_foreground || !_current(ticket)) return;
       // open() 返回不代表真的在播：必须看到位置从恢复点继续推进。
-      final baseline = Duration(
-        milliseconds: (position * 1000).round(),
-      ) - _restoreProgress;
+      final baseline =
+          Duration(milliseconds: (position * 1000).round()) - _restoreProgress;
       final playing = await _confirmProgress(
         baseline,
         alive: () => _current(ticket),
@@ -1525,9 +1551,7 @@ class PlaybackSession extends ChangeNotifier {
         final playQueued = _queuedPlay;
         final token = _queuedToken;
         if (!_closed && _foreground && (token == null || _restorable(token))) {
-          unawaited(
-            _rebuildAndResume(next, playQueued, restoreToken: token),
-          );
+          unawaited(_rebuildAndResume(next, playQueued, restoreToken: token));
         }
       }
     }
