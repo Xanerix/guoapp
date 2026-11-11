@@ -287,14 +287,22 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
     }
     if (_tapTimer?.isActive ?? false) {
       _tapTimer!.cancel();
+      // 双击：中间 → 暂停/恢复；左右 → 快进/快退
       if (side == 0) {
         _session.togglePlayback();
+        _toggleControls();
       } else {
         _startStreak(side);
       }
       return;
     }
-    _tapTimer = Timer(const Duration(milliseconds: 300), _toggleControls);
+    // 单击：中间区域暂停/恢复 + 切控制条；左右区域留给双击快进快退
+    if (side == 0) {
+      _session.togglePlayback();
+      _toggleControls();
+    } else {
+      _tapTimer = Timer(const Duration(milliseconds: 300), _toggleControls);
+    }
   }
 
   void _startStreak(int side) {
@@ -664,6 +672,33 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
             controller: session.danmaku,
             aspectRatio: session.aspectRatio,
             style: session.danmakuStyle,
+          ),
+          Center(
+            child: IgnorePointer(
+              child: AnimatedOpacity(
+                opacity: session.ready && session.paused ? 1 : 0,
+                duration: Motion.of(context, Motion.short),
+                curve: Motion.standard,
+                child: AnimatedScale(
+                  scale: session.ready && session.paused ? 1 : .8,
+                  duration: Motion.of(context, Motion.short),
+                  curve: Motion.enter,
+                  child: Container(
+                    width: 72,
+                    height: 72,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: .35),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.play_arrow_rounded,
+                      size: 44,
+                      color: Colors.white.withValues(alpha: .9),
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ),
           SwipeControls(
             session: session,

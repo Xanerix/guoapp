@@ -217,6 +217,7 @@ class PlaybackSession extends ChangeNotifier {
   PlaybackPlan? _standbyPlan;
   int _standbyIndex = -1;
   bool _standbyOpen = false;
+  bool _standbyBusy = false; // 旧播放器 stop 未完时，禁止 _prime 复用它
   DateTime _standbyAt = DateTime(2000);
   double _openedAt = 0;
   double _speed = 1;
@@ -852,13 +853,19 @@ class PlaybackSession extends ChangeNotifier {
     _standbyPlan = null;
     _standbyIndex = -1;
     _standbyOpen = false;
+    _standbyBusy = true; // 旧播放器正在 stop，期间不让 _prime 用它
     _player = next;
     _standby = previous;
     _plan = plan;
     _bind();
     _openedIndex = index;
     _acceptErrors = true;
-    unawaited(previous.stop().catchError((Object _) {}));
+    unawaited(
+      previous.stop().catchError((Object _) {}).whenComplete(() {
+        _standbyBusy = false;
+        _prime(); // stop 完了，立刻尝试预加载下一集
+      }),
+    );
     if (previousPlan != null) unawaited(_release(previousPlan.session));
     danmaku.setPlan(plan);
     _notify();
@@ -876,14 +883,17 @@ class PlaybackSession extends ChangeNotifier {
     }
   }
 
-  /// iOS 上预加载的待机播放器切集后会偶发停在暂停态：首帧播约 1 秒就卡住，
-  /// 用户点一下才真正继续。2 倍速或弱网下更容易触发。
-  /// 起播后短时间轮询一次真实播放状态，位置没推进就补发 play 或轻踢解码器。
+  /// 起播后持续健康检查，直到确认视频真正稳定播放。
+  ///
+  /// 关键修复：不是第一轮 position 推进就判定成功（那只是 mpv 起了个头，
+  /// 可能 1 秒后又停），而是必须连续两轮 position 都推进才 return。
+  /// 这样能覆盖"画面出来了但 1 秒后卡死"的窗口。
   Future<void> _ensurePlaying(int ticket) async {
     var last = player.state.position;
+    var advancedCount = 0; // 连续 position 推进的计数
     var nudges = 0;
     var resynced = false;
-    for (var attempt = 0; attempt < 6; attempt++) {
+    for (var attempt = 0; attempt < 8; attempt++) {
       await Future<void>.delayed(const Duration(milliseconds: 800));
       if (_closed ||
           ticket != _generation ||
@@ -896,11 +906,32 @@ class PlaybackSession extends ChangeNotifier {
       final advanced =
           state.position > last + const Duration(milliseconds: 120);
       last = state.position;
-      if (state.playing && advanced) return;
+
+      if (state.playing) {
+        if (advanced) {
+          advancedCount++;
+          // 连续两轮 position 都推进 → 判定真正起播成功
+          if (advancedCount >= 2) {
+            DiaryService.add(
+              '[Play] 起播确认成功 连续$advancedCount轮position推进 '
+              '位置=${state.position} 集=${_index + 1}',
+            );
+            return;
+          }
+          // 只推进了一轮，继续观察下一轮（不触发救援）
+          continue;
+        } else {
+          // playing=true 但 position 不动了 → 之前那轮"成功"是假的
+          advancedCount = 0;
+        }
+      } else {
+        advancedCount = 0;
+      }
+
       // 正在缓冲说明网络在拉数据，别打断它。
       if (state.buffering) continue;
-      // open(play: true) 可能被 mpv 初始化覆盖，第一轮就开始救援，
-      // 不再空等 800ms。
+
+      // 触发救援
       try {
         if (!state.playing) {
           DiaryService.add(
@@ -948,6 +979,7 @@ class PlaybackSession extends ChangeNotifier {
     if (_closed ||
         standby == null ||
         _standbyIndex >= 0 ||
+        _standbyBusy || // 旧播放器 stop 未完，等完再说
         !_preloader.ready ||
         next >= detail.episodes.length) {
       return;
