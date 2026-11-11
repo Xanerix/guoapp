@@ -668,33 +668,6 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
             aspectRatio: session.aspectRatio,
             style: session.danmakuStyle,
           ),
-          Center(
-            child: IgnorePointer(
-              child: AnimatedOpacity(
-                opacity: session.ready && session.paused ? 1 : 0,
-                duration: Motion.of(context, Motion.short),
-                curve: Motion.standard,
-                child: AnimatedScale(
-                  scale: session.ready && session.paused ? 1 : .8,
-                  duration: Motion.of(context, Motion.short),
-                  curve: Motion.enter,
-                  child: Container(
-                    width: 72,
-                    height: 72,
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: .35),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      Icons.play_arrow_rounded,
-                      size: 44,
-                      color: Colors.white.withValues(alpha: .9),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
           SwipeControls(
             session: session,
             enabled: full,
@@ -712,6 +685,41 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
                 onLongPressStart: (_) => _pressStart(),
                 onLongPressEnd: (_) => _pressEnd(),
                 onLongPressCancel: _pressEnd,
+              ),
+            ),
+          ),
+          // 放在 SwipeControls 之后：Stack 后绘制的子节点先命中，
+          // 否则按钮会被 SwipeControls 的 opaque GestureDetector 吞掉点击。
+          // 播放中忽略指针，避免透明按钮挡住滑动/单击。
+          Center(
+            child: IgnorePointer(
+              ignoring: !(session.ready && session.paused),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: session.togglePlayback,
+                child: AnimatedOpacity(
+                  opacity: session.ready && session.paused ? 1 : 0,
+                  duration: Motion.of(context, Motion.short),
+                  curve: Motion.standard,
+                  child: AnimatedScale(
+                    scale: session.ready && session.paused ? 1 : .8,
+                    duration: Motion.of(context, Motion.short),
+                    curve: Motion.enter,
+                    child: Container(
+                      width: 72,
+                      height: 72,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: .35),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.play_arrow_rounded,
+                        size: 44,
+                        color: Colors.white.withValues(alpha: .9),
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
           ),
@@ -1516,10 +1524,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
                 // 把它的 intrinsic height 算成 0。
                 final maxWidth = constraints.maxWidth;
                 final maxHeight = constraints.maxHeight;
-                final videoHeight = math.min(
-                  maxHeight,
-                  maxWidth * 9 / 16,
-                );
+                final videoHeight = math.min(maxHeight, maxWidth * 9 / 16);
                 final topPadding = (maxHeight - videoHeight) / 2;
                 return Padding(
                   padding: EdgeInsets.only(
@@ -1549,7 +1554,9 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
                                     child: Text(
                                       '第 ${session.detail.episodes[index].number} 集',
                                       style: TextStyle(
-                                        color: Colors.white.withValues(alpha: .72),
+                                        color: Colors.white.withValues(
+                                          alpha: .72,
+                                        ),
                                         fontSize: 15,
                                         fontWeight: FontWeight.w600,
                                       ),
@@ -1572,7 +1579,9 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
                                       child: Container(
                                         padding: const EdgeInsets.all(14),
                                         decoration: BoxDecoration(
-                                          color: Colors.black.withValues(alpha: .45),
+                                          color: Colors.black.withValues(
+                                            alpha: .45,
+                                          ),
                                           shape: BoxShape.circle,
                                         ),
                                         child: const Icon(
@@ -1596,7 +1605,8 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
                                             constraints.maxWidth,
                                             false,
                                           ),
-                                          onLongPressStart: (_) => _pressStart(),
+                                          onLongPressStart: (_) =>
+                                              _pressStart(),
                                           onLongPressEnd: (_) => _pressEnd(),
                                           onLongPressCancel: _pressEnd,
                                         ),
@@ -1605,11 +1615,13 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
                               ],
                             ],
                           ),
-                        )),
-                        const SizedBox(height: 10),
-                        _fullscreenPill(),
-                      ],
-                    ));
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      _fullscreenPill(),
+                    ],
+                  ),
+                );
               },
             ),
           ),
