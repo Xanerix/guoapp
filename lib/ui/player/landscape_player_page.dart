@@ -267,8 +267,9 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
 
   void _tapUp(TapUpDetails details, double width, bool full) {
     if (!full) {
-      // 竖屏手持横片：单击视频 = 暂停/播放，与竖版视频逻辑一致。
-      _session.togglePlayback();
+      // 竖屏手持横片：单击切控制条，不暂停（红果行为）。
+      _tapTimer?.cancel();
+      _tapTimer = Timer(const Duration(milliseconds: 300), _toggleControls);
       return;
     }
     final x = details.localPosition.dx;
@@ -727,59 +728,6 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
 
   bool _sidePanel(_Panel panel) =>
       panel == _Panel.episodes || panel == _Panel.settings;
-
-  Widget _miniControls(BuildContext context) {
-    final session = _session;
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        const IgnorePointer(
-          child: Align(
-            alignment: Alignment.bottomCenter,
-            child: _Shade(height: 96, top: false),
-          ),
-        ),
-        Positioned(
-          left: 4,
-          right: 4,
-          bottom: 4,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Transform.translate(
-                offset: const Offset(0, 7),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: SizedBox(
-                    height: 20,
-                    child: _progress(context, thumb: 6),
-                  ),
-                ),
-              ),
-              SizedBox(
-                height: 44,
-                child: Row(
-                  children: [
-                    _playButton(size: 40, iconSize: 26),
-                    const SizedBox(width: 4),
-                    _clock(13),
-                    const Spacer(),
-                    if (session.danmakuSupported) _danmakuButton(context),
-                    _icon(
-                      Icons.fullscreen_rounded,
-                      '全屏',
-                      widget.onFullscreen ?? () => _rotate(false),
-                      size: 40,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
 
   Widget _fullControls(BuildContext context) {
     final session = _session;
@@ -1643,14 +1591,6 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
                                   ),
                             ),
                           ),
-                          IgnorePointer(
-                            ignoring: !_visible,
-                            child: AnimatedOpacity(
-                              opacity: _visible ? 1 : 0,
-                              duration: const Duration(milliseconds: 180),
-                              child: _miniControls(context),
-                            ),
-                          ),
                         ],
                       ],
                     ),
@@ -1661,7 +1601,45 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
               ),
             ),
           ),
+          if (current) _portraitPlayerBar(context),
           _feed(context),
+        ],
+      ),
+    );
+  }
+
+  /// 竖屏手持横片的底部播控条：进度线 + 时间 + 全屏按钮。
+  /// 显示在信息流顶部、剧集选项上方。
+  Widget _portraitPlayerBar(BuildContext context) {
+    final session = _session;
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      color: Colors.black,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(height: 4, child: _thinProgress(context)),
+          Row(
+            children: [
+              _playButton(size: 36, iconSize: 22),
+              const SizedBox(width: 2),
+              _clock(12),
+              const Spacer(),
+              Text(
+                '${session.episode.number}/${session.detail.episodes.length}',
+                style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
+              ),
+              const SizedBox(width: 4),
+              _icon(
+                Icons.fullscreen_rounded,
+                '全屏',
+                widget.onFullscreen ?? () => _rotate(false),
+                size: 36,
+                iconSize: 22,
+              ),
+            ],
+          ),
         ],
       ),
     );
