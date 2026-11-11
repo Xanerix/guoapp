@@ -26,7 +26,7 @@ String formatClock(Duration value) {
   return seconds >= 3600 ? '${seconds ~/ 3600}:$clock' : clock;
 }
 
-enum _Popup { quality, speed, sleep, volume }
+enum _Popup { quality, speed, fit, sleep, volume }
 
 class PlayerSurface extends StatefulWidget {
   const PlayerSurface({
@@ -317,10 +317,12 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
               key: ValueKey(_session.player),
               handle: widget.handle,
               player: _session.player,
+              fit: _session.videoFit,
             ),
             DanmakuOverlay(
               controller: _session.danmaku,
-              aspectRatio: _session.aspectRatio,
+              video: _session.videoSize,
+              fit: _session.videoFit,
               style: _session.danmakuStyle,
             ),
             if (widget.touch)
@@ -691,6 +693,15 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
           ),
         ),
         _popupTarget(
+          _Popup.fit,
+          _icon(
+            Icons.aspect_ratio_rounded,
+            '画面比例 · ${_session.videoFit.label}',
+            () => _open(_Popup.fit),
+            color: _session.videoFit == VideoFit.auto ? null : colors.primary,
+          ),
+        ),
+        _popupTarget(
           _Popup.sleep,
           _icon(
             sleeping ? Icons.bedtime_rounded : Icons.bedtime_outlined,
@@ -811,6 +822,12 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
         selected: _session.quality,
         label: (value) => value == 0 ? '自动' : '${value}P',
         onSelected: (value) => _change(() => _session.setQuality(value)),
+      ),
+      _Popup.fit => _options<VideoFit>(
+        values: VideoFit.values,
+        selected: _session.videoFit,
+        label: (value) => value.label,
+        onSelected: (value) => _change(() => _session.setVideoFit(value)),
       ),
       _Popup.sleep => _options<SleepChoice>(
         values: sleepChoices,

@@ -1,3 +1,6 @@
+import 'dart:math' as math;
+import 'dart:ui' show Size;
+
 import 'catalog_sort.dart';
 
 const playbackSpeeds = [.5, .75, 1.0, 1.25, 1.5, 2.0, 3.0];
@@ -20,6 +23,41 @@ enum DanmakuCoverage {
 
   final double fraction;
   final String label;
+}
+
+enum VideoFit {
+  auto('自动'),
+  stretch('拉伸'),
+  crop('裁切'),
+  fitWidth('等宽'),
+  fitHeight('等高'),
+  original('原始'),
+  ratio4x3('4:3'),
+  ratio16x9('16:9');
+
+  const VideoFit(this.label);
+
+  final String label;
+
+  Size size(Size box, Size video, double pixelRatio) {
+    final aspect = video.width / video.height;
+    double long(double ratio) => aspect < 1 ? 1 / ratio : ratio;
+    Size fit(double aspect, double Function(double, double) pick) {
+      final height = pick(box.height, box.width / aspect);
+      return Size(height * aspect, height);
+    }
+
+    return switch (this) {
+      auto => fit(aspect, math.min),
+      stretch => box,
+      crop => fit(aspect, math.max),
+      fitWidth => Size(box.width, box.width / aspect),
+      fitHeight => Size(box.height * aspect, box.height),
+      original => video / pixelRatio,
+      ratio4x3 => fit(long(4 / 3), math.min),
+      ratio16x9 => fit(long(16 / 9), math.min),
+    };
+  }
 }
 
 const danmakuScaleMin = .6;
@@ -60,6 +98,7 @@ class PlaybackPreferences {
     this.autoHideControls = true,
     this.hideSystemBars = true,
     this.autoPictureInPicture = false,
+    this.videoFit = VideoFit.auto,
   });
 
   final double speed;
@@ -86,6 +125,7 @@ class PlaybackPreferences {
   final bool autoHideControls;
   final bool hideSystemBars;
   final bool autoPictureInPicture;
+  final VideoFit videoFit;
 
   bool preopens({required bool television}) => preopen ?? !television;
 
@@ -114,6 +154,7 @@ class PlaybackPreferences {
     bool? autoHideControls,
     bool? hideSystemBars,
     bool? autoPictureInPicture,
+    VideoFit? videoFit,
   }) => PlaybackPreferences(
     speed: speed ?? this.speed,
     quality: quality ?? this.quality,
@@ -139,6 +180,7 @@ class PlaybackPreferences {
     autoHideControls: autoHideControls ?? this.autoHideControls,
     hideSystemBars: hideSystemBars ?? this.hideSystemBars,
     autoPictureInPicture: autoPictureInPicture ?? this.autoPictureInPicture,
+    videoFit: videoFit ?? this.videoFit,
   );
 
   Map<String, dynamic> toJson() => {
@@ -166,6 +208,7 @@ class PlaybackPreferences {
     'autoHideControls': autoHideControls,
     'hideSystemBars': hideSystemBars,
     'autoPictureInPicture': autoPictureInPicture,
+    'videoFit': videoFit.name,
   };
 
   factory PlaybackPreferences.fromJson(Map<String, dynamic> value) {
@@ -219,6 +262,7 @@ class PlaybackPreferences {
       autoHideControls: value['autoHideControls'] as bool? ?? true,
       hideSystemBars: value['hideSystemBars'] as bool? ?? true,
       autoPictureInPicture: value['autoPictureInPicture'] as bool? ?? false,
+      videoFit: VideoFit.values.asNameMap()[value['videoFit']] ?? VideoFit.auto,
     );
   }
 }

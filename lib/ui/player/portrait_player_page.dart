@@ -8,6 +8,7 @@ import 'package:media_kit/media_kit.dart';
 
 import '../../local_store.dart';
 import '../../models.dart';
+import '../../playback_preferences.dart';
 import '../../playback_session.dart';
 import '../app_scope.dart';
 import '../downloads/download_actions.dart';
@@ -72,6 +73,7 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
   double? _pinchFrom;
   double _pinchBase = 1;
   double _zoom = 1;
+  bool _snapping = false;
 
   PlaybackSession get _session => widget.handle.session;
 
@@ -264,12 +266,22 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
     });
   }
 
-  double get _fillZoom {
-    final size = MediaQuery.sizeOf(context);
-    if (size.isEmpty) return 1;
-    final screen = size.width / size.height;
-    final video = _session.aspectRatio;
-    return math.max(screen / video, video / screen);
+  double _fitWidth(VideoFit fit, Size video) => fit
+      .size(
+        MediaQuery.sizeOf(context),
+        video,
+        MediaQuery.devicePixelRatioOf(context),
+      )
+      .width;
+
+  (double, double) get _zoomRange {
+    final video = _session.videoSize;
+    if (video == null || MediaQuery.sizeOf(context).isEmpty) return (1, 1);
+    final width = _fitWidth(_session.videoFit, video);
+    return (
+      _fitWidth(VideoFit.auto, video) / width,
+      _fitWidth(VideoFit.crop, video) / width,
+    );
   }
 
   bool get _pinching => _pinchFrom != null;
@@ -294,7 +306,8 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
     _pointers[event.pointer] = event.position;
     final from = _pinchFrom;
     if (from == null || _pointers.length != 2) return;
-    setState(() => _zoom = (_pinchBase * _span / from).clamp(1.0, _fillZoom));
+    final (low, high) = _zoomRange;
+    setState(() => _zoom = (_pinchBase * _span / from).clamp(low, high));
   }
 
   void _pointerUp(PointerEvent event) {
@@ -305,14 +318,35 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
   }
 
   void _settleZoom() {
-    final fill = _fillZoom;
-    final filled = _pinchBase > 1
-        ? _zoom > fill - (fill - 1) * .3
-        : _zoom > 1 + (fill - 1) * .3;
-    setState(() => _zoom = filled ? fill : 1);
-    if (filled == (_pinchBase > 1) || fill <= 1.01) return;
+    final fit = _session.videoFit;
+    final video = _session.videoSize;
+    final (low, high) = _zoomRange;
+    final threshold = fit == VideoFit.crop
+        ? high - (high - low) * .3
+        : low + (high - low) * .3;
+    final target =
+        video == null || high - low <= .01 || (_zoom - _pinchBase).abs() < .05
+        ? fit
+        : _zoom > threshold
+        ? VideoFit.crop
+        : VideoFit.auto;
+    if (target == fit) return setState(() => _zoom = 1);
+    setState(() {
+      _snapping = true;
+      _zoom *= _fitWidth(fit, video!) / _fitWidth(target, video);
+    });
+    unawaited(
+      _session.setVideoFit(target).catchError((Object _) => _saveFailed()),
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() {
+        _snapping = false;
+        _zoom = 1;
+      });
+    });
     unawaited(HapticFeedback.selectionClick());
-    _say(filled ? '已铺满屏幕，双指捏合恢复' : '已恢复完整画面');
+    _say(target == VideoFit.crop ? '画面比例：裁切，双指捏合恢复' : '画面比例：自动');
   }
 
   void _pressStart(LongPressStartDetails details, double width) {
@@ -441,7 +475,7 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
             ClipRect(
               child: AnimatedScale(
                 scale: _zoom,
-                duration: _pinching
+                duration: _pinching || _snapping
                     ? Duration.zero
                     : Motion.of(context, Motion.medium),
                 curve: Motion.standard,
@@ -449,6 +483,7 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
                   key: ValueKey(player),
                   handle: widget.handle,
                   player: player,
+                  fit: session.videoFit,
                 ),
               ),
             ),
@@ -478,7 +513,8 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
             DanmakuOverlay(
               key: const ValueKey('danmaku'),
               controller: session.danmaku,
-              aspectRatio: session.aspectRatio,
+              video: session.videoSize,
+              fit: session.videoFit,
               style: session.danmakuStyle,
             ),
             SwipeControls(

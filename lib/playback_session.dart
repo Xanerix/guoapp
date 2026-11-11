@@ -51,6 +51,7 @@ class PlaybackSession extends ChangeNotifier {
     _speed = preferences.speed;
     _quality = preferences.quality;
     _danmakuEnabled = preferences.danmaku;
+    _videoFit = preferences.videoFit;
     _unmutedVolume = store.playerVolume.clamp(1.0, 100.0);
     unawaited(_player.setVolume(_unmutedVolume));
     _loader = PlaybackLoader(repository);
@@ -85,10 +86,7 @@ class PlaybackSession extends ChangeNotifier {
     }
     _subscriptions.clear();
     final size = videoDisplaySize(player.state.videoParams);
-    if (size != null) {
-      _aspectRatio = size.width / size.height;
-      _aspectKnown = true;
-    }
+    if (size != null) _videoSize = size;
     _buffering(player.state.buffering);
     final stream = player.stream;
     _subscriptions.addAll([
@@ -113,8 +111,7 @@ class PlaybackSession extends ChangeNotifier {
       stream.videoParams.listen((parameters) {
         final size = videoDisplaySize(parameters);
         if (size == null || _closed) return;
-        _aspectRatio = size.width / size.height;
-        _aspectKnown = true;
+        _videoSize = size;
         _notify();
       }),
     ]);
@@ -177,8 +174,8 @@ class PlaybackSession extends ChangeNotifier {
   double _speed = 1;
   int _quality = 0;
   bool _danmakuEnabled = true;
-  double _aspectRatio = 9 / 16;
-  bool _aspectKnown = false;
+  Size? _videoSize;
+  VideoFit _videoFit = VideoFit.auto;
   double _resumePosition = 0;
   double _unmutedVolume = 100;
 
@@ -201,8 +198,13 @@ class PlaybackSession extends ChangeNotifier {
   bool get paused => !_playIntent;
   bool get boosting => _boosting;
   bool get boostLocked => _boostLocked;
-  double get aspectRatio => _aspectRatio;
-  bool get aspectKnown => _aspectKnown;
+  Size? get videoSize => _videoSize;
+  double get aspectRatio => switch (_videoSize) {
+    final size? => size.width / size.height,
+    null => 9 / 16,
+  };
+  bool get aspectKnown => _videoSize != null;
+  VideoFit get videoFit => _videoFit;
   double get speed => _speed;
   DateTime? get sleepAt => _sleepAt;
   int get sleepMinutes => _sleepMinutes;
@@ -235,6 +237,7 @@ class PlaybackSession extends ChangeNotifier {
     speed: _speed,
     quality: _quality,
     danmaku: _danmakuEnabled,
+    videoFit: _videoFit,
     autoAdvance: true,
     preload: true,
   );
@@ -1028,6 +1031,22 @@ class PlaybackSession extends ChangeNotifier {
     _speed = value;
     _notify();
     if (!_boosting) await _setRate(value);
+  }
+
+  Future<void> setVideoFit(VideoFit value) async {
+    if (value == _videoFit) return;
+    final previous = _videoFit;
+    _videoFit = value;
+    _notify();
+    try {
+      await _savePreferences(_preferences);
+    } catch (_) {
+      if (_videoFit == value) {
+        _videoFit = previous;
+        _notify();
+      }
+      rethrow;
+    }
   }
 
   Future<void> setQuality(int value) async {

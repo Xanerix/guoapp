@@ -8,6 +8,7 @@ import 'package:flutter/scheduler.dart';
 import '../../danmaku_controller.dart';
 import '../../danmaku_models.dart';
 import '../../danmaku_style.dart';
+import '../../playback_preferences.dart';
 
 const danmakuMaxRows = 64;
 
@@ -113,11 +114,13 @@ class DanmakuOverlay extends StatelessWidget {
   const DanmakuOverlay({
     super.key,
     required this.controller,
-    required this.aspectRatio,
+    required this.video,
+    this.fit = VideoFit.auto,
     this.style = const DanmakuStyle(),
   });
   final DanmakuController controller;
-  final double aspectRatio;
+  final Size? video;
+  final VideoFit fit;
   final DanmakuStyle style;
 
   @override
@@ -131,17 +134,14 @@ class DanmakuOverlay extends StatelessWidget {
               constraints.maxHeight <= 0) {
             return const SizedBox.shrink();
           }
-          final aspect = aspectRatio.isFinite && aspectRatio > 0
-              ? aspectRatio
-              : 16 / 9;
-          final width = math.min(
-            constraints.maxWidth,
-            constraints.maxHeight * aspect,
+          final box = constraints.biggest;
+          final shown = (video == null ? VideoFit.auto : fit).size(
+            box,
+            video ?? const Size(9, 16),
+            MediaQuery.devicePixelRatioOf(context),
           );
-          final height = math.min(
-            constraints.maxHeight,
-            constraints.maxWidth / aspect,
-          );
+          final width = math.min(box.width, shown.width);
+          final height = math.min(box.height, shown.height);
           final fontSize = (width < 600 ? 16.0 : 20.0) * style.scale;
           final scaler = MediaQuery.textScalerOf(context);
           final rowHeight = scaler.scale(fontSize) * 1.5;

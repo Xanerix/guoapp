@@ -16,7 +16,7 @@ import 'playback_handle.dart';
 import 'player_surface.dart';
 import 'player_video.dart';
 
-enum _Menu { speed, quality }
+enum _Menu { speed, quality, fit }
 
 final _arrows = {
   LogicalKeyboardKey.arrowUp,
@@ -50,6 +50,7 @@ class _TelevisionPlayerPageState extends State<TelevisionPlayerPage>
   final _danmaku = FocusNode();
   final _speed = FocusNode();
   final _quality = FocusNode();
+  final _fit = FocusNode();
   final _retry = FocusNode();
   final _options = <FocusNode>[];
   final _links = {for (final menu in _Menu.values) menu: LayerLink()};
@@ -97,6 +98,7 @@ class _TelevisionPlayerPageState extends State<TelevisionPlayerPage>
       _danmaku,
       _speed,
       _quality,
+      _fit,
       _retry,
       ..._options,
     ]) {
@@ -238,6 +240,7 @@ class _TelevisionPlayerPageState extends State<TelevisionPlayerPage>
     if (_session.danmakuSupported) _danmaku,
     _speed,
     _quality,
+    _fit,
   ];
 
   bool _enabled(FocusNode node) =>
@@ -246,6 +249,7 @@ class _TelevisionPlayerPageState extends State<TelevisionPlayerPage>
       node == _speed && _session.ready ||
       node == _quality && _session.ready && !_session.local ||
       node == _play ||
+      node == _fit ||
       node == _danmaku;
 
   void _moveInRow(FocusNode from, int direction) {
@@ -262,16 +266,19 @@ class _TelevisionPlayerPageState extends State<TelevisionPlayerPage>
   List<Object> _values(_Menu menu) => switch (menu) {
     _Menu.speed => playbackSpeeds.reversed.toList(),
     _Menu.quality => [..._session.qualities, 0],
+    _Menu.fit => VideoFit.values,
   };
 
   Object _selected(_Menu menu) => switch (menu) {
     _Menu.speed => _session.speed,
     _Menu.quality => _session.quality,
+    _Menu.fit => _session.videoFit,
   };
 
   FocusNode _button(_Menu menu) => switch (menu) {
     _Menu.speed => _speed,
     _Menu.quality => _quality,
+    _Menu.fit => _fit,
   };
 
   void _openMenu(_Menu menu) {
@@ -304,6 +311,7 @@ class _TelevisionPlayerPageState extends State<TelevisionPlayerPage>
         () => switch (menu) {
           _Menu.speed => _session.setSpeed(value as double),
           _Menu.quality => _session.setQuality(value as int),
+          _Menu.fit => _session.setVideoFit(value as VideoFit),
         },
       ),
     );
@@ -431,10 +439,12 @@ class _TelevisionPlayerPageState extends State<TelevisionPlayerPage>
                       key: ValueKey(_session.player),
                       handle: widget.handle,
                       player: _session.player,
+                      fit: _session.videoFit,
                     ),
                     DanmakuOverlay(
                       controller: _session.danmaku,
-                      aspectRatio: _session.aspectRatio,
+                      video: _session.videoSize,
+                      fit: _session.videoFit,
                       style: _session.danmakuStyle,
                     ),
                     FadePresence(
@@ -559,6 +569,15 @@ class _TelevisionPlayerPageState extends State<TelevisionPlayerPage>
                   _session.qualityLabel,
                   '清晰度',
                   () => _openMenu(_Menu.quality),
+                ),
+              ),
+              CompositedTransformTarget(
+                link: _links[_Menu.fit]!,
+                child: _pill(
+                  _fit,
+                  '比例 ${_session.videoFit.label}',
+                  '画面比例',
+                  () => _openMenu(_Menu.fit),
                 ),
               ),
             ],
@@ -910,6 +929,7 @@ class _TelevisionPlayerPageState extends State<TelevisionPlayerPage>
     String label(Object value) => switch (menu) {
       _Menu.speed => '${value}x',
       _Menu.quality => value == 0 ? '自动' : '${value}P',
+      _Menu.fit => (value as VideoFit).label,
     };
     return Container(
       padding: const EdgeInsets.all(8),

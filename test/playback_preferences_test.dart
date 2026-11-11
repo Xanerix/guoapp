@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:duanju_app/playback_preferences.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -71,5 +73,49 @@ void main() {
       () => PlaybackPreferences.fromJson(const {'speed': 1.1}),
       throwsFormatException,
     );
+  });
+
+  test('video fit defaults to auto and round trips through json', () {
+    expect(
+      PlaybackPreferences.fromJson(const {'speed': 1}).videoFit,
+      VideoFit.auto,
+    );
+    expect(
+      PlaybackPreferences.fromJson(const {'videoFit': 'unknown'}).videoFit,
+      VideoFit.auto,
+    );
+    const preferences = PlaybackPreferences(videoFit: VideoFit.ratio4x3);
+    expect(
+      PlaybackPreferences.fromJson(preferences.toJson()).videoFit,
+      VideoFit.ratio4x3,
+    );
+  });
+
+  test('video fit sizes a 16:9 video inside a 400x400 box', () {
+    const box = Size(400, 400);
+    const video = Size(1920, 1080);
+    Size size(VideoFit fit) => fit.size(box, video, 2);
+    expect(size(VideoFit.auto), const Size(400, 225));
+    expect(size(VideoFit.stretch), box);
+    expect(size(VideoFit.crop).width, closeTo(711.1, .1));
+    expect(size(VideoFit.crop).height, 400);
+    expect(size(VideoFit.fitWidth), const Size(400, 225));
+    expect(size(VideoFit.fitHeight).width, closeTo(711.1, .1));
+    expect(size(VideoFit.original), const Size(960, 540));
+    expect(size(VideoFit.ratio4x3), const Size(400, 300));
+    expect(size(VideoFit.ratio16x9), const Size(400, 225));
+  });
+
+  test('video fit sizes a 9:16 video on a tall phone screen', () {
+    const box = Size(360, 800);
+    const video = Size(1080, 1920);
+    Size size(VideoFit fit) => fit.size(box, video, 3);
+    expect(size(VideoFit.auto), const Size(360, 640));
+    expect(size(VideoFit.crop), const Size(450, 800));
+    expect(size(VideoFit.fitWidth), const Size(360, 640));
+    expect(size(VideoFit.fitHeight), const Size(450, 800));
+    expect(size(VideoFit.original), const Size(360, 640));
+    expect(size(VideoFit.ratio4x3), const Size(360, 480));
+    expect(size(VideoFit.ratio16x9), const Size(360, 640));
   });
 }
