@@ -909,6 +909,22 @@ class PlaybackSession extends ChangeNotifier {
         return;
       }
     }
+    // 6 次踢解码器 + seek 都没能让位置推进：播放器真卡了，
+    // 直接走恢复链路（换线路/刷新地址），不要等 20 秒健康检查。
+    if (_closed ||
+        ticket != _generation ||
+        !_foreground ||
+        !_playIntent ||
+        _pausedByUser) {
+      return;
+    }
+    final state = player.state;
+    if (state.buffering || state.completed) return;
+    DiaryService.add(
+      '[Play] 起播救援耗尽，触发恢复 playing=${state.playing} '
+      '位置=${state.position} 集=${_index + 1}',
+    );
+    _queueRecovery('ensure_playing_exhausted');
   }
 
   /// 状态显示"播放中"但画面定住时，暂停再播放把卡住的解码器踢一下。

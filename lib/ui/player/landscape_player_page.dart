@@ -266,9 +266,14 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
   }
 
   void _tapUp(TapUpDetails details, double width, bool full) {
+    if (!full) {
+      // 竖屏手持横片：单击视频 = 暂停/播放，与竖版视频逻辑一致。
+      _session.togglePlayback();
+      return;
+    }
     final x = details.localPosition.dx;
     final side =
-        !full && widget.onFullscreen == null ||
+        widget.onFullscreen == null ||
             !_session.store.playbackPreferences.doubleTapSeek
         ? 0
         : x < width / 4
@@ -282,11 +287,6 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
     }
     if (_tapTimer?.isActive ?? false) {
       _tapTimer!.cancel();
-      if (!full) {
-        // 竖屏信息流页面里双击不暂停、也不快进，只保持控制条可见。
-        _toggleControls();
-        return;
-      }
       if (side == 0) {
         _session.togglePlayback();
       } else {
@@ -1692,12 +1692,41 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
 
   Widget _rail(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final session = _session;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (session.danmakuSupported) ...[
+          IconButton(
+            onPressed: () => _change(session.toggleDanmaku),
+            icon: ToggleIconSwitcher(
+              child: Icon(
+                session.danmakuEnabled
+                    ? Icons.subtitles_rounded
+                    : Icons.subtitles_off_rounded,
+                key: ValueKey(session.danmakuEnabled),
+              ),
+            ),
+            iconSize: 24,
+            tooltip: session.danmakuEnabled ? '关闭弹幕' : '打开弹幕',
+            color: session.danmakuEnabled
+                ? colors.primary
+                : colors.onSurfaceVariant,
+          ),
+          Text(
+            '弹幕',
+            style: TextStyle(
+              fontSize: 11,
+              color: session.danmakuEnabled
+                  ? colors.primary
+                  : colors.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 6),
+        ],
         FollowIcon(
           store: widget.store,
-          drama: _session.detail.drama,
+          drama: session.detail.drama,
           color: colors.onSurfaceVariant,
           activeColor: colors.primary,
           size: 26,
