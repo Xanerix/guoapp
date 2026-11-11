@@ -384,6 +384,7 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
         data: dark,
         child: Scaffold(
           backgroundColor: Colors.black,
+          extendBody: true,
           body: Stack(
             fit: StackFit.expand,
             children: [
