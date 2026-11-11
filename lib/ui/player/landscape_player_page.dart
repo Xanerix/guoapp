@@ -213,11 +213,12 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
           : (metrics.pixels / metrics.viewportDimension).round();
       final count = _session.detail.episodes.length;
       if (page != _session.index && page >= 0 && page < count) {
-        _show();
+        // 滑动换集后隐藏播控（横屏真全屏，红果行为）。
+        _hideControls();
         unawaited(_session.play(page));
       } else if (page >= count && _session.nextSeason != null) {
         // 滑过最后一集：衔接下一季第 1 集。
-        _show();
+        _hideControls();
         unawaited(_session.playNextSeason());
       }
     }
@@ -254,6 +255,11 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
   void _show() {
     if (!_visible) setState(() => _visible = true);
     _scheduleHide();
+  }
+
+  void _hideControls() {
+    _hideTimer?.cancel();
+    if (_visible) setState(() => _visible = false);
   }
 
   void _toggleControls() {
@@ -1570,24 +1576,28 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
                                 style: session.danmakuStyle,
                               ),
                               IgnorePointer(
-                                child: AnimatedScale(
-                                  duration: Motion.short,
-                                  scale: session.paused ? 1 : .8,
-                                  child: AnimatedOpacity(
+                                // 外层 Stack 是 StackFit.expand，直接放 Container 会被
+                                // 紧约束拉成整个视频大小（圆形遮罩巨大），用 Center 撑住。
+                                child: Center(
+                                  child: AnimatedScale(
                                     duration: Motion.short,
-                                    opacity: session.paused ? 1 : 0,
-                                    child: Container(
-                                      padding: const EdgeInsets.all(14),
-                                      decoration: BoxDecoration(
-                                        color: Colors.black.withValues(
-                                          alpha: .45,
+                                    scale: session.paused ? 1 : .8,
+                                    child: AnimatedOpacity(
+                                      duration: Motion.short,
+                                      opacity: session.paused ? 1 : 0,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(14),
+                                        decoration: BoxDecoration(
+                                          color: Colors.black.withValues(
+                                            alpha: .45,
+                                          ),
+                                          shape: BoxShape.circle,
                                         ),
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: const Icon(
-                                        Icons.play_arrow_rounded,
-                                        color: Colors.white,
-                                        size: 48,
+                                        child: const Icon(
+                                          Icons.play_arrow_rounded,
+                                          color: Colors.white,
+                                          size: 48,
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -1628,9 +1638,21 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
           // 把上面的视频区挤成 0 高度（视频不显示）。
           Expanded(flex: 2, child: _feed(context)),
           if (current)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: _thinProgress(context),
+            // 竖屏手持横片的底部进度条：细线外观，但可以点击/拖动 seek；
+            // 上下滑动换集时渐隐，避免遮挡画面。
+            AnimatedOpacity(
+              opacity: _scrolling ? 0 : 1,
+              duration: Motion.short,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 2, 14, 2),
+                child: PlaybackProgressBuilder(
+                  player: _session.player,
+                  builder: (context) => SizedBox(
+                    height: 22,
+                    child: _progressBar(context, thumb: 5),
+                  ),
+                ),
+              ),
             ),
         ],
       ),
@@ -1656,18 +1678,14 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  // 点剧名回到详情页。
-                  onTap: () => unawaited(Navigator.maybePop(context)),
-                  child: Text(
-                    drama.title,
-                    style: const TextStyle(
-                      fontSize: 19,
-                      fontWeight: FontWeight.w800,
-                      height: 1.35,
-                      color: Colors.white,
-                    ),
+                // 剧名只做展示，不响应点击。
+                Text(
+                  drama.title,
+                  style: const TextStyle(
+                    fontSize: 19,
+                    fontWeight: FontWeight.w800,
+                    height: 1.35,
+                    color: Colors.white,
                   ),
                 ),
                 const SizedBox(height: 6),
