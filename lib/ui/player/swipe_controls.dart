@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../../app_device.dart';
@@ -19,15 +20,33 @@ class SwipeControls extends StatefulWidget {
     required this.session,
     this.enabled = true,
     this.levels = false,
+    this.verticalRegion,
     required this.child,
   });
   final PlaybackSession session;
   final bool enabled;
   final bool levels;
+
+  /// 返回 true 表示这次垂直滑动交给本组件（亮度/音量）。
+  /// 返回 false 时不参与手势竞争，交由外层的翻集 PageView 处理。
+  final bool Function(Offset globalPosition)? verticalRegion;
   final Widget child;
 
   @override
   State<SwipeControls> createState() => _SwipeControlsState();
+}
+
+class _GatedVerticalDrag extends VerticalDragGestureRecognizer {
+  _GatedVerticalDrag({required this.allowed, super.debugOwner});
+
+  final bool Function(Offset globalPosition) allowed;
+
+  @override
+  void addAllowedPointer(PointerDownEvent event) {
+    // 不在允许区域时不加入手势竞技场，垂直滑动让给外层 PageView。
+    if (!allowed(event.position)) return;
+    super.addAllowedPointer(event);
+  }
 }
 
 class _SwipeControlsState extends State<SwipeControls> {
@@ -130,22 +149,17 @@ class _SwipeControlsState extends State<SwipeControls> {
     final levels = seek && widget.levels;
     final level = _level;
     final value = _value;
+    final child = GestureDetector(
+      onHorizontalDragStart: seek ? _seekStart : null,
+      onHorizontalDragUpdate: seek ? _seekUpdate : null,
+      onHorizontalDragEnd: seek ? _seekEnd : null,
+      onHorizontalDragCancel: seek ? _seekCancel : null,
+      child: widget.child,
+    );
     return Stack(
       fit: StackFit.expand,
       children: [
-        GestureDetector(
-          onHorizontalDragStart: seek ? _seekStart : null,
-          onHorizontalDragUpdate: seek ? _seekUpdate : null,
-          onHorizontalDragEnd: seek ? _seekEnd : null,
-          onHorizontalDragCancel: seek ? _seekCancel : null,
-          onVerticalDragStart: levels
-              ? (details) => unawaited(_levelStart(details))
-              : null,
-          onVerticalDragUpdate: levels ? _levelUpdate : null,
-          onVerticalDragEnd: levels ? (_) => _levelEnd() : null,
-          onVerticalDragCancel: levels ? _levelEnd : null,
-          child: widget.child,
-        ),
+        levels ? _vertical(child) : child,
         FadePresence(
           child: _seekFrom != null
               ? _badge(_seekLabel())
@@ -155,6 +169,34 @@ class _SwipeControlsState extends State<SwipeControls> {
         ),
       ],
     );
+  }
+
+  Widget _vertical(Widget child) => RawGestureDetector(
+    behavior: HitTestBehavior.opaque,
+    gestures: {
+      _GatedVerticalDrag:
+          GestureRecognizerFactoryWithHandlers<_GatedVerticalDrag>(
+            () => _GatedVerticalDrag(
+              allowed: widget.verticalRegion ?? (_) => true,
+              debugOwner: this,
+            ),
+            _configureVertical,
+          ),
+    },
+    child: child,
+  );
+
+  void _configureVertical(_GatedVerticalDrag recognizer) {
+    recognizer.onStart = (details) {
+      unawaited(_levelStart(details));
+    };
+    recognizer.onUpdate = (details) {
+      _levelUpdate(details);
+    };
+    recognizer.onEnd = (_) {
+      _levelEnd();
+    };
+    recognizer.onCancel = _levelEnd;
   }
 
   Widget _badge(Widget child) => IgnorePointer(

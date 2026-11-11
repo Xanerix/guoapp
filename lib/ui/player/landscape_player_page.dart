@@ -52,6 +52,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
   final List<StreamSubscription<dynamic>> _subscriptions = [];
   final _selected = <int>{};
   final _links = {_Panel.speed: LayerLink(), _Panel.quality: LayerLink()};
+  late final _pages = PageController(initialPage: _session.index);
   Player? _bound;
   Timer? _hideTimer;
   Timer? _tapTimer;
@@ -60,6 +61,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
   Timer? _seekTimer;
   bool? _full;
   bool _visible = true;
+  bool _scrolling = false;
   bool _selecting = false;
   bool _holding = false;
   bool _dragging = false;
@@ -123,6 +125,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
     _clockTimer?.cancel();
     _seekTimer?.cancel();
     if (_holding) _session.endBoost();
+    _pages.dispose();
     if (widget.onFullscreen == null) {
       if (_full == true && desktopPlatform) {
         unawaited(setWindowFullScreen(false));
@@ -174,7 +177,36 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
   }
 
   void _refresh() {
+    final page = _pages.hasClients ? _pages.page : null;
+    if (!_scrolling &&
+        page != null &&
+        page.round() != _session.index &&
+        _session.index < _session.detail.episodes.length) {
+      _pages.jumpToPage(_session.index);
+    }
     if (mounted) setState(() {});
+  }
+
+  bool _scrolled(ScrollNotification notification) {
+    if (notification.depth != 0) return false;
+    final metrics = notification.metrics;
+    if (notification is ScrollStartNotification &&
+        notification.dragDetails != null) {
+      _hideTimer?.cancel();
+      if (!_scrolling) setState(() => _scrolling = true);
+    } else if (notification is ScrollEndNotification) {
+      final page = metrics.viewportDimension <= 0
+          ? _session.index
+          : (metrics.pixels / metrics.viewportDimension).round();
+      if (_scrolling) setState(() => _scrolling = false);
+      if (page != _session.index &&
+          page >= 0 &&
+          page < _session.detail.episodes.length) {
+        _show();
+        unawaited(_session.play(page));
+      }
+    }
+    return false;
   }
 
   void _tick() {
@@ -399,14 +431,17 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
                 backgroundColor: theme.colorScheme.surface,
                 body: Column(
                   children: [
-                    ColoredBox(
-                      color: Colors.black,
-                      child: SizedBox(
-                        width: double.infinity,
-                        height: MediaQuery.paddingOf(context).top,
+                    // 横屏比例的影片在竖屏下居中显示，上下留黑，可上下滑动换集。
+                    SizedBox(
+                      width: double.infinity,
+                      height: _videoBandHeight(context),
+                      child: ColoredBox(
+                        color: Colors.black,
+                        child: Center(
+                          child: AspectRatio(aspectRatio: 16 / 9, child: video),
+                        ),
                       ),
                     ),
-                    AspectRatio(aspectRatio: 16 / 9, child: video),
                     Expanded(child: _details(context)),
                   ],
                 ),
@@ -427,28 +462,13 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
     return Stack(
       fit: StackFit.expand,
       children: [
-        PlayerVideo(
-          key: ValueKey(session.player),
-          handle: widget.handle,
-          player: session.player,
-        ),
-        DanmakuOverlay(
-          controller: session.danmaku,
-          aspectRatio: session.aspectRatio,
-          style: session.danmakuStyle,
-        ),
-        SwipeControls(
-          session: session,
-          enabled: full,
-          levels: session.store.playbackPreferences.swipeLevels,
-          child: LayoutBuilder(
-            builder: (context, constraints) => GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTapUp: (details) => _tapUp(details, constraints.maxWidth, full),
-              onLongPressStart: (_) => _pressStart(),
-              onLongPressEnd: (_) => _pressEnd(),
-              onLongPressCancel: _pressEnd,
-            ),
+        NotificationListener<ScrollNotification>(
+          onNotification: _scrolled,
+          child: PageView.builder(
+            controller: _pages,
+            scrollDirection: Axis.vertical,
+            itemCount: session.detail.episodes.length,
+            itemBuilder: (context, index) => _episode(context, index, full),
           ),
         ),
         FadePresence(
@@ -553,6 +573,75 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
                 child: _popup(context, panel),
               ),
             ),
+      ],
+    );
+  }
+
+  /// 竖屏下给横向影片预留的高度：至少能完整放下 16:9，最多占半屏。
+  double _videoBandHeight(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final band = size.width * 9 / 16 + MediaQuery.paddingOf(context).top;
+    return band.clamp(size.height * .34, size.height * .52);
+  }
+
+  Widget _episode(BuildContext context, int index, bool full) {
+    final session = _session;
+    final current = index == session.index;
+    final player = current
+        ? session.player
+        : index == session.standbyIndex
+        ? session.standby
+        : null;
+    final width = MediaQuery.sizeOf(context).width;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        if (player != null)
+          PlayerVideo(
+            key: ValueKey(player),
+            handle: widget.handle,
+            player: player,
+          )
+        else
+          IgnorePointer(
+            child: Center(
+              child: Text(
+                '第 ${session.detail.episodes[index].number} 集',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: .72),
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        if (current) ...[
+          DanmakuOverlay(
+            controller: session.danmaku,
+            aspectRatio: session.aspectRatio,
+            style: session.danmakuStyle,
+          ),
+          SwipeControls(
+            session: session,
+            enabled: full,
+            levels: full && session.store.playbackPreferences.swipeLevels,
+            // 中间区域的上下滑用于翻集，左右两侧仍调节亮度/音量。
+            verticalRegion: session.detail.episodes.length > 1
+                ? (position) =>
+                      position.dx < width * .18 || position.dx > width * .82
+                : null,
+            child: LayoutBuilder(
+              builder: (context, constraints) => GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTapUp: (details) =>
+                    _tapUp(details, constraints.maxWidth, full),
+                onLongPressStart: (_) => _pressStart(),
+                onLongPressEnd: (_) => _pressEnd(),
+                onLongPressCancel: _pressEnd,
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }
