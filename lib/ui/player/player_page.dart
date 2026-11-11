@@ -25,11 +25,13 @@ class PlayerPage extends StatefulWidget {
     required this.store,
     required this.handle,
     this.padFullscreen,
+    this.onWindowFullscreen,
     this.onMiniWindow,
   });
   final LocalStore store;
   final PlaybackHandle handle;
   final ValueNotifier<bool>? padFullscreen;
+  final ValueChanged<bool>? onWindowFullscreen;
   final VoidCallback? onMiniWindow;
 
   @override
@@ -65,7 +67,10 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _hintTimer?.cancel();
     _hint.dispose();
     _focus.dispose();
-    if (_windowFullscreen) unawaited(_setFullScreen(false));
+    if (_windowFullscreen) {
+      widget.onWindowFullscreen?.call(false);
+      unawaited(_setFullScreen(false));
+    }
     super.dispose();
   }
 
@@ -89,6 +94,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       return;
     }
     final next = !_windowFullscreen;
+    widget.onWindowFullscreen?.call(next);
     setState(() => _windowFullscreen = next);
     _focus.requestFocus();
     await _setFullScreen(next);
