@@ -457,6 +457,15 @@ class PlaybackSession extends ChangeNotifier {
     return seasons[index + 1];
   }
 
+  /// 还有下一季可供滑动衔接。
+  DramaSeason? get nextSeason => _nextSeason;
+
+  /// 正在切换到下一季：期间不要回跳播放器页码。
+  bool get advancingSeason => _advancingSeason;
+
+  /// 滑动到最后一集之后时调用，切到下一季第 1 集。
+  Future<void> playNextSeason() => _playNextSeason();
+
   Future<void> _playNextSeason() async {
     if (_advancingSeason) return;
     final season = _nextSeason;
@@ -508,6 +517,7 @@ class PlaybackSession extends ChangeNotifier {
       }
     } finally {
       _advancingSeason = false;
+      _notify();
     }
   }
 

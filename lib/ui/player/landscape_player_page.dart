@@ -186,6 +186,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
   void _refresh() {
     final page = _pages.hasClients ? _pages.page : null;
     if (!_scrolling &&
+        !_session.advancingSeason &&
         page != null &&
         page.round() != _session.index &&
         _session.index < _session.detail.episodes.length) {
@@ -210,11 +211,14 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
       final page = metrics.viewportDimension <= 0
           ? _session.index
           : (metrics.pixels / metrics.viewportDimension).round();
-      if (page != _session.index &&
-          page >= 0 &&
-          page < _session.detail.episodes.length) {
+      final count = _session.detail.episodes.length;
+      if (page != _session.index && page >= 0 && page < count) {
         _show();
         unawaited(_session.play(page));
+      } else if (page >= count && _session.nextSeason != null) {
+        // 滑过最后一集：衔接下一季第 1 集。
+        _show();
+        unawaited(_session.playNextSeason());
       }
     }
     return false;
@@ -480,7 +484,9 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
           child: PageView.builder(
             controller: _pages,
             scrollDirection: Axis.vertical,
-            itemCount: session.detail.episodes.length,
+            itemCount:
+                session.detail.episodes.length +
+                (session.nextSeason != null ? 1 : 0),
             itemBuilder: (context, index) => _episode(context, index, full),
           ),
         ),
@@ -597,8 +603,58 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
     return band.clamp(size.height * .34, size.height * .52);
   }
 
+  /// 最后一集之后的一页：继续上滑衔接下一季。
+  Widget _nextSeasonPage(BuildContext context) {
+    final season = _session.nextSeason;
+    if (season == null) return const SizedBox.shrink();
+    final advancing = _session.advancingSeason;
+    return ColoredBox(
+      color: Colors.black,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          spacing: 12,
+          children: [
+            Text(
+              season.label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            if (season.episodes > 0)
+              Text(
+                '共 ${season.episodes} 集',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: .72),
+                  fontSize: 13,
+                ),
+              ),
+            if (advancing) const CircularProgressIndicator(),
+            Text(
+              advancing ? '正在加载${season.label}' : '继续上滑播放${season.label}',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: .64),
+                fontSize: 13,
+              ),
+            ),
+            if (!advancing)
+              FilledButton(
+                onPressed: () => unawaited(_session.playNextSeason()),
+                child: Text('播放${season.label}'),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _episode(BuildContext context, int index, bool full) {
     final session = _session;
+    if (index >= session.detail.episodes.length) {
+      return _nextSeasonPage(context);
+    }
     final current = index == session.index;
     final player = current
         ? session.player
