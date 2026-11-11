@@ -109,6 +109,9 @@ type nativeDrama struct {
 	Tags           []string `json:"tags,omitempty"`
 	ReleaseStatus  string   `json:"releaseStatus,omitempty"`
 	Badge          string   `json:"badge,omitempty"`
+	// AlbumID / SeasonIndex 是 Go 内部季聚合用的，不 JSON 到 Dart。
+	AlbumID     string `json:"-"`
+	SeasonIndex int    `json:"-"`
 }
 
 type nativeInput struct {
@@ -253,7 +256,8 @@ func nativeNormalize(drama Drama) nativeDrama {
 		Description: firstNonEmpty(drama.Desc, drama.Intro), Cover: cover, Episodes: episodes,
 		Category: nativeDramaCategory(drama), VIP: drama.VIP,
 		Heat: drama.Heat, Views: drama.Views, OnlineDate: providerReleaseDate(drama.OnlineDate), Score: nativeDramaScore(drama.Score),
-		Tags: append([]string(nil), drama.Tags...), ReleaseStatus: drama.ReleaseStatus, Badge: drama.Badge}
+		Tags: append([]string(nil), drama.Tags...), ReleaseStatus: drama.ReleaseStatus, Badge: drama.Badge,
+		AlbumID: drama.AlbumID, SeasonIndex: drama.SeasonIndex}
 }
 
 func nativeDramaScore(score string) string {

@@ -294,7 +294,14 @@ func hongguoDramaFromAny(v any, category string) Drama {
 		// 季卡片要靠它显示每季的上线时间。
 		online = providerTimestampDate(mapString(vd, "create_time"))
 	}
-	return Drama{ID: providerDramaID(sourceHongguo, sourceID), Source: sourceHongguo, SourceID: sourceID, Title: title, Name: title, Desc: intro, Intro: intro, Cover: cover, CoverURL: cover, CategoryName: firstNonEmpty(genre, category), ChannelName: "红果", Remark: remark, TotalEpisode: count, EpisodeCount: count, Tags: tags, ReleaseStatus: releaseStatus, Score: mapString(vd, "score"), Views: mapString(vd, "series_play_cnt", "play_cnt"), Heat: hongguoHeat(vd), OnlineDate: online}
+	// 搜索 API 和详情 API 都返回 related_album_id / season_index，
+	// 直接填进 Drama，季聚合就不再每条调详情页。
+	albumID := firstNonEmpty(mapString(vd, "related_album_id", "album_id"), mapString(m, "related_album_id", "album_id"))
+	seasonIndex, _ := strconv.Atoi(firstNonEmpty(mapString(vd, "season_index"), mapString(m, "season_index")))
+	if seasonIndex < 1 || seasonIndex > 100 {
+		seasonIndex = 0
+	}
+	return Drama{ID: providerDramaID(sourceHongguo, sourceID), Source: sourceHongguo, SourceID: sourceID, Title: title, Name: title, Desc: intro, Intro: intro, Cover: cover, CoverURL: cover, CategoryName: firstNonEmpty(genre, category), ChannelName: "红果", Remark: remark, TotalEpisode: count, EpisodeCount: count, Tags: tags, ReleaseStatus: releaseStatus, Score: mapString(vd, "score"), Views: mapString(vd, "series_play_cnt", "play_cnt"), Heat: hongguoHeat(vd), OnlineDate: online, AlbumID: albumID, SeasonIndex: seasonIndex}
 }
 
 func nestedMap(v any, keys ...string) map[string]any {

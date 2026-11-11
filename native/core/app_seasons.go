@@ -269,6 +269,10 @@ func (engine *nativeEngine) hongguoSeasonGroup(ctx context.Context, sourceID str
 // officialSeasons 用官方季字段聚合：同 related_album_id 一定并入，季号取官方 season_index。
 // 官方偶尔把一部剧拆成多个系列组（如「持械入宋」的第二、五季），
 // 这时只要标题严格同类、日期或集数也说得通，就并入同一部剧。
+//
+// 热路径：搜索 API 返回的 Drama 自带 AlbumID + SeasonIndex 时，
+// 本函数完全不走网络，纯内存 <10ms；只有缺少字段的候选才 fallback 调详情。
+//
 // 返回 ok=false 表示当前剧拿不到官方字段，需要回退启发式。
 func (engine *nativeEngine) officialSeasons(
 	ctx context.Context,
@@ -276,15 +280,24 @@ func (engine *nativeEngine) officialSeasons(
 	current nativeDrama,
 	resolve func(context.Context, string) (string, int, Drama, bool),
 ) ([]nativeSeason, bool) {
-	album, currentNumber, detail, ok := resolve(ctx, current.SourceID)
-	if !ok || album == "" || currentNumber < 1 {
-		return nil, false
+	// 热路径 1：当前 Drama 自带 AlbumID/SeasonIndex 就不用 resolve。
+	album := current.AlbumID
+	currentNumber := current.SeasonIndex
+	var detail Drama
+	detailOK := false
+	if album == "" || currentNumber < 1 {
+		resolveAlbum, resolveNumber, resolveDetail, ok := resolve(ctx, current.SourceID)
+		if !ok || resolveAlbum == "" || resolveNumber < 1 {
+			return nil, false
+		}
+		album, currentNumber, detail = resolveAlbum, resolveNumber, resolveDetail
+		detailOK = true
 	}
 	// 详情里的上线时间/集数比列表数据更可靠，用来补齐当前这一季。
-	if current.OnlineDate == "" {
+	if current.OnlineDate == "" && detailOK {
 		current.OnlineDate = providerReleaseDate(detail.OnlineDate)
 	}
-	if current.Episodes == 0 {
+	if current.Episodes == 0 && detailOK {
 		current.Episodes = nativeNormalize(detail).Episodes
 	}
 	base, _, unit := hongguoSeasonLookup(current.Title)
@@ -306,45 +319,70 @@ func (engine *nativeEngine) officialSeasons(
 		seen[drama.SourceID] = true
 		candidates = append(candidates, drama)
 	}
-	var mu sync.Mutex
-	jobs := make(chan Drama)
-	var group sync.WaitGroup
-	for lane := 0; lane < hongguoSeasonGroupLanes; lane++ {
-		group.Add(1)
-		go func(lane int) {
-			defer group.Done()
-			// 每条通道有自己的限流闸门，才能在 250ms 间隔下真正并行。
-			laneCtx := context.WithValue(ctx, requestLaneKey{}, "season-"+strconv.Itoa(lane))
-			for drama := range jobs {
-				itemCtx, cancel := context.WithTimeout(laneCtx, hongguoSeasonGroupTimeout)
-				itemAlbum, number, _, found := resolve(itemCtx, drama.SourceID)
-				cancel()
-				if !found || number < 1 || number > hongguoSearchSeasonLimit {
+
+	// ---- 热路径 2：候选自带 AlbumID/SeasonIndex 的直接用（纯内存） ----
+	var missing []Drama
+	for _, drama := range candidates {
+		if drama.AlbumID != "" && drama.SeasonIndex >= 1 && drama.SeasonIndex <= hongguoSearchSeasonLimit {
+			itemAlbum := drama.AlbumID
+			number := drama.SeasonIndex
+			sameAlbum := itemAlbum == album
+			if !sameAlbum {
+				itemBase, _, itemUnit := hongguoSeasonLookup(drama.DisplayTitle())
+				if titleKey == "" || itemUnit != unit || hongguoSearchText(itemBase) != titleKey {
 					continue
 				}
-				sameAlbum := itemAlbum == album
-				if !sameAlbum {
-					// 跨组只在标题严格同类时考虑，避免同名不同剧被并进来。
-					itemBase, _, itemUnit := hongguoSeasonLookup(drama.DisplayTitle())
-					if titleKey == "" || itemUnit != unit || hongguoSearchText(itemBase) != titleKey {
+			}
+			if number != currentNumber {
+				if existing, exists := byNumber[number]; !exists || !existing.sameAlbum && sameAlbum {
+					byNumber[number] = entry{drama: nativeNormalize(drama), sameAlbum: sameAlbum}
+				}
+			}
+		} else {
+			missing = append(missing, drama)
+		}
+	}
+
+	// ---- 兜底：缺字段的候选走 resolve 通道调详情 ----
+	if len(missing) > 0 {
+		var mu sync.Mutex
+		jobs := make(chan Drama)
+		var group sync.WaitGroup
+		for lane := 0; lane < hongguoSeasonGroupLanes; lane++ {
+			group.Add(1)
+			go func(lane int) {
+				defer group.Done()
+				laneCtx := context.WithValue(ctx, requestLaneKey{}, "season-"+strconv.Itoa(lane))
+				for drama := range jobs {
+					itemCtx, cancel := context.WithTimeout(laneCtx, hongguoSeasonGroupTimeout)
+					itemAlbum, number, _, found := resolve(itemCtx, drama.SourceID)
+					cancel()
+					if !found || number < 1 || number > hongguoSearchSeasonLimit {
 						continue
 					}
-				}
-				mu.Lock()
-				if number != currentNumber {
-					if existing, exists := byNumber[number]; !exists || !existing.sameAlbum && sameAlbum {
-						byNumber[number] = entry{drama: nativeNormalize(drama), sameAlbum: sameAlbum}
+					sameAlbum := itemAlbum == album
+					if !sameAlbum {
+						itemBase, _, itemUnit := hongguoSeasonLookup(drama.DisplayTitle())
+						if titleKey == "" || itemUnit != unit || hongguoSearchText(itemBase) != titleKey {
+							continue
+						}
 					}
+					mu.Lock()
+					if number != currentNumber {
+						if existing, exists := byNumber[number]; !exists || !existing.sameAlbum && sameAlbum {
+							byNumber[number] = entry{drama: nativeNormalize(drama), sameAlbum: sameAlbum}
+						}
+					}
+					mu.Unlock()
 				}
-				mu.Unlock()
-			}
-		}(lane)
+			}(lane)
+		}
+		for _, drama := range missing {
+			jobs <- drama
+		}
+		close(jobs)
+		group.Wait()
 	}
-	for _, drama := range candidates {
-		jobs <- drama
-	}
-	close(jobs)
-	group.Wait()
 	numbers := make([]int, 0, len(byNumber))
 	for number := range byNumber {
 		numbers = append(numbers, number)

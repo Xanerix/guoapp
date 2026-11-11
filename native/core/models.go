@@ -53,6 +53,11 @@ type Drama struct {
 	Tags              []string           `json:"tags,omitempty"`
 	ReleaseStatus     string             `json:"releaseStatus,omitempty"`
 	SortMetadata      *sortMetadataState `json:"sortMetadata,omitempty"`
+	// AlbumID 是红果官方给同系列多季打的分组 ID（related_album_id），
+	// 同一部剧的多季共享，搜索 API 和详情 API 都会返回。
+	AlbumID string `json:"albumId,omitempty"`
+	// SeasonIndex 是红果官方季号（season_index），1 起，同 AlbumID 内唯一。
+	SeasonIndex int `json:"seasonIndex,omitempty"`
 }
 
 func (d Drama) DisplayTitle() string {
