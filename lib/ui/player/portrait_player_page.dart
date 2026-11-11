@@ -575,6 +575,19 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
             null => null,
           },
         ),
+        if (bottom > 0)
+          Positioned(
+            key: const ValueKey('system-gesture-guard'),
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: bottom,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: session.togglePlayback,
+              onVerticalDragStart: (_) {},
+            ),
+          ),
         Positioned(
           key: const ValueKey('header'),
           left: 4,
