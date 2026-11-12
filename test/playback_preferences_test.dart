@@ -70,7 +70,7 @@ void main() {
 
   test('invalid speed still rejects the payload', () {
     expect(
-      () => PlaybackPreferences.fromJson(const {'speed': 1.1}),
+      () => PlaybackPreferences.fromJson(const {'speed': 1.3}),
       throwsFormatException,
     );
   });
