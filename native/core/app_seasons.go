@@ -118,6 +118,9 @@ func (engine *nativeEngine) nativeSeasons(ctx context.Context, input nativeInput
 		if items, official := engine.officialSeasons(lookup, names, input.Drama, adapter.group, adapter.search); official {
 			if len(items) > 1 {
 				result.Items = items
+				// 同 fallback 路径一样，用聚合到的非当前季的 series_id
+				// 再查一次 plan/v，把同组的待上线季带出来。
+				result.Items = engine.hongguoExpandPlanSeasons(lookup, result.Items)
 			}
 			return result, nil
 		}
