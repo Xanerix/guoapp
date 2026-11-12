@@ -354,6 +354,48 @@ func TestOfficialSeasonsRejectsCrossAlbumOutOfOrder(t *testing.T) {
 	}
 }
 
+func TestOfficialSeasonsProbesNextSeasonAcrossAlbums(t *testing.T) {
+	// 实测：红果把「首季」单独建一个系列组，后续季在另一个组。
+	// plan/v 只返回第一季、联想也只召回第一季时，必须靠「剧名：第N季」
+	// 向后探测把第二季补回来，否则从第一季点进去永远看不到第二季。
+	engine, err := newNativeEngine(t.TempDir(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	current := nativeNormalize(seasonDramaOn("101", "合成剧第一季", "2026-09-23", 100))
+	details := map[string]struct {
+		album  string
+		number int
+		drama  Drama
+	}{
+		"101": {"A", 1, seasonDramaOn("101", "合成剧第一季", "2026-09-23", 100)},
+		"102": {"B", 2, seasonDramaOn("102", "合成剧第二季", "2026-10-28", 100)},
+	}
+	resolve := func(_ context.Context, sourceID string) (string, int, Drama, bool) {
+		item, ok := details[sourceID]
+		return item.album, item.number, item.drama, ok
+	}
+	var keywords []string
+	search := func(_ context.Context, keyword string) ([]Drama, error) {
+		keywords = append(keywords, keyword)
+		if strings.Contains(keyword, "第二季") || strings.Contains(keyword, "第2季") {
+			return []Drama{seasonDramaOn("102", "合成剧第二季", "2026-10-28", 100)}, nil
+		}
+		return nil, nil
+	}
+	items, ok := engine.officialSeasons(context.Background(), nil, current, resolve, search)
+	if !ok {
+		t.Fatal("official group should be available")
+	}
+	numbers := make([]int, 0, len(items))
+	for _, item := range items {
+		numbers = append(numbers, item.Number)
+	}
+	if len(numbers) != 2 || numbers[0] != 1 || numbers[1] != 2 {
+		t.Fatalf("seasons = %v (keywords=%v), want [1 2]", numbers, keywords)
+	}
+}
+
 func TestOfficialSeasonsFallsBackWithoutFields(t *testing.T) {
 	engine, err := newNativeEngine(t.TempDir(), "")
 	if err != nil {
