@@ -68,6 +68,18 @@ class AppFailure implements Exception {
   String toString() => message;
 }
 
+/// 本机取流网关的探活结果。
+///
+/// [epoch] 是监听代次：iOS 后台回收监听套接字后 Go 会重建 listener 并
+/// 清空旧会话，此时旧 `PlaybackPlan.streamEpoch` 与当前值不一致，
+/// 旧 session 的 fallback 必然失败，必须改为重新解析地址。
+class PlaybackStreamStatus {
+  const PlaybackStreamStatus({this.alive = true, this.epoch = 0});
+
+  final bool alive;
+  final int epoch;
+}
+
 abstract class AppRepository {
   Future<ResourceSettings> resourceSettings() async => const ResourceSettings();
   Future<ResourceSettings> saveResourceSettings(
@@ -179,7 +191,12 @@ abstract class AppRepository {
   Future<String> cover(Drama drama, {bool force = false});
   bool coverCached(Drama drama) => false;
   Future<DramaDetail> detail(Drama drama);
-  Future<PlaybackPlan> resolve(Drama drama, Episode episode, {int quality = 0});
+  Future<PlaybackPlan> resolve(
+    Drama drama,
+    Episode episode, {
+    int quality = 0,
+    bool force = false,
+  });
   Future<PlaybackPlan> fallback(PlaybackPlan current);
   Future<void> cancelPlayback();
   Future<void> release(String session);
@@ -188,7 +205,12 @@ abstract class AppRepository {
   Future<List<DramaSeason>> seasons(Drama drama) async => const [];
 
   /// 本机取流服务是否仍可接受连接；iOS 挂起后监听失效，只能重建播放器。
-  Future<bool> playbackAlive() async => true;
+  /// 保留旧接口，内部统一走 [playbackStatus]。
+  Future<bool> playbackAlive() async => (await playbackStatus()).alive;
+
+  /// 取流探活 + 监听代次。默认实现用于测试桩与非原生仓库。
+  Future<PlaybackStreamStatus> playbackStatus() async =>
+      const PlaybackStreamStatus();
 }
 
 class NativeRepository extends AppRepository {
@@ -531,6 +553,12 @@ class NativeRepository extends AppRepository {
   }
 
   Future<Map<String, dynamic>> _call(Map<String, dynamic> input) async {
+    // 定义在 try 之外：超时分支也要用它决定清理与错误文案。
+    final playbackResolve = const {
+      'resolve',
+      'fallback',
+      'preload',
+    }.contains(input['action']);
     try {
       final action = input['action'] as String;
       final unrestricted =
@@ -597,20 +625,20 @@ class NativeRepository extends AppRepository {
         input['force'] = true;
       }
       final body = jsonEncode(input);
-      final response =
-          await Isolate.run(
-            () => jsonDecode(_nativeRequest(body)) as Map<String, dynamic>,
-          ).timeout(
-            Duration(
-              seconds: action == 'moveDownloads'
-                  ? 620
-                  : action == 'danmaku'
-                  ? 15
-                  : action == 'preload'
-                  ? 20
-                  : 70,
-            ),
-          );
+      // 播放地址解析不能沿用通用 70s：站源挂住时用户会盯着 Loading 等一分多钟。
+      // 其余动作保持既有预算，避免无关改动。
+      final timeoutSeconds = action == 'moveDownloads'
+          ? 620
+          : action == 'danmaku'
+          ? 15
+          : playbackResolve
+          ? 20
+          : action == 'cancelPlayback'
+          ? 10
+          : 70;
+      final response = await Isolate.run(
+        () => jsonDecode(_nativeRequest(body)) as Map<String, dynamic>,
+      ).timeout(Duration(seconds: timeoutSeconds));
       if (response['ok'] != true) {
         throw AppFailure(
           response['error'] as String? ?? '读取失败，请重试',
@@ -650,7 +678,17 @@ class NativeRepository extends AppRepository {
           }).catchError((Object _) => <String, dynamic>{}),
         );
       }
-      throw AppFailure('站源响应超时，请重试');
+      // 解析超时后原生侧可能仍在跑：显式中止，避免残留 session 或旧请求
+      // 晚返回覆盖新会话。取消动作本身用短预算，不能把恢复链再拖住。
+      if (playbackResolve) {
+        unawaited(
+          _call({
+            'action': 'cancelPlayback',
+            'sequence': ++_playbackSequence,
+          }).catchError((Object _) => <String, dynamic>{}),
+        );
+      }
+      throw AppFailure(playbackResolve ? '播放地址解析超时，请重试' : '站源响应超时，请重试');
     } catch (_) {
       throw AppFailure('本地核心加载失败，请使用完整安装包重新安装');
     }
@@ -781,6 +819,7 @@ class NativeRepository extends AppRepository {
     Drama drama,
     Episode episode, {
     int quality = 0,
+    bool force = false,
   }) async => PlaybackPlan.fromJson(
     await _call({
       'action': 'resolve',
@@ -788,6 +827,7 @@ class NativeRepository extends AppRepository {
       'chapter': episode.raw,
       'index': episode.number,
       'quality': quality,
+      'force': force,
       'sequence': ++_playbackSequence,
     }),
   );
@@ -806,9 +846,13 @@ class NativeRepository extends AppRepository {
   }
 
   @override
-  Future<bool> playbackAlive() async {
+  Future<PlaybackStreamStatus> playbackStatus() async {
     final result = await _call({'action': 'playbackAlive'});
-    return result['alive'] == true;
+    final epoch = result['epoch'];
+    return PlaybackStreamStatus(
+      alive: result['alive'] == true,
+      epoch: epoch is int ? epoch : intValue(epoch),
+    );
   }
 
   @override

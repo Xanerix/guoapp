@@ -18,11 +18,13 @@ func (engine *nativeEngine) nativeBeginPlayback(ctx context.Context, sequence in
 	engine.playbackSequence = sequence
 	playback, cancel := context.WithCancel(ctx)
 	engine.playbackCancel = cancel
+	engine.playbackCtx = playback
 	finish := func() {
 		cancel()
 		engine.playbackMu.Lock()
 		if engine.playbackSequence == sequence {
 			engine.playbackCancel = nil
+			engine.playbackCtx = nil
 		}
 		engine.playbackMu.Unlock()
 	}
@@ -42,30 +44,34 @@ func (engine *nativeEngine) nativeCancelPlayback(sequence int64) {
 	}
 }
 
-// nativePlaybackAlive 报告本机取流服务是否仍可接受连接。
-// 应用被系统挂起后监听套接字会失效，此时旧播放器即使还停在画面上，
-// 也无法再打开任何新媒体，只能重建。
-func (engine *nativeEngine) nativePlaybackAlive() bool {
+// nativePlaybackStatus 报告本机取流服务是否仍可接受连接，并返回当前监听代次
+// (streamEpoch)。应用被系统挂起后监听套接字会失效、被重建，代次随之自增；
+// 持旧代次的会话（Dart 端 PlaybackPlan.streamEpoch）应直接走强制刷新而非 fallback。
+func (engine *nativeEngine) nativePlaybackStatus() (bool, int64) {
 	engine.mu.Lock()
 	stream := engine.stream
+	epoch := engine.streamEpoch
 	engine.mu.Unlock()
-	return stream != nil && stream.nativeAlive()
+	return stream != nil && stream.nativeAlive(), epoch
 }
 
 // nativeEnsureStreamLocked 确认取流监听可用，必要时关闭旧监听并重建。
 // 调用方必须持有 engine.streamMu，避免并发探活/关闭/创建出重复的 listener。
-func (engine *nativeEngine) nativeEnsureStreamLocked() (*nativeStreamServer, error) {
+// 返回重建后的监听与当前 streamEpoch；监听每次被替换时代次自增，供 Dart 端
+// 判断「旧会话是否已失效」从而跳过无效的换线路/回退。
+func (engine *nativeEngine) nativeEnsureStreamLocked() (*nativeStreamServer, int64, error) {
 	engine.mu.Lock()
 	current := engine.stream
+	epoch := engine.streamEpoch
 	engine.mu.Unlock()
 	if current != nil {
 		if current.nativeAlive() {
-			return current, nil
+			return current, epoch, nil
 		}
 		// 一次探活失败不直接判死，稍后再确认，避免误杀仍在恢复中的服务。
 		time.Sleep(120 * time.Millisecond)
 		if current.nativeAlive() {
-			return current, nil
+			return current, epoch, nil
 		}
 		closed := current.nativeClose()
 		engine.mu.Lock()
@@ -77,20 +83,24 @@ func (engine *nativeEngine) nativeEnsureStreamLocked() (*nativeStreamServer, err
 		engine.mu.Unlock()
 		stream, err := newNativeStreamServer(engine.downloader)
 		if err != nil {
-			return nil, err
+			return nil, epoch, err
 		}
 		engine.mu.Lock()
 		engine.stream = stream
+		engine.streamEpoch++
+		epoch = engine.streamEpoch
 		engine.mu.Unlock()
 		stream.nativeLog(nativeStreamDiagnostic{}, "listener_recreated", "", "closed_sessions="+strconv.Itoa(closed), 0, "")
-		return stream, nil
+		return stream, epoch, nil
 	}
 	stream, err := newNativeStreamServer(engine.downloader)
 	if err != nil {
-		return nil, err
+		return nil, epoch, err
 	}
 	engine.mu.Lock()
 	engine.stream = stream
+	engine.streamEpoch++
+	epoch = engine.streamEpoch
 	engine.mu.Unlock()
-	return stream, nil
+	return stream, epoch, nil
 }

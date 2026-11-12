@@ -107,7 +107,10 @@ func TestNativePlaybackHLSAlternativesAreLazyAndIsolated(t *testing.T) {
 		t.Fatal(err)
 	}
 	media := providerMedia{URL: "https://first.test/index.m3u8", Playlist: "#EXTM3U\n#EXT-X-ENDLIST\n", Quality: 1080}
-	media.Variants = []providerMedia{{URL: "https://backup.test/index.m3u8", Playlist: "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-ENDLIST\n", Quality: 720}}
+	media.Variants = []providerMedia{
+		{URL: "https://backup.test/index.m3u8", Playlist: "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-ENDLIST\n", Quality: 720},
+		{URL: "https://third.test/index.m3u8", Playlist: "#EXTM3U\n#EXT-X-VERSION:4\n#EXT-X-ENDLIST\n", Quality: 480},
+	}
 	plan, err := engine.nativeOpenPlayback(context.Background(), nativePlaybackChoices(media, 0))
 	if err != nil {
 		t.Fatal(err)
@@ -120,22 +123,29 @@ func TestNativePlaybackHLSAlternativesAreLazyAndIsolated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	late, err := engine.nativeNextPlayback(context.Background(), plan.Session)
+	// 修复后 nativeNextPlayback 会释放旧 session 并返回新 session，
+	// 调用方必须用返回的新 session 续调，而不是复用已失效的旧 session。
+	late, err := engine.nativeNextPlayback(context.Background(), current.Session)
 	if err != nil {
 		t.Fatal(err)
 	}
-	engine.nativeReleasePlayback(late.Session)
-	engine.nativeReleasePlayback(plan.Session)
-	response, err := http.Get(current.URL)
+	// 旧 plan.Session 已被释放，确认它确实不再可用（不会静默回到首路）。
+	if _, ok := engine.playbacks[plan.Session]; ok {
+		t.Fatal("releasing the old plan did not remove its playback entry")
+	}
+	// late 是最后一次 next 的活跃会话，其取流资源仍存活；用它验证隔离性。
+	response, err := http.Get(late.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
 	body, err := io.ReadAll(response.Body)
 	response.Body.Close()
-	if err != nil || response.StatusCode != http.StatusOK || !strings.Contains(string(body), "#EXT-X-VERSION:3") {
+	if err != nil || response.StatusCode != http.StatusOK || !strings.Contains(string(body), "#EXT-X-VERSION:4") {
 		t.Fatalf("old/late cleanup broke the active HLS session: %s, %v", body, err)
 	}
+	engine.nativeReleasePlayback(late.Session)
 	engine.nativeReleasePlayback(current.Session)
+	engine.nativeReleasePlayback(plan.Session)
 	if len(engine.stream.sessions) != 0 || len(engine.playbacks) != 0 {
 		t.Fatal("HLS fallback sessions leaked")
 	}

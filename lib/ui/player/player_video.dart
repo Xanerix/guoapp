@@ -57,11 +57,33 @@ class _PlayerVideoState extends State<PlayerVideo> with WidgetsBindingObserver {
 
   /// 切出/锁屏瞬间（inactive，进程尚未挂起、画面仍在渲染）抓取最后一帧，
   /// 回前台重建纹理期间用它替代纯黑幕——用户看到的是画面静止而不是黑屏。
+  /// iOS 有时不经过 inactive 直接 paused，这里一并覆盖。
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.inactive) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
       // 只抓正在出声的那一路；待机播放器是暂停态，抓了也用不上。
       if (widget.player.state.playing) unawaited(_capture());
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant PlayerVideo oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 切换了播放器实例（切集/重建换了新的 Player）：上一集抓到的静止帧已
+    // 不属于当前集，必须清空，否则切集瞬间会用旧集画面覆盖新集。
+    if (!identical(oldWidget.player, widget.player)) {
+      _lastFrame?.dispose();
+      _lastFrame = null;
+    }
+    // 盖幕刚落下时也抓一帧：RepaintBoundary 是 Stack 的下层子树，
+    // toImage() 取的是视频层，不会被上层黑幕污染。这样「切集/恢复」
+    // 路径也能有最后一帧，而不只在生命周期事件里才有。
+    if (!oldWidget.covered &&
+        widget.covered &&
+        _lastFrame == null &&
+        widget.player.state.playing) {
+      unawaited(_capture());
     }
   }
 
@@ -69,11 +91,19 @@ class _PlayerVideoState extends State<PlayerVideo> with WidgetsBindingObserver {
     final boundary =
         _boundary.currentContext?.findRenderObject() as RenderRepaintBoundary?;
     if (boundary == null || boundary.size.isEmpty) return;
+    // 绑定抓帧瞬间的播放器实例：异步 toImage 期间若已切集/换播放器，
+    // 这张帧可能属于上一集，不能写进当前状态（P2 快照需与播放会话代次绑定）。
+    final captured = widget.player;
     try {
       final image = await boundary.toImage(
         pixelRatio: math.min(_pixelRatio, 3.0),
       );
       if (!mounted) {
+        image.dispose();
+        return;
+      }
+      // 抓帧完成前已切换播放器或已暂停：丢弃这张可能来自旧集的画面。
+      if (!identical(widget.player, captured) || !widget.player.state.playing) {
         image.dispose();
         return;
       }

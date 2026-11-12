@@ -20,6 +20,25 @@ const nativePreloadLimit = 4 << 20
 func (engine *nativeEngine) nativePreload(ctx context.Context, input nativeInput) (nativePlan, error) {
 	ctx = context.WithValue(ctx, backgroundCatalogKey{}, true)
 	ctx = context.WithValue(ctx, nativePreloadKey{}, true)
+	// 与播放序列对齐：预加载属于「当前播放上下文」。若已有更新的播放序列接管
+	// （用户切集），当前 playbackCtx 会被取消，这里派生的 ctx 随之失效，避免
+	// 过期预加载在用户切集后仍占用带宽 / 注册已失效的会话。这等价于 resolve/
+	// fallback 走 nativeBeginPlayback 的 sequence 保护，但不会跨计数空间误伤
+	// 正在进行的播放。
+	engine.playbackMu.Lock()
+	parent := engine.playbackCtx
+	if parent != nil {
+		var stop context.CancelFunc
+		ctx, stop = context.WithCancel(ctx)
+		// 正常返回（parent 未取消）时也必须释放派生的 ctx，否则它会随父
+		// ctx 一起泄漏，且下面这个 goroutine 会一直阻塞在 parent.Done() 上。
+		defer stop()
+		go func() {
+			<-parent.Done()
+			stop()
+		}()
+	}
+	engine.playbackMu.Unlock()
 	plan, err := engine.nativeResolve(ctx, input)
 	if err != nil || plan.Local {
 		return plan, err
@@ -206,7 +225,7 @@ func (stream *nativeStreamServer) nativeServePrefix(ctx context.Context, writer 
 	if value := request.Header.Get("If-Range"); value != "" && value != validator {
 		return false
 	}
-	var response *http.Response
+	var extension []byte
 	if end >= int64(len(asset.data)) && request.Method != http.MethodHead {
 		upstream, err := http.NewRequestWithContext(ctx, http.MethodGet, asset.address, nil)
 		if err != nil || validator == "" {
@@ -215,7 +234,7 @@ func (stream *nativeStreamServer) nativeServePrefix(ctx context.Context, writer 
 		upstream.Header.Set("Referer", session.referer)
 		upstream.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", len(asset.data), end))
 		upstream.Header.Set("If-Range", validator)
-		response, err = stream.nativeRequest(upstream)
+		response, err := stream.nativeRequest(upstream)
 		if err != nil {
 			return false
 		}
@@ -230,10 +249,18 @@ func (stream *nativeStreamServer) nativeServePrefix(ctx context.Context, writer 
 			session.invalidate(asset.address)
 			return false
 		}
+		// 以 io.ReadFull 精确读取声明长度的扩展段，杜绝 io.CopyN 在上游提前
+		// EOF 时少写、造成「Content-Length 与实际字节数不符」的残缺响应。
+		want := end - int64(len(asset.data)) + 1
+		extension = make([]byte, want)
+		if got, rerr := io.ReadFull(io.LimitReader(response.Body, want), extension); rerr != nil || int64(got) != int64(len(extension)) {
+			session.invalidate(asset.address)
+			return false
+		}
 	}
 	writer.Header().Set("Content-Type", asset.contentType)
 	writer.Header().Set("Accept-Ranges", "bytes")
-	writer.Header().Set("Content-Length", strconv.FormatInt(end-start+1, 10))
+	writer.Header().Set("Content-Length", strconv.FormatInt(int64(len(asset.data[start:min(end+1, int64(len(asset.data)))])+len(extension)), 10))
 	if asset.etag != "" {
 		writer.Header().Set("ETag", asset.etag)
 	}
@@ -247,9 +274,11 @@ func (stream *nativeStreamServer) nativeServePrefix(ctx context.Context, writer 
 	if request.Method == http.MethodHead {
 		return true
 	}
-	_, err := writer.Write(asset.data[start:min(end+1, int64(len(asset.data)))])
-	if err == nil && response != nil {
-		_, _ = io.CopyN(writer, response.Body, end-int64(len(asset.data))+1)
+	if _, err := writer.Write(asset.data[start:min(end+1, int64(len(asset.data)))]); err != nil {
+		return true
+	}
+	if len(extension) > 0 {
+		_, _ = writer.Write(extension)
 	}
 	return true
 }

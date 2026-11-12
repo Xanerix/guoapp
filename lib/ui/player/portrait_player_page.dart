@@ -19,7 +19,6 @@ import '../widgets/follow_button.dart';
 import 'danmaku_overlay.dart';
 import 'episode_grid.dart';
 import 'fade_presence.dart';
-import 'mini_player.dart';
 import 'playback_sheets.dart';
 import 'playback_handle.dart';
 import 'player_surface.dart';
@@ -108,7 +107,7 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) =>
-      _session.setForeground(playerVisible(state));
+      _session.onLifecycleEvent(state, source: 'portrait');
 
   void _bind() {
     final player = _session.player;
@@ -240,7 +239,7 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
       if (_scrolling) setState(() => _scrolling = false);
       final count = _session.detail.episodes.length;
       if (page != _session.index && page >= 0 && page < count) {
-        unawaited(_session.play(page));
+        unawaited(_session.switchTo(page, reason: SwitchReason.swipe));
       } else if (page >= count && _session.nextSeason != null) {
         // 滑过最后一集：衔接下一季第 1 集。
         unawaited(_session.playNextSeason());
@@ -1207,7 +1206,9 @@ class _EpisodeSheetState extends State<_EpisodeSheet> {
                 onPick: (index) {
                   Navigator.pop(context);
                   if (index != _session.index) {
-                    unawaited(_session.play(index));
+                    unawaited(
+                      _session.switchTo(index, reason: SwitchReason.select),
+                    );
                   }
                 },
               ),

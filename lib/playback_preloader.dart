@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import 'core_bridge.dart';
+import 'diary_service.dart';
 import 'models.dart';
 
 class PlaybackPreloader extends ChangeNotifier {
@@ -18,8 +19,16 @@ class PlaybackPreloader extends ChangeNotifier {
   int _generation = 0;
   bool _closed = false, loading = false;
   String error = '';
-  void _release(PlaybackPlan plan) =>
-      unawaited(repository.release(plan.session).catchError((Object _) {}));
+  void _release(PlaybackPlan plan) => unawaited(
+    repository
+        .release(plan.session)
+        .then<void>(
+          (_) {},
+          onError: (Object error) {
+            DiaryService.add('[Play] 释放预加载会话失败：$error');
+          },
+        ),
+  );
 
   bool get ready => _ready != null && _now().isBefore(_expires);
 
@@ -44,6 +53,9 @@ class PlaybackPreloader extends ChangeNotifier {
     Episode episode, {
     int quality = 0,
     bool online = false,
+
+    /// 上游会话票据：切集后旧会话的预加载结果必须丢弃，不能留给新一集。
+    bool Function()? isCurrent,
   }) {
     if (_closed) return;
     final identity = _key(drama, episode, quality, online);
@@ -74,11 +86,16 @@ class PlaybackPreloader extends ChangeNotifier {
           quality: quality,
           online: online,
         );
-        if (_closed || ticket != _generation) {
+        if (_closed || ticket != _generation || !(isCurrent?.call() ?? true)) {
           if (plan != null) await repository.release(plan.session);
           return;
         }
-        if (plan == null || plan.url.isEmpty) throw AppFailure('未取得预加载结果');
+        if (plan == null) throw AppFailure('未取得预加载结果');
+        if (plan.url.isEmpty) {
+          // 残缺结果也带着原生 session，必须先释放再报错，不能留一个空壳。
+          _release(plan);
+          throw AppFailure('未取得播放地址');
+        }
         var expires = _now().add(const Duration(minutes: 2));
         if (plan.expiresAt > 0) {
           final authorizationExpiry = DateTime.fromMillisecondsSinceEpoch(
@@ -96,7 +113,9 @@ class PlaybackPreloader extends ChangeNotifier {
         _expires = expires;
         error = '';
       } catch (failure) {
-        if (_closed || ticket != _generation) return;
+        if (_closed || ticket != _generation || !(isCurrent?.call() ?? true)) {
+          return;
+        }
         error = failure.toString();
         _retryAt = _now().add(const Duration(seconds: 30));
       } finally {
@@ -120,7 +139,13 @@ class PlaybackPreloader extends ChangeNotifier {
             _now().isBefore(_expires)
         ? _ready
         : null;
-    if (result != null) _ready = null;
+    // 指纹、有效期、地址都要校验：过期或残缺的结果只能丢弃并被 clear 释放，
+    // 绝不能交给 standby 去 open 一个空地址。
+    if (result == null || result.url.isEmpty) {
+      clear();
+      return null;
+    }
+    _ready = null;
     clear();
     return result;
   }
@@ -131,7 +156,14 @@ class PlaybackPreloader extends ChangeNotifier {
     _delay?.cancel();
     _delay = null;
     if (loading) {
-      unawaited(repository.cancelPreload().catchError((Object _) {}));
+      unawaited(
+        repository.cancelPreload().then<void>(
+          (_) {},
+          onError: (Object error) {
+            DiaryService.add('[Play] 取消预加载失败：$error');
+          },
+        ),
+      );
     }
     loading = false;
     if (changed && !_closed) notifyListeners();

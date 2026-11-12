@@ -12,7 +12,6 @@ import '../theme/app_theme.dart';
 import '../widgets/focus_ring.dart';
 import '../widgets/follow_button.dart';
 import 'episode_grid.dart';
-import 'mini_player.dart';
 import 'playback_handle.dart';
 import 'player_surface.dart';
 import 'window_fullscreen.dart';
@@ -70,9 +69,8 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    _playback.setForeground(playerVisible(state));
-  }
+  void didChangeAppLifecycleState(AppLifecycleState state) =>
+      _playback.onLifecycleEvent(state, source: 'player_page');
 
   bool get _canDownload =>
       AppScope.of(context).repository.supportsDownloads &&
@@ -161,7 +159,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     final target = _playback.index + direction;
     if (target < 0) return _say('已经是第一集');
     if (target >= _episodes.length) return _say('已经是最后一集');
-    unawaited(_playback.play(target));
+    unawaited(_playback.switchTo(target, reason: SwitchReason.keyboard));
     _say('第 ${_episodes[target].number} 集');
   }
 
@@ -389,7 +387,9 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     selected: _selected,
     onSelectionChanged: () => setState(() {}),
     onPick: (index) {
-      if (index != _playback.index) unawaited(_playback.play(index));
+      if (index != _playback.index) {
+        unawaited(_playback.switchTo(index, reason: SwitchReason.select));
+      }
     },
   );
 }

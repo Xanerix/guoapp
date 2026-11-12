@@ -2,6 +2,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../core_bridge.dart';
+import '../../diary_service.dart';
 import '../../local_store.dart';
 import '../../models.dart';
 import '../../playback_session.dart';
@@ -54,7 +55,16 @@ class PlaybackHandle {
   /// 播放器释放后只需移除映射，避免每次重建都残留一份引用。
   void _retireVideo(Player player) => _videos.remove(player);
 
-  VideoController video(Player player) => _videos[player]!;
+  /// Player ↔ VideoController 的映射由本类唯一持有。
+  /// 回前台 respawn / retire 时序交错时映射可能短暂缺失：就地补建并留痕，
+  /// 不再用 `!` 强解——空指针会把整棵播放页打挂，比一次纹理重建严重得多。
+  VideoController video(Player player) => _videos.putIfAbsent(player, () {
+    DiaryService.add('[Play] VideoController 映射缺失，已就地补建');
+    return VideoController(player);
+  });
 
-  void dispose() => session.dispose();
+  void dispose() {
+    session.dispose();
+    _videos.clear();
+  }
 }

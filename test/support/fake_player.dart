@@ -16,6 +16,32 @@ class FakePlayer implements Player {
 
   /// 模拟「补发 play 也不生效」：播放器静默停在 playing=false。
   bool ignorePlay = false;
+
+  /// 模拟 open 挂起：每次 open 都停在独立 gate 上，测试可择机放行，
+  /// 用来验证过期任务晚返回不会写回状态。
+  bool hangOpen = false;
+  final _openGates = <Completer<void>>[];
+
+  /// 模拟 dispose 挂起（原生释放超时）。
+  bool hangDispose = false;
+  Completer<void>? _disposeGate;
+
+  void completeOpen(int index) {
+    final gate = _openGates[index];
+    if (!gate.isCompleted) gate.complete();
+  }
+
+  void completeAllOpens() {
+    for (final gate in _openGates) {
+      if (!gate.isCompleted) gate.complete();
+    }
+  }
+
+  void completeDispose() {
+    _disposeGate?.complete();
+    disposed = true;
+  }
+
   final _playing = StreamController<bool>.broadcast(sync: true);
   final _completed = StreamController<bool>.broadcast(sync: true);
   final _position = StreamController<Duration>.broadcast(sync: true);
@@ -87,6 +113,11 @@ class FakePlayer implements Player {
   @override
   Future<void> open(Playable playable, {bool play = true}) async {
     opened.add(playable as Media);
+    if (hangOpen) {
+      final gate = Completer<void>();
+      _openGates.add(gate);
+      return gate.future;
+    }
     state = state.copyWith(
       playing: play,
       completed: false,
@@ -137,6 +168,10 @@ class FakePlayer implements Player {
 
   @override
   Future<void> dispose() async {
+    if (hangDispose) {
+      _disposeGate = Completer<void>();
+      return _disposeGate!.future;
+    }
     disposed = true;
   }
 
