@@ -37,6 +37,7 @@ class _SwipeSwitchState extends State<SwipeSwitch>
   late final _offset = AnimationController.unbounded(vsync: this);
   late final _opacity = AnimationController(vsync: this, value: 1);
   double _drag = 0;
+  double _width = 1;
   Widget? _leaving;
   int _run = 0;
   int _direction = 1;
@@ -61,8 +62,6 @@ class _SwipeSwitchState extends State<SwipeSwitch>
     _opacity.dispose();
     super.dispose();
   }
-
-  double get _width => context.size?.width ?? 1;
 
   bool get _switching => _leaving != null;
 
@@ -147,26 +146,31 @@ class _SwipeSwitchState extends State<SwipeSwitch>
   @override
   Widget build(BuildContext context) {
     final enabled = widget.enabled && widget.count > 1;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onHorizontalDragStart: enabled ? _start : null,
-      onHorizontalDragUpdate: enabled ? _update : null,
-      onHorizontalDragEnd: enabled ? _end : null,
-      onHorizontalDragCancel: enabled ? _settle : null,
-      child: AnimatedBuilder(
-        animation: Listenable.merge([_offset, _opacity]),
-        builder: (context, child) => Opacity(
-          opacity: _opacity.value,
-          child: Transform.translate(
-            offset: Offset(_offset.value, 0),
-            child: child,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.hasBoundedWidth) _width = constraints.maxWidth;
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onHorizontalDragStart: enabled ? _start : null,
+          onHorizontalDragUpdate: enabled ? _update : null,
+          onHorizontalDragEnd: enabled ? _end : null,
+          onHorizontalDragCancel: enabled ? _settle : null,
+          child: AnimatedBuilder(
+            animation: Listenable.merge([_offset, _opacity]),
+            builder: (context, child) => Opacity(
+              opacity: _opacity.value,
+              child: Transform.translate(
+                offset: Offset(_offset.value, 0),
+                child: child,
+              ),
+            ),
+            child: IgnorePointer(
+              ignoring: _switching,
+              child: _leaving ?? widget.child,
+            ),
           ),
-        ),
-        child: IgnorePointer(
-          ignoring: _switching,
-          child: _leaving ?? widget.child,
-        ),
-      ),
+        );
+      },
     );
   }
 }
