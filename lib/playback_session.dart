@@ -348,6 +348,10 @@ class PlaybackSession extends ChangeNotifier {
   Timer? _volumeTimer;
   Future<void> _operations = Future<void>.value();
   Future<void> _rates = Future<void>.value();
+
+  /// 待机播放器专属串行链：预打开 (open)、停止 (stop)、释放 (dispose) 必须
+  /// 互斥，避免「open 进行中又被 stop/dispose」导致的实例状态错乱（P0）。
+  Future<void> _standbyOps = Future<void>.value();
   int _index;
   int _openedIndex = -1;
   int _generation = 0;
@@ -1177,15 +1181,36 @@ class PlaybackSession extends ChangeNotifier {
   ///   绝不能继续在原实例上 open 新媒（会和新实例竞争），改为异步隔离释放，
   ///   让调用方的新播放任务照常推进；调用方应根据返回值转受控重建。
   Future<bool> _boundedStop(Player target, {required String context}) async {
+    final Future<void> stopping;
     try {
-      await target.stop().timeout(_stopTimeout);
+      stopping = target.stop();
+    } catch (error) {
+      DiaryService.add('[Play] $context stop 同步异常：${_diagnostic(error)}');
+      return false;
+    }
+    try {
+      await stopping.timeout(_stopTimeout);
       return true;
     } on TimeoutException {
       DiaryService.add(
-        '[Play] $context stop 超时 ${_stopTimeout.inMilliseconds}ms，隔离旧实例',
+        '[Play] $context stop 超时 ${_stopTimeout.inMilliseconds}ms，'
+        '待 stop 真正结束后再隔离释放（避免与原生 mpv 并发）',
       );
-      // 旧实例不能与新实例竞争资源：异步释放，不阻塞当前串行任务。
-      unawaited(_retire(target));
+      // P0：绝不能 stop 还没落定就 dispose —— 原生 mpv 仍在卸载音频/解码
+      // 资源时并发 dispose 会踩内存/崩进程。改为等 stop Future 真正结束后
+      // 才释放；期间该实例只被丢弃引用、绝不复用，调用方换新实例继续。
+      unawaited(
+        stopping
+            .then<void>(
+              (_) {},
+              onError: (Object error) {
+                DiaryService.add(
+                  '[Play] $context 延迟 stop 失败：${_diagnostic(error)}',
+                );
+              },
+            )
+            .whenComplete(() => _retire(target)),
+      );
       return false;
     } catch (error) {
       DiaryService.add('[Play] $context stop 异常：${_diagnostic(error)}');
@@ -1203,6 +1228,21 @@ class PlaybackSession extends ChangeNotifier {
         )
         .then((_) => operation());
     _operations = next;
+    return next;
+  }
+
+  /// 待机实例上的 open / stop / dispose 必须串行：任意两个并发都会让同一个
+  /// Player 处于「正在打开又被停止/销毁」的错乱状态（P0 待机生命周期）。
+  Future<void> _standbySerialize(Future<void> Function() operation) {
+    final next = _standbyOps
+        .then<void>(
+          (_) {},
+          onError: (Object error) {
+            DiaryService.add('[Play] 上一个待机任务失败：${_diagnostic(error)}');
+          },
+        )
+        .then((_) => operation());
+    _standbyOps = next;
     return next;
   }
 
@@ -1641,7 +1681,12 @@ class PlaybackSession extends ChangeNotifier {
     _bind();
     _openedIndex = index;
     _acceptErrors = true;
-    final stopping = previous.stop().catchError((Object _) {});
+    final stopping = previous.stop().then<void>(
+      (_) {},
+      onError: (Object error) {
+        DiaryService.add('[Play] 换集停止旧播放器失败：${_diagnostic(error)}');
+      },
+    );
     var abandoned = false;
     unawaited(
       stopping.whenComplete(() {
@@ -1678,7 +1723,11 @@ class PlaybackSession extends ChangeNotifier {
         // 挂住的实例不能再待机复用：摘下待机位并异步释放。
         final hung = _standby;
         _standby = null;
-        if (hung != null) unawaited(_retire(hung));
+        if (hung != null) {
+          // 与 _boundedStop 一致：stop 超时不代表原生卸载已结束，
+          // 等 stop 真正落定后再 dispose，避免与 mpv 卸载并发。
+          unawaited(stopping.whenComplete(() => _retire(hung)));
+        }
         // 待机播放器已经打开过媒体，重建时必须从它实际所在的位置继续，
         // 不能写死 0 —— 否则用户看到「跳回开头」甚至进度丢失。
         final resumeAt = next.state.position.inMilliseconds / 1000.0;
@@ -1838,7 +1887,9 @@ class PlaybackSession extends ChangeNotifier {
       return;
     }
     _standbyPlan = plan;
-    unawaited(_open(standby, plan, ++_standbyTicket));
+    final ticket = ++_standbyTicket;
+    // 走待机串行链：确保 open 不与随后的 stop/dispose 并发（P0）。
+    unawaited(_standbySerialize(() => _open(standby, plan, ticket)));
   }
 
   /// 待机预打开。带独立票据与超时：任何失败都只作废这一份待机计划，
@@ -1907,21 +1958,21 @@ class PlaybackSession extends ChangeNotifier {
       if (target != null) {
         // 进入 stopping：stop 未完成前 _prime 禁止复用该实例（见 [_StandbyState]）。
         _standbyState = _StandbyState.stopping;
+        // 走待机串行链：若此刻 _open 仍在进行，stop 会排队到 open 结束后
+        // 再执行，绝不与 open 并发（P0）；错误必须记录而不能吞掉。
         unawaited(
-          target.stop().then<void>(
-            (_) {
+          _standbySerialize(() async {
+            try {
+              await target.stop();
+            } catch (error) {
+              DiaryService.add('[Play] 待机播放器 stop 失败：${_diagnostic(error)}');
+            } finally {
               // stop 完成时清理状态：同实例才回到 idle，让 _prime 重新预打开。
               if (identical(_standby, target)) {
                 _standbyState = _StandbyState.idle;
               }
-            },
-            onError: (Object error) {
-              DiaryService.add('[Play] 待机播放器 stop 失败：${_diagnostic(error)}');
-              if (identical(_standby, target)) {
-                _standbyState = _StandbyState.idle;
-              }
-            },
-          ),
+            }
+          }),
         );
       }
     }
@@ -3058,7 +3109,19 @@ class PlaybackSession extends ChangeNotifier {
               },
             );
             await _retire(current);
-            if (standby != null) await _retire(standby);
+            if (standby != null) {
+              // 等待机串行链上的 open/stop 全部结束后再 dispose，
+              // 避免在 open 进行中销毁该实例（P0）。
+              await _standbyOps.then<void>(
+                (_) {},
+                onError: (Object error) {
+                  DiaryService.add(
+                    '[Play] dispose 时等待待机任务失败：${_diagnostic(error)}',
+                  );
+                },
+              );
+              await _retire(standby);
+            }
           }),
     );
     super.dispose();

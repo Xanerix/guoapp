@@ -31,11 +31,17 @@ func (engine *nativeEngine) nativePreload(ctx context.Context, input nativeInput
 		var stop context.CancelFunc
 		ctx, stop = context.WithCancel(ctx)
 		// 正常返回（parent 未取消）时也必须释放派生的 ctx，否则它会随父
-		// ctx 一起泄漏，且下面这个 goroutine 会一直阻塞在 parent.Done() 上。
+		// ctx 一起泄漏。
 		defer stop()
+		derived := ctx
 		go func() {
-			<-parent.Done()
-			stop()
+			select {
+			case <-parent.Done():
+				stop()
+			case <-derived.Done():
+				// 预加载正常结束（defer stop() 取消派生 ctx）时同样退出，
+				// 否则 goroutine 会永久阻塞在 parent.Done() 上造成泄漏。
+			}
 		}()
 	}
 	engine.playbackMu.Unlock()
