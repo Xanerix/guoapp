@@ -69,6 +69,42 @@ class PlaybackSettings extends StatelessWidget {
   final VoidCallback onFailure;
   final VoidCallback? onMiniWindow;
 
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      SheetHeader(
+        children: [
+          const Expanded(child: Text('播放设置', style: sheetTitle)),
+          IconButton(
+            onPressed: () => Navigator.pop(context),
+            icon: const Icon(Icons.close_rounded),
+            tooltip: '关闭',
+          ),
+        ],
+      ),
+      Expanded(
+        child: PlaybackSettingsList(
+          session: session,
+          onFailure: onFailure,
+          onMiniWindow: onMiniWindow,
+        ),
+      ),
+    ],
+  );
+}
+
+class PlaybackSettingsList extends StatelessWidget {
+  const PlaybackSettingsList({
+    super.key,
+    required this.session,
+    required this.onFailure,
+    this.onMiniWindow,
+  });
+  final PlaybackSession session;
+  final VoidCallback onFailure;
+  final VoidCallback? onMiniWindow;
+
   Future<void> _change(Future<void> Function() change) async {
     try {
       await change();
@@ -83,138 +119,117 @@ class PlaybackSettings extends StatelessWidget {
     builder: (context, _) {
       final colors = Theme.of(context).colorScheme;
       final label = TextStyle(fontSize: 14, color: colors.onSurfaceVariant);
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [
-          SheetHeader(
+          Text('倍速', style: label),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: [
-              const Expanded(child: Text('播放设置', style: sheetTitle)),
-              IconButton(
-                onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.close_rounded),
-                tooltip: '关闭',
-              ),
+              for (final speed in playbackSpeeds)
+                _Choice(
+                  label: '${speed}x',
+                  selected: speed == session.speed,
+                  onSelected: () => _change(() => session.setSpeed(speed)),
+                ),
             ],
           ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-              children: [
-                Text('倍速', style: label),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final speed in playbackSpeeds)
-                      _Choice(
-                        label: '${speed}x',
-                        selected: speed == session.speed,
-                        onSelected: () =>
-                            _change(() => session.setSpeed(speed)),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 18),
-                Text('清晰度', style: label),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: session.local
-                      ? [
-                          _Choice(
-                            label: session.qualityLabel,
-                            selected: true,
-                            onSelected: null,
-                          ),
-                        ]
-                      : [
-                          for (final quality in [...session.qualities, 0])
-                            _Choice(
-                              label: quality == 0
-                                  ? (session.quality == 0
-                                        ? session.qualityLabel
-                                        : '自动')
-                                  : '${quality}P',
-                              selected: quality == session.quality,
-                              onSelected: session.ready
-                                  ? () => _change(
-                                      () => session.setQuality(quality),
-                                    )
-                                  : null,
-                            ),
-                        ],
-                ),
-                const SizedBox(height: 18),
-                Text('画面比例', style: label),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final fit in VideoFit.values)
-                      _Choice(
-                        label: fit.label,
-                        selected: fit == session.videoFit,
-                        onSelected: () =>
-                            _change(() => session.setVideoFit(fit)),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 18),
-                Text(sleepTimerLabel(session), style: label),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final choice in sleepChoices)
-                      _Choice(
-                        label: choice.label,
-                        selected: choice.selected(session),
-                        onSelected: () => choice.apply(session),
-                      ),
-                  ],
-                ),
-                if (session.danmakuSupported) ...[
-                  const SizedBox(height: 8),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('弹幕'),
-                    value: session.danmakuEnabled,
-                    onChanged: (_) => _change(session.toggleDanmaku),
-                  ),
-                  ExpansionTile(
-                    tilePadding: EdgeInsets.zero,
-                    childrenPadding: const EdgeInsets.only(bottom: 8),
-                    shape: const Border(),
-                    collapsedShape: const Border(),
-                    leading: const Icon(Icons.text_fields_rounded),
-                    title: const Text('弹幕样式'),
-                    subtitle: Text(
-                      '字号、颜色、透明度与显示区域',
-                      style: TextStyle(fontSize: 12, color: label.color),
+          const SizedBox(height: 18),
+          Text('清晰度', style: label),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: session.local
+                ? [
+                    _Choice(
+                      label: session.qualityLabel,
+                      selected: true,
+                      onSelected: null,
                     ),
-                    children: [
-                      DanmakuSettings(
-                        session: session,
-                        onFailure: onFailure,
-                        dense: true,
+                  ]
+                : [
+                    for (final quality in [...session.qualities, 0])
+                      _Choice(
+                        label: quality == 0
+                            ? (session.quality == 0
+                                  ? session.qualityLabel
+                                  : '自动')
+                            : '${quality}P',
+                        selected: quality == session.quality,
+                        onSelected: session.ready
+                            ? () => _change(() => session.setQuality(quality))
+                            : null,
                       ),
-                    ],
-                  ),
-                ],
-                if (onMiniWindow case final onMiniWindow?)
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.picture_in_picture_alt_rounded),
-                    title: const Text('小窗播放'),
-                    onTap: onMiniWindow,
-                  ),
+                  ],
+          ),
+          const SizedBox(height: 18),
+          Text('画面比例', style: label),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final fit in VideoFit.values)
+                _Choice(
+                  label: fit.label,
+                  selected: fit == session.videoFit,
+                  onSelected: () => _change(() => session.setVideoFit(fit)),
+                ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Text(sleepTimerLabel(session), style: label),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final choice in sleepChoices)
+                _Choice(
+                  label: choice.label,
+                  selected: choice.selected(session),
+                  onSelected: () => choice.apply(session),
+                ),
+            ],
+          ),
+          if (session.danmakuSupported) ...[
+            const SizedBox(height: 8),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('弹幕'),
+              value: session.danmakuEnabled,
+              onChanged: (_) => _change(session.toggleDanmaku),
+            ),
+            ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: const EdgeInsets.only(bottom: 8),
+              shape: const Border(),
+              collapsedShape: const Border(),
+              leading: const Icon(Icons.text_fields_rounded),
+              title: const Text('弹幕样式'),
+              subtitle: Text(
+                '字号、颜色、透明度与显示区域',
+                style: TextStyle(fontSize: 12, color: label.color),
+              ),
+              children: [
+                DanmakuSettings(
+                  session: session,
+                  onFailure: onFailure,
+                  dense: true,
+                ),
               ],
             ),
-          ),
+          ],
+          if (onMiniWindow case final onMiniWindow?)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.picture_in_picture_alt_rounded),
+              title: const Text('小窗播放'),
+              onTap: onMiniWindow,
+            ),
         ],
       );
     },

@@ -17,7 +17,6 @@ import '../theme/motion.dart';
 import '../widgets/contained_slider.dart';
 import '../widgets/motion/motion_widgets.dart';
 import 'danmaku_overlay.dart';
-import '../widgets/status_view.dart';
 import '../widgets/follow_button.dart';
 import 'episode_grid.dart';
 import 'mini_player.dart';
@@ -1183,9 +1182,9 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
                         }
                       },
                     )
-                  : const StatusView(
-                      title: '「播放设置」正在重建',
-                      icon: Icons.settings_rounded,
+                  : PlaybackSettingsList(
+                      session: session,
+                      onFailure: _saveFailed,
                     ),
             ),
           ],
@@ -1292,10 +1291,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
                     child: AnimatedBuilder(
                       animation: _tabs.animation!,
                       builder: (context, child) => Align(
-                        alignment: Alignment(
-                          _tabs.animation!.value * 2 - 1,
-                          1,
-                        ),
+                        alignment: Alignment(_tabs.animation!.value * 2 - 1, 1),
                         child: child,
                       ),
                       child: FractionallySizedBox(
@@ -1323,9 +1319,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
           Expanded(
             child: TabBarView(
               controller: _tabs,
-              physics: _selecting
-                  ? const NeverScrollableScrollPhysics()
-                  : null,
+              physics: _selecting ? const NeverScrollableScrollPhysics() : null,
               children: [_intro(context), _episodes(context)],
             ),
           ),
