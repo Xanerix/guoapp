@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../models.dart';
 import '../app_scope.dart';
+import '../shell/app_shell.dart';
 import '../widgets/cover_backdrop.dart';
 import '../widgets/cover_image.dart';
 import '../widgets/drama_grid.dart';
@@ -194,7 +195,7 @@ class ExploreHero extends StatelessWidget {
                 FocusRing(
                   radius: 999,
                   child: FilledButton.icon(
-                    autofocus: television,
+                    autofocus: television && ShellForeground.of(context),
                     onPressed: onPlay,
                     style: FilledButton.styleFrom(
                       backgroundColor: colors.primaryFixedDim,

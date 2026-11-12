@@ -351,7 +351,8 @@ class ExplorePageState extends State<ExplorePage> {
                 width: constraints.maxWidth - inset * 2,
                 items: items,
                 rankOf: explore.rankOf,
-                autofocus: television && hero == null,
+                autofocus:
+                    television && hero == null && ShellForeground.of(context),
                 heroScope: 'drama',
                 showScore: !explore.recommending,
                 blurCovers: _blurring && !television,
