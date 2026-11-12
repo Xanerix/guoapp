@@ -69,6 +69,8 @@ class PlaybackSession extends ChangeNotifier {
     required int index,
     double position = 0,
     bool autoplay = true,
+    this._swapStopTimeout = const Duration(seconds: 2),
+    this._intentStopTimeout = const Duration(seconds: 6),
   }) : _engaged = autoplay,
        _index = index,
        _epoch = store.profileEpoch {
@@ -99,13 +101,31 @@ class PlaybackSession extends ChangeNotifier {
           _error != null) {
         return;
       }
+      final now = DateTime.now();
+      final state = player.state;
       if (_health.stalled(
-        position: player.state.position,
-        playing: player.state.playing && _playIntent,
+        position: state.position,
+        playing: state.playing && _playIntent,
         foreground: _foreground,
-        now: DateTime.now(),
+        now: now,
       )) {
         unawaited(_recover('position_stalled_20s'));
+        return;
+      }
+      // stalled() 只覆盖「playing=true 但位置不动」，播放器静默变成
+      // playing=false 时它永远不报警。这里单独兜底：用户想播、在前台、
+      // 没在缓冲，播放器却持续停着 → 主动走恢复，避免卡死只能重启 App。
+      if (_health.stoppedWhileWanted(
+        wanted: _playIntent && _foreground && !_pausedByUser && !_rebuilding,
+        playing: state.playing,
+        buffering: state.buffering,
+        now: now,
+      )) {
+        DiaryService.add(
+          '[Play] 有播放意图但播放器已停止，转自动恢复 '
+          '位置=${state.position} 集=${_index + 1}',
+        );
+        _queueRecovery('stopped_while_wanted');
       }
     });
     unawaited(play(index, position: position, playWhenReady: autoplay));
@@ -175,7 +195,13 @@ class PlaybackSession extends ChangeNotifier {
   late final PlaybackLoader _loader;
   late final PlaybackPreloader _preloader;
   final _recovery = PlaybackRecovery();
-  final _health = PlaybackHealth();
+  late final _health = PlaybackHealth(intentStopTimeout: _intentStopTimeout);
+
+  /// 旧播放器 stop 的最长等待；超时说明原生停止挂住，放弃交换改走重建。
+  final Duration _swapStopTimeout;
+
+  /// 有播放意图但播放器持续静止多久后自动恢复。
+  final Duration _intentStopTimeout;
   final int _epoch;
   final List<StreamSubscription<dynamic>> _subscriptions = [];
   Timer? _saveTimer;
@@ -904,12 +930,18 @@ class PlaybackSession extends ChangeNotifier {
 
       // 等待上一集播放器完全停止，再启动新一集，避免两个播放器
       // 在换集瞬间同时处于播放启动阶段造成状态竞争。
-      // mpv 偶发 stop 挂起：2s 超时放弃等待，否则新一集会一直
-      // 停在暂停态（首帧已出但不动）。
+      // mpv 偶发 stop 挂起：超时后不能继续普通交换（旧实例可能还在卸载
+      // 音频/解码资源），放弃这次交换并走受控重建。
       try {
-        await stopping.timeout(const Duration(seconds: 2));
+        await stopping.timeout(_swapStopTimeout);
       } catch (_) {
-        DiaryService.add('[Play] 旧播放器 stop 超时，跳过等待直接起播');
+        DiaryService.add('[Play] 旧播放器 stop 超时，放弃交换改用重建');
+        // 挂住的实例不能再待机复用：摘下待机位并异步释放。
+        final hung = _standby;
+        _standby = null;
+        if (hung != null) unawaited(_retire(hung));
+        await _rebuildAndResume(0, playWhenReady);
+        return;
       }
 
       // 旧实例 stop（音频会话已完全卸载）之后，再恢复新实例的音频轨：
@@ -1013,6 +1045,11 @@ class PlaybackSession extends ChangeNotifier {
       '位置=${player.state.position} buffering=${player.state.buffering} '
       'duration=${player.state.duration} 集=${_index + 1}',
     );
+    final state = player.state;
+    if (state.playing || state.buffering) return;
+    // 救援耗尽仍然停着：交给有限的自动恢复链（换线路/刷新/重建）。
+    // 不能静默结束——健康检测只认 playing=true 的停滞，发现不了这种状态。
+    _queueRecovery('ensure_playing_exhausted');
   }
 
   /// 状态显示"播放中"但画面定住时，暂停再播放把卡住的解码器踢一下。

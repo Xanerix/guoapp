@@ -10,6 +10,12 @@ class FakePlayer implements Player {
   final seeks = <Duration>[];
   var stops = 0;
   var disposed = false;
+
+  /// 模拟 mpv 的 stop 挂起：调用后永远不返回。
+  bool hangStop = false;
+
+  /// 模拟「补发 play 也不生效」：播放器静默停在 playing=false。
+  bool ignorePlay = false;
   final _playing = StreamController<bool>.broadcast(sync: true);
   final _completed = StreamController<bool>.broadcast(sync: true);
   final _position = StreamController<Duration>.broadcast(sync: true);
@@ -92,11 +98,13 @@ class FakePlayer implements Player {
   @override
   Future<void> stop() async {
     stops++;
+    if (hangStop) return Completer<void>().future;
     state = state.copyWith(playing: false, position: Duration.zero);
   }
 
   @override
   Future<void> play() async {
+    if (ignorePlay) return;
     state = state.copyWith(playing: true);
     _playing.add(true);
   }

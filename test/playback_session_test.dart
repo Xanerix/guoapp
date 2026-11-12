@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:duanju_app/core_bridge.dart';
 import 'package:duanju_app/local_store.dart';
 import 'package:duanju_app/models.dart';
+import 'package:duanju_app/playback_recovery.dart';
 import 'package:duanju_app/playback_session.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:media_kit/media_kit.dart';
@@ -71,6 +72,9 @@ Future<(PlaybackSession, FakePlayer)> _open(
   double position = 0,
   FakePlayer? standby,
   bool autoplay = true,
+  FakePlayer Function()? respawn,
+  Duration swapStopTimeout = const Duration(seconds: 2),
+  Duration intentStopTimeout = const Duration(seconds: 6),
 }) async {
   final player = FakePlayer();
   final session = PlaybackSession(
@@ -79,9 +83,12 @@ Future<(PlaybackSession, FakePlayer)> _open(
     detail: dramaDetail(_show, count: 3),
     player: player,
     standby: standby,
+    respawn: respawn,
     index: index,
     position: position,
     autoplay: autoplay,
+    swapStopTimeout: swapStopTimeout,
+    intentStopTimeout: intentStopTimeout,
   );
   addTearDown(() {
     if (_closed.add(session)) session.dispose();
@@ -104,6 +111,19 @@ Future<void> _settle(FakePlayer player) async {
   player.progress(_seconds(5), duration: _seconds(100));
   await Future<void>.delayed(const Duration(milliseconds: 700));
   await pumpEventQueue();
+}
+
+/// 轮询等待异步恢复链走完，避免用固定 sleep 猜时序。
+Future<bool> _waitFor(
+  bool Function() condition, {
+  Duration timeout = const Duration(seconds: 6),
+}) async {
+  final deadline = DateTime.now().add(timeout);
+  while (DateTime.now().isBefore(deadline)) {
+    if (condition()) return true;
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+  }
+  return condition();
 }
 
 void main() {
@@ -516,4 +536,101 @@ void main() {
     player.buffer(false);
     expect(session.stalled, isFalse);
   });
+
+  test('health watchdog only fires for a wanted, silent stop', () {
+    final health = PlaybackHealth(
+      intentStopTimeout: const Duration(seconds: 2),
+    );
+    final start = DateTime(2026, 1, 1);
+    final at = start.add;
+
+    bool stopped({
+      bool wanted = true,
+      bool playing = false,
+      bool buffering = false,
+      Duration? time,
+    }) => health.stoppedWhileWanted(
+      wanted: wanted,
+      playing: playing,
+      buffering: buffering,
+      now: at(time ?? Duration.zero),
+    );
+
+    // 没有播放意图 / 正在播 / 正在缓冲，都不算故障。
+    expect(stopped(wanted: false), isFalse);
+    expect(stopped(playing: true), isFalse);
+    expect(stopped(buffering: true), isFalse);
+    expect(stopped(), isFalse);
+    // 静默停止满 2s 才判定。
+    expect(stopped(time: const Duration(seconds: 2)), isTrue);
+
+    // 中途恢复播放会清零计时，重新停也要再等满一个窗口。
+    expect(stopped(playing: true, time: const Duration(seconds: 3)), isFalse);
+    expect(
+      stopped(time: const Duration(seconds: 4)),
+      isFalse,
+      reason: '恢复播放后计时必须清零',
+    );
+    expect(stopped(time: const Duration(seconds: 6)), isTrue);
+  });
+
+  test(
+    'a silently stopped player is recovered without a position stall',
+    () async {
+      final repository = _PlaybackRepository();
+      final store = await openStore();
+      final (session, player) = await _open(
+        repository,
+        store,
+        intentStopTimeout: const Duration(milliseconds: 200),
+      );
+      await _settle(player);
+      expect(session.ready, isTrue);
+
+      // 播放器静默停在 playing=false，补发 play 也不生效：
+      // position 不再推进，stalled() 永远不会报警，只能靠播放意图兜底。
+      player.ignorePlay = true;
+      player.state = player.state.copyWith(playing: false);
+
+      final recovered = await _waitFor(() => repository.fallbacks > 0);
+      expect(recovered, isTrue, reason: '静默停止应当触发自动恢复');
+      expect(session.error, isNull);
+    },
+  );
+
+  test(
+    'a hung stop abandons the swap and rebuilds on a fresh player',
+    () async {
+      final repository = _PlaybackRepository();
+      final store = await openStore();
+      final standby = FakePlayer();
+      final replacement = FakePlayer();
+      final (session, player) = await _open(
+        repository,
+        store,
+        standby: standby,
+        respawn: () => replacement,
+        swapStopTimeout: const Duration(milliseconds: 100),
+      );
+      await _settle(player);
+      expect(session.standbyIndex, 1);
+
+      // 旧播放器 stop 挂起：不能继续在它停不下来的情况下初始化新实例音频。
+      player.hangStop = true;
+      await session.play(1);
+      await pumpEventQueue();
+
+      expect(session.index, 1);
+      expect(session.ready, isTrue);
+      expect(identical(session.player, replacement), isTrue);
+      // 只在预加载时打开过的待机实例没有被当成新实例继续播。
+      expect(standby.opened, hasLength(1));
+      // 新换的实例确实承载了播放（假播放器不出 position，之后可能再恢复一次）。
+      expect(replacement.opened, isNotEmpty);
+      // 挂住的实例被摘下待机位并释放，之后不再被 _prime 复用。
+      expect(player.disposed, isTrue);
+      expect(standby.disposed, isTrue);
+      expect(session.standbyIndex, -1);
+    },
+  );
 }

@@ -1049,7 +1049,15 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
         builder: (context) => _progressBar(context, thumb: thumb),
       );
 
-  Widget _progressBar(BuildContext context, {required double thumb}) {
+  Widget _progressBar(
+    BuildContext context, {
+    required double thumb,
+    double track = 3,
+    Color? active,
+    Color? inactive,
+    Color? buffered,
+    Color? thumbColor,
+  }) {
     final session = _session;
     final state = session.player.state;
     final duration = state.duration;
@@ -1062,12 +1070,13 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
     final colors = Theme.of(context).colorScheme;
     return SliderTheme(
       data: SliderTheme.of(context).copyWith(
-        trackHeight: 3,
+        trackHeight: track,
         padding: EdgeInsets.zero,
-        activeTrackColor: colors.primary,
-        thumbColor: colors.primary,
-        inactiveTrackColor: Colors.white.withValues(alpha: .25),
-        secondaryActiveTrackColor: Colors.white.withValues(alpha: .4),
+        activeTrackColor: active ?? colors.primary,
+        thumbColor: thumbColor ?? colors.primary,
+        inactiveTrackColor: inactive ?? Colors.white.withValues(alpha: .25),
+        secondaryActiveTrackColor:
+            buffered ?? Colors.white.withValues(alpha: .4),
         thumbShape: RoundSliderThumbShape(enabledThumbRadius: thumb),
         overlayShape: SliderComponentShape.noOverlay,
         trackShape: const RoundedRectSliderTrackShape(),
@@ -1789,10 +1798,29 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
                 padding: const EdgeInsets.fromLTRB(14, 2, 14, 2),
                 child: PlaybackProgressBuilder(
                   player: _session.player,
-                  builder: (context) => SizedBox(
-                    height: 22,
-                    child: _progressBar(context, thumb: 5),
-                  ),
+                  builder: (context) {
+                    // 红果样式：细白线。播放时整体压低对比度，暂停时高亮，
+                    // 暂停态圆点略大，方便拖动。
+                    final paused = _session.paused;
+                    return SizedBox(
+                      height: 22,
+                      child: _progressBar(
+                        context,
+                        thumb: paused ? 4 : 3,
+                        track: 2,
+                        active: Colors.white.withValues(alpha: paused ? 1 : .4),
+                        inactive: Colors.white.withValues(
+                          alpha: paused ? .32 : .16,
+                        ),
+                        buffered: Colors.white.withValues(
+                          alpha: paused ? .45 : .25,
+                        ),
+                        thumbColor: Colors.white.withValues(
+                          alpha: paused ? 1 : .55,
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
