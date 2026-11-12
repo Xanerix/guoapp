@@ -7,6 +7,7 @@ import 'package:flutter/widgets.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'app_device.dart';
+import 'window_on_top.dart';
 
 typedef MiniWindowFrame = ({double left, double top, double extent});
 
@@ -277,6 +278,7 @@ class PictureInPicture extends ChangeNotifier {
         frame = await _exitMac();
       }
     } catch (_) {}
+    await applyWindowOnTop();
     await WidgetsBinding.instance.endOfFrame;
     _window = false;
     _windowRatio = null;

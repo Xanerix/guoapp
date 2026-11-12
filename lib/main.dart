@@ -19,6 +19,7 @@ import 'portable_data.dart';
 import 'ui/app.dart';
 import 'ui/theme/app_theme.dart';
 import 'window_frame.dart';
+import 'window_on_top.dart';
 import 'windows_data_migration.dart';
 
 Future<void> main() async {
@@ -49,6 +50,7 @@ Future<void> main() async {
       );
     } catch (_) {}
   }
+  if (Platform.isWindows || Platform.isMacOS) await restoreWindowOnTop();
   MediaKit.ensureInitialized();
   final device = await AppDevice.detect();
   final rendering = Platform.isAndroid
