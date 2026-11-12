@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../app_update.dart';
+import '../core_bridge.dart';
 import '../local_store.dart';
 import 'app_scope.dart';
 import 'widgets/focus_ring.dart';
@@ -63,8 +64,14 @@ Future<void> checkUpdateManually(BuildContext context) async {
       _lastManualCheck = DateTime.now();
       _lastManualUpdate = update;
     }
-  } catch (_) {
-    messenger.showSnackBar(const SnackBar(content: Text('检查更新失败，请稍后再试')));
+  } catch (failure) {
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          failure is AppFailure ? '检查更新失败：$failure' : '检查更新失败，请稍后再试',
+        ),
+      ),
+    );
     return;
   }
   if (update == null) {

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -40,6 +41,7 @@ const _backupFlags = {
   'pureBlack',
 };
 const _blocked = '本地用户配置损坏，已锁定访问。原始记录已保留，请重新读取或从备份恢复。';
+const _unreadable = '读写本地记录时系统报错，已锁定访问，原有记录已保留。请稍后重新读取；反复出现时请查看日记里的报错内容。';
 
 String _userFile(String id, String name) => 'users/$id/$name.json';
 
@@ -84,7 +86,18 @@ class LocalStore extends ChangeNotifier {
 
   Future<void> _initialize() async {
     try {
+      await _load();
+    } on FileSystemException catch (error) {
+      DiaryService.add('[存储] 读写本地记录失败，原有记录已保留：$error');
+      _block(_unreadable);
+    }
+  }
+
+  Future<void> _load() async {
+    try {
       if (!await files.exists()) await _migrate();
+    } on FileSystemException {
+      rethrow;
     } catch (_) {
       _block(_blocked);
       return;
@@ -100,6 +113,8 @@ class LocalStore extends ChangeNotifier {
       _forceLogin = users['forceLogin'] is bool
           ? users['forceLogin'] as bool
           : null;
+    } on FileSystemException {
+      rethrow;
     } catch (_) {
       _block(_blocked);
       return;
@@ -195,7 +210,7 @@ class LocalStore extends ChangeNotifier {
     try {
       return await files.read(name);
     } on FormatException {
-      DiaryService.add('[存储] $name 无法读取，已改名保留，按空记录继续');
+      DiaryService.add('[存储] $name 内容无法解析，已改名保留，按空记录继续');
       await files.quarantine(name).catchError((Object _) {});
       return null;
     }
@@ -839,13 +854,18 @@ class LocalStore extends ChangeNotifier {
   });
 
   Future<void> switchProfile(String id, {String pin = ''}) => _queue(() async {
-    if (_configurationError != null) throw StateError('本地用户配置损坏，请先恢复');
+    if (_configurationError != null) throw StateError(_configurationError!);
     final target = _profiles.firstWhere((profile) => profile.id == id);
     await _checkPin(target, pin);
     await _saveUsers(_profiles, id, _forceLogin);
     _current = id;
     _locked = false;
-    await _loadUser();
+    try {
+      await _loadUser();
+    } on FileSystemException catch (error) {
+      DiaryService.add('[存储] 读写本地记录失败，原有记录已保留：$error');
+      _block(_unreadable);
+    }
     _epoch++;
     _notify();
   });

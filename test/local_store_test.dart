@@ -18,6 +18,13 @@ class _FailingFiles extends LocalFiles {
   _FailingFiles(super.root);
   String failure = '';
   int writes = 0;
+  bool unreadable = false;
+
+  @override
+  Future<List<int>> load(File file) {
+    if (unreadable) throw const FileSystemException('读取失败');
+    return super.load(file);
+  }
 
   @override
   Future<void> persist(File file, String content) async {
@@ -239,6 +246,28 @@ void main() {
 
       final restarted = await restartStore(store);
       expect(restarted.watched(first.id)?.position, 15);
+    });
+
+    test('records that cannot be opened are kept and load later', () async {
+      final files = _FailingFiles(temporaryFiles().root);
+      final store = await openStore(const {}, null, files);
+      await store.toggleFavorite(first);
+      await store.saveWatch(watching(first, position: 15));
+
+      files.unreadable = true;
+      final restarted = await restartStore(store);
+      expect(restarted.configurationError, isNotNull);
+      expect(restarted.history, isEmpty);
+      expect(
+        _file(store, 'users/default/history.json.corrupt').existsSync(),
+        isFalse,
+      );
+
+      files.unreadable = false;
+      await restarted.reload();
+      expect(restarted.configurationError, isNull);
+      expect(restarted.watched(first.id)?.position, 15);
+      expect(restarted.favorites.single.id, first.id);
     });
 
     test('a broken users file locks access', () async {

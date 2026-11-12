@@ -5,6 +5,7 @@ import 'package:ffmpeg_kit_flutter_new_min_gpl/ffmpeg_kit.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 import 'core_bridge.dart';
+import 'diary_service.dart';
 import 'app_build.dart';
 
 @pragma('vm:entry-point')
@@ -54,7 +55,8 @@ class BackgroundDownloads {
       callback: downloadServiceEntry,
     );
     if (result is ServiceRequestFailure) {
-      throw AppFailure('后台下载服务启动失败，请保持应用在前台后重试。');
+      DiaryService.add('[Download] 后台下载服务启动失败：${result.error}');
+      throw AppFailure('后台下载服务启动失败，请确认已允许通知、系统没有限制本应用后台运行，或保持应用在前台后重试。');
     }
   }
 }

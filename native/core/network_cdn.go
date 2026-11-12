@@ -79,6 +79,7 @@ func (transport *cdnTransport) RoundTrip(request *http.Request) (*http.Response,
 }
 
 func (transport *cdnTransport) roundTripResolved(request *http.Request, proxyURL *url.URL, routeKey string, subnets []string, tried map[string]bool, lastErr error) (*http.Response, error) {
+	attempted := false
 	for _, subnet := range subnets {
 		entry, lookupErr := transport.resolver.lookupEntry(request.Context(), request.URL.Hostname(), subnet)
 		if lookupErr != nil {
@@ -92,6 +93,7 @@ func (transport *cdnTransport) roundTripResolved(request *http.Request, proxyURL
 				continue
 			}
 			tried[address] = true
+			attempted = true
 			response, err := transport.roundTripAddress(request, proxyURL, routeKey, address)
 			if err == nil {
 				transport.mu.Lock()
@@ -104,6 +106,9 @@ func (transport *cdnTransport) roundTripResolved(request *http.Request, proxyURL
 			}
 			lastErr = err
 		}
+	}
+	if !attempted {
+		return nil, fmt.Errorf("资源 %s 连接失败（备用 DNS 没有查到可再尝试的地址）: %w", request.URL.Hostname(), PublicError(lastErr))
 	}
 	return nil, fmt.Errorf("资源 %s 连接失败（已尝试备用 DNS 地址）: %w", request.URL.Hostname(), PublicError(lastErr))
 }

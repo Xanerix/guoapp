@@ -169,7 +169,7 @@ func (transport *huangguoBrowserTransport) RoundTrip(request *http.Request) (*ht
 	}
 	client, err := transport.client(request)
 	if err != nil {
-		return nil, fmt.Errorf("黄果浏览器客户端初始化失败：%w", PublicError(err))
+		return nil, fmt.Errorf("浏览器指纹客户端初始化失败：%w", PublicError(err))
 	}
 	upstream, err := fhttp.NewRequestWithContext(request.Context(), request.Method, request.URL.String(), request.Body)
 	if err != nil {
@@ -207,7 +207,7 @@ func (transport *huangguoBrowserTransport) RoundTrip(request *http.Request) (*ht
 		transport.record(diagnosticEvent{Event: "network.browser_request", Level: level, Source: transport.source(request.URL),
 			Host: request.URL.Hostname(), HTTPStatus: result.StatusCode, Client: huangguoBrowserProfile,
 			Protocol: result.Proto, CFRay: Truncate(result.Header.Get("Cf-Ray"), 128),
-			ResponseType: Truncate(result.Header.Get("Content-Type"), 128), Message: "黄果浏览器指纹请求完成"})
+			ResponseType: Truncate(result.Header.Get("Content-Type"), 128), Message: "浏览器指纹请求完成"})
 	}
 	return result, nil
 }

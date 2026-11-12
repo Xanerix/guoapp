@@ -60,7 +60,7 @@ func (d *Downloader) doMediaRequestWithClient(request *http.Request, client *htt
 			response.Body = io.NopCloser(bytes.NewReader(body))
 		}
 		if d.limiter != nil {
-			d.limiter.observe(request, response)
+			d.limiter.observeMedia(request, response)
 		}
 		return response, nil
 	}

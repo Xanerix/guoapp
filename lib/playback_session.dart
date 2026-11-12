@@ -220,7 +220,9 @@ class PlaybackSession extends ChangeNotifier {
   bool get hasNext => _index + 1 < detail.episodes.length;
   String get qualityLabel {
     final plan = _plan;
-    if (plan?.local == true) return '本地原画';
+    if (plan != null && plan.local) {
+      return plan.quality > 0 ? '本地 ${plan.quality}P' : '本地';
+    }
     if (_quality > 0) return '${_quality}P';
     return plan != null && plan.quality > 0 ? '自动（${plan.quality}P）' : '自动';
   }
@@ -361,8 +363,10 @@ class PlaybackSession extends ChangeNotifier {
       return;
     }
     final duration = player.state.duration;
-    if (duration <= Duration.zero ||
-        player.state.position < duration - const Duration(seconds: 2)) {
+    final position = player.state.position;
+    if (duration <= Duration.zero
+        ? position <= Duration.zero
+        : position < duration - const Duration(seconds: 2)) {
       _queueRecovery('early_completion');
     } else if (_foreground && hasNext && !_sleepAtEpisodeEnd) {
       unawaited(play(_index + 1));
@@ -521,9 +525,15 @@ class PlaybackSession extends ChangeNotifier {
     _loading = false;
     _localFailure = current.local;
     _loginRequired = false;
+    final symptom = switch (reason) {
+      'position_stalled_20s' => '画面长时间没有进度',
+      'early_completion' => '视频提前结束',
+      'open_exception' => '视频打开失败',
+      _ => '播放器报错',
+    };
     _error = current.local
-        ? '本地视频读取失败，请重试或重新下载；也可以改为在线播放。'
-        : '自动恢复未成功，请检查网络后重试，也可换一集或选择其他清晰度。';
+        ? '$symptom，本地视频没能播放。可重试或重新下载，也可以改为在线播放。'
+        : '$symptom，自动恢复未成功。可重试、换一集或选择其他清晰度。';
     _notify();
   }
 

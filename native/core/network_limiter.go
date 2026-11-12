@@ -86,8 +86,11 @@ type requestLimiter struct {
 	gates              map[string]*requestGate
 	backoffs           map[string]*RequestBackoff
 	backgroundBackoffs map[string]*RequestBackoff
+	forbiddenStreaks   map[string]int
 	changed            chan struct{}
 }
+
+const forbiddenStreakLimit = 3
 
 type BackgroundCatalogKey struct{}
 
@@ -97,7 +100,7 @@ func newRequestLimiter(concurrency int, interval time.Duration) *requestLimiter 
 	if concurrency < 1 {
 		concurrency = 1
 	}
-	return &requestLimiter{concurrency: concurrency, interval: interval, gates: map[string]*requestGate{}, backoffs: map[string]*RequestBackoff{}, backgroundBackoffs: map[string]*RequestBackoff{}, changed: make(chan struct{})}
+	return &requestLimiter{concurrency: concurrency, interval: interval, gates: map[string]*requestGate{}, backoffs: map[string]*RequestBackoff{}, backgroundBackoffs: map[string]*RequestBackoff{}, forbiddenStreaks: map[string]int{}, changed: make(chan struct{})}
 }
 
 func (limiter *requestLimiter) notifyLocked() {
@@ -195,10 +198,27 @@ func (limiter *requestLimiter) acquire(ctx context.Context, request *http.Reques
 }
 
 func (limiter *requestLimiter) observe(request *http.Request, response *http.Response) {
-	if response.StatusCode != http.StatusForbidden && response.StatusCode != http.StatusTooManyRequests && !strings.EqualFold(response.Header.Get("Cf-Mitigated"), "challenge") {
+	host := strings.ToLower(request.URL.Hostname())
+	challenged := strings.EqualFold(response.Header.Get("Cf-Mitigated"), "challenge")
+	limiter.mu.Lock()
+	if response.StatusCode == http.StatusForbidden && !challenged {
+		limiter.forbiddenStreaks[host]++
+	} else {
+		delete(limiter.forbiddenStreaks, host)
+	}
+	repeatedlyForbidden := limiter.forbiddenStreaks[host] >= forbiddenStreakLimit
+	limiter.mu.Unlock()
+	if response.StatusCode != http.StatusTooManyRequests && !challenged && !repeatedlyForbidden {
 		return
 	}
 	limiter.observeBlock(request, response)
+}
+
+func (limiter *requestLimiter) observeMedia(request *http.Request, response *http.Response) {
+	if response.StatusCode == http.StatusForbidden && !strings.EqualFold(response.Header.Get("Cf-Mitigated"), "challenge") {
+		return
+	}
+	limiter.observe(request, response)
 }
 
 func (limiter *requestLimiter) observeBlock(request *http.Request, response *http.Response) {

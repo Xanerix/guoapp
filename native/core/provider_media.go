@@ -223,7 +223,11 @@ func (d *Downloader) fetchProviderRequest(ctx context.Context, rawURL, referer s
 		}
 	}
 	if len(candidates) > 1 && lastErr != nil {
-		return "", fmt.Errorf("黄果来源请求失败：已尝试 %d 个域名，最后错误：%w", tried, lastErr)
+		name := "站源"
+		if descriptor, ok := registeredDescriptor(ProviderSourceForURL(rawURL)); ok && descriptor.Name != "" {
+			name = descriptor.Name
+		}
+		return "", fmt.Errorf("%s请求失败：已尝试 %d 个域名，最后错误：%w", name, tried, lastErr)
 	}
 	return "", lastErr
 }

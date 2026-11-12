@@ -114,7 +114,7 @@ class _RegistrationDialogState extends State<_RegistrationDialog> {
                   Flexible(child: Text('正在注册红果设备和辅助设备，完成后自动进入')),
                 ],
               )
-            : Text('$error\n\n请检查网络，或在网络设置中修改代理后重试。'),
+            : Text('$error\n\n可以直接重试，或在网络设置中修改代理后重试。'),
         actions: error == null
             ? null
             : [

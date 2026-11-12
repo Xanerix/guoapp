@@ -121,7 +121,7 @@ func (engine *nativeEngine) checkUpdate(ctx context.Context, version string) (na
 	}
 	servers := nativeUpdateServers()
 	if len(servers) == 0 {
-		return nativeUpdate{}, nil
+		return nativeUpdate{}, errors.New("这个安装包没有配置更新服务器，无法检查更新")
 	}
 	var latest nativeUpdate
 	var err error
@@ -131,12 +131,21 @@ func (engine *nativeEngine) checkUpdate(ctx context.Context, version string) (na
 		}
 	}
 	if err != nil {
-		return nativeUpdate{}, err
+		return nativeUpdate{}, fmt.Errorf("更新服务器请求失败：%w", err)
 	}
 	number, valid := nativeAppBuildNumber(latest.Version)
-	prefix := nativeReleasePrefix()
-	if !valid || number <= current || prefix == "" || !strings.HasPrefix(latest.URL, prefix) {
+	if !valid {
+		return nativeUpdate{}, errors.New("更新服务器没有返回有效的版本号")
+	}
+	if number <= current {
 		return nativeUpdate{}, nil
+	}
+	prefix := nativeReleasePrefix()
+	if prefix == "" {
+		return nativeUpdate{}, errors.New("这个安装包没有配置项目地址，无法确认新版本的发布页")
+	}
+	if !strings.HasPrefix(latest.URL, prefix) {
+		return nativeUpdate{}, errors.New("更新服务器返回的发布页不属于本项目，已忽略")
 	}
 	return nativeUpdate{Available: true, Version: latest.Version, URL: latest.URL}, nil
 }

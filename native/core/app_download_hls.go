@@ -37,7 +37,11 @@ func nativeHLSSelect(lines []string, quality int) ([]string, int, bool) {
 		attributes := nativeHLSAttributes(line)
 		height := 0
 		if resolution := strings.Split(attributes["RESOLUTION"], "x"); len(resolution) == 2 {
+			width, _ := strconv.Atoi(resolution[0])
 			height, _ = strconv.Atoi(resolution[1])
+			if width > 0 && width < height {
+				height = width
+			}
 		}
 		bandwidth, _ := strconv.Atoi(attributes["BANDWIDTH"])
 		for next := index + 1; next < len(lines); next++ {
@@ -138,7 +142,7 @@ func (manager *nativeDownloads) downloadBundle(ctx context.Context, media Provid
 			bundle.quality = height
 		}
 		if !master && !strings.Contains(body, "#EXT-X-ENDLIST") {
-			return "", errors.New("暂不支持下载直播或尚未结束的播放列表")
+			return "", errors.New("播放列表没有结束标记，可能是直播或尚未结束，暂不支持下载")
 		}
 		parsed, err := url.Parse(base)
 		if err != nil {

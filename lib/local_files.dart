@@ -42,11 +42,14 @@ class LocalFiles {
     for (final candidate in [file, backup]) {
       if (!await candidate.exists()) continue;
       found = true;
+      final bytes = await load(candidate);
       try {
-        return jsonDecode(await candidate.readAsString());
-      } catch (_) {}
+        return jsonDecode(utf8.decode(bytes));
+      } on FormatException {
+        continue;
+      }
     }
-    if (found) throw FormatException('$name 无法读取');
+    if (found) throw FormatException('$name 内容无法解析');
     return null;
   }
 
@@ -58,6 +61,8 @@ class LocalFiles {
       }
     }
   }
+
+  Future<List<int>> load(File file) => file.readAsBytes();
 
   Future<void> persist(File file, String content) =>
       file.writeAsString(content, flush: true);

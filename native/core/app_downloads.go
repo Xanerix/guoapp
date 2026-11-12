@@ -552,7 +552,7 @@ func (manager *nativeDownloads) localPlan(drama string, index int) (nativePlan, 
 		path = manager.outputFile(record.Output)
 	}
 	if !manager.localFilesValid(*record) {
-		record.State, record.Error = "failed", "本地文件缺失，请重新下载"
+		record.State, record.Error = "failed", "本地文件缺失或大小与下载记录不符，请重新下载"
 		record.Archived = false
 		_ = manager.saveLocked()
 		return nativePlan{}, true, errNativeLocalFile

@@ -70,7 +70,7 @@ class SourceCatalog {
     RankingBoard board, {
     int page = 1,
     bool force = false,
-  }) => repository.rankings(board.id, page: page, force: force);
+  }) => repository.rankings(board, page: page, force: force);
 
   void remember(Iterable<Drama> items) {
     for (final drama in items) {

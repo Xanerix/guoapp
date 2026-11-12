@@ -127,7 +127,7 @@ func (d *Downloader) loadRankingPage(ctx context.Context, board RankingBoard, pa
 	} else if exists && ctx.Err() == nil && time.Since(cached.FetchedAt) >= 0 && time.Since(cached.FetchedAt) < 24*time.Hour {
 		result = cloneRankingPage(cached)
 		result.Stale = true
-		result.Warning = "站点暂不可用，显示上次取得的榜单，请稍后刷新。"
+		result.Warning = "榜单刷新失败（" + PublicError(err).Error() + "），显示上次取得的榜单。"
 		err = nil
 	}
 	pending.page, pending.err = cloneRankingPage(result), err

@@ -100,7 +100,7 @@ abstract class AppRepository {
   }) async => throw AppFailure('当前环境不支持红果推荐');
   Future<List<RankingBoard>> rankingBoards() async => const [];
   Future<RankingPage> rankings(
-    String board, {
+    RankingBoard board, {
     int page = 1,
     bool force = false,
   }) async => throw AppFailure('当前环境不支持榜单');
@@ -113,8 +113,9 @@ abstract class AppRepository {
   Future<Map<String, dynamic>> storage() async => {};
   Future<String> downloadDirectory() async =>
       (await storage())['directory'] as String? ?? '';
-  Future<String> moveDownloads(String directory) async =>
-      throw AppFailure('当前环境不支持迁移');
+  Future<({String path, String reason})> moveDownloads(
+    String directory,
+  ) async => throw AppFailure('当前环境不支持迁移');
   Future<int> workLease(String id, String command) async => 0;
   bool get supportsDownloads => false;
   Future<List<DownloadJob>> downloads() async => [];
@@ -372,17 +373,20 @@ class NativeRepository extends AppRepository {
 
   @override
   Future<RankingPage> rankings(
-    String board, {
+    RankingBoard board, {
     int page = 1,
     bool force = false,
-  }) async => RankingPage.fromJson(
-    await _call({
-      'action': 'rankings',
-      'board': board,
-      'page': page,
-      'force': force,
-    }),
-  );
+  }) async {
+    _authorize(board.source);
+    return RankingPage.fromJson(
+      await _call({
+        'action': 'rankings',
+        'board': board.id,
+        'page': page,
+        'force': force,
+      }),
+    );
+  }
 
   void _authorize(String source, {bool download = false}) {
     if (!SourceSite.isAvailable(source)) {
@@ -427,7 +431,7 @@ class NativeRepository extends AppRepository {
   }
 
   @override
-  Future<String> moveDownloads(String directory) async {
+  Future<({String path, String reason})> moveDownloads(String directory) async {
     _downloadPermission();
     if (access != null && !access!.profile.admin) {
       throw AppFailure('仅管理员可更改下载目录');
@@ -439,7 +443,10 @@ class NativeRepository extends AppRepository {
         'action': 'moveDownloads',
         'directory': directory,
       });
-      return result['leftover'] as String? ?? '';
+      return (
+        path: result['leftover'] as String? ?? '',
+        reason: result['leftoverReason'] as String? ?? '',
+      );
     } finally {
       await workLease('storage', 'end');
     }
@@ -551,9 +558,6 @@ class NativeRepository extends AppRepository {
               }.contains(input['command']);
       final epoch = access?.profileEpoch;
       if (!unrestricted && access?.locked == true) throw AppFailure('请先解锁当前用户');
-      if (action == 'rankings') {
-        _authorize(RankingBoard.sourceForID(input['board'] as String));
-      }
       if (action == 'recommendations' ||
           action == 'cachedRecommendations' ||
           action == 'suggestions' ||
@@ -649,9 +653,37 @@ class NativeRepository extends AppRepository {
           }).catchError((Object _) => <String, dynamic>{}),
         );
       }
-      throw AppFailure('站源响应超时，请重试');
-    } catch (_) {
-      throw AppFailure('本地核心加载失败，请使用完整安装包重新安装');
+      DiaryService.add('[Core] ${input['action']} 超时');
+      throw AppFailure(
+        const {
+              'catalog',
+              'categories',
+              'suggestions',
+              'recommendations',
+              'rankings',
+              'rankingBoards',
+              'metadata',
+              'danmaku',
+              'preload',
+              'detail',
+              'seasons',
+              'followCheck',
+              'resolve',
+              'fallback',
+            }.contains(input['action'])
+            ? '站源响应超时，请重试'
+            : '操作超时，请重试',
+      );
+    } catch (error) {
+      DiaryService.add('[Core] ${input['action']} 调用异常：$error');
+      final text = '$error';
+      throw AppFailure(
+        error is UnsupportedError ||
+                text.contains('Failed to load dynamic library') ||
+                text.contains('Failed to lookup symbol')
+            ? '本地核心加载失败，请使用完整安装包重新安装'
+            : '应用内部出错，请重试；反复出现时请带上日记反馈',
+      );
     }
   }
 

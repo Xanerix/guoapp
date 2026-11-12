@@ -72,7 +72,7 @@ class _UnlockPageState extends State<UnlockPage> {
                     played: _entered,
                     index: 1,
                     child: _Heading(
-                      title: error == null ? '选择用户' : '需要恢复本地配置',
+                      title: error == null ? '选择用户' : '本地记录已锁定',
                       message: error,
                     ),
                   ),
