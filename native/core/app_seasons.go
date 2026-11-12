@@ -147,13 +147,53 @@ func (engine *nativeEngine) nativeSeasons(ctx context.Context, input nativeInput
 	// 官方骨架（plan/v）与搜索聚合互补：骨架里的季号不被搜索结果覆盖，
 	// 骨架缺的前面几季由聚合结果补齐。
 	result.Items = mergeSeasonItems(skeleton, found)
-	// 跨系列组补齐：聚合结果里的季若属于另一个官方系列组，用它的
-	// series_id 再查 plan/v，把同组的季带出来。
-	result.Items = engine.hongguoExpandPlanSeasons(lookup, result.Items)
+	// 收敛：跨组扩展可能带出新的季，季号变大后又会出现新的缺口，
+	// 反复「补缺口 + 跨组扩展」直到列表不再增长（最多 2 轮）。
+	// 这样从第 1 季进入也能得到和从后面季进入一致的列表。
+	result.Items = convergeSeasons(
+		result.Items,
+		func(items []nativeSeason) []nativeSeason {
+			if adapter.group == nil {
+				return items
+			}
+			filled, ok := engine.officialSeasonsWithSeed(
+				lookup, names, input.Drama, adapter.group, adapter.search, items,
+			)
+			if !ok {
+				return items
+			}
+			return mergeSeasonItems(items, filled)
+		},
+		func(items []nativeSeason) []nativeSeason {
+			return engine.hongguoExpandPlanSeasons(lookup, items)
+		},
+	)
 	if len(result.Items) <= 1 {
 		result.Items = nil
 	}
 	return result, nil
+}
+
+// convergeSeasons 反复执行「缺口补齐 + 跨组扩展」，直到季列表不再增长。
+//
+// 从第 1 季进入时官方组往往只有 [1]：先向后补出第 2 季，再由第 2 季的
+// 系列组扩展出第 3 季、继续向后探到下一组。只做一轮的话，不同入口会得到
+// 不同的季列表（从第 1 季进少后面几季、从后面季进少前面几季）。
+// 最多 2 轮，避免网络请求随季数无限增长。
+func convergeSeasons(
+	items []nativeSeason,
+	fill func([]nativeSeason) []nativeSeason,
+	expand func([]nativeSeason) []nativeSeason,
+) []nativeSeason {
+	for round := 0; round < 2; round++ {
+		before := len(items)
+		items = fill(items)
+		items = expand(items)
+		if len(items) == before {
+			break
+		}
+	}
+	return items
 }
 
 // seasonsCompleteFromFirst 判断季号是否从第 1 季开始且连续。
@@ -567,6 +607,12 @@ func (engine *nativeEngine) officialSeasonsWithSeed(
 		officialNumbers[item.Number] = true
 	}
 	seen := map[string]bool{current.SourceID: true}
+	// verified：已经成功解析成官方季的剧 ID，精确补查时不用再试。
+	// probed：本轮精确补查里已经尝试过详情校验的 ID，避免重复请求；
+	// 它和 seen 分开——普通搜索里出现但校验失败（超时等）的候选，
+	// 仍然要在精确补查阶段再给一次机会。
+	verified := map[string]bool{current.SourceID: true}
+	probed := map[string]bool{}
 	var candidates []Drama
 	for _, drama := range dramas {
 		if drama.SourceID == "" || seen[drama.SourceID] {
@@ -600,6 +646,7 @@ func (engine *nativeEngine) officialSeasonsWithSeed(
 			if sameAlbum {
 				officialNumbers[number] = true
 			}
+			verified[drama.SourceID] = true
 		} else {
 			missing = append(missing, drama)
 		}
@@ -638,6 +685,7 @@ func (engine *nativeEngine) officialSeasonsWithSeed(
 					if sameAlbum {
 						officialNumbers[number] = true
 					}
+					verified[drama.SourceID] = true
 					mu.Unlock()
 				}
 			}(lane)
@@ -695,21 +743,30 @@ func (engine *nativeEngine) officialSeasonsWithSeed(
 						continue
 					}
 					for _, drama := range gapNames {
-						if drama.SourceID == "" || seen[drama.SourceID] {
+						// 只跳过已经成功验证过的剧和本轮已尝试过的剧；
+						// 普通搜索里出现过但校验失败（超时等）的候选，
+						// 在这里仍然要再给一次机会，否则会永远缺这一季。
+						if drama.SourceID == "" || verified[drama.SourceID] || probed[drama.SourceID] {
 							continue
 						}
 						// 先按标题粗筛（base/单位/季号都对得上才值得调详情校验）
 						itemBase, number, itemUnit, _ := hongguoSearchSeason(drama.DisplayTitle())
-						if number != season || itemUnit != unit || hongguoSearchText(itemBase) != titleKey {
+						if number == 0 {
+							// 没有季后缀的候选只可能是第一季，标题必须完全一致。
+							if season != 1 || hongguoSearchText(drama.DisplayTitle()) != titleKey {
+								continue
+							}
+						} else if number != season || itemUnit != unit || hongguoSearchText(itemBase) != titleKey {
 							continue
 						}
-						seen[drama.SourceID] = true
+						probed[drama.SourceID] = true
 						itemCtx, cancel := context.WithTimeout(ctx, hongguoSeasonGroupTimeout)
 						itemAlbum, officialNumber, _, found := resolve(itemCtx, drama.SourceID)
 						cancel()
 						if !found || officialNumber != season || officialNumber > hongguoSearchSeasonLimit {
 							continue
 						}
+						verified[drama.SourceID] = true
 						if officialNumber == currentNumber {
 							continue
 						}

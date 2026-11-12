@@ -2,6 +2,8 @@ package core
 
 import (
 	"context"
+	"sort"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -647,6 +649,144 @@ func TestOfficialSeasonsSeedDrivesBidirectionalGapFill(t *testing.T) {
 	for _, item := range items {
 		if item.Number == 3 && !item.Current {
 			t.Fatalf("current marker = %+v", items)
+		}
+	}
+}
+
+func TestOfficialSeasonsRetriesUnverifiedCandidateInGapSearch(t *testing.T) {
+	// 普通搜索已经返回第一季，但第一次详情校验超时没加进来；
+	// 精确补查再次拿到同一个 ID 时必须重试，不能因为「见过」就跳过，
+	// 否则这一季永远补不上。
+	engine, err := newNativeEngine(t.TempDir(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	current := nativeNormalize(seasonDrama("103", "合成剧第三季", 100))
+	details := map[string]struct {
+		album  string
+		number int
+	}{
+		"103": {"B", 3},
+		"101": {"A", 1},
+	}
+	calls := map[string]int{}
+	resolve := func(_ context.Context, sourceID string) (string, int, Drama, bool) {
+		item, ok := details[sourceID]
+		if !ok {
+			return "", 0, Drama{}, false
+		}
+		calls[sourceID]++
+		if sourceID == "101" && calls[sourceID] == 1 {
+			// 模拟第一次详情请求超时/失败。
+			return "", 0, Drama{}, false
+		}
+		return item.album, item.number, Drama{}, true
+	}
+	search := func(_ context.Context, keyword string) ([]Drama, error) {
+		if strings.Contains(keyword, "第一季") || strings.Contains(keyword, "第1季") {
+			return []Drama{seasonDrama("101", "合成剧第一季", 100)}, nil
+		}
+		return nil, nil
+	}
+	items, ok := engine.officialSeasons(context.Background(), []Drama{
+		// 普通搜索已经召回第一季，但缺官方字段，需要走详情校验。
+		seasonDrama("101", "合成剧第一季", 100),
+	}, current, resolve, search)
+	if !ok {
+		t.Fatal("official group should be available")
+	}
+	found := false
+	for _, item := range items {
+		if item.Number == 1 {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("season 1 must be retried in the gap search: %+v (calls=%v)", items, calls)
+	}
+	if calls["101"] != 2 {
+		t.Fatalf("candidate should be verified twice, calls = %d", calls["101"])
+	}
+}
+
+func TestSeasonAggregationConvergesAcrossEntries(t *testing.T) {
+	// 同一部剧被拆成三个系列组：A=[1]，B=[2,3]，C=[4]。
+	// 无论从第 1、2、3 季进入，反复「补缺口 + 跨组扩展」后都应得到
+	// 同一份 [1 2 3 4]，不能因为入口不同而缺前或缺后。
+	albums := map[int]string{1: "A", 2: "B", 3: "B", 4: "C"}
+	planSeasons := func(entry int) []int {
+		album := albums[entry]
+		var numbers []int
+		for number := 1; number <= 4; number++ {
+			if albums[number] == album {
+				numbers = append(numbers, number)
+			}
+		}
+		return numbers
+	}
+	season := func(number int) nativeSeason {
+		title := "合成剧第" + strconv.Itoa(number) + "季"
+		return nativeSeason{
+			Number: number,
+			Title:  title,
+			Drama:  nativeNormalize(seasonDrama(strconv.Itoa(100+number), title, 100)),
+		}
+	}
+	// 模拟 hongguoExpandPlanSeasons：沿每个季所在组的 plan/v 扩展。
+	expand := func(items []nativeSeason) []nativeSeason {
+		seen := map[int]bool{}
+		for _, item := range items {
+			seen[item.Number] = true
+		}
+		for index := 0; index < len(items); index++ {
+			for _, number := range planSeasons(items[index].Number) {
+				if seen[number] {
+					continue
+				}
+				seen[number] = true
+				items = append(items, season(number))
+			}
+		}
+		return items
+	}
+	// 模拟 officialSeasonsWithSeed 的缺口补齐：[1, maxKnown] 内缺的补上，
+	// 再向后探一季。
+	fill := func(items []nativeSeason) []nativeSeason {
+		seen := map[int]bool{}
+		maxKnown := 0
+		for _, item := range items {
+			seen[item.Number] = true
+			if item.Number > maxKnown {
+				maxKnown = item.Number
+			}
+		}
+		for number := 1; number <= maxKnown+1 && number <= 4; number++ {
+			if seen[number] {
+				continue
+			}
+			items = append(items, season(number))
+		}
+		return items
+	}
+	for _, entry := range []int{1, 2, 3} {
+		items := []nativeSeason{season(entry)}
+		if numbers := planSeasons(entry); len(numbers) > 1 {
+			var seed []nativeSeason
+			for _, number := range numbers {
+				seed = append(seed, season(number))
+			}
+			items = mergeSeasonItems(seed, items)
+		}
+		// 官方聚合内部先做一轮缺口补齐，再做收敛。
+		items = fill(items)
+		items = convergeSeasons(items, fill, expand)
+		numbers := make([]int, 0, len(items))
+		for _, item := range items {
+			numbers = append(numbers, item.Number)
+		}
+		sort.Ints(numbers)
+		if len(numbers) != 4 || numbers[0] != 1 || numbers[1] != 2 || numbers[2] != 3 || numbers[3] != 4 {
+			t.Fatalf("entry %d seasons = %v, want [1 2 3 4]", entry, numbers)
 		}
 	}
 }
