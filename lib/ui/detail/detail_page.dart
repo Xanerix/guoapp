@@ -294,7 +294,9 @@ class _DetailPageState extends State<DetailPage> {
     _preopen();
   }
 
-  /// 播放器自动接上下一季后，把 iOS 的季卡片条滚到对应位置。
+  /// 让季卡片条当前选中项处于屏幕正中央——
+  /// 默认从第一季开始排，直接滚到选中项起始位置只会露出左侧若干季。
+  /// 改居中后无论当前在第几季，详情页打开时选中项都在视线中心。
   void _syncSeasonPage() {
     final strip = _seasonStrip;
     final details = _details;
@@ -305,9 +307,16 @@ class _DetailPageState extends State<DetailPage> {
     if (index < 0) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !strip.hasClients) return;
-      final offset = (index * 116.0).clamp(0.0, strip.position.maxScrollExtent);
+      const itemWidth = 116.0;
+      const separator = 8.0;
+      final itemCenter = index * (itemWidth + separator) + itemWidth / 2;
+      final viewportCenter = strip.position.viewportDimension / 2;
+      final target = (itemCenter - viewportCenter).clamp(
+        0.0,
+        strip.position.maxScrollExtent,
+      );
       strip.animateTo(
-        offset,
+        target,
         duration: const Duration(milliseconds: 220),
         curve: Curves.easeOut,
       );
