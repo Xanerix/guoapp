@@ -53,6 +53,15 @@ bool isBenignPlayerError(String error) {
 /// 取流服务探活结果：明确存活、确认失效、或状态未知（通信异常）。
 enum _StreamProbe { alive, dead, unknown }
 
+/// 待机播放器的独立生命周期状态。
+///
+/// 旧实现只用 [_standbyBusy] 一个标志，且 [_dropStandby] 的 stop 是
+/// unawaited、不等待完成；于是「切集触发 dropStandby → 主播放器恢复 →
+/// _prime 重新预打开」可能和尚未结束的 stop 交错，同一实例同时被 stop 和
+/// open。引入显式状态机：stopping 期间禁止 _prime 复用，open 完成才 opened，
+/// 挂死才 retiring，确保停止完成前旧实例不被复用。
+enum _StandbyState { idle, opening, opened, stopping, retiring }
+
 /// 播放会话的统一对外状态。
 ///
 /// 迁移规则集中在一个位置推导（见 PlaybackSession._derivePhase），
@@ -148,6 +157,7 @@ class PlaybackSession extends ChangeNotifier {
     double position = 0,
     bool autoplay = true,
     this._swapStopTimeout = const Duration(seconds: 2),
+    this._stopTimeout = const Duration(seconds: 4),
     this._intentStopTimeout = const Duration(seconds: 6),
     this._resolveTimeout = const Duration(seconds: 20),
     this._openTimeout = const Duration(seconds: 12),
@@ -233,6 +243,7 @@ class PlaybackSession extends ChangeNotifier {
       _videoSize = size;
       _aspectRatio = size.width / size.height;
       _aspectKnown = true;
+      _aspectEpoch = _frameEpoch; // 初始尺寸证据绑定当前画面代次
     }
     _buffering(player.state.buffering);
     final stream = player.stream;
@@ -266,6 +277,7 @@ class PlaybackSession extends ChangeNotifier {
         _videoSize = size;
         _aspectRatio = size.width / size.height;
         _aspectKnown = true;
+        _aspectEpoch = _frameEpoch; // 尺寸证据绑定当前画面代次，旧集残留不会污染新集
         // 视频轨道参数出现 = 新纹理已经有画面可渲染。
         _surfaceFrame = true;
         _maybeRevealSurface();
@@ -296,6 +308,10 @@ class PlaybackSession extends ChangeNotifier {
 
   /// 旧播放器 stop 的最长等待；超时说明原生停止挂住，放弃交换改走重建。
   final Duration _swapStopTimeout;
+
+  /// 任何 player.stop() 的最长等待上限。mpv 偶发 stop 挂起会让 [_serialize]
+  /// 串行队列卡死，所有停止都必须走 [_boundedStop] 受此约束。
+  final Duration _stopTimeout;
 
   /// 有播放意图但播放器持续静止多久后自动恢复。
   final Duration _intentStopTimeout;
@@ -417,6 +433,7 @@ class PlaybackSession extends ChangeNotifier {
   int _standbyIndex = -1;
   bool _standbyOpen = false;
   bool _standbyBusy = false; // 旧播放器 stop 未完时，禁止 _prime 复用它
+  _StandbyState _standbyState = _StandbyState.idle;
   DateTime _standbyAt = DateTime(2000);
 
   /// 每次 _prime / _dropStandby 都递增：在途的待机打开任务在回写前
@@ -434,6 +451,12 @@ class PlaybackSession extends ChangeNotifier {
   VideoFit _videoFit = VideoFit.auto;
   double _aspectRatio = 9 / 16;
   bool _aspectKnown = false;
+
+  /// 画面代次：每次进入「新纹理/新一集」自增，作废上一集残留的视频尺寸证据。
+  /// [_aspectEpoch] 记录 videoParams 监听器绑定时的代次，二者不一致说明
+  /// 尺寸来自旧集，[frameReady] 不能据此判定新集已就绪（见 [_beginNewFrame]）。
+  int _frameEpoch = 0;
+  int _aspectEpoch = 0;
   double _resumePosition = 0;
   double _unmutedVolume = 100;
 
@@ -482,7 +505,10 @@ class PlaybackSession extends ChangeNotifier {
       !_loading &&
       _error == null &&
       !player.state.buffering &&
-      (_aspectKnown || (player.state.width ?? 0) > 0);
+      // 尺寸证据必须绑定当前画面代次：切集后上一集残留的宽高/aspect 不能
+      // 让新集的 frameReady 提前返回 true（旧实现会误判未出画的集已就绪）。
+      ((_aspectKnown && _aspectEpoch == _frameEpoch) ||
+          (player.state.width ?? 0) > 0);
 
   /// 统一生命周期入口的当前阶段，供日志与测试观察。
   PlaybackLifecycleStage get lifecycleStage => _lifecycleStage;
@@ -992,7 +1018,11 @@ class PlaybackSession extends ChangeNotifier {
         try {
           await saveProgress();
           _openedIndex = -1;
-          await player.stop();
+          if (!await _boundedStop(player, context: '恢复终止')) {
+            // 终止恢复时 stop 挂起：原地实例已不可靠，标记 suspect 让下次
+            // 手动重试/切集时走重建换一个干净实例。
+            _playerSuspect = true;
+          }
         } finally {
           await _release(current.session);
         }
@@ -1057,8 +1087,14 @@ class PlaybackSession extends ChangeNotifier {
     }
   }
 
-  /// 网络可达性变化的唯一入口。C-Native 的 NWPathMonitor / EventChannel
-  /// 落地后由此转发；在原生事件接入前，Dart 单测直接驱动这个入口。
+  /// 网络可达性变化的唯一入口。
+  ///
+  /// 状态机本身已就绪：本方法会根据可达性决定 reset + 重试，或转
+  /// `network_restored` 恢复。但 **iOS 原生网络监听尚未接线**——需要在
+  /// AppDelegate/SceneDelegate 接入 `NWPathMonitor`，并通过 `EventChannel`
+  /// 把路径变化转发到这里（macOS + Xcode 环境才能落地与验证，当前 Windows
+  /// 环境仅由 Dart 单测驱动，原生接线未验证）。
+  /// TODO(ios): 接入 NWPathMonitor → EventChannel → onNetworkChanged 的转发链路。
   void onNetworkChanged(bool reachable) {
     if (_networkReachable == reachable) return;
     _networkReachable = reachable;
@@ -1130,6 +1166,30 @@ class PlaybackSession extends ChangeNotifier {
         '${_diagnostic(error)}',
       );
       retire();
+    }
+  }
+
+  /// 有界停止：所有 player.stop() 必须经此，杜绝 mpv 偶发 stop 挂起把
+  /// [_serialize] 串行队列卡死、导致后续切集/重建/恢复全部排队失败。
+  ///
+  /// - 正常完成返回 true；调用方负责随后 [_retire] 释放实例。
+  /// - 超时（[_stopTimeout]）返回 false：旧实例可能仍在卸载音频/纹理，
+  ///   绝不能继续在原实例上 open 新媒（会和新实例竞争），改为异步隔离释放，
+  ///   让调用方的新播放任务照常推进；调用方应根据返回值转受控重建。
+  Future<bool> _boundedStop(Player target, {required String context}) async {
+    try {
+      await target.stop().timeout(_stopTimeout);
+      return true;
+    } on TimeoutException {
+      DiaryService.add(
+        '[Play] $context stop 超时 ${_stopTimeout.inMilliseconds}ms，隔离旧实例',
+      );
+      // 旧实例不能与新实例竞争资源：异步释放，不阻塞当前串行任务。
+      unawaited(_retire(target));
+      return false;
+    } catch (error) {
+      DiaryService.add('[Play] $context stop 异常：${_diagnostic(error)}');
+      return false;
     }
   }
 
@@ -1401,14 +1461,16 @@ class PlaybackSession extends ChangeNotifier {
     PlaybackPlan? retained;
     var installed = false;
     try {
-      // open 新 URL 会重建 texture，盖黑幕遮花屏。
+      // open 新 URL 会重建 texture，盖黑幕遮花屏；同时作废上一集残留的尺寸证据。
       _coverSurface();
+      _beginNewFrame();
+      var stopped = true;
       await _serialize(() async {
         if (!_current(ticket)) return;
         await saveProgress();
         if (!_current(ticket)) return;
         _openedIndex = -1;
-        await player.stop();
+        stopped = await _boundedStop(player, context: '切集停止');
         final previous = _plan;
         _plan = null;
         if (recovery == PlaybackRecoveryAction.alternative) {
@@ -1418,6 +1480,12 @@ class PlaybackSession extends ChangeNotifier {
         }
       });
       if (!_current(ticket)) return;
+      if (!stopped && _respawn != null) {
+        // 当前实例 stop 未完成、不可靠：不能在旧实例上 open 新媒，转受控重建
+        // 换一个干净实例（_boundedStop 超时已异步隔离旧实例，不与之竞争）。
+        await _rebuildAndResume(position, playWhenReady);
+        return;
+      }
       prepared = await _guarded<PlaybackPlan?>(
         ticket,
         '解析播放地址',
@@ -1566,6 +1634,7 @@ class PlaybackSession extends ChangeNotifier {
     _standbyIndex = -1;
     _standbyOpen = false;
     _standbyBusy = true; // 旧播放器正在 stop，期间不让 _prime 用它
+    _standbyState = _StandbyState.stopping; // stop 完成前禁止 _prime 复用该实例
     _player = next;
     _standby = previous;
     _plan = plan;
@@ -1580,6 +1649,7 @@ class PlaybackSession extends ChangeNotifier {
         // 更不能把刚挂住的实例重新放回 standby 位。
         if (abandoned || !_current(ticket)) return;
         _standbyBusy = false;
+        _standbyState = _StandbyState.idle; // stop 完成，允许 _prime 重新预打开
         _prime(); // stop 完了，立刻尝试预加载下一集
       }),
     );
@@ -1749,11 +1819,13 @@ class PlaybackSession extends ChangeNotifier {
         standby == null ||
         _standbyIndex >= 0 ||
         _standbyBusy || // 旧播放器 stop 未完，等完再说
+        _standbyState != _StandbyState.idle || // stopping/opening/opened/retiring 都禁止复用
         _standbyHung || // 预打开挂起过：只解析地址，不再复用待机实例
         !_preloader.ready ||
         next >= detail.episodes.length) {
       return;
     }
+    _standbyState = _StandbyState.opening; // 进入预打开，期间禁止再次复用
     _standbyIndex = next;
     final plan = _preloader.take(
       detail.drama,
@@ -1799,6 +1871,7 @@ class PlaybackSession extends ChangeNotifier {
       }).timeout(_standbyOpenTimeout);
       if (!current()) return;
       _standbyOpen = true;
+      _standbyState = _StandbyState.opened; // 预打开完成，可被 swap 接管
       _standbyAt = DateTime.now();
       _notify();
     } catch (error) {
@@ -1813,6 +1886,7 @@ class PlaybackSession extends ChangeNotifier {
         // open 挂起的实例状态未知，不能放回待机位复用（会泄漏/串音）。
         // 真正 dispose，并保留引用直到会话结束做二次兜底。
         _standbyHung = true;
+        _standbyState = _StandbyState.retiring; // 隔离释放中，绝不再复用
         // 置空后 dispose() 不会再二次释放它（_retire 已异步接管）。
         _standby = null;
         unawaited(_retire(standby));
@@ -1831,11 +1905,21 @@ class PlaybackSession extends ChangeNotifier {
     if (opened) {
       final target = _standby;
       if (target != null) {
+        // 进入 stopping：stop 未完成前 _prime 禁止复用该实例（见 [_StandbyState]）。
+        _standbyState = _StandbyState.stopping;
         unawaited(
           target.stop().then<void>(
-            (_) {},
+            (_) {
+              // stop 完成时清理状态：同实例才回到 idle，让 _prime 重新预打开。
+              if (identical(_standby, target)) {
+                _standbyState = _StandbyState.idle;
+              }
+            },
             onError: (Object error) {
               DiaryService.add('[Play] 待机播放器 stop 失败：${_diagnostic(error)}');
+              if (identical(_standby, target)) {
+                _standbyState = _StandbyState.idle;
+              }
             },
           ),
         );
@@ -2337,6 +2421,18 @@ class PlaybackSession extends ChangeNotifier {
   bool _restorable(int token) =>
       !_closed && _foreground && token == _restoreToken;
 
+  /// 进入新一轮画面：作废上一集残留的视频尺寸证据，等待新纹理自己报告。
+  ///
+  /// 必须在「新媒/新实例/重建」边界调用（[play]、[_replacePlayer]、
+  /// [_rebuildAndResume]），确保 [_aspectKnown] 与 [_aspectEpoch] 绑定当前集，
+  /// 而不是沿用上一集的尺寸——这是切集后 [frameReady] 误判未出画集已就绪的根因。
+  /// 注意：前后台恢复（[setForeground]）复用同一实例、媒体未变，绝不能调用它，
+  /// 否则恢复后尺寸证据被清空且 videoParams 不会再触发，导致 frameReady 永远为 false。
+  void _beginNewFrame() {
+    _frameEpoch++;
+    _aspectKnown = false;
+  }
+
   /// 盖黑幕遮住纹理重建时的花屏帧。
   /// 揭开时机：纹理报告了首帧参数（videoParams），或 position 相对盖幕时
   /// 的位置推进 >500ms（解码器确实在出帧）→ 立即揭；3s 仍无画面则
@@ -2450,8 +2546,8 @@ class PlaybackSession extends ChangeNotifier {
     _playerSuspect = false;
     _pendingError = false;
     _errorTimer?.cancel();
-    _recovery.reset();
-    _health.reset();
+    // 不在确认成功前清零失败计数：resume 一旦实际失败，提前 reset 会把未成功的
+    // 恢复链洗白，后续偶发故障反而继承更少次数。
     _playIntent = true;
     _resumeIntent = true;
     _sync();
@@ -2509,6 +2605,9 @@ class PlaybackSession extends ChangeNotifier {
     }
     if (advanced) {
       DiaryService.add('[Play] 原地秒恢复成功 耗时=${watch.elapsedMilliseconds}ms');
+      // 确认真正恢复成功后才清零失败计数（见上方说明）。
+      _recovery.reset();
+      _health.reset();
       return;
     }
     // 恢复观察期间用户已明确暂停：放弃重建，尊重暂停意图。
@@ -2648,8 +2747,8 @@ class PlaybackSession extends ChangeNotifier {
     _playerSuspect = false;
     _pendingError = false;
     _errorTimer?.cancel();
-    _recovery.reset();
-    _health.reset();
+    // 不在确认成功前清零失败计数：resume 一旦实际失败，提前 reset 会把未成功的
+    // 恢复链洗白，后续偶发故障反而继承更少次数。
     _playIntent = true;
     _resumeIntent = true;
     _sync();
@@ -2688,6 +2787,9 @@ class PlaybackSession extends ChangeNotifier {
         '[Play] 原地恢复成功 探活=${probeMs}ms 播放=${playWatch.elapsedMilliseconds}ms '
         '总=${watch.elapsedMilliseconds}ms 位置=${currentPosition.toStringAsFixed(1)}',
       );
+      // 确认真正恢复成功后才清零失败计数（见上方说明）。
+      _recovery.reset();
+      _health.reset();
       return;
     }
     final buffering = failure == null && player.state.buffering;
@@ -2732,14 +2834,15 @@ class PlaybackSession extends ChangeNotifier {
       _seekSequence++;
       _acceptErrors = false;
       _openedIndex = -1;
-      _aspectKnown = false;
+      _beginNewFrame();
       _playerSuspect = false;
       danmaku.setPlan(null);
-      await previous.stop().catchError((Object _) {});
+      final stopped = await _boundedStop(previous, context: '换实例前停止旧实例');
       _player = respawn();
       _bind();
       // 先把界面切到新实例，再等旧实例彻底释放，避免读到已销毁的播放器。
-      await _retire(previous);
+      // stop 正常完成才 _retire；超时分支已由 _boundedStop 异步隔离释放。
+      if (stopped) await _retire(previous);
       if (standby != null) await _retire(standby);
       unawaited(_player.setVolume(volume));
     });
@@ -2785,14 +2888,15 @@ class PlaybackSession extends ChangeNotifier {
         _acceptErrors = false;
         _plan = null;
         _openedIndex = -1;
-        _aspectKnown = false;
+        _beginNewFrame();
         danmaku.setPlan(null);
-        await previous.stop().catchError((Object _) {});
+        final stopped = await _boundedStop(previous, context: '重建前停止旧实例');
         await _release(plan?.session ?? '');
         _player = respawn();
         _bind();
         // 旧实例释放完成前不打开新媒体，避免音频与渲染资源交叠。
-        await _retire(previous);
+        // stop 正常完成才 _retire；超时分支已由 _boundedStop 异步隔离释放。
+        if (stopped) await _retire(previous);
         final retired = standby;
         if (retired != null) await _retire(retired);
         await _player.setVolume(volume);

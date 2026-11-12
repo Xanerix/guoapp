@@ -77,6 +77,8 @@ class PlaybackRecoveryDecision {
 /// 因此协调器从「尚未尝试过」的级别起步；原生事件、盖幕超时这类
 /// 没经过低级检测的触发源仍从第 2 级开始，保证 6 级链真实可达。
 int playbackRecoveryStartLevel(String reason) {
+  // 原生事件、盖幕超时、前后台这类没经过低级检测的触发源仍从第 2 级开始，
+  // 保证 6 级链真实可达（探活/重发/重开都不会被跳过）。
   if (reason.startsWith('native:') ||
       reason == 'network_restored' ||
       reason == 'surface_cover_timeout' ||
@@ -84,8 +86,22 @@ int playbackRecoveryStartLevel(String reason) {
       reason == 'foreground_pending_error') {
     return 2;
   }
-  if (reason == 'buffering_timeout' || reason == 'replay_failed') return 3;
-  if (reason == 'probe_failed') return 3;
+  // 卡播类：已确认「想播却没在播 / 播完却没推进 / 播放器报错」，跳过探活
+  // （2 级）直接重发播放（3 级 replay），避免重复探活浪费一轮。
+  if (reason == 'position_stalled_20s' ||
+      reason == 'stopped_while_wanted' ||
+      reason == 'player_error' ||
+      reason == 'buffering_timeout' ||
+      reason == 'replay_failed' ||
+      reason == 'probe_failed') {
+    return 3;
+  }
+  // 媒体层疑似有问题但还没到重建实例的程度：重开当前媒体（4 级 reopen）。
+  if (reason == 'early_completion' || reason == 'ensure_playing_exhausted') {
+    return 4;
+  }
+  // 其余（open_exception / recovery_exception / rebuild_* / probe_stream_dead /
+  // *_failed 等）仍从第 5 级起步，直接刷新地址或重建实例。
   return 5;
 }
 

@@ -30,6 +30,9 @@ func (engine *nativeEngine) nativePreload(ctx context.Context, input nativeInput
 	if parent != nil {
 		var stop context.CancelFunc
 		ctx, stop = context.WithCancel(ctx)
+		// 正常返回（parent 未取消）时也必须释放派生的 ctx，否则它会随父
+		// ctx 一起泄漏，且下面这个 goroutine 会一直阻塞在 parent.Done() 上。
+		defer stop()
 		go func() {
 			<-parent.Done()
 			stop()
