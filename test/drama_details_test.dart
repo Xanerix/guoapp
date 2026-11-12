@@ -77,4 +77,38 @@ void main() {
     expect(details.allowed, isFalse);
     expect(repository.detailRequests, 0);
   });
+
+  test('switching season refetches and fills earlier seasons', () async {
+    final repository = FakeRepository();
+    final store = await openStore();
+    final second = drama('s2', title: '剧甲第二季');
+    final third = drama('s3', title: '剧甲第三季');
+    final firstSeason = drama('s1', title: '剧甲第一季');
+    repository.details[first.id] = dramaDetail(first, count: 5);
+    repository.details[second.id] = dramaDetail(second, count: 5);
+    DramaSeason season(Drama drama, int number) => DramaSeason(
+      number: number,
+      title: drama.title,
+      drama: drama,
+      episodes: 5,
+    );
+    // 从第二季视角一开始只拿到 [2,3]（首季在另一个系列组）。
+    repository.seasonLists[first.id] = [season(second, 2), season(third, 3)];
+    // 切到第二季后重新请求，能把第 1 季补回来。
+    repository.seasonLists[second.id] = [
+      season(firstSeason, 1),
+      season(second, 2),
+      season(third, 3),
+    ];
+
+    final details = _open(repository, store, first);
+    await pumpEventQueue();
+    expect(details.seasons.map((item) => item.number), [2, 3]);
+
+    await details.selectSeason(details.seasons.first);
+    await pumpEventQueue();
+
+    expect(repository.seasonRequests, [first.id, second.id]);
+    expect(details.seasons.map((item) => item.number), [1, 2, 3]);
+  });
 }

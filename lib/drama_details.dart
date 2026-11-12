@@ -26,6 +26,9 @@ class DramaDetails extends ChangeNotifier {
   String? _error;
   bool _loading = false;
   bool _seasonsLoading = false;
+
+  /// 切到另一季后需要按新的当前季重新求一次季列表（补齐可能缺失的季）。
+  bool _seasonsDirty = false;
   int _group = 0;
   int _generation = 0;
   bool _disposed = false;
@@ -95,20 +98,46 @@ class DramaDetails extends ChangeNotifier {
   }
 
   /// 季列表只是增强信息：异步、带超时、失败保持单季体验。
+  ///
+  /// 切季会重新请求一次（[_seasonsDirty]），并把新结果按季号并进已有列表：
+  /// 从后面的季进入时可能只拿到部分季，换个季再查一次往往能补齐前面几季。
   Future<void> _loadSeasons(int generation) async {
-    if (_seasonsLoading || _seasons.isNotEmpty) return;
+    if (_seasonsLoading) {
+      _seasonsDirty = true;
+      return;
+    }
+    if (_seasons.isNotEmpty && !_seasonsDirty) return;
+    _seasonsDirty = false;
     _seasonsLoading = true;
     try {
       final seasons = await repository
           .seasons(_drama)
           .timeout(const Duration(seconds: 20));
-      if (!_current(generation) || seasons.length <= 1) return;
-      _seasons = seasons;
+      if (!_current(generation)) return;
+      if (seasons.length <= 1) return;
+      _seasons = _mergeSeasons(_seasons, seasons);
       _notify();
     } catch (_) {
     } finally {
       _seasonsLoading = false;
+      if (_seasonsDirty && !_disposed) {
+        unawaited(_loadSeasons(_generation));
+      }
     }
+  }
+
+  /// 按季号合并；已有的季保留原对象，只补新拿到的季。
+  List<DramaSeason> _mergeSeasons(
+    List<DramaSeason> previous,
+    List<DramaSeason> fresh,
+  ) {
+    if (previous.isEmpty) return fresh;
+    final byNumber = {for (final season in previous) season.number: season};
+    for (final season in fresh) {
+      byNumber.putIfAbsent(season.number, () => season);
+    }
+    final numbers = byNumber.keys.toList()..sort();
+    return [for (final number in numbers) byNumber[number]!];
   }
 
   /// 切换到另一季：换掉当前 [Drama] 后重新加载剧集，进度按季独立。
@@ -119,6 +148,7 @@ class DramaDetails extends ChangeNotifier {
     _warning = '';
     _group = 0;
     _error = null;
+    _seasonsDirty = true;
     _notify();
     await load();
   }

@@ -219,7 +219,9 @@ func seasonGroupResolver(groups map[string]struct {
 }
 
 func TestOfficialSeasonsDropsDifferentAlbum(t *testing.T) {
-	// 实测数据：第二季(812集)的 related_album_id 与第一季/第三季不同，不能并入。
+	// 实测数据：「家有五女」第二季(812集)与第一季(125集)、第三季(174集)
+	// 分属不同系列组，且没有上线日期。官方季号与标题都对得上，属于同一部剧，
+	// 不能再因为集数差异大而丢掉；蹭名剧（base 不同）仍必须拒绝。
 	engine, err := newNativeEngine(t.TempDir(), "")
 	if err != nil {
 		t.Fatal(err)
@@ -232,16 +234,29 @@ func TestOfficialSeasonsDropsDifferentAlbum(t *testing.T) {
 		"7701588705932217406": {"7689000294050450456", 2},
 		"7663898166743288857": {"7674948658000841790", 1},
 		"7685376296183942169": {"7674948658000841790", 3},
+		"7689999999999999999": {"7674948658000841790", 3},
 	})
 	items, ok := engine.officialSeasons(context.Background(), []Drama{
+		seasonDrama("7689999999999999999", "家有五女外传第三季", 174),
 		seasonDrama("7663898166743288857", "家有五女第一季", 125),
 		seasonDrama("7685376296183942169", "家有五女第三季", 174),
 	}, current, resolve, nil)
 	if !ok {
 		t.Fatal("official group should be available")
 	}
-	if len(items) != 1 || !items[0].Current || items[0].Number != 2 {
-		t.Fatalf("seasons = %+v", items)
+	numbers := make([]int, 0, len(items))
+	for _, item := range items {
+		numbers = append(numbers, item.Number)
+	}
+	if len(numbers) != 3 || numbers[0] != 1 || numbers[1] != 2 || numbers[2] != 3 {
+		t.Fatalf("seasons = %v, want [1 2 3]: %+v", numbers, items)
+	}
+	if !items[1].Current {
+		t.Fatalf("current marker = %+v", items)
+	}
+	// 第三季槽位必须是被标题校验过的正主，不能被「外传」蹭走。
+	if items[2].Drama.SourceID != "7685376296183942169" {
+		t.Fatalf("season 3 should keep the exact title match: %+v", items[2])
 	}
 }
 
@@ -462,5 +477,176 @@ func TestOfficialSeasonsFillsSeasonGapAndEvictsImpostor(t *testing.T) {
 	}
 	if items[1].Drama.Episodes != 100 {
 		t.Fatalf("season 2 should keep official metadata: %+v", items[1])
+	}
+}
+
+func TestOfficialSeasonsFillsEarlierSeasonsFromLaterEntry(t *testing.T) {
+	// 从第三季进入：第三季被官方单独建组，第一、二季在另一个组。
+	// plan/v 和联想都只认得第三季时，必须靠「剧名 第N季」向前补查，
+	// 否则从后面的季点进详情永远看不到前面的季。
+	engine, err := newNativeEngine(t.TempDir(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	current := nativeNormalize(seasonDrama("103", "合成剧第三季", 100))
+	details := map[string]struct {
+		album  string
+		number int
+	}{
+		"103": {"B", 3},
+		"101": {"A", 1},
+		"102": {"A", 2},
+	}
+	resolve := seasonGroupResolver(details)
+	search := func(_ context.Context, keyword string) ([]Drama, error) {
+		if strings.Contains(keyword, "第一季") || strings.Contains(keyword, "第1季") {
+			return []Drama{seasonDrama("101", "合成剧第一季", 100)}, nil
+		}
+		if strings.Contains(keyword, "第二季") || strings.Contains(keyword, "第2季") {
+			return []Drama{seasonDrama("102", "合成剧第二季", 100)}, nil
+		}
+		return nil, nil
+	}
+	items, ok := engine.officialSeasons(context.Background(), nil, current, resolve, search)
+	if !ok {
+		t.Fatal("official group should be available")
+	}
+	numbers := make([]int, 0, len(items))
+	for _, item := range items {
+		numbers = append(numbers, item.Number)
+	}
+	if len(numbers) != 3 || numbers[0] != 1 || numbers[1] != 2 || numbers[2] != 3 {
+		t.Fatalf("seasons = %v, want [1 2 3]", numbers)
+	}
+	if !items[2].Current || items[0].Current || items[1].Current {
+		t.Fatalf("current marker = %+v", items)
+	}
+}
+
+func TestOfficialSeasonsKeepsCrossAlbumEpisodeOutlier(t *testing.T) {
+	// 实测：短剧各季集数差异很大（812 集后面接 174 集），没有上线日期时
+	// 不能再按「集数相差 3 倍」把真实的季当成同名不同剧丢掉。
+	engine, err := newNativeEngine(t.TempDir(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	current := nativeNormalize(seasonDrama("202", "合成剧第二季", 812))
+	resolve := seasonGroupResolver(map[string]struct {
+		album  string
+		number int
+	}{
+		"202": {"A", 2},
+		"203": {"B", 3},
+	})
+	items, ok := engine.officialSeasons(context.Background(), []Drama{
+		seasonDrama("203", "合成剧第三季", 174),
+	}, current, resolve, nil)
+	if !ok {
+		t.Fatal("official group should be available")
+	}
+	if len(items) != 2 || items[0].Number != 2 || items[1].Number != 3 {
+		t.Fatalf("seasons = %+v, want [2 3]", items)
+	}
+}
+
+func TestMergeSeasonItemsPrefersOfficialSkeleton(t *testing.T) {
+	// plan/v 骨架（第二、五季）与搜索聚合（第一、二、四季）合并：
+	// 同季号以骨架为准，缺的季号由聚合补上。
+	official := []nativeSeason{
+		{Number: 2, Title: "官方第二季"},
+		{Number: 5, Title: "官方第五季"},
+	}
+	found := []nativeSeason{
+		{Number: 1, Title: "搜索第一季"},
+		{Number: 2, Title: "搜索第二季"},
+		{Number: 4, Title: "搜索第四季"},
+	}
+	items := mergeSeasonItems(official, found)
+	numbers := make([]int, 0, len(items))
+	for _, item := range items {
+		numbers = append(numbers, item.Number)
+	}
+	if len(numbers) != 4 || numbers[0] != 1 || numbers[1] != 2 || numbers[2] != 4 || numbers[3] != 5 {
+		t.Fatalf("seasons = %v, want [1 2 4 5]", numbers)
+	}
+	if items[1].Title != "官方第二季" {
+		t.Fatalf("official skeleton should win: %+v", items[1])
+	}
+	if len(mergeSeasonItems(nil, found)) != 3 || len(mergeSeasonItems(official, nil)) != 2 {
+		t.Fatal("empty side must fall back to the other list")
+	}
+}
+
+func TestSeasonsCompleteFromFirst(t *testing.T) {
+	for _, sample := range []struct {
+		numbers []int
+		want    bool
+	}{
+		{nil, false},
+		{[]int{1}, true},
+		{[]int{1, 2, 3}, true},
+		{[]int{2, 3}, false}, // 缺第 1 季
+		{[]int{1, 3}, false}, // 中间缺季
+	} {
+		items := make([]nativeSeason, 0, len(sample.numbers))
+		for _, number := range sample.numbers {
+			items = append(items, nativeSeason{Number: number})
+		}
+		if got := seasonsCompleteFromFirst(items); got != sample.want {
+			t.Fatalf("seasonsCompleteFromFirst(%v) = %v, want %v", sample.numbers, got, sample.want)
+		}
+	}
+}
+
+func TestOfficialSeasonsSeedDrivesBidirectionalGapFill(t *testing.T) {
+	// plan/v 只返回 [3,4]（当前第 3 季），第一、二季在另一个组。
+	// 种子里的季直接可信，不需要再校验；缺口按 [1, maxKnown] 向前补，
+	// 再从 maxKnown 向后探一季，从任何一季进入都能拿到完整列表。
+	engine, err := newNativeEngine(t.TempDir(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	current := nativeNormalize(seasonDrama("103", "合成剧第三季", 100))
+	details := map[string]struct {
+		album  string
+		number int
+	}{
+		"103": {"B", 3},
+		"104": {"B", 4},
+		"101": {"A", 1},
+		"102": {"A", 2},
+		"105": {"C", 5},
+	}
+	resolve := seasonGroupResolver(details)
+	search := func(_ context.Context, keyword string) ([]Drama, error) {
+		switch {
+		case strings.Contains(keyword, "第一季") || strings.Contains(keyword, "第1季"):
+			return []Drama{seasonDrama("101", "合成剧第一季", 100)}, nil
+		case strings.Contains(keyword, "第二季") || strings.Contains(keyword, "第2季"):
+			return []Drama{seasonDrama("102", "合成剧第二季", 100)}, nil
+		case strings.Contains(keyword, "第五季") || strings.Contains(keyword, "第5季"):
+			return []Drama{seasonDrama("105", "合成剧第五季", 100)}, nil
+		}
+		return nil, nil
+	}
+	seed := []nativeSeason{
+		{Number: 3, Title: "合成剧第三季", Drama: current},
+		{Number: 4, Title: "合成剧第四季", Drama: nativeNormalize(seasonDrama("104", "合成剧第四季", 100))},
+	}
+	items, ok := engine.officialSeasonsWithSeed(context.Background(), nil, current, resolve, search, seed)
+	if !ok {
+		t.Fatal("official group should be available")
+	}
+	numbers := make([]int, 0, len(items))
+	for _, item := range items {
+		numbers = append(numbers, item.Number)
+	}
+	if len(numbers) != 5 || numbers[0] != 1 || numbers[1] != 2 || numbers[2] != 3 || numbers[3] != 4 || numbers[4] != 5 {
+		t.Fatalf("seasons = %v, want [1 2 3 4 5]", numbers)
+	}
+	for _, item := range items {
+		if item.Number == 3 && !item.Current {
+			t.Fatalf("current marker = %+v", items)
+		}
 	}
 }

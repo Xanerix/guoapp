@@ -85,12 +85,17 @@ func (engine *nativeEngine) nativeSeasons(ctx context.Context, input nativeInput
 		return nativeSeasonResult{}, errors.New("剧集信息无效")
 	}
 
-	// 红果：优先用官方多季接口 plan/v，直接返回完整季列表。
-	// 不依赖搜索是否召回了全部季。
+	// 红果：先用官方 plan/v 拿到当前系列组里的季作为骨架。
+	// 官方组只是「第一批可信数据」，不保证完整：红果常把首季或个别季
+	// 单独建组，返回的可能只是 [2,3] 或 [2,5]。只有季号从 1 开始且连续时
+	// 才能直接返回，否则交给后面的双向补齐。
+	var skeleton []nativeSeason
 	if source == sourceHongguo && hongguoNumericID.MatchString(sourceID) {
-		result, ok := engine.hongguoOfficialSeasons(ctx, sourceID, input.Drama)
-		if ok {
-			return result, nil
+		if result, ok := engine.hongguoOfficialSeasons(ctx, sourceID, input.Drama); ok {
+			if seasonsCompleteFromFirst(result.Items) {
+				return result, nil
+			}
+			skeleton = result.Items
 		}
 	}
 
@@ -101,7 +106,7 @@ func (engine *nativeEngine) nativeSeasons(ctx context.Context, input nativeInput
 	}
 	base, current, unit := hongguoSeasonLookup(input.Drama.Title)
 	if current == 0 || base == "" {
-		return nativeSeasonResult{}, nil
+		return nativeSeasonResult{Items: mergeSeasonItems(skeleton, nil)}, nil
 	}
 	// 季列表在详情页打开时同步等待，走前台通道才能并行；
 	// 后台通道被限流器串行化，20 个候选会拖到 5 秒以上。
@@ -114,39 +119,94 @@ func (engine *nativeEngine) nativeSeasons(ctx context.Context, input nativeInput
 		result.Warning = "季列表暂时不可用"
 	}
 	// 详情自带官方季字段时以官方为准，避免标题/日期启发式误判同名不同剧。
+	// 把 plan/v 骨架一并传进去：缺口检测会以「骨架 + 搜索候选」为准，
+	// 既不重复校验骨架里的季，也能补齐骨架缺的前面几季。
+	var found []nativeSeason
+	official := false
 	if adapter.group != nil {
-		if items, official := engine.officialSeasons(lookup, names, input.Drama, adapter.group, adapter.search); official {
-			if len(items) > 1 {
-				result.Items = items
-				// 同 fallback 路径一样，用聚合到的非当前季的 series_id
-				// 再查一次 plan/v，把同组的待上线季带出来。
-				result.Items = engine.hongguoExpandPlanSeasons(lookup, result.Items)
-			}
-			return result, nil
+		if items, ok := engine.officialSeasonsWithSeed(lookup, names, input.Drama, adapter.group, adapter.search, skeleton); ok {
+			found, official = items, true
 		}
 	}
-	key := hongguoSearchText(base)
-	if len(hongguoSeasonList(names, current, unit, key, input.Drama)) <= 1 {
-		// 带标点的标题可能搜不到结果，再用去掉标点的关键词补一次。
-		cleaned := hongguoSearchText(base)
-		if cleaned != "" && cleaned != strings.TrimSpace(base) {
-			if extra, extraErr := adapter.search(lookup, cleaned); extraErr == nil {
-				names = append(names, extra...)
+	if !official {
+		key := hongguoSearchText(base)
+		if len(hongguoSeasonList(names, current, unit, key, input.Drama)) <= 1 {
+			// 带标点的标题可能搜不到结果，再用去掉标点的关键词补一次。
+			cleaned := hongguoSearchText(base)
+			if cleaned != "" && cleaned != strings.TrimSpace(base) {
+				if extra, extraErr := adapter.search(lookup, cleaned); extraErr == nil {
+					names = append(names, extra...)
+				}
 			}
 		}
+		// 搜索结果常常缺上线日期，缺日期就没法判断同名不同剧；
+		// 这里并发补查详情日期，并用缓存避免重复请求。
+		engine.enrichSeasonDates(lookup, source, names, adapter.date)
+		found = hongguoSeasonList(names, current, unit, key, input.Drama)
 	}
-	// 搜索结果常常缺上线日期，缺日期就没法判断同名不同剧；
-	// 这里并发补查详情日期，并用缓存避免重复请求。
-	engine.enrichSeasonDates(lookup, source, names, adapter.date)
-	result.Items = hongguoSeasonList(names, current, unit, key, input.Drama)
-	// 跨系列组补齐：聚合出的其它季若属于另一个官方系列组，用它的
-	// series_id 再查一次 plan/v，把同组的待上线季带出来——红果常把首季
-	// 拆成独立系列组，从首季进去会缺后续季（尤其待上线季）的入口。
+	// 官方骨架（plan/v）与搜索聚合互补：骨架里的季号不被搜索结果覆盖，
+	// 骨架缺的前面几季由聚合结果补齐。
+	result.Items = mergeSeasonItems(skeleton, found)
+	// 跨系列组补齐：聚合结果里的季若属于另一个官方系列组，用它的
+	// series_id 再查 plan/v，把同组的季带出来。
 	result.Items = engine.hongguoExpandPlanSeasons(lookup, result.Items)
 	if len(result.Items) <= 1 {
 		result.Items = nil
 	}
 	return result, nil
+}
+
+// seasonsCompleteFromFirst 判断季号是否从第 1 季开始且连续。
+//
+// 红果的官方 plan/v 只保证「同一系列组」，不保证覆盖整部剧；
+// 只有 1,2,3... 连续时才能认为不需要跨组补齐。
+func seasonsCompleteFromFirst(items []nativeSeason) bool {
+	if len(items) == 0 {
+		return false
+	}
+	expected := 1
+	for _, item := range items {
+		if item.Number != expected {
+			return false
+		}
+		expected++
+	}
+	return true
+}
+
+// mergeSeasonItems 合并两批季：季号相同时 [skeleton]（官方 plan/v）优先，
+// 其余季号按从小到大补齐。任一为空时直接返回另一批。
+func mergeSeasonItems(skeleton, extra []nativeSeason) []nativeSeason {
+	if len(skeleton) == 0 {
+		return extra
+	}
+	if len(extra) == 0 {
+		return skeleton
+	}
+	byNumber := make(map[int]nativeSeason, len(skeleton)+len(extra))
+	for _, item := range skeleton {
+		if item.Number > 0 {
+			byNumber[item.Number] = item
+		}
+	}
+	for _, item := range extra {
+		if item.Number <= 0 {
+			continue
+		}
+		if _, exists := byNumber[item.Number]; !exists {
+			byNumber[item.Number] = item
+		}
+	}
+	numbers := make([]int, 0, len(byNumber))
+	for number := range byNumber {
+		numbers = append(numbers, number)
+	}
+	sort.Ints(numbers)
+	items := make([]nativeSeason, 0, len(numbers))
+	for _, number := range numbers {
+		items = append(items, byNumber[number])
+	}
+	return items
 }
 
 // hongguoExpandPlanSeasons 用聚合结果里某个非当前季的 series_id 再查一次
@@ -160,14 +220,20 @@ func (engine *nativeEngine) hongguoExpandPlanSeasons(ctx context.Context, items 
 	for _, item := range items {
 		seen[item.Number] = true
 	}
+	// 一次最多查 3 个组，避免把详情页的季列表拖成串行网络请求。
+	calls := 0
 	for _, item := range items {
+		if calls >= 3 {
+			break
+		}
 		if item.Current || item.Drama.SourceID == "" {
 			continue
 		}
 		base, _, _ := hongguoSeasonLookup(item.Title)
+		calls++
 		seasons, ok := engine.downloader.hongguoPlanSeasons(ctx, item.Drama.SourceID)
 		if !ok {
-			return items
+			continue
 		}
 		for _, season := range seasons {
 			if seen[season.SeasonIndex] {
@@ -194,7 +260,6 @@ func (engine *nativeEngine) hongguoExpandPlanSeasons(ctx context.Context, items 
 				},
 			})
 		}
-		break
 	}
 	sort.Slice(items, func(i, j int) bool {
 		return items[i].Number < items[j].Number
@@ -232,6 +297,13 @@ func (engine *nativeEngine) hongguoOfficialSeasons(
 	}
 
 	currentIndex := current.SeasonIndex
+	if currentIndex == 0 {
+		// 请求里的 Drama 不携带 season_index（nativeDrama 不 JSON 该字段），
+		// 用标题兜底解析，避免补进去的当前季变成「第 0 季」。
+		if _, number, _, _ := hongguoSearchSeason(current.Title); number > 0 {
+			currentIndex = number
+		}
+	}
 	// 如果 plan/v 没返回当前这一季，把当前季补进去
 	hasCurrent := false
 	for _, s := range seasons {
@@ -243,7 +315,7 @@ func (engine *nativeEngine) hongguoOfficialSeasons(
 			break
 		}
 	}
-	if !hasCurrent {
+	if !hasCurrent && currentIndex >= 1 {
 		// 手动补一个
 		seasons = append(seasons, hongguoPlanSeason{
 			SeriesID:    sourceID,
@@ -277,6 +349,8 @@ func (engine *nativeEngine) hongguoOfficialSeasons(
 			Drama:    drama,
 		})
 	}
+	// 排序后再判断：调用方依赖 items[0] 是不是第 1 季来决定要不要继续补齐。
+	sort.Slice(items, func(i, j int) bool { return items[i].Number < items[j].Number })
 	if len(items) <= 1 {
 		// plan/v 只返回当前这一季：红果后台常把同一部剧拆成多个系列组
 		// （首季上架时还没建系列，后续季单独成组），于是从第一季点进去
@@ -423,24 +497,37 @@ func (engine *nativeEngine) hongguoSeasonGroup(ctx context.Context, sourceID str
 	return entry.AlbumID, entry.SeasonIndex, entry.Drama, true
 }
 
-// officialSeasons 用官方季字段聚合：同 related_album_id 一定并入，季号取官方 season_index。
-// 官方偶尔把一部剧拆成多个系列组（如「持械入宋」的第二、五季），
-// 这时只要标题严格同类、日期或集数也说得通，就并入同一部剧。
-//
-// 热路径：搜索 API 返回的 Drama 自带 AlbumID + SeasonIndex 时，
-// 本函数完全不走网络，纯内存 <10ms；只有缺少字段的候选才 fallback 调详情。
-//
-// search 用于季号缺口补查：搜索联想用剧名做关键词时召回不全
-// （如「持械入宋」召回 11 条缺正确的第二季，蹭名剧反而抢占季号槽位），
-// 检测到 [1, maxKnown] 内缺季时用「标题：第N季」精确补查。
-//
-// 返回 ok=false 表示当前剧拿不到官方字段，需要回退启发式。
+// officialSeasons 用官方季字段聚合（不带 plan/v 骨架）。
 func (engine *nativeEngine) officialSeasons(
 	ctx context.Context,
 	dramas []Drama,
 	current nativeDrama,
 	resolve func(context.Context, string) (string, int, Drama, bool),
 	search func(context.Context, string) ([]Drama, error),
+) ([]nativeSeason, bool) {
+	return engine.officialSeasonsWithSeed(ctx, dramas, current, resolve, search, nil)
+}
+
+// officialSeasonsWithSeed 用官方季字段聚合：同 related_album_id 一定并入，
+// 季号取官方 season_index。官方偶尔把一部剧拆成多个系列组
+// （如「持械入宋」的第二、五季），这时只要标题严格同类、日期也说得通，
+// 就并入同一部剧。
+//
+// [seed] 是已经拿到的 plan/v 官方组：直接进 byNumber 且不再走网络校验，
+// 缺口检测以「seed + 搜索候选」为准，缺的季号会按 [1, maxKnown] 双向补查，
+// 当前季是最大季时再向后探一季，这样从任何一季进来结果都趋于一致。
+//
+// 热路径：搜索 API 返回的 Drama 自带 AlbumID + SeasonIndex 时，
+// 本函数完全不走网络，纯内存 <10ms；只有缺少字段的候选才 fallback 调详情。
+//
+// 返回 ok=false 表示当前剧拿不到官方字段，需要回退启发式。
+func (engine *nativeEngine) officialSeasonsWithSeed(
+	ctx context.Context,
+	dramas []Drama,
+	current nativeDrama,
+	resolve func(context.Context, string) (string, int, Drama, bool),
+	search func(context.Context, string) ([]Drama, error),
+	seed []nativeSeason,
 ) ([]nativeSeason, bool) {
 	// 热路径 1：当前 Drama 自带 AlbumID/SeasonIndex 就不用 resolve。
 	album := current.AlbumID
@@ -470,6 +557,15 @@ func (engine *nativeEngine) officialSeasons(
 	}
 	byNumber := map[int]entry{currentNumber: {drama: current, sameAlbum: true}}
 	officialNumbers := map[int]bool{currentNumber: true}
+	// plan/v 官方组直接作为可信种子：同组、无需再校验，
+	// 缺口检测据此判断还缺哪些季（尤其是第 1 季到当前季之间的）。
+	for _, item := range seed {
+		if item.Number < 1 || item.Number > hongguoSearchSeasonLimit || item.Number == currentNumber {
+			continue
+		}
+		byNumber[item.Number] = entry{drama: item.Drama, sameAlbum: true}
+		officialNumbers[item.Number] = true
+	}
 	seen := map[string]bool{current.SourceID: true}
 	var candidates []Drama
 	for _, drama := range dramas {
@@ -557,8 +653,9 @@ func (engine *nativeEngine) officialSeasons(
 	// 联想接口用剧名做关键词召回不全（如「持械入宋」召回 11 条缺正确的第二季），
 	// 缺口会被蹭名剧（同 base 标题、另一系列组）抢占季号槽位；
 	// 带分隔符的精确关键词能召回缺失的官方季，同组官方季顶掉蹭名剧。
-	// 缺口按官方组成员（officialNumbers）判定，而不是 byNumber 占位——
-	// 蹭名剧占着槽位时官方组序列仍然缺季。必须在 resolve 兜底之后执行。
+	// 缺口按官方组成员（officialNumbers，含 plan/v 种子）判定，而不是 byNumber
+	// 占位——蹭名剧占着槽位时官方组序列仍然缺季。
+	// 前后两个方向都查：前面缺的季（尤其第 1 季）和后面可能拆组的下一季。
 	if search != nil {
 		maxKnown := 0
 		for number := range officialNumbers {
@@ -570,18 +667,22 @@ func (engine *nativeEngine) officialSeasons(
 				targets = append(targets, season)
 			}
 		}
-		// 当前季已是官方组里最大的季时，向后探测一季：红果常把后续季
+		// 官方组最大季不小于当前季时，再向后探一季：红果常把后续季
 		// 拆到新的系列组（首季上架时尚未建立系列），plan/v 与联想都带不出来。
-		// 仅在 fallback 路径执行（plan/v 返回多季时会提前 return），
-		// 不会拖慢正常的完整系列。
-		if maxKnown == currentNumber && maxKnown < hongguoSearchSeasonLimit {
+		if maxKnown >= currentNumber && maxKnown < hongguoSearchSeasonLimit {
 			targets = append(targets, maxKnown+1)
 		}
 		requests := 0
 		for _, season := range targets {
+			// 每个季号命中一种写法就进入下一个季号，避免一个季号把 8 次
+			// 请求预算吃光、后面的季永远补不上。
+			filled := false
 			for _, label := range []string{hongguoSearchChineseSeason(season), strconv.Itoa(season)} {
+				if filled || requests >= 8 {
+					break
+				}
 				for _, joiner := range []string{"：", " ", ""} {
-					if requests >= 8 {
+					if filled || requests >= 8 {
 						break
 					}
 					query := base + joiner + "第" + label + unit
@@ -615,6 +716,8 @@ func (engine *nativeEngine) officialSeasons(
 						sameAlbum := itemAlbum == album
 						if existing, exists := byNumber[officialNumber]; !exists || !existing.sameAlbum && sameAlbum {
 							byNumber[officialNumber] = entry{drama: nativeNormalize(drama), sameAlbum: sameAlbum}
+							filled = true
+							break
 						}
 					}
 				}
@@ -626,20 +729,17 @@ func (engine *nativeEngine) officialSeasons(
 		numbers = append(numbers, number)
 	}
 	sort.Ints(numbers)
-	// 跨组并入的季要用日期单调性 / 集数规模兜底，拒绝同名不同剧。
+	// 跨组并入的季只在上线日期明显倒挂时剔除。
+	// 没有日期时不再用「集数相差 3 倍」淘汰——短剧各季集数差异很大
+	// （如 812 集后面接 174 集），会把真实的季误判成同名不同剧。
 	var latest time.Time
 	items := make([]nativeSeason, 0, len(numbers))
 	for _, number := range numbers {
 		item := byNumber[number]
 		date, dated := hongguoSeasonDate(item.drama.OnlineDate)
-		if number != currentNumber && !item.sameAlbum {
-			if dated {
-				if !latest.IsZero() && date.Add(hongguoSeasonDateTolerance).Before(latest) {
-					continue
-				}
-			} else if !hongguoSeasonEpisodesPlausible(current.Episodes, item.drama.Episodes) {
-				continue
-			}
+		if number != currentNumber && !item.sameAlbum && dated &&
+			!latest.IsZero() && date.Add(hongguoSeasonDateTolerance).Before(latest) {
+			continue
 		}
 		if dated && date.After(latest) {
 			latest = date

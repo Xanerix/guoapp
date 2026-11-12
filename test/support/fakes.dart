@@ -283,6 +283,16 @@ class FakeRepository extends AppRepository {
   String detailFailure = '';
   int detailRequests = 0;
 
+  /// 按「当前季的剧 ID」返回季列表，用于验证切季后重新求列表。
+  final seasonLists = <String, List<DramaSeason>>{};
+  final seasonRequests = <String>[];
+
+  @override
+  Future<List<DramaSeason>> seasons(Drama drama) async {
+    seasonRequests.add(drama.id);
+    return seasonLists[drama.id] ?? const [];
+  }
+
   @override
   Future<DramaDetail> detail(Drama drama) async {
     detailRequests++;
