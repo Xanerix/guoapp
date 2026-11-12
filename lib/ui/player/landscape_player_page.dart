@@ -50,8 +50,9 @@ class LandscapePlayerPage extends StatefulWidget {
 }
 
 class _LandscapePlayerPageState extends State<LandscapePlayerPage>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   final List<StreamSubscription<dynamic>> _subscriptions = [];
+  late final _tabs = TabController(length: 2, initialIndex: 1, vsync: this);
   final _selected = <int>{};
   final _links = {
     _Panel.speed: LayerLink(),
@@ -73,7 +74,6 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
   double? _seekTarget;
   int _streak = 0;
   int _streakTaps = 0;
-  int _tab = 1;
   _Panel? _panel;
   int _sidePanelMount = 0;
   bool _sidePanelShown = false;
@@ -90,9 +90,15 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
       unawaited(AppDevice.setPlayerOrientation(PlayerOrientation.auto));
     }
     _session.addListener(_bind);
+    _tabs.addListener(_tabChanged);
     _bind();
     _scheduleHide();
   }
+
+  void _tabChanged() => setState(() {
+    _selecting = false;
+    _selected.clear();
+  });
 
   @override
   void didChangeDependencies() {
@@ -128,6 +134,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
     _streakTimer?.cancel();
     _clockTimer?.cancel();
     _seekTimer?.cancel();
+    _tabs.dispose();
     if (_holding) _session.endBoost();
     if (widget.onFullscreen == null) {
       if (_full == true && desktopPlatform) {
@@ -1271,16 +1278,57 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
             ),
             child: SizedBox(
               height: 48,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+              child: Stack(
+                fit: StackFit.expand,
                 children: [
-                  for (final (index, label) in const ['简介', '选集'].indexed)
-                    Expanded(child: _tabButton(context, index, label)),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (final (index, label) in const ['简介', '选集'].indexed)
+                        Expanded(child: _tabButton(context, index, label)),
+                    ],
+                  ),
+                  IgnorePointer(
+                    child: AnimatedBuilder(
+                      animation: _tabs.animation!,
+                      builder: (context, child) => Align(
+                        alignment: Alignment(
+                          _tabs.animation!.value * 2 - 1,
+                          1,
+                        ),
+                        child: child,
+                      ),
+                      child: FractionallySizedBox(
+                        widthFactor: .5,
+                        child: Center(
+                          heightFactor: 1,
+                          child: Container(
+                            width: 32,
+                            height: 3,
+                            decoration: BoxDecoration(
+                              color: colors.primary,
+                              borderRadius: const BorderRadius.vertical(
+                                top: Radius.circular(3),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
           ),
-          Expanded(child: _tab == 0 ? _intro(context) : _episodes(context)),
+          Expanded(
+            child: TabBarView(
+              controller: _tabs,
+              physics: _selecting
+                  ? const NeverScrollableScrollPhysics()
+                  : null,
+              children: [_intro(context), _episodes(context)],
+            ),
+          ),
         ],
       ),
     );
@@ -1288,41 +1336,27 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
 
   Widget _tabButton(BuildContext context, int index, String label) {
     final colors = Theme.of(context).colorScheme;
-    final selected = _tab == index;
+    final selected = _tabs.index == index;
     return Semantics(
       selected: selected,
       child: InkWell(
-        onTap: () => setState(() {
-          _tab = index;
-          _selecting = false;
-          _selected.clear();
-        }),
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                color: selected ? colors.primary : colors.onSurfaceVariant,
-              ),
+        onTap: () {
+          if (_selecting) _select(false);
+          _tabs.animateTo(
+            index,
+            duration: Motion.of(context, Motion.long),
+            curve: Motion.standard,
+          );
+        },
+        child: Center(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              color: selected ? colors.primary : colors.onSurfaceVariant,
             ),
-            if (selected)
-              Positioned(
-                bottom: 0,
-                child: Container(
-                  width: 32,
-                  height: 3,
-                  decoration: BoxDecoration(
-                    color: colors.primary,
-                    borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(3),
-                    ),
-                  ),
-                ),
-              ),
-          ],
+          ),
         ),
       ),
     );
