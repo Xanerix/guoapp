@@ -3,7 +3,7 @@ import 'dart:ui' show Size;
 
 import 'catalog_sort.dart';
 
-const playbackSpeeds = [.5, .75, 1.0, 1.25, 1.5, 2.0, 3.0];
+const playbackSpeeds = [.5, .75, 1.0, 1.1, 1.25, 1.5, 2.0, 3.0];
 const danmakuColors = [
   0xFFFFFFFF,
   0xFFFFE066,
