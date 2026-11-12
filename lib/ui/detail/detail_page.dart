@@ -204,6 +204,7 @@ class _DetailPageState extends State<DetailPage> {
   final _played = <Object>{};
   final _descriptionFocus = FocusNode();
   final _groupFocus = <FocusNode>[];
+  final _seasonFocus = <FocusNode>[];
   final _groupKeys = <GlobalKey>[];
   final _episodeFocus = List.generate(episodeGroupSize, (_) => FocusNode());
   bool _entered = false;
@@ -228,6 +229,7 @@ class _DetailPageState extends State<DetailPage> {
       _followFocus,
       _descriptionFocus,
       ..._groupFocus,
+      ..._seasonFocus,
       ..._episodeFocus,
     ]) {
       node.dispose();
@@ -743,6 +745,9 @@ class _DetailPageState extends State<DetailPage> {
     while (_groupFocus.length < details.groupCount) {
       _groupFocus.add(FocusNode());
     }
+    while (_seasonFocus.length < details.seasons.length) {
+      _seasonFocus.add(FocusNode());
+    }
     final page = Scaffold(
       body: _withBackdrop(
         details.drama,
@@ -823,8 +828,23 @@ class _DetailPageState extends State<DetailPage> {
       return KeyEventResult.ignored;
     }
     final group = _groupFocus.indexOf(node);
+    final season = _seasonFocus.indexOf(node);
     final episode = _episodeFocus.indexOf(node);
-    if (node == _playFocus ||
+    if (season >= 0) {
+      if (key == LogicalKeyboardKey.arrowLeft) {
+        season == 0
+            ? _playFocus.requestFocus()
+            : revealFocus(_seasonFocus[season - 1]);
+      } else if (key == LogicalKeyboardKey.arrowRight &&
+          season + 1 < details.seasons.length) {
+        revealFocus(_seasonFocus[season + 1]);
+      } else if (key == LogicalKeyboardKey.arrowDown) {
+        if (details.episodes.isEmpty) return KeyEventResult.ignored;
+        details.groupCount > 1
+            ? revealFocus(_groupFocus[details.group])
+            : _focusEpisodes(details);
+      }
+    } else if (node == _playFocus ||
         node == _followFocus ||
         node == _descriptionFocus) {
       if (key == LogicalKeyboardKey.arrowRight && node == _playFocus) {
@@ -851,6 +871,8 @@ class _DetailPageState extends State<DetailPage> {
         _focusGroup(details, group + 1);
       } else if (key == LogicalKeyboardKey.arrowDown) {
         _focusEpisodes(details);
+      } else if (key == LogicalKeyboardKey.arrowUp) {
+        _focusSeason(details);
       }
     } else if (episode >= 0) {
       final columns = m.columns;
@@ -874,6 +896,8 @@ class _DetailPageState extends State<DetailPage> {
           episode < columns &&
           details.groupCount > 1) {
         revealFocus(_groupFocus[details.group]);
+      } else if (key == LogicalKeyboardKey.arrowUp && episode < columns) {
+        _focusSeason(details);
       } else {
         _episodeFocus[target].requestFocus();
       }
@@ -886,6 +910,14 @@ class _DetailPageState extends State<DetailPage> {
   void _focusGroup(DramaDetails details, int group) {
     details.selectGroup(group);
     revealFocus(_groupFocus[group]);
+  }
+
+  void _focusSeason(DramaDetails details) {
+    if (details.seasons.isEmpty) return;
+    final index = details.seasons.indexWhere(
+      (season) => season.drama.id == details.drama.id,
+    );
+    revealFocus(_seasonFocus[math.max(index, 0)]);
   }
 
   void _focusEpisodes(DramaDetails details) {
@@ -1448,6 +1480,7 @@ class _DetailPageState extends State<DetailPage> {
     store: widget.store,
     metrics: m,
     swipeHint: !AppScope.of(context).television,
+    focus: AppScope.of(context).television ? _seasonFocus : const [],
     onSelected: (season) => unawaited(_selectSeason(season)),
   );
 
@@ -1590,8 +1623,10 @@ class _SeasonStrip extends StatefulWidget {
     required this.store,
     required this.metrics,
     required this.swipeHint,
+    required this.focus,
     required this.onSelected,
   });
+  final List<FocusNode> focus;
   final List<DramaSeason> seasons;
   final String current;
   final LocalStore store;
@@ -1719,8 +1754,11 @@ class _SeasonStripState extends State<_SeasonStrip> {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               itemCount: widget.seasons.length,
               separatorBuilder: (_, _) => const SizedBox(width: _gap),
-              itemBuilder: (context, index) =>
-                  _card(context, widget.seasons[index]),
+              itemBuilder: (context, index) => _card(
+                context,
+                widget.seasons[index],
+                index < widget.focus.length ? widget.focus[index] : null,
+              ),
             ),
           ),
         ],
@@ -1728,7 +1766,7 @@ class _SeasonStripState extends State<_SeasonStrip> {
     );
   }
 
-  Widget _card(BuildContext context, DramaSeason season) {
+  Widget _card(BuildContext context, DramaSeason season, FocusNode? focusNode) {
     final colors = Theme.of(context).colorScheme;
     final m = widget.metrics;
     final selected = season.drama.id == widget.current;
@@ -1745,7 +1783,10 @@ class _SeasonStripState extends State<_SeasonStrip> {
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
-          onTap: selected ? null : () => widget.onSelected(season),
+          focusNode: focusNode,
+          onTap: selected && focusNode == null
+              ? null
+              : () => widget.onSelected(season),
           child: Container(
             width: _cardWidth,
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
