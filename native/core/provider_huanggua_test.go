@@ -14,9 +14,10 @@ func huangguaCardSample(alias, title, cover string) string {
 }
 
 func TestParseHuangguaCards(t *testing.T) {
+	host := "https://abc.example.test"
 	body := huangguaCardSample("dj-028472f1", "琼明神女录", "https://pic.example.test/cover/1.jpeg") +
 		huangguaCardSample("18-1955-9f8f", "18岁太奶驾到", "https://pic.example.test/cover/2.jpeg")
-	items := parseHuangguaCards(body)
+	items := parseHuangguaCards(body, host)
 	if len(items) != 2 {
 		t.Fatalf("items = %d", len(items))
 	}
@@ -24,8 +25,12 @@ func TestParseHuangguaCards(t *testing.T) {
 	if first.ID != "huanggua:dj-028472f1" || first.Source != sourceHuanggua || first.Title != "琼明神女录" {
 		t.Fatalf("first item = %+v", first)
 	}
-	if first.Cover != "https://pic.example.test/cover/1.jpeg" {
-		t.Fatalf("cover not decoded: %q", first.Cover)
+	// 封面必须保留站内 /_img/ 解密代理路径，不能解码成原始 CDN 地址。
+	wantCover := host + "/_img/" +
+		base64.RawStdEncoding.EncodeToString([]byte("https://pic.example.test/cover/1.jpeg")) +
+		".jpeg"
+	if first.Cover != wantCover {
+		t.Fatalf("cover = %q, want %q", first.Cover, wantCover)
 	}
 	if first.EpisodeCount != "12" || first.Views != "69457热度" {
 		t.Fatalf("metadata missing: %+v", first)

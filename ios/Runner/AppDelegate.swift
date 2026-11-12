@@ -24,6 +24,15 @@ import MediaPlayer
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
     ZgjEnsureCoreLinked()
+    // 启动即激活 playback 类音频会话（配合 Info.plist 的 UIBackgroundModes=audio）：
+    // 锁屏/切出后即使播放器已暂停，进程也不会被系统立即挂起，
+    // mpv 与外部纹理保持存活，回前台无需纹理重建，不产生花屏帧。
+    // 长时间锁屏后系统仍会挂起进程，那种情况由 Dart 侧的重建恢复链路兜底。
+    do {
+      let session = AVAudioSession.sharedInstance()
+      try session.setCategory(.playback, mode: .moviePlayback, options: [])
+      try session.setActive(true)
+    } catch {}
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 

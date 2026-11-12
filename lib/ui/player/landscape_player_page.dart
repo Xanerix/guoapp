@@ -364,7 +364,9 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
     desktopPlatform
         ? setWindowFullScreen(!full)
         : AppDevice.setPlayerOrientation(
-            full ? PlayerOrientation.portrait : PlayerOrientation.landscape,
+            // 退出全屏恢复「自动」而不是锁竖屏：锁死后物理旋转不再触发
+            // 横竖切换，必须退出播放页 releaseOrientation 才能恢复。
+            full ? PlayerOrientation.auto : PlayerOrientation.landscape,
           ),
   );
 
@@ -532,6 +534,19 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
                 : null,
           ),
         ),
+        // 竖屏手持横片：拖动底部进度条时在进度条上方显示目标时间。
+        if (!full)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 44,
+            child: FadePresence(
+              scaleFrom: .9,
+              child: _dragging
+                  ? IgnorePointer(child: Center(child: _seekBubble()))
+                  : null,
+            ),
+          ),
         if (session.saveWarning case final warning?)
           Positioned(
             left: 12,
@@ -1131,6 +1146,35 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
     ),
   );
 
+  /// 拖动进度条时显示的目标时间气泡（红果样式）。
+  Widget _seekBubble() {
+    final value = _seekValue ?? 0;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: .55),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text.rich(
+        TextSpan(
+          text: formatClock(Duration(milliseconds: value.round())),
+          children: [
+            TextSpan(
+              text: ' / ${formatClock(_session.player.state.duration)}',
+              style: TextStyle(color: Colors.white.withValues(alpha: .6)),
+            ),
+          ],
+        ),
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 18,
+          fontWeight: FontWeight.w700,
+          fontFeatures: [FontFeature.tabularFigures()],
+        ),
+      ),
+    );
+  }
+
   Widget _batteryMark(({int level, bool charging}) battery) {
     const levels = [
       Icons.battery_0_bar_rounded,
@@ -1537,7 +1581,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
                 );
                 return Align(
                   // 视频整体偏下：上方留更多黑边，贴近红果的排版。
-                  alignment: const Alignment(0, .6),
+                  alignment: const Alignment(0, .8),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -1673,85 +1717,97 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
     return Stack(
       children: [
         Positioned.fill(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(16, 14, 84, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 剧名只做展示，不响应点击。
-                Text(
-                  drama.title,
-                  style: const TextStyle(
-                    fontSize: 19,
-                    fontWeight: FontWeight.w800,
-                    height: 1.35,
-                    color: Colors.white,
+          // 信息流底部对齐：内容贴住下方进度条（红果排版），
+          // 内容过长时仍从顶部开始滚动。
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 14, 84, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 剧名只做展示，不响应点击。
+                  Text(
+                    drama.title,
+                    style: const TextStyle(
+                      fontSize: 19,
+                      fontWeight: FontWeight.w800,
+                      height: 1.35,
+                      color: Colors.white,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  meta.join(' · '),
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: colors.onSurfaceVariant,
+                  const SizedBox(height: 6),
+                  Text(
+                    meta.join(' · '),
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: colors.onSurfaceVariant,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                // 集数与简介合并成一行（红果排版）。
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Text.rich(
-                        TextSpan(
-                          children: [
-                            TextSpan(
-                              text: '第 ${session.episode.number} 集',
-                              style: TextStyle(color: colors.onSurfaceVariant),
-                            ),
-                            TextSpan(
-                              text: ' | ',
-                              style: TextStyle(
-                                color: colors.onSurfaceVariant.withValues(
-                                  alpha: .5,
+                  const SizedBox(height: 8),
+                  // 集数与简介合并成一行（红果排版）。
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text.rich(
+                          TextSpan(
+                            children: [
+                              TextSpan(
+                                text: '第 ${session.episode.number} 集',
+                                style: TextStyle(
+                                  color: colors.onSurfaceVariant,
                                 ),
                               ),
-                            ),
-                            TextSpan(
-                              text: description.isEmpty ? '暂无简介' : description,
-                            ),
-                          ],
-                        ),
-                        maxLines: _descExpanded ? null : 1,
-                        overflow: _descExpanded ? null : TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 14,
-                          height: 1.5,
-                          color: description.isEmpty
-                              ? colors.onSurfaceVariant
-                              : colors.onSurface,
+                              TextSpan(
+                                text: ' | ',
+                                style: TextStyle(
+                                  color: colors.onSurfaceVariant.withValues(
+                                    alpha: .5,
+                                  ),
+                                ),
+                              ),
+                              TextSpan(
+                                text: description.isEmpty
+                                    ? '暂无简介'
+                                    : description,
+                              ),
+                            ],
+                          ),
+                          maxLines: _descExpanded ? null : 1,
+                          overflow: _descExpanded
+                              ? null
+                              : TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 14,
+                            height: 1.5,
+                            color: description.isEmpty
+                                ? colors.onSurfaceVariant
+                                : colors.onSurface,
+                          ),
                         ),
                       ),
-                    ),
-                    if (description.length > 20)
-                      TextButton(
-                        onPressed: () =>
-                            setState(() => _descExpanded = !_descExpanded),
-                        style: TextButton.styleFrom(
-                          visualDensity: VisualDensity.compact,
-                          padding: const EdgeInsets.only(left: 8),
-                          minimumSize: const Size(0, 32),
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      if (description.length > 20)
+                        TextButton(
+                          onPressed: () =>
+                              setState(() => _descExpanded = !_descExpanded),
+                          style: TextButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.only(left: 8),
+                            minimumSize: const Size(0, 32),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          child: Text(_descExpanded ? '收起' : '展开'),
                         ),
-                        child: Text(_descExpanded ? '收起' : '展开'),
-                      ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ),
-        Positioned(top: 8, right: 4, child: _rail(context)),
+        // 侧边操作栏随信息流一起底部对齐。
+        Positioned(bottom: 8, right: 4, child: _rail(context)),
       ],
     );
   }

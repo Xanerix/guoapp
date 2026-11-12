@@ -214,6 +214,7 @@ class PlaybackSession extends ChangeNotifier {
 
   /// 盖黑幕之后当前纹理是否已报告首帧参数（视频轨道真实就绪）。
   bool _surfaceFrame = false;
+  Duration _surfaceCoverPosition = Duration.zero;
   bool _forceSoftwareDecode = false;
   bool _boosting = false;
   bool _boostLocked = false;
@@ -895,7 +896,13 @@ class PlaybackSession extends ChangeNotifier {
 
       // 等待上一集播放器完全停止，再启动新一集，避免两个播放器
       // 在换集瞬间同时处于播放启动阶段造成状态竞争。
-      await stopping;
+      // mpv 偶发 stop 挂起：2s 超时放弃等待，否则新一集会一直
+      // 停在暂停态（首帧已出但不动）。
+      try {
+        await stopping.timeout(const Duration(seconds: 2));
+      } catch (_) {
+        DiaryService.add('[Play] 旧播放器 stop 超时，跳过等待直接起播');
+      }
 
       if (_current(ticket) && _foreground && _playIntent) {
         await next.play();
@@ -914,6 +921,7 @@ class PlaybackSession extends ChangeNotifier {
   Future<void> _ensurePlaying(int ticket) async {
     var last = player.state.position;
     var advancedCount = 0; // 连续 position 推进的计数
+    var stalled = 0; // playing=true 时连续无推进的轮数
     var nudges = 0;
     var resynced = false;
     for (var attempt = 0; attempt < 8; attempt++) {
@@ -936,6 +944,7 @@ class PlaybackSession extends ChangeNotifier {
       if (state.playing) {
         if (advanced) {
           advancedCount++;
+          stalled = 0;
           // 连续两轮 position 都推进 → 判定真正起播成功
           if (advancedCount >= 2) {
             DiaryService.add(
@@ -946,10 +955,13 @@ class PlaybackSession extends ChangeNotifier {
           }
           continue;
         }
-        // playing=true 但 position 不动了，不清 advancedCount，继续观察。
-        // 如果是解码卡住，下面的救援分支会踢。
+        // playing=true 但 position 不动：demux 短暂静默很常见（尤其是
+        // 换播放器实例起播或刚回前台），单轮不踢——连续两轮无推进才
+        // 认定真的卡住，否则 pause/play 误踢会表现为"放一下卡一下"。
+        stalled++;
       } else {
         // playing=false 且非 buffering → 真的停了，清计数
+        stalled = 0;
         if (!state.buffering) advancedCount = 0;
       }
 
@@ -964,17 +976,17 @@ class PlaybackSession extends ChangeNotifier {
             '位置=${state.position} 集=${_index + 1}',
           );
           await player.play();
-        } else if (nudges < 2) {
+        } else if (stalled >= 2 && nudges < 2) {
           nudges++;
           DiaryService.add(
-            '[Play] 起播救援 #${attempt + 1} playing=true 位置不动 踢解码器 '
+            '[Play] 起播救援 #${attempt + 1} 连续$stalled轮位置不动 踢解码器 '
             '位置=${state.position} 集=${_index + 1}',
           );
           await _kickPlayer();
-        } else if (!resynced) {
+        } else if (stalled >= 2 && !resynced) {
           resynced = true;
           DiaryService.add(
-            '[Play] 起播救援 #${attempt + 1} 位置不动 seek+play 集=${_index + 1}',
+            '[Play] 起播救援 #${attempt + 1} 持续位置不动 seek+play 集=${_index + 1}',
           );
           await player.seek(state.position);
           await player.play();
@@ -1350,6 +1362,9 @@ class PlaybackSession extends ChangeNotifier {
     _health.reset();
     _sync();
     if (!visible) {
+      // 快照当前实例：此刻若 _swap 正并发执行到 _player = next，
+      // 延迟解析 getter 会暂停到错误的对象上（音频多响几秒）。
+      final player = this.player;
       // 锁屏/切后台时直接读播放器状态，不等异步 position 事件。
       final snapshot = player.state.position;
       if (_openedIndex == _index && snapshot > Duration.zero) {
@@ -1389,11 +1404,15 @@ class PlaybackSession extends ChangeNotifier {
       !_closed && _foreground && token == _restoreToken;
 
   /// 盖黑幕遮住纹理重建时的花屏帧。
-  /// 揭开时机：纹理报告了首帧参数（或 position 已推进 >500ms，说明解码器
-  /// 确实在出帧）→ 立即揭；或最长 3s 封顶（防止永远不揭的 bug）。
+  /// 揭开时机：纹理报告了首帧参数（videoParams），或 position 相对盖幕时
+  /// 的位置推进 >500ms（解码器确实在出帧）→ 立即揭；或最长 3s 封顶。
   void _coverSurface() {
     _surfaceTimer?.cancel();
     _surfaceCoverAt = DateTime.now();
+    // 记录盖幕时的播放位置：续播恢复时 position 本来就在中途，
+    // 不能用「position > 500ms」判断（那只会对新起播有效），
+    // 必须看相对推进量，否则重建未完成就揭幕会露出花屏帧。
+    _surfaceCoverPosition = player.state.position;
     // 新一轮盖幕：首帧标记作废，等新纹理自己报告。
     _surfaceFrame = false;
     if (!_surfaceCover) {
@@ -1414,7 +1433,7 @@ class PlaybackSession extends ChangeNotifier {
   /// 黑幕是否该揭开了。
   ///
   /// 只有「新纹理已经有画面」才揭：videoParams 报告了视频轨道参数，或者
-  /// position 已经推进超过 0.5s（没有出帧 position 不可能持续前进）。
+  /// position 相对盖幕时刻推进超过 0.5s（没有出帧 position 不可能持续前进）。
   /// 单纯 playing=true 不算——解码器起播时纹理可能还是空的，提前揭开
   /// 会露出 1~2 帧黑屏，看起来就是画面闪一下。
   void _maybeRevealSurface() {
@@ -1423,7 +1442,8 @@ class PlaybackSession extends ChangeNotifier {
     // 最小 150ms 保底，避免刚盖上又揭。
     if (DateTime.now().difference(since).inMilliseconds < 150) return;
     final position = player.state.position;
-    if (!_surfaceFrame && position < const Duration(milliseconds: 500)) {
+    if (!_surfaceFrame &&
+        position < _surfaceCoverPosition + const Duration(milliseconds: 500)) {
       return;
     }
     _surfaceTimer?.cancel();
@@ -1491,6 +1511,7 @@ class PlaybackSession extends ChangeNotifier {
     if (failure == null) {
       // 快速观察窗口：4 × 500ms = 2s 内 position 推进即算成功。
       var nudges = 0;
+      var stalled = 0;
       for (var attempt = 0; attempt < 4; attempt++) {
         await Future<void>.delayed(const Duration(milliseconds: 500));
         if (!_restorable(token) ||
@@ -1514,15 +1535,25 @@ class PlaybackSession extends ChangeNotifier {
           } catch (_) {
             break;
           }
-        } else if (nudges < 2 && attempt >= 1) {
-          // 状态是"播放中"但位置不走：多半是系统挂起后解码器卡死，轻踢一次。
-          nudges++;
-          await _kickPlayer();
+        } else if (attempt >= 1) {
+          // 状态是"播放中"但位置不走：单轮静默常见，连续两轮无推进
+          // 才轻踢一次，避免刚回前台 demux 恢复期被误踢出卡顿感。
+          stalled++;
+          if (stalled >= 2 && nudges < 2) {
+            nudges++;
+            await _kickPlayer();
+          }
         }
       }
     }
     if (advanced) {
       DiaryService.add('[Play] 原地秒恢复成功 耗时=${watch.elapsedMilliseconds}ms');
+      return;
+    }
+    // 恢复观察期间用户已明确暂停：放弃重建，尊重暂停意图。
+    if (_pausedByUser || !_playIntent) {
+      DiaryService.add('[Play] 快速恢复期间用户暂停，取消兜底重建');
+      if (player.state.playing) unawaited(player.pause());
       return;
     }
     final reason = failure != null ? 'play_exception' : 'no_progress';
@@ -1707,6 +1738,12 @@ class PlaybackSession extends ChangeNotifier {
       '播放=${playWatch.elapsedMilliseconds}ms 总=${watch.elapsedMilliseconds}ms'
       '${failure == null ? '' : ' 详情=${_diagnostic(failure)}'}',
     );
+    // 恢复观察期间用户已明确暂停：放弃重建，尊重暂停意图。
+    if (_pausedByUser || !_playIntent) {
+      DiaryService.add('[Play] 原地恢复期间用户暂停，取消重建');
+      if (player.state.playing) unawaited(player.pause());
+      return;
+    }
     // 取较大值，避免恢复过程中位置回退。
     final resumeAt = currentPosition > position ? currentPosition : position;
     await _rebuildAndResume(resumeAt, true, restoreToken: token);

@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/url"
@@ -45,7 +44,7 @@ var huangguaCategories = []nativeCategory{
 var (
 	huangguaCardSplit   = regexp.MustCompile(`<article data-xpch="card-drama"`)
 	huangguaAlias       = regexp.MustCompile(`href="/drama/([a-zA-Z0-9\-]+)"`)
-	huangguaCover       = regexp.MustCompile(`src="/_img/([A-Za-z0-9+/=]+)\.(?:jpeg|jpg|png|webp)"`)
+	huangguaCover       = regexp.MustCompile(`src="(/_img/[A-Za-z0-9+/=]+\.(?:jpeg|jpg|png|webp))"`)
 	huangguaAlt         = regexp.MustCompile(`<img[^>]+alt="([^"]+)"`)
 	huangguaEpisodeText = regexp.MustCompile(`(?:更新至|全)\s*(\d+)\s*集`)
 	huangguaHeatText    = regexp.MustCompile(`([0-9.]+万?)\s*热度`)
@@ -158,10 +157,10 @@ func (d *Downloader) fetchHuangguaCatalogPage(ctx context.Context, page int, cat
 	if err != nil {
 		return nil, false, err
 	}
-	return parseHuangguaCards(body), false, nil
+	return parseHuangguaCards(body, host), false, nil
 }
 
-func parseHuangguaCards(body string) []Drama {
+func parseHuangguaCards(body, host string) []Drama {
 	segments := huangguaCardSplit.Split(body, -1)
 	items := make([]Drama, 0, len(segments))
 	seen := map[string]bool{}
@@ -183,7 +182,9 @@ func parseHuangguaCards(body string) []Drama {
 		}
 		cover := ""
 		if match := huangguaCover.FindStringSubmatch(segment); len(match) == 2 {
-			cover = decodeHuangguaCover(match[1])
+			// 站点 CDN 上的封面是加密存储的，/_img/ 是站点的解密代理端点，
+			// 必须保留站内路径作为封面地址，不能解码出原始 CDN 地址直连。
+			cover = host + match[1]
 		}
 		episodes := 0
 		if match := huangguaEpisodeText.FindStringSubmatch(segment); len(match) == 2 {
@@ -230,7 +231,7 @@ func (d *Downloader) fetchHuangguaDetail(ctx context.Context, alias string) (Dra
 	}
 	cover := ""
 	if match := huangguaCover.FindStringSubmatch(body); len(match) == 2 {
-		cover = decodeHuangguaCover(match[1])
+		cover = host + match[1]
 	}
 	chapters := huangguaChapters(body, host, alias)
 	drama := Drama{
@@ -317,17 +318,4 @@ func unescapeHuangguaURL(raw string) string {
 		replaced = unquoted
 	}
 	return replaced
-}
-
-// decodeHuangguaCover 封面是 base64 编码的真实地址，且经常不带 = 补齐。
-func decodeHuangguaCover(raw string) string {
-	for _, encoding := range []*base64.Encoding{base64.RawStdEncoding, base64.StdEncoding, base64.RawURLEncoding} {
-		if decoded, err := encoding.DecodeString(raw); err == nil && len(decoded) > 0 {
-			value := string(decoded)
-			if strings.HasPrefix(value, "http") {
-				return value
-			}
-		}
-	}
-	return ""
 }

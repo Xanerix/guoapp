@@ -1,14 +1,16 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import 'playback_handle.dart';
 
-class PlayerVideo extends StatelessWidget {
+class PlayerVideo extends StatefulWidget {
   const PlayerVideo({
     super.key,
     required this.handle,
@@ -26,13 +28,71 @@ class PlayerVideo extends StatelessWidget {
   final bool covered;
 
   @override
+  State<PlayerVideo> createState() => _PlayerVideoState();
+}
+
+class _PlayerVideoState extends State<PlayerVideo> with WidgetsBindingObserver {
+  final _boundary = GlobalKey();
+  ui.Image? _lastFrame;
+  double _pixelRatio = 1;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _lastFrame?.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _pixelRatio = MediaQuery.devicePixelRatioOf(context);
+  }
+
+  /// 切出/锁屏瞬间（inactive，进程尚未挂起、画面仍在渲染）抓取最后一帧，
+  /// 回前台重建纹理期间用它替代纯黑幕——用户看到的是画面静止而不是黑屏。
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive) {
+      // 只抓正在出声的那一路；待机播放器是暂停态，抓了也用不上。
+      if (widget.player.state.playing) unawaited(_capture());
+    }
+  }
+
+  Future<void> _capture() async {
+    final boundary =
+        _boundary.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+    if (boundary == null || boundary.size.isEmpty) return;
+    try {
+      final image = await boundary.toImage(
+        pixelRatio: math.min(_pixelRatio, 3.0),
+      );
+      if (!mounted) {
+        image.dispose();
+        return;
+      }
+      final old = _lastFrame;
+      setState(() => _lastFrame = image);
+      old?.dispose();
+    } catch (_) {
+      // 抓帧失败（例如系统已在挂起边缘）——黑幕兜底，行为与旧版一致。
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final controller = handle.video(player);
+    final controller = widget.handle.video(widget.player);
     final video = Video(
       controller: controller,
       controls: NoVideoControls,
       fill: Colors.black,
-      fit: fit,
+      fit: widget.fit,
       pauseUponEnteringBackgroundMode: false,
     );
     final surface = Platform.isWindows
@@ -51,18 +111,33 @@ class PlayerVideo extends StatelessWidget {
         : video;
     // 黑幕始终在同一位置，只改变透明度：来回切换 widget 结构会让 Video
     // 重新挂载纹理，反而制造新的花屏帧。
+    // 盖幕期间优先显示切出前抓到的最后一帧（红果体验），
+    // 没抓到（换集、首次起播）则退回纯黑。
     return Stack(
       fit: StackFit.expand,
       children: [
-        surface,
+        RepaintBoundary(key: _boundary, child: surface),
         IgnorePointer(
           child: AnimatedOpacity(
-            opacity: covered ? 1 : 0,
+            opacity: widget.covered ? 1 : 0,
             duration: const Duration(milliseconds: 120),
-            child: const ColoredBox(color: Colors.black),
+            child: _cover(),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _cover() {
+    final frame = _lastFrame;
+    if (frame == null) return const ColoredBox(color: Colors.black);
+    return ColoredBox(
+      color: Colors.black,
+      child: RawImage(
+        image: frame,
+        fit: widget.fit,
+        alignment: Alignment.center,
+      ),
     );
   }
 }
