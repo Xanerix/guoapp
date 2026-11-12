@@ -283,14 +283,8 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
 
   bool get _pinching => _pinchFrom != null;
 
-  /// auto 档保持原有行为：竖屏影片铺满屏幕（裁掉少量边缘），
-  /// 横屏影片保持完整画面。
-  BoxFit get _autoBoxFit => _session.aspectKnown && _session.aspectRatio > 1
-      ? BoxFit.contain
-      : BoxFit.cover;
-
-  /// 视频表面：auto 档沿用原有铺满逻辑，其他画面比例档位按
-  /// [VideoFit.size] 计算显示尺寸后居中放置（超出区域的部分被外层裁掉）。
+  /// 视频表面：auto 档按默认 contain 显示完整画面，其他画面比例档位
+  /// 按 [VideoFit.size] 计算显示尺寸后居中放置（超出区域的部分被外层裁掉）。
   Widget _videoSurface(PlaybackSession session, Player player) {
     final fit = session.videoFit;
     final video = session.videoSize;
@@ -299,7 +293,7 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
         key: ValueKey(player),
         handle: widget.handle,
         player: player,
-        fit: _autoBoxFit,
+        fit: BoxFit.contain,
         covered: session.surfaceCover,
       );
     }
