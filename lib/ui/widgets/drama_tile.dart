@@ -131,11 +131,13 @@ class DramaTile extends StatelessWidget {
     this.autofocus = false,
     this.heroScope,
     this.showScore = false,
+    this.blurCover = false,
   });
   final Drama drama;
   final VoidCallback onTap;
   final String? heroScope;
   final bool showScore;
+  final bool blurCover;
   final String? subtitle;
   final int? rank;
   final VoidCallback? onMore;
@@ -168,6 +170,7 @@ class DramaTile extends StatelessWidget {
       radius: _coverRadius,
       rank: rank,
       showScore: showScore,
+      blurred: blurCover,
       heroScope: AppScope.of(context).television || !Visibility.of(context)
           ? null
           : heroScope,

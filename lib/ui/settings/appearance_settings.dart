@@ -135,6 +135,53 @@ class AppearanceSettings extends StatelessWidget {
         ),
         GroupCard(
           children: [
+            if (!AppScope.of(context).television) ...[
+              SwitchTile(
+                title: '在主页底栏显示历史',
+                subtitle: '关闭后仍可在「我的」里打开观看记录',
+                value: store.historyTab,
+                onChanged: (value) =>
+                    saveSetting(context, () => store.setHistoryTab(value)),
+              ),
+              const Divider(indent: 16, endIndent: 16),
+              SwitchTile(
+                title: '在主页显示模糊封面按钮',
+                subtitle: '发现页站源按钮左边显示眼睛按钮，点一下模糊封面，再点恢复',
+                value: store.blurCoversButton,
+                onChanged: (value) => saveSetting(
+                  context,
+                  () => store.setBlurCoversButton(value),
+                ),
+              ),
+              const Divider(indent: 16, endIndent: 16),
+              SwitchTile(
+                title: '开屏自动模糊封面',
+                subtitle: store.blurCoversButton
+                    ? '每次启动后发现页的封面先模糊显示'
+                    : '需先打开在主页显示模糊封面按钮',
+                value: store.blurCoversOnLaunch,
+                onChanged: store.blurCoversButton
+                    ? (value) => saveSetting(
+                        context,
+                        () => store.setBlurCoversOnLaunch(value),
+                      )
+                    : null,
+              ),
+            ],
+            if (AppScope.of(context).television)
+              SwitchTile(
+                title: '搜索用字母键盘',
+                subtitle: '开启后按确认键弹出字母键盘，可按拼音首字母搜；关闭时使用系统输入法',
+                value: store.televisionKeyboard,
+                onChanged: (value) => saveSetting(
+                  context,
+                  () => store.setTelevisionKeyboard(value),
+                ),
+              ),
+          ],
+        ),
+        GroupCard(
+          children: [
             SettingsTile(
               title: '界面模式',
               subtitle: displayModes[platformDisplayMode(store.displayMode)]!,
@@ -153,28 +200,6 @@ class AppearanceSettings extends StatelessWidget {
                 }
               },
             ),
-            if (!AppScope.of(context).television) ...[
-              const Divider(indent: 16, endIndent: 16),
-              SwitchTile(
-                title: '在主页底栏显示历史',
-                subtitle: '关闭后仍可在「我的」里打开观看记录',
-                value: store.historyTab,
-                onChanged: (value) =>
-                    saveSetting(context, () => store.setHistoryTab(value)),
-              ),
-            ],
-            if (AppScope.of(context).television) ...[
-              const Divider(indent: 16, endIndent: 16),
-              SwitchTile(
-                title: '搜索用字母键盘',
-                subtitle: '开启后按确认键弹出字母键盘，可按拼音首字母搜；关闭时使用系统输入法',
-                value: store.televisionKeyboard,
-                onChanged: (value) => saveSetting(
-                  context,
-                  () => store.setTelevisionKeyboard(value),
-                ),
-              ),
-            ],
           ],
         ),
       ],

@@ -14,8 +14,10 @@ class SourceBar extends StatelessWidget {
     required this.onSearchSubmitted,
     this.searchController,
     this.televisionLeading,
+    this.leading = const [],
     this.actions = const [],
   });
+  final List<Widget> leading;
   final String source;
   final void Function(BuildContext anchor) onSwitchSource;
   final VoidCallback onOpenSearch;
@@ -43,11 +45,12 @@ class SourceBar extends StatelessWidget {
     return switch (form) {
       FormFactor.phone => PageHeader(
         title: source,
-        actions: [switcher, search, ...actions],
+        actions: [...leading, switcher, search, ...actions],
       ),
       FormFactor.pad || FormFactor.window => PageHeader(
         title: source,
         actions: [
+          ...leading,
           switcher,
           const SizedBox(width: 4),
           SizedBox(
