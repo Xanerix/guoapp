@@ -247,6 +247,14 @@ class SettingsSection extends StatelessWidget {
                   : null,
             ),
             SwitchTile(
+              title: '横屏视频也使用竖屏样式',
+              subtitle: '竖屏观看横屏视频时画面居中，上下滑动切集，点选集右边的按钮进入全屏',
+              value: preferences.portraitStyleForWide,
+              onChanged: (value) => savePreferences(
+                preferences.copyWith(portraitStyleForWide: value),
+              ),
+            ),
+            SwitchTile(
               title: '横屏底部进度线',
               subtitle: '横屏全屏播控隐藏后，在画面底边保留一条细进度线',
               value: preferences.progressLine,

@@ -254,16 +254,27 @@ class _PlaybackPageState extends State<PlaybackPage> {
         FormFactor.television => TelevisionPlayerPage(handle: widget.handle),
       };
     }
+    final portraitStyle = widget.store.playbackPreferences.portraitStyleForWide;
     return switch (form) {
       FormFactor.pad || FormFactor.window => _padPage(context, mini),
-      FormFactor.phone when _wideVideo => LandscapePlayerPage(
-        store: widget.store,
-        handle: widget.handle,
-        onMiniWindow: mini,
-      ),
+      FormFactor.phone
+          when _wideVideo &&
+              !(portraitStyle &&
+                  MediaQuery.orientationOf(context) == Orientation.portrait) =>
+        LandscapePlayerPage(
+          store: widget.store,
+          handle: widget.handle,
+          followSensor: !portraitStyle,
+          onMiniWindow: mini,
+        ),
       FormFactor.phone => PortraitPlayerPage(
         store: widget.store,
         handle: widget.handle,
+        onFullscreen: _wideVideo
+            ? () => unawaited(
+                AppDevice.setPlayerOrientation(PlayerOrientation.landscape),
+              )
+            : null,
         onMiniWindow: mini,
       ),
       FormFactor.television => TelevisionPlayerPage(handle: widget.handle),
@@ -280,7 +291,8 @@ class _PlaybackPageState extends State<PlaybackPage> {
         onMiniWindow: mini,
       );
     }
-    return _wideVideo
+    final portraitStyle = widget.store.playbackPreferences.portraitStyleForWide;
+    return _wideVideo && !portraitStyle
         ? LandscapePlayerPage(
             store: widget.store,
             handle: widget.handle,
@@ -290,6 +302,7 @@ class _PlaybackPageState extends State<PlaybackPage> {
         : PortraitPlayerPage(
             store: widget.store,
             handle: widget.handle,
+            onFullscreen: _wideVideo ? () => _padFullscreen.value = true : null,
             onMiniWindow: mini,
           );
   }

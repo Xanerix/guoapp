@@ -36,10 +36,12 @@ class PortraitPlayerPage extends StatefulWidget {
     super.key,
     required this.store,
     required this.handle,
+    this.onFullscreen,
     this.onMiniWindow,
   });
   final LocalStore store;
   final PlaybackHandle handle;
+  final VoidCallback? onFullscreen;
   final VoidCallback? onMiniWindow;
 
   @override
@@ -656,11 +658,36 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
         Positioned(
           key: const ValueKey('episodes'),
           left: 16,
-          right: 16,
+          right: widget.onFullscreen == null ? 16 : 68,
           bottom: bottom + 16,
           height: 44,
           child: _chrome(_episodeStrip()),
         ),
+        if (widget.onFullscreen case final onFullscreen?)
+          Positioned(
+            key: const ValueKey('fullscreen'),
+            right: 16,
+            bottom: bottom + 16,
+            width: 44,
+            height: 44,
+            child: _chrome(
+              IconButton(
+                onPressed: () {
+                  setState(_wake);
+                  onFullscreen();
+                },
+                icon: const Icon(Icons.fullscreen_rounded),
+                color: Colors.white,
+                tooltip: '全屏',
+                style: IconButton.styleFrom(
+                  backgroundColor: Colors.white.withValues(alpha: .14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+          ),
         Positioned(
           left: 0,
           right: 0,

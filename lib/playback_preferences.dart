@@ -97,6 +97,7 @@ class PlaybackPreferences {
     this.showNetworkSpeed = true,
     this.autoHideControls = true,
     this.hideSystemBars = true,
+    this.portraitStyleForWide = false,
     this.autoPictureInPicture = false,
     this.videoFit = VideoFit.auto,
   });
@@ -124,6 +125,7 @@ class PlaybackPreferences {
   final bool showNetworkSpeed;
   final bool autoHideControls;
   final bool hideSystemBars;
+  final bool portraitStyleForWide;
   final bool autoPictureInPicture;
   final VideoFit videoFit;
 
@@ -153,6 +155,7 @@ class PlaybackPreferences {
     bool? showNetworkSpeed,
     bool? autoHideControls,
     bool? hideSystemBars,
+    bool? portraitStyleForWide,
     bool? autoPictureInPicture,
     VideoFit? videoFit,
   }) => PlaybackPreferences(
@@ -179,6 +182,7 @@ class PlaybackPreferences {
     showNetworkSpeed: showNetworkSpeed ?? this.showNetworkSpeed,
     autoHideControls: autoHideControls ?? this.autoHideControls,
     hideSystemBars: hideSystemBars ?? this.hideSystemBars,
+    portraitStyleForWide: portraitStyleForWide ?? this.portraitStyleForWide,
     autoPictureInPicture: autoPictureInPicture ?? this.autoPictureInPicture,
     videoFit: videoFit ?? this.videoFit,
   );
@@ -207,6 +211,7 @@ class PlaybackPreferences {
     'showNetworkSpeed': showNetworkSpeed,
     'autoHideControls': autoHideControls,
     'hideSystemBars': hideSystemBars,
+    'portraitStyleForWide': portraitStyleForWide,
     'autoPictureInPicture': autoPictureInPicture,
     'videoFit': videoFit.name,
   };
@@ -261,6 +266,7 @@ class PlaybackPreferences {
       showNetworkSpeed: value['showNetworkSpeed'] as bool? ?? true,
       autoHideControls: value['autoHideControls'] as bool? ?? true,
       hideSystemBars: value['hideSystemBars'] as bool? ?? true,
+      portraitStyleForWide: value['portraitStyleForWide'] as bool? ?? false,
       autoPictureInPicture: value['autoPictureInPicture'] as bool? ?? false,
       videoFit: VideoFit.values.asNameMap()[value['videoFit']] ?? VideoFit.auto,
     );
