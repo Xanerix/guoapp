@@ -23,7 +23,7 @@ func rankingFixture(board rankingBoard, page int, rows []map[string]any) string 
 
 func rankingRows(page int) []map[string]any {
 	return []map[string]any{
-		{"id": "7681903520873729048", "seriesId": "7681903520873729048", "rank": (page-1)*20 + 1, "title": "甲 & <乙> \"丙\"", "heatText": "1.2亿热度", "episodeVids": []string{"1111111111111111111", "2222222222222222222"}},
+		{"id": "7681903520873729048", "seriesId": "7681903520873729048", "rank": (page-1)*20 + 1, "title": "甲 & <乙> \"丙\"", "heatText": "1.2亿热度", "episodeVids": []string{"1111111111111111111", "2222222222222222222"}, "episodeCount": 202},
 		{"id": "7680883072278989849", "seriesId": "7680883072278989849", "rank": (page-1)*20 + 3, "title": "另一部", "heatText": "9000万热度"},
 	}
 }
@@ -39,6 +39,10 @@ func TestHongguoRankingStreamAndValidation(t *testing.T) {
 	}
 	if result.Items[0].Drama.Views != "" || result.Items[0].Drama.Heat != "1.2亿热度" || result.Items[0].Drama.Cover != nil {
 		t.Fatal("heat must stay separate from views, and ranking metadata must have no images")
+	}
+	// 总集数取 episodeCount，而不是 episodeVids（示例分集，只有 2 条）。
+	if normalized := nativeNormalize(result.Items[0].Drama); normalized.Episodes != 202 {
+		t.Fatalf("ranking total episodes = %d, want 202 from episodeCount", normalized.Episodes)
 	}
 	for _, test := range []struct {
 		name   string

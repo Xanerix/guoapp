@@ -25,8 +25,9 @@ type hongguoRankingContent struct {
 		Score       string   `json:"scoreText"`
 		Tags        []string `json:"tags"`
 		Description string   `json:"description"`
-		EpisodeIDs  []string `json:"episodeVids"`
-		Cover       any      `json:"cover"`
+		// episodeCount 才是总集数；episodeVids 只是上游给的几集示例（通常 3 集）。
+		EpisodeCount int `json:"episodeCount"`
+		Cover        any `json:"cover"`
 	} `json:"rankList"`
 	Pagination struct {
 		Page       int `json:"pageNum"`
@@ -90,8 +91,10 @@ func parseHongguoRanking(body string, board rankingBoard, page int) (rankingPage
 		if len(row.Tags) > 0 {
 			drama.CategoryName = row.Tags[0]
 		}
-		if len(row.EpisodeIDs) > 0 {
-			drama.TotalEpisode = len(row.EpisodeIDs)
+		// 总集数只认 episodeCount；episodeVids 是示例分集（约 3 条），
+		// 拿它当总集数会让榜单里所有剧都显示「共 3 集」。
+		if row.EpisodeCount > 0 {
+			drama.TotalEpisode = row.EpisodeCount
 		}
 		result.Items = append(result.Items, rankingItem{Rank: row.Rank, Drama: drama, Metric: row.Heat})
 	}

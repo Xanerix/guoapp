@@ -36,8 +36,9 @@ func TestHongguoRankingMergeLoaderFormatsPreserveMetadata(t *testing.T) {
 			if err != nil || !reflect.DeepEqual(merged, legacy) {
 				t.Fatal("merged and streamed formats differ", board.ID, page, err)
 			}
-			if merged.Items[0].Drama.TotalEpisode != 2 || merged.Items[0].Drama.Score != "9.0" || merged.Items[0].Drama.Title != rows[0]["title"] {
-				t.Fatal("lost episode, score or escaped text metadata")
+			// 总集数取 episodeCount（202），不能把 episodeVids 的条目数当总数。
+			if nativeNormalize(merged.Items[0].Drama).Episodes != 202 || merged.Items[0].Drama.Score != "9.0" || merged.Items[0].Drama.Title != rows[0]["title"] {
+				t.Fatal("wrong total, or lost score/escaped text metadata")
 			}
 		}
 	}
