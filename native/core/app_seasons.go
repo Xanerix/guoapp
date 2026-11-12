@@ -115,7 +115,7 @@ func (engine *nativeEngine) nativeSeasons(ctx context.Context, input nativeInput
 	}
 	// 详情自带官方季字段时以官方为准，避免标题/日期启发式误判同名不同剧。
 	if adapter.group != nil {
-		if items, official := engine.officialSeasons(lookup, names, input.Drama, adapter.group); official {
+		if items, official := engine.officialSeasons(lookup, names, input.Drama, adapter.group, adapter.search); official {
 			if len(items) > 1 {
 				result.Items = items
 			}
@@ -200,12 +200,13 @@ func (engine *nativeEngine) hongguoOfficialSeasons(
 	var items []nativeSeason
 	for _, s := range seasons {
 		drama := nativeDrama{
-			ID:       providerDramaID(sourceHongguo, s.SeriesID),
-			Source:   sourceHongguo,
-			SourceID: s.SeriesID,
-			Title:    s.Title,
-			Episodes: s.Episodes,
-			Cover:    s.Cover,
+			ID:         providerDramaID(sourceHongguo, s.SeriesID),
+			Source:     sourceHongguo,
+			SourceID:   s.SeriesID,
+			Title:      s.Title,
+			Episodes:   s.Episodes,
+			Cover:      s.Cover,
+			OnlineDate: s.OnlineDate,
 		}
 		items = append(items, nativeSeason{
 			Number:   s.SeasonIndex,
@@ -364,12 +365,17 @@ func (engine *nativeEngine) hongguoSeasonGroup(ctx context.Context, sourceID str
 // 热路径：搜索 API 返回的 Drama 自带 AlbumID + SeasonIndex 时，
 // 本函数完全不走网络，纯内存 <10ms；只有缺少字段的候选才 fallback 调详情。
 //
+// search 用于季号缺口补查：搜索联想用剧名做关键词时召回不全
+// （如「持械入宋」召回 11 条缺正确的第二季，蹭名剧反而抢占季号槽位），
+// 检测到 [1, maxKnown] 内缺季时用「标题：第N季」精确补查。
+//
 // 返回 ok=false 表示当前剧拿不到官方字段，需要回退启发式。
 func (engine *nativeEngine) officialSeasons(
 	ctx context.Context,
 	dramas []Drama,
 	current nativeDrama,
 	resolve func(context.Context, string) (string, int, Drama, bool),
+	search func(context.Context, string) ([]Drama, error),
 ) ([]nativeSeason, bool) {
 	// 热路径 1：当前 Drama 自带 AlbumID/SeasonIndex 就不用 resolve。
 	album := current.AlbumID
@@ -398,6 +404,7 @@ func (engine *nativeEngine) officialSeasons(
 		sameAlbum bool
 	}
 	byNumber := map[int]entry{currentNumber: {drama: current, sameAlbum: true}}
+	officialNumbers := map[int]bool{currentNumber: true}
 	seen := map[string]bool{current.SourceID: true}
 	var candidates []Drama
 	for _, drama := range dramas {
@@ -428,6 +435,9 @@ func (engine *nativeEngine) officialSeasons(
 				if existing, exists := byNumber[number]; !exists || !existing.sameAlbum && sameAlbum {
 					byNumber[number] = entry{drama: nativeNormalize(drama), sameAlbum: sameAlbum}
 				}
+			}
+			if sameAlbum {
+				officialNumbers[number] = true
 			}
 		} else {
 			missing = append(missing, drama)
@@ -464,6 +474,9 @@ func (engine *nativeEngine) officialSeasons(
 							byNumber[number] = entry{drama: nativeNormalize(drama), sameAlbum: sameAlbum}
 						}
 					}
+					if sameAlbum {
+						officialNumbers[number] = true
+					}
 					mu.Unlock()
 				}
 			}(lane)
@@ -473,6 +486,68 @@ func (engine *nativeEngine) officialSeasons(
 		}
 		close(jobs)
 		group.Wait()
+	}
+
+	// ---- 补洞：官方组季号序列在 [1, maxKnown] 内有缺口时用「标题第N季」精确补查 ----
+	// 联想接口用剧名做关键词召回不全（如「持械入宋」召回 11 条缺正确的第二季），
+	// 缺口会被蹭名剧（同 base 标题、另一系列组）抢占季号槽位；
+	// 带分隔符的精确关键词能召回缺失的官方季，同组官方季顶掉蹭名剧。
+	// 缺口按官方组成员（officialNumbers）判定，而不是 byNumber 占位——
+	// 蹭名剧占着槽位时官方组序列仍然缺季。必须在 resolve 兜底之后执行。
+	if search != nil {
+		maxKnown := 0
+		for number := range officialNumbers {
+			maxKnown = max(maxKnown, number)
+		}
+		var gaps []int
+		for season := 1; season <= maxKnown && len(gaps) < 4; season++ {
+			if !officialNumbers[season] {
+				gaps = append(gaps, season)
+			}
+		}
+		requests := 0
+		for _, season := range gaps {
+			for _, label := range []string{hongguoSearchChineseSeason(season), strconv.Itoa(season)} {
+				for _, joiner := range []string{"：", " ", ""} {
+					if requests >= 8 {
+						break
+					}
+					query := base + joiner + "第" + label + unit
+					if _, err := hongguoSearchKeyword(query); err != nil {
+						continue
+					}
+					requests++
+					gapNames, err := search(ctx, query)
+					if err != nil {
+						continue
+					}
+					for _, drama := range gapNames {
+						if drama.SourceID == "" || seen[drama.SourceID] {
+							continue
+						}
+						// 先按标题粗筛（base/单位/季号都对得上才值得调详情校验）
+						itemBase, number, itemUnit, _ := hongguoSearchSeason(drama.DisplayTitle())
+						if number != season || itemUnit != unit || hongguoSearchText(itemBase) != titleKey {
+							continue
+						}
+						seen[drama.SourceID] = true
+						itemCtx, cancel := context.WithTimeout(ctx, hongguoSeasonGroupTimeout)
+						itemAlbum, officialNumber, _, found := resolve(itemCtx, drama.SourceID)
+						cancel()
+						if !found || officialNumber != season || officialNumber > hongguoSearchSeasonLimit {
+							continue
+						}
+						if officialNumber == currentNumber {
+							continue
+						}
+						sameAlbum := itemAlbum == album
+						if existing, exists := byNumber[officialNumber]; !exists || !existing.sameAlbum && sameAlbum {
+							byNumber[officialNumber] = entry{drama: nativeNormalize(drama), sameAlbum: sameAlbum}
+						}
+					}
+				}
+			}
+		}
 	}
 	numbers := make([]int, 0, len(byNumber))
 	for number := range byNumber {

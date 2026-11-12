@@ -333,6 +333,68 @@ class DramaSeason {
   );
 }
 
+/// 用户对待上线季的本地预约记录；上线后提醒用户观看。
+class SeasonReservation {
+  const SeasonReservation({
+    required this.drama,
+    required this.season,
+    this.unit = '季',
+    this.onlineDate = '',
+    required this.reservedAt,
+  });
+  final Drama drama;
+  final int season;
+  final String unit;
+  final String onlineDate;
+  final int reservedAt;
+
+  String get id => drama.id;
+  String get label => season > 0 ? '第$season$unit' : drama.title;
+  String get baseTitle =>
+      drama.title.replaceAll(RegExp(r'第[0-9一二两三]+[季部].*$'), '').trim();
+
+  /// 是否已到上线日（按本地日期判断）。
+  bool get isLive {
+    final date = DateTime.tryParse(onlineDate);
+    if (date == null) return false;
+    final now = DateTime.now();
+    return !date.isAfter(DateTime(now.year, now.month, now.day));
+  }
+
+  Map<String, dynamic> toJson() => {
+    'drama': drama.toJson(),
+    'season': season,
+    'unit': unit,
+    'onlineDate': onlineDate,
+    'reservedAt': reservedAt,
+  };
+
+  factory SeasonReservation.fromJson(Map<String, dynamic> json) {
+    final dramaRow = json['drama'];
+    final season = json['season'];
+    final reservedAt = json['reservedAt'];
+    if (dramaRow is! Map ||
+        season is! int ||
+        season < 1 ||
+        season > 200 ||
+        reservedAt is! int ||
+        reservedAt <= 0) {
+      throw const FormatException('预约记录无效');
+    }
+    final drama = Drama.fromJson(Map<String, dynamic>.from(dramaRow));
+    if (drama.id.isEmpty || !drama.id.startsWith('${SourceSite.hongguo.id}:')) {
+      throw const FormatException('预约记录无效');
+    }
+    return SeasonReservation(
+      drama: drama,
+      season: season,
+      unit: json['unit'] as String? ?? '季',
+      onlineDate: json['onlineDate'] as String? ?? '',
+      reservedAt: reservedAt,
+    );
+  }
+}
+
 class CatalogPage {
   CatalogPage(
     this.items, {

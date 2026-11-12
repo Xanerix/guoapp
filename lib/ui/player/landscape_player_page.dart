@@ -54,6 +54,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
   late final _pages = PageController(initialPage: _session.index);
   Player? _bound;
   Timer? _hideTimer;
+  Timer? _rotateRearm;
   Timer? _tapTimer;
   Timer? _streakTimer;
   Timer? _clockTimer;
@@ -127,6 +128,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
       unawaited(subscription.cancel());
     }
     _hideTimer?.cancel();
+    _rotateRearm?.cancel();
     _tapTimer?.cancel();
     _streakTimer?.cancel();
     _clockTimer?.cancel();
@@ -361,14 +363,24 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
   }
 
   void _rotate(bool full) => unawaited(
-    desktopPlatform
-        ? setWindowFullScreen(!full)
-        : AppDevice.setPlayerOrientation(
-            // 退出全屏恢复「自动」而不是锁竖屏：锁死后物理旋转不再触发
-            // 横竖切换，必须退出播放页 releaseOrientation 才能恢复。
-            full ? PlayerOrientation.auto : PlayerOrientation.landscape,
-          ),
+    desktopPlatform ? setWindowFullScreen(!full) : _rotateMobile(full),
   );
+
+  /// 移动端旋转切换。
+  /// 退出全屏必须先强制竖屏：若只设回 auto，物理横持设备（自动横屏进入的
+  /// 全屏）画面不会变化，返回按钮看起来失灵。1 秒后恢复 auto，
+  /// 物理旋转能力不丢；期间用户仍横持会自动重回全屏（跟随设备语义）。
+  Future<void> _rotateMobile(bool full) async {
+    _rotateRearm?.cancel();
+    if (full) {
+      await AppDevice.setPlayerOrientation(PlayerOrientation.portrait);
+      _rotateRearm = Timer(const Duration(seconds: 1), () {
+        unawaited(AppDevice.setPlayerOrientation(PlayerOrientation.auto));
+      });
+      return;
+    }
+    await AppDevice.setPlayerOrientation(PlayerOrientation.landscape);
+  }
 
   void _back(bool full) {
     if (_panel != null) {
@@ -648,6 +660,45 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
     );
   }
 
+  /// 全屏视频表面：auto 档沿用默认 contain 铺满区域，其他画面比例档位
+  /// 按 [VideoFit.size] 计算显示尺寸后居中放置。
+  Widget _videoSurface(PlaybackSession session, Player player) {
+    final fit = session.videoFit;
+    final video = session.videoSize;
+    if (fit == VideoFit.auto || video == null) {
+      return PlayerVideo(
+        key: ValueKey(player),
+        handle: widget.handle,
+        player: player,
+        covered: session.surfaceCover,
+      );
+    }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final box = constraints.biggest;
+        final size = box.isFinite && !box.isEmpty
+            ? fit.size(box, video, MediaQuery.devicePixelRatioOf(context))
+            : box;
+        return OverflowBox(
+          alignment: Alignment.center,
+          maxWidth: double.infinity,
+          maxHeight: double.infinity,
+          child: SizedBox(
+            width: size.width,
+            height: size.height,
+            child: PlayerVideo(
+              key: ValueKey(player),
+              handle: widget.handle,
+              player: player,
+              fit: BoxFit.fill,
+              covered: session.surfaceCover,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _episode(BuildContext context, int index, bool full) {
     final session = _session;
     if (index >= session.detail.episodes.length) {
@@ -664,12 +715,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
       fit: StackFit.expand,
       children: [
         if (player != null)
-          PlayerVideo(
-            key: ValueKey(player),
-            handle: widget.handle,
-            player: player,
-            covered: session.surfaceCover,
-          )
+          _videoSurface(session, player)
         else
           IgnorePointer(
             child: Center(
@@ -1357,6 +1403,25 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
               ],
             ),
           ],
+          const SizedBox(height: 20),
+          Text(
+            '画面比例',
+            style: TextStyle(fontSize: 14, color: colors.onSurfaceVariant),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final fit in VideoFit.values)
+                _settingChip<VideoFit>(
+                  value: fit,
+                  selected: session.videoFit == fit,
+                  label: fit.label,
+                  onTap: () => _change(() => session.setVideoFit(fit)),
+                ),
+            ],
+          ),
         ],
       ),
     );
@@ -1550,6 +1615,38 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
     ),
   );
 
+  /// 竖屏手持横片的视频表面：auto 档保持 16:9 居中黑边的刻意布局，
+  /// 其他档位在视频区内按 [VideoFit.size] 重算显示尺寸居中放置。
+  Widget _heldVideoSurface(PlaybackSession session, Player player, Size box) {
+    final fit = session.videoFit;
+    final video = session.videoSize;
+    if (fit == VideoFit.auto || video == null || box.isEmpty) {
+      return PlayerVideo(
+        key: ValueKey(player),
+        handle: widget.handle,
+        player: player,
+        covered: session.surfaceCover,
+      );
+    }
+    final size = fit.size(box, video, MediaQuery.devicePixelRatioOf(context));
+    return OverflowBox(
+      alignment: Alignment.center,
+      maxWidth: double.infinity,
+      maxHeight: double.infinity,
+      child: SizedBox(
+        width: size.width,
+        height: size.height,
+        child: PlayerVideo(
+          key: ValueKey(player),
+          handle: widget.handle,
+          player: player,
+          fit: BoxFit.fill,
+          covered: session.surfaceCover,
+        ),
+      ),
+    );
+  }
+
   /// 竖屏手持时的一页：视频垂直居中，信息流贴底。
   /// 整页都在 PageView 里，所以手指放在任何位置上下滑都能换集。
   Widget _pageContent(BuildContext context, int index) {
@@ -1592,11 +1689,10 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
                           fit: StackFit.expand,
                           children: [
                             if (player != null)
-                              PlayerVideo(
-                                key: ValueKey(player),
-                                handle: widget.handle,
-                                player: player,
-                                covered: session.surfaceCover,
+                              _heldVideoSurface(
+                                session,
+                                player,
+                                Size(maxWidth, videoHeight),
                               )
                             else
                               IgnorePointer(
@@ -1681,12 +1777,14 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
           // 给出有限高度约束；否则 Column 传无限高度 → Stack 尺寸无穷大，
           // 把上面的视频区挤成 0 高度（视频不显示）。
           Expanded(flex: 2, child: _feed(context)),
-          if (current)
-            // 竖屏手持横片的底部进度条：细线外观，但可以点击/拖动 seek；
-            // 上下滑动换集时渐隐，避免遮挡画面。
-            AnimatedOpacity(
-              opacity: _scrolling ? 0 : 1,
-              duration: Motion.short,
+          // 底部进度条：所有页都占位（非当前页只隐藏不裁剪布局）。
+          // 若用 if (current) 条件渲染，滑动换集完成瞬间进度条突然插入，
+          // Column 里 Expanded 重新分配高度，整页内容会跳动一下。
+          AnimatedOpacity(
+            opacity: current && !_scrolling ? 1 : 0,
+            duration: Motion.short,
+            child: IgnorePointer(
+              ignoring: !current,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(14, 2, 14, 2),
                 child: PlaybackProgressBuilder(
@@ -1698,6 +1796,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
                 ),
               ),
             ),
+          ),
         ],
       ),
     );

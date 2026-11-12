@@ -8,6 +8,7 @@ import 'package:media_kit/media_kit.dart';
 
 import '../../local_store.dart';
 import '../../models.dart';
+import '../../playback_preferences.dart';
 import '../../playback_session.dart';
 import '../app_scope.dart';
 import '../downloads/download_actions.dart';
@@ -282,10 +283,51 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
 
   bool get _pinching => _pinchFrom != null;
 
-  /// 竖屏影片铺满屏幕（裁掉少量边缘），横屏影片保持完整画面。
-  BoxFit get _videoFit => _session.aspectKnown && _session.aspectRatio > 1
+  /// auto 档保持原有行为：竖屏影片铺满屏幕（裁掉少量边缘），
+  /// 横屏影片保持完整画面。
+  BoxFit get _autoBoxFit => _session.aspectKnown && _session.aspectRatio > 1
       ? BoxFit.contain
       : BoxFit.cover;
+
+  /// 视频表面：auto 档沿用原有铺满逻辑，其他画面比例档位按
+  /// [VideoFit.size] 计算显示尺寸后居中放置（超出区域的部分被外层裁掉）。
+  Widget _videoSurface(PlaybackSession session, Player player) {
+    final fit = session.videoFit;
+    final video = session.videoSize;
+    if (fit == VideoFit.auto || video == null) {
+      return PlayerVideo(
+        key: ValueKey(player),
+        handle: widget.handle,
+        player: player,
+        fit: _autoBoxFit,
+        covered: session.surfaceCover,
+      );
+    }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final box = constraints.biggest;
+        final size = box.isFinite && !box.isEmpty
+            ? fit.size(box, video, MediaQuery.devicePixelRatioOf(context))
+            : box;
+        return OverflowBox(
+          alignment: Alignment.center,
+          maxWidth: double.infinity,
+          maxHeight: double.infinity,
+          child: SizedBox(
+            width: size.width,
+            height: size.height,
+            child: PlayerVideo(
+              key: ValueKey(player),
+              handle: widget.handle,
+              player: player,
+              fit: BoxFit.fill,
+              covered: session.surfaceCover,
+            ),
+          ),
+        );
+      },
+    );
+  }
 
   double get _span {
     final [first, second, ...] = _pointers.values.toList();
@@ -478,13 +520,7 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
                     ? Duration.zero
                     : Motion.of(context, Motion.medium),
                 curve: Motion.standard,
-                child: PlayerVideo(
-                  key: ValueKey(player),
-                  handle: widget.handle,
-                  player: player,
-                  fit: _videoFit,
-                  covered: session.surfaceCover,
-                ),
+                child: _videoSurface(session, player),
               ),
             ),
           FadePresence(

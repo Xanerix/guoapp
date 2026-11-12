@@ -1207,32 +1207,140 @@ class _DetailPageState extends State<DetailPage> {
     );
   }
 
+  /// 预约的待上线季上线后：详情页顶部提醒条，点击直达并清除预约。
+  Widget _reservationBanner(DramaDetails details, _Metrics m) {
+    final ids = details.seasons.map((item) => item.drama.id).toSet();
+    for (final reservation in widget.store.liveSeasonReservations(
+      seasonIds: ids,
+    )) {
+      DramaSeason? match;
+      for (final season in details.seasons) {
+        if (season.drama.id == reservation.id && !season.upcoming) {
+          match = season;
+          break;
+        }
+      }
+      if (match == null) continue;
+      final scheme = Theme.of(context).colorScheme;
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Material(
+          color: scheme.primaryContainer,
+          borderRadius: BorderRadius.circular(12),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () {
+              unawaited(widget.store.toggleSeasonReservation(reservation));
+              unawaited(_selectSeason(details, match!));
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.notifications_active_rounded,
+                    size: 16,
+                    color: scheme.onPrimaryContainer,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '已预约的${match.label}已上线，点击观看',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: m.meta,
+                        color: scheme.onPrimaryContainer,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 18,
+                    color: scheme.onPrimaryContainer,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    return const SizedBox.shrink();
+  }
+
+  void _toggleSeasonReservation(DramaDetails details, DramaSeason season) {
+    unawaited(
+      widget.store.toggleSeasonReservation(
+        SeasonReservation(
+          drama: season.drama,
+          season: season.number,
+          unit: season.unit,
+          onlineDate: season.onlineDate,
+          reservedAt: DateTime.now().millisecondsSinceEpoch,
+        ),
+      ),
+    );
+  }
+
   Widget _seasonSelector(DramaDetails details, _Metrics m) {
     final seasons = details.seasons;
     final scheme = Theme.of(context).colorScheme;
+    // 最早的待上线季（一般只有最新季待上线）。
+    final firstUpcomingNumber = seasons
+        .where((item) => item.upcoming)
+        .map((item) => item.number)
+        .fold<int?>(null, (a, b) => a == null || b < a ? b : a);
     // iOS 上用参考稿的「系列多季」卡片条，其余平台保持一行标签。
     if (!Platform.isIOS) {
-      return Wrap(
-        spacing: 8,
-        runSpacing: 8,
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          for (final season in seasons)
-            ChoiceChip(
-              label: Text(
-                season.upcoming ? '${season.label} · 待上线' : season.label,
-              ),
-              selected: season.drama.id == details.drama.id,
-              visualDensity: VisualDensity.compact,
-              labelStyle: TextStyle(
-                fontSize: m.meta,
-                color: season.upcoming
-                    ? scheme.onSurface.withValues(alpha: .5)
-                    : null,
-              ),
-              onSelected: season.upcoming
-                  ? null
-                  : (_) => unawaited(_selectSeason(details, season)),
-            ),
+          _reservationBanner(details, m),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final season in seasons)
+                ChoiceChip(
+                  label: Text(
+                    season.upcoming ? '${season.label} · 待上线' : season.label,
+                  ),
+                  selected: season.drama.id == details.drama.id,
+                  visualDensity: VisualDensity.compact,
+                  labelStyle: TextStyle(
+                    fontSize: m.meta,
+                    color: season.upcoming
+                        ? scheme.onSurface.withValues(alpha: .5)
+                        : null,
+                  ),
+                  onSelected: season.upcoming
+                      ? null
+                      : (_) => unawaited(_selectSeason(details, season)),
+                ),
+              // 待上线季的预约入口。
+              if (firstUpcomingNumber != null)
+                for (final season in seasons)
+                  if (season.upcoming && season.number == firstUpcomingNumber)
+                    ActionChip(
+                      visualDensity: VisualDensity.compact,
+                      avatar: Icon(
+                        widget.store.isSeasonReserved(season.drama.id)
+                            ? Icons.notifications_active_rounded
+                            : Icons.notifications_none_rounded,
+                        size: m.meta + 2,
+                      ),
+                      label: Text(
+                        widget.store.isSeasonReserved(season.drama.id)
+                            ? '已预约'
+                            : '预约上线提醒',
+                        style: TextStyle(fontSize: m.meta),
+                      ),
+                      onPressed: () =>
+                          _toggleSeasonReservation(details, season),
+                    ),
+            ],
+          ),
         ],
       );
     }
@@ -1248,6 +1356,7 @@ class _DetailPageState extends State<DetailPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _reservationBanner(details, m),
           Row(
             children: [
               Icon(Icons.layers_rounded, size: 16, color: scheme.primary),
@@ -1357,23 +1466,73 @@ class _DetailPageState extends State<DetailPage> {
                             ],
                           ),
                           const SizedBox(height: 4),
-                          Text(
-                            selected
-                                ? '正在浏览'
-                                : watched != null && !watched.finished
-                                ? '看至第${watched.episode}集'
-                                : season.episodes > 0
-                                ? '共 ${season.episodes} 集'
-                                : '待上线',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: m.tag,
-                              color: selected
-                                  ? scheme.onPrimary.withValues(alpha: .84)
-                                  : scheme.onSurfaceVariant,
+                          if (season.upcoming && !selected)
+                            // 待上线且非当前季：副标题位换成预约按钮。
+                            GestureDetector(
+                              onTap: () =>
+                                  _toggleSeasonReservation(details, season),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color:
+                                      widget.store.isSeasonReserved(
+                                        season.drama.id,
+                                      )
+                                      ? scheme.primary.withValues(alpha: .18)
+                                      : scheme.onSurface.withValues(alpha: .08),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      widget.store.isSeasonReserved(
+                                            season.drama.id,
+                                          )
+                                          ? Icons.notifications_active_rounded
+                                          : Icons.notifications_none_rounded,
+                                      size: m.tag + 2,
+                                      color: scheme.primary,
+                                    ),
+                                    const SizedBox(width: 3),
+                                    Text(
+                                      widget.store.isSeasonReserved(
+                                            season.drama.id,
+                                          )
+                                          ? '已预约'
+                                          : '预约上线提醒',
+                                      maxLines: 1,
+                                      style: TextStyle(
+                                        fontSize: m.tag,
+                                        color: scheme.primary,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            )
+                          else
+                            Text(
+                              selected
+                                  ? '正在浏览'
+                                  : watched != null && !watched.finished
+                                  ? '看至第${watched.episode}集'
+                                  : season.episodes > 0
+                                  ? '共 ${season.episodes} 集'
+                                  : '待上线',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: m.tag,
+                                color: selected
+                                    ? scheme.onPrimary.withValues(alpha: .84)
+                                    : scheme.onSurfaceVariant,
+                              ),
                             ),
-                          ),
                           if (online != null) ...[
                             const SizedBox(height: 1),
                             Text(

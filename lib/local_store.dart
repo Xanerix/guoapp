@@ -66,6 +66,7 @@ class LocalStore extends ChangeNotifier {
   final Map<String, WatchEntry> _history = {};
   final Map<String, Drama> _favorites = {};
   final Map<String, FollowState> _followStates = {};
+  final Map<String, SeasonReservation> _seasonReservations = {};
   Map<String, FollowCheck> _followChecks = {};
   Map<String, Object?> _settings = {};
   Map<String, Object?> _userSettings = {};
@@ -160,6 +161,10 @@ class LocalStore extends ChangeNotifier {
           text(key('followStates', id)),
           {},
         ),
+        _userFile(id, 'seasonReservations'): decoded<Map>(
+          text(key('seasonReservations', id)),
+          {},
+        ),
         _userFile(id, 'followChecks'): decoded<Map>(
           checks is String ? checks : null,
           {},
@@ -206,6 +211,7 @@ class LocalStore extends ChangeNotifier {
     _history.clear();
     _favorites.clear();
     _followStates.clear();
+    _seasonReservations.clear();
     _followChecks = {};
     _userSettings = {};
     if (_configurationError != null) return;
@@ -232,6 +238,21 @@ class LocalStore extends ChangeNotifier {
       } catch (_) {
         _followStates[drama.id] = FollowState.initial(drama);
       }
+    }
+    final reservations = _map(
+      await _readFile(_userFile(id, 'seasonReservations')),
+    );
+    for (final entry in reservations.entries) {
+      try {
+        final reservation = SeasonReservation.fromJson(
+          Map<String, dynamic>.from(entry.value as Map),
+        );
+        if (entry.key != reservation.id ||
+            _seasonReservations.containsKey(reservation.id)) {
+          throw const FormatException('预约记录无效');
+        }
+        _seasonReservations[reservation.id] = reservation;
+      } catch (_) {}
     }
     final checks = _map(await _readFile(_userFile(id, 'followChecks')));
     for (final entry in checks.entries) {
@@ -270,6 +291,7 @@ class LocalStore extends ChangeNotifier {
     _history.clear();
     _favorites.clear();
     _followStates.clear();
+    _seasonReservations.clear();
     _followChecks = {};
     _userSettings = {};
     _epoch++;
@@ -654,6 +676,44 @@ class LocalStore extends ChangeNotifier {
       _notify();
     });
   }
+
+  /// 待上线季预约：切换预约状态，返回切换后是否已预约。
+  Future<bool> toggleSeasonReservation(SeasonReservation reservation) {
+    final epoch = _epoch;
+    var reserved = false;
+    return _queue(() async {
+      if (!allowsSource(reservation.drama.source) || epoch != _epoch) return;
+      final entries = Map.of(_seasonReservations);
+      reserved = !entries.containsKey(reservation.id);
+      if (reserved) {
+        if (entries.length >= 500) throw StateError('预约数量已达上限');
+        entries[reservation.id] = reservation;
+      } else {
+        entries.remove(reservation.id);
+      }
+      await _write(_userFile(_current, 'seasonReservations'), {
+        for (final entry in entries.entries) entry.key: entry.value.toJson(),
+      });
+      _seasonReservations
+        ..clear()
+        ..addAll(entries);
+      _notify();
+    }).then((_) => reserved);
+  }
+
+  /// 已上线（到日期或季列表里已有集数）的预约；供提醒条展示。
+  List<SeasonReservation> liveSeasonReservations({Set<String>? seasonIds}) {
+    final ids = seasonIds;
+    return _seasonReservations.values
+        .where((item) => ids?.contains(item.id) ?? true)
+        .where((item) => item.isLive || (item.drama.episodes > 0))
+        .toList();
+  }
+
+  bool isSeasonReserved(String id) => _seasonReservations.containsKey(id);
+
+  Iterable<SeasonReservation> get seasonReservations =>
+      _seasonReservations.values;
 
   Future<void> saveWatch(WatchEntry entry, {bool quiet = false}) {
     final epoch = _epoch;

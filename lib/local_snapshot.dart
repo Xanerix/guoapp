@@ -12,6 +12,7 @@ class LocalSnapshot {
     'history',
     'favorites',
     'followStates',
+    'seasonReservations',
     'seriesCandidates',
     'mediaHistory',
     'source',

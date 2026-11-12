@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -235,7 +236,7 @@ func TestOfficialSeasonsDropsDifferentAlbum(t *testing.T) {
 	items, ok := engine.officialSeasons(context.Background(), []Drama{
 		seasonDrama("7663898166743288857", "家有五女第一季", 125),
 		seasonDrama("7685376296183942169", "家有五女第三季", 174),
-	}, current, resolve)
+	}, current, resolve, nil)
 	if !ok {
 		t.Fatal("official group should be available")
 	}
@@ -264,7 +265,7 @@ func TestOfficialSeasonsGroupsSameAlbumBySeasonIndex(t *testing.T) {
 		seasonDrama("2001", "合成剧第一季（重复）", 80),
 		seasonDrama("2003", "合成剧第四季", 30),
 		seasonDrama("2999", "合成剧第二季", 60),
-	}, current, resolve)
+	}, current, resolve, nil)
 	if !ok {
 		t.Fatal("official group should be available")
 	}
@@ -310,7 +311,7 @@ func TestOfficialSeasonsMergesSplitAlbums(t *testing.T) {
 		seasonDramaOn("3", "合成剧第三季", "2026-08-27", 100),
 		seasonDramaOn("2", "合成剧第二季", "2026-08-19", 143),
 		seasonDramaOn("5", "合成剧第五季", "2026-10-05", 214),
-	}, current, resolve)
+	}, current, resolve, nil)
 	if !ok {
 		t.Fatal("official group should be available")
 	}
@@ -344,7 +345,7 @@ func TestOfficialSeasonsRejectsCrossAlbumOutOfOrder(t *testing.T) {
 	}
 	items, ok := engine.officialSeasons(context.Background(), []Drama{
 		seasonDramaOn("3", "合成剧第三季", "2026-09-16", 174),
-	}, current, resolve)
+	}, current, resolve, nil)
 	if !ok {
 		t.Fatal("official group should be available")
 	}
@@ -362,7 +363,62 @@ func TestOfficialSeasonsFallsBackWithoutFields(t *testing.T) {
 	resolve := func(context.Context, string) (string, int, Drama, bool) {
 		return "", 0, Drama{}, false
 	}
-	if _, ok := engine.officialSeasons(context.Background(), nil, current, resolve); ok {
+	if _, ok := engine.officialSeasons(context.Background(), nil, current, resolve, nil); ok {
 		t.Fatal("missing official fields must fall back to heuristics")
+	}
+}
+
+func TestOfficialSeasonsFillsSeasonGapAndEvictsImpostor(t *testing.T) {
+	// 实测：「持械入宋」用剧名做联想关键词召回不到正确的第二季，
+	// 蹭名剧（另一系列组、季号同为 2）抢占了槽位；带分隔符的精确关键词能召回正确季。
+	// 补查回来的同组官方季要顶掉蹭名剧。
+	engine, err := newNativeEngine(t.TempDir(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	current := nativeNormalize(seasonDramaOn("1", "合成剧第一季", "2026-08-09", 100))
+	details := map[string]struct {
+		album  string
+		number int
+	}{
+		"1":  {"A", 1},
+		"2x": {"B", 2}, // 蹭名剧：另一系列组、季号同为 2
+		"2":  {"A", 2}, // 正确的第二季
+		"3":  {"A", 3},
+		"4":  {"A", 4},
+	}
+	resolve := func(_ context.Context, sourceID string) (string, int, Drama, bool) {
+		item, ok := details[sourceID]
+		return item.album, item.number, Drama{}, ok
+	}
+	// 模拟联想搜索：剧名关键词召回不到正确第二季，精确关键词可以。
+	search := func(_ context.Context, keyword string) ([]Drama, error) {
+		if strings.Contains(keyword, "第二季") || strings.Contains(keyword, "第2季") {
+			return []Drama{seasonDramaOn("2", "合成剧第二季", "2026-08-22", 100)}, nil
+		}
+		return nil, nil
+	}
+	items, ok := engine.officialSeasons(context.Background(), []Drama{
+		seasonDramaOn("2x", "合成剧第二季", "2026-08-19", 143),
+		seasonDramaOn("3", "合成剧第三季", "2026-08-27", 100),
+		seasonDramaOn("4", "合成剧第四季", "2026-09-02", 100),
+	}, current, resolve, search)
+	if !ok {
+		t.Fatal("official group should be available")
+	}
+	if len(items) != 4 {
+		t.Fatalf("seasons = %+v", items)
+	}
+	for index, want := range []int{1, 2, 3, 4} {
+		if items[index].Number != want {
+			t.Fatalf("season %d number = %d", index, items[index].Number)
+		}
+	}
+	// 第 2 季槽位必须由同组官方季（正确的第二季）占据，蹭名剧被顶掉。
+	if items[1].Drama.SourceID != "2" {
+		t.Fatalf("season 2 should be the same-album official season: %+v", items[1])
+	}
+	if items[1].Drama.Episodes != 100 {
+		t.Fatalf("season 2 should keep official metadata: %+v", items[1])
 	}
 }

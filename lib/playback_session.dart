@@ -76,6 +76,7 @@ class PlaybackSession extends ChangeNotifier {
     _speed = preferences.speed;
     _quality = preferences.quality;
     _danmakuEnabled = preferences.danmaku;
+    _videoFit = preferences.videoFit;
     _unmutedVolume = store.playerVolume.clamp(1.0, 100.0);
     unawaited(_player.setVolume(_unmutedVolume));
     _loader = PlaybackLoader(repository);
@@ -119,6 +120,7 @@ class PlaybackSession extends ChangeNotifier {
     _subscriptions.clear();
     final size = videoDisplaySize(player.state.videoParams);
     if (size != null) {
+      _videoSize = size;
       _aspectRatio = size.width / size.height;
       _aspectKnown = true;
     }
@@ -151,6 +153,7 @@ class PlaybackSession extends ChangeNotifier {
       stream.videoParams.listen((parameters) {
         final size = videoDisplaySize(parameters);
         if (size == null || _closed) return;
+        _videoSize = size;
         _aspectRatio = size.width / size.height;
         _aspectKnown = true;
         // 视频轨道参数出现 = 新纹理已经有画面可渲染。
@@ -236,6 +239,8 @@ class PlaybackSession extends ChangeNotifier {
   double _speed = 1;
   int _quality = 0;
   bool _danmakuEnabled = true;
+  Size? _videoSize;
+  VideoFit _videoFit = VideoFit.auto;
   double _aspectRatio = 9 / 16;
   bool _aspectKnown = false;
   double _resumePosition = 0;
@@ -266,6 +271,8 @@ class PlaybackSession extends ChangeNotifier {
   bool get paused => !_playIntent;
   bool get boosting => _boosting;
   bool get boostLocked => _boostLocked;
+  Size? get videoSize => _videoSize;
+  VideoFit get videoFit => _videoFit;
   double get aspectRatio => _aspectRatio;
   bool get aspectKnown => _aspectKnown;
   double get speed => _speed;
@@ -297,6 +304,7 @@ class PlaybackSession extends ChangeNotifier {
     speed: _speed,
     quality: _quality,
     danmaku: _danmakuEnabled,
+    videoFit: _videoFit,
     autoAdvance: true,
     preload: true,
   );
@@ -904,6 +912,11 @@ class PlaybackSession extends ChangeNotifier {
         DiaryService.add('[Play] 旧播放器 stop 超时，跳过等待直接起播');
       }
 
+      // 旧实例 stop（音频会话已完全卸载）之后，再恢复新实例的音频轨：
+      // 音频输出在此刻才初始化，避开 ao_audiounit setActive(NO) 的
+      // 进程级竞态（上游 Xanerix/guoapp#94）。
+      await _setAudioTrackEnabled(next, true);
+
       if (_current(ticket) && _foreground && _playIntent) {
         await next.play();
         unawaited(_ensurePlaying(ticket));
@@ -1042,6 +1055,12 @@ class PlaybackSession extends ChangeNotifier {
       // 待机播放器也保留完整缓存：限到 4MB 时高倍速/弱网切过去只缓冲了一两秒，
       // 首帧播完就断流，表现为卡在第 1 秒。
       await _limitCache(standby, false);
+      // 待机只做预缓冲：禁用音频轨，预加载期不初始化音频输出。
+      // iOS 上 mpv 的 ao_audiounit 在卸载文件时会调用进程级
+      // AVAudioSession.setActive(NO)，待机实例若已启动音频输出会被
+      // 正在播的实例 stop 时一起杀掉，新集以音频为主时钟会定格在开头
+      // （上游 Xanerix/guoapp#94）。
+      await _setAudioTrackEnabled(standby, false);
       await standby.open(
         Media(plan.url, httpHeaders: plan.headers),
         play: false,
@@ -1073,6 +1092,21 @@ class PlaybackSession extends ChangeNotifier {
       'demuxer-max-bytes',
       '${(limited ? 4 : 32) * 1024 * 1024}',
     );
+    // 关键：max-bytes 只是缓冲上限，mpv 的 demuxer-readahead-secs（默认 1s）
+    // 决定实际预读量——暂停态的待机播放器只预读当前位置前方约 1 秒就停。
+    // 预加载/换集路径（limited=false）必须把预读窗口放大，待机切进来才
+    // 有真缓冲可播，否则首帧播完停 1~2 秒等网络。32MB 上限仍兜住内存。
+    await platform.setProperty('demuxer-readahead-secs', limited ? '1' : '30');
+  }
+
+  /// 开关播放器的音频轨。预加载的待机实例以 aid=no 打开（只缓冲不出声），
+  /// 换集等旧实例 stop 完成后再恢复 aid=auto，让音频输出干净地重新初始化。
+  Future<void> _setAudioTrackEnabled(Player target, bool enabled) async {
+    final platform = target.platform;
+    if (platform is! NativePlayer) return;
+    try {
+      await platform.setProperty('aid', enabled ? 'auto' : 'no');
+    } catch (_) {}
   }
 
   void start(int index, {double position = 0}) {
@@ -1283,6 +1317,13 @@ class PlaybackSession extends ChangeNotifier {
     _speed = value;
     _notify();
     if (!_boosting) await _setRate(value);
+  }
+
+  Future<void> setVideoFit(VideoFit value) async {
+    if (value == _videoFit) return;
+    await _savePreferences(_preferences.copyWith(videoFit: value));
+    _videoFit = value;
+    _notify();
   }
 
   Future<void> setQuality(int value) async {
