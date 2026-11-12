@@ -215,9 +215,9 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
         if (repeat) _volume(_playback.changeVolume(-5));
       case LogicalKeyboardKey.keyM:
         if (down) _volume(_playback.toggleMute());
-      case LogicalKeyboardKey.mediaTrackNext:
+      case LogicalKeyboardKey.mediaTrackNext || LogicalKeyboardKey.pageDown:
         if (down) _episode(1);
-      case LogicalKeyboardKey.mediaTrackPrevious:
+      case LogicalKeyboardKey.mediaTrackPrevious || LogicalKeyboardKey.pageUp:
         if (down) _episode(-1);
       default:
         return KeyEventResult.ignored;
