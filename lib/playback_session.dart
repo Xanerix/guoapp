@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui' show Size;
+import 'dart:ui' show AppLifecycleState, Size;
 
 import 'package:flutter/foundation.dart';
 import 'package:media_kit/media_kit.dart';
@@ -53,6 +53,84 @@ bool isBenignPlayerError(String error) {
 /// 取流服务探活结果：明确存活、确认失效、或状态未知（通信异常）。
 enum _StreamProbe { alive, dead, unknown }
 
+/// 播放会话的统一对外状态。
+///
+/// 迁移规则集中在一个位置推导（见 PlaybackSession._derivePhase），
+/// 任何内部 bool 变更在 notify 前都会对齐到这里，避免十余个标志互相矛盾：
+/// idle → opening / switching（解析地址、打开媒体）→ playing；
+/// buffering 是 playing 的临时子态，持续超过预算转 recovering；
+/// recovering 成功回 playing，打开预算耗尽或恢复次数用尽转 error；
+/// paused / background / completed 都可回到 playing。
+enum PlaybackPhase {
+  idle,
+  opening,
+  buffering,
+  playing,
+  paused,
+  switching,
+  recovering,
+  background,
+  completed,
+  error,
+}
+
+/// 应用生命周期阶段。UI 只负责上报原始 [AppLifecycleState]，
+/// 由 PlaybackSession 唯一解释成这三个阶段，消除各页面口径不一致。
+enum PlaybackLifecycleStage {
+  /// 真前台：可见且可交互。
+  foreground,
+
+  /// 即将离开前台（iOS inactive：锁屏/控制中心/来电瞬间）。
+  /// 此时进程仍可渲染，只保存快照与抓帧，不暂停播放器。
+  preparing,
+
+  /// 已进入后台（paused / hidden / detached），需要暂停与保存进度。
+  background,
+}
+
+/// 切集来源。所有切集必须经 PlaybackSession.switchTo 进入，
+/// 用 reason 区分策略与打点，避免 UI 各自解释边界条件。
+enum SwitchReason {
+  /// 选集面板点击。
+  select,
+
+  /// 上一集 / 下一集按钮、迷你播放器、播控条。
+  previous,
+  next,
+
+  /// 竖屏/横屏上下滑动翻页。
+  swipe,
+
+  /// 当前集播完自动连播。
+  completed,
+
+  /// 本季播完衔接下一季第 1 集。
+  season,
+
+  /// 键盘 / 遥控器上下集。
+  keyboard,
+
+  /// 从历史记录、详情页等带进度进入播放。
+  start,
+
+  /// 其它未分类入口。
+  other,
+}
+
+/// 异步播放任务超出预算。
+///
+/// Future.timeout 并不会取消原始任务：抛出它只代表「不再等待」，
+/// 原始 Future 仍可能在后台结束，其结果必须被丢弃而不是写回状态。
+class PlaybackTaskTimeout implements Exception {
+  const PlaybackTaskTimeout(this.label, this.timeout);
+
+  final String label;
+  final Duration timeout;
+
+  @override
+  String toString() => '$label 超时（${timeout.inMilliseconds}ms）';
+}
+
 /// 恢复后确认真正开播的采样窗口与最小推进量。
 const _restoreWindow = Duration(milliseconds: 1200);
 const _restoreProgress = Duration(milliseconds: 300);
@@ -71,6 +149,17 @@ class PlaybackSession extends ChangeNotifier {
     bool autoplay = true,
     this._swapStopTimeout = const Duration(seconds: 2),
     this._intentStopTimeout = const Duration(seconds: 6),
+    this._resolveTimeout = const Duration(seconds: 20),
+    this._openTimeout = const Duration(seconds: 12),
+    this._playTimeout = const Duration(seconds: 8),
+    this._openBudget = const Duration(seconds: 25),
+    this._bufferingBudget = const Duration(seconds: 25),
+    this._standbyOpenTimeout = const Duration(seconds: 12),
+    this._surfaceCoverTimeout = const Duration(seconds: 3),
+    this._surfaceHardTimeout = const Duration(seconds: 5),
+    this._recoveryMaxAttempts = PlaybackRecovery.defaultMaxAttempts,
+    this._recoveryWindow = PlaybackRecovery.defaultWindow,
+    this._recoveryBackoff = const Duration(seconds: 1),
   }) : _engaged = autoplay,
        _index = index,
        _epoch = store.profileEpoch {
@@ -94,14 +183,15 @@ class PlaybackSession extends ChangeNotifier {
       (_) => saveProgress(quiet: true),
     );
     _healthTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (_closed ||
-          _restoring ||
-          !_acceptErrors ||
-          _loading ||
-          _error != null) {
+      if (_closed) return;
+      final now = DateTime.now();
+      // 起播 / 异常窗口不再整体屏蔽健康检查：持续 buffering 必须能被发现，
+      // 否则 _loading=true 时播放器卡在缓冲永远不会进入任何恢复链。
+      // 打开窗口本身另由 _openBudgetTimer 守护，保证不会永久 Loading。
+      if (_checkBuffering(now)) return;
+      if (_restoring || !_acceptErrors || _loading || _error != null) {
         return;
       }
-      final now = DateTime.now();
       final state = player.state;
       if (_health.stalled(
         position: state.position,
@@ -194,14 +284,44 @@ class PlaybackSession extends ChangeNotifier {
   late final DanmakuController danmaku;
   late final PlaybackLoader _loader;
   late final PlaybackPreloader _preloader;
-  final _recovery = PlaybackRecovery();
-  late final _health = PlaybackHealth(intentStopTimeout: _intentStopTimeout);
+  late final _recovery = PlaybackRecovery(
+    maxAttempts: _recoveryMaxAttempts,
+    window: _recoveryWindow,
+    baseBackoff: _recoveryBackoff,
+  );
+  late final _health = PlaybackHealth(
+    intentStopTimeout: _intentStopTimeout,
+    bufferingTimeout: _bufferingBudget,
+  );
 
   /// 旧播放器 stop 的最长等待；超时说明原生停止挂住，放弃交换改走重建。
   final Duration _swapStopTimeout;
 
   /// 有播放意图但播放器持续静止多久后自动恢复。
   final Duration _intentStopTimeout;
+
+  /// 解析地址 / open / play 各自的等待上限，以及整次打开的兜底预算。
+  /// 都可在测试中注入短值，生产值不允许靠「加延时」掩盖挂起。
+  final Duration _resolveTimeout;
+  final Duration _openTimeout;
+  final Duration _playTimeout;
+  final Duration _openBudget;
+  final Duration _bufferingBudget;
+
+  /// 待机播放器预打开的等待上限。挂起时该实例不再复用，直接释放，
+  /// 预加载降级为「只解析地址」，绝不影响当前正在播的这一集。
+  final Duration _standbyOpenTimeout;
+
+  /// 盖幕 3s 软兜底（进恢复链）与之后的硬兜底（强制揭幕，防永久黑屏）。
+  /// 同样允许测试注入短值。
+  final Duration _surfaceCoverTimeout;
+  final Duration _surfaceHardTimeout;
+
+  /// 恢复协调器的次数上限、时间窗口与起始退避；测试可注入短值验证
+  /// 「次数耗尽」与「分级升级」，生产值保持 6 次 / 10 分钟 / 1s→8s。
+  final int _recoveryMaxAttempts;
+  final Duration _recoveryWindow;
+  final Duration _recoveryBackoff;
   final int _epoch;
   final List<StreamSubscription<dynamic>> _subscriptions = [];
   Timer? _saveTimer;
@@ -216,6 +336,15 @@ class PlaybackSession extends ChangeNotifier {
   int _openedIndex = -1;
   int _generation = 0;
   int _seekSequence = 0;
+
+  /// 唯一对外状态；只经 _setPhase 写入，由 _notify 对齐。
+  PlaybackPhase _phase = PlaybackPhase.idle;
+  bool _switching = false;
+  Timer? _openBudgetTimer;
+  DateTime? _openStartedAt;
+  bool _bufferingRecovering = false;
+  int _bufferingRecoveries = 0;
+  static const _maxBufferingRecoveries = 2;
   bool _loading = true;
   bool _online = false;
   bool _localFailure = false;
@@ -241,8 +370,36 @@ class PlaybackSession extends ChangeNotifier {
   DateTime? _surfaceCoverAt;
   Timer? _surfaceTimer;
 
+  /// 3s 软兜底之后的硬兜底：恢复链也救不回来时不能让用户永远盯着黑幕。
+  Timer? _surfaceHardTimer;
+
+  // ---- 统一生命周期入口（阶段 C）----
+  AppLifecycleState? _lastLifecycle;
+  int _lifecycleEpoch = 0;
+  PlaybackLifecycleStage _lifecycleStage = PlaybackLifecycleStage.foreground;
+  bool _pipActive = false;
+
+  /// 只经历过 inactive、没有真正 paused：回前台时需走一次轻量恢复检查。
+  bool _lifecycleDormant = false;
+
+  /// 后台播完当前集：不在后台启动解析，回前台再补切下一集。
+  bool _pendingCompleted = false;
+
+  // ---- 阶段 D：恢复协调器的外部输入 ----
+  /// 网络是否可达。C-Native 的 `NWPathMonitor` 落地后由 EventChannel
+  /// 转发到 [onNetworkChanged]；在此之前只有 Dart 单测会驱动它。
+  bool _networkReachable = true;
+
+  /// Go 本机取流监听的当前 epoch。`nativeOpenPlayback` 把建会话时的
+  /// epoch 写进 `PlaybackPlan.streamEpoch`；监听重建后两者不一致，
+  /// 旧 session 的 fallback 必然失败，恢复链必须改为强制刷新地址。
+  int _streamEpoch = 0;
+
   /// 盖黑幕之后当前纹理是否已报告首帧参数（视频轨道真实就绪）。
   bool _surfaceFrame = false;
+
+  /// 3s 软兜底已触发过：黑幕仍在，恢复链接手。
+  bool _surfaceTimedOut = false;
   Duration _surfaceCoverPosition = Duration.zero;
   bool _forceSoftwareDecode = false;
   bool _boosting = false;
@@ -261,6 +418,14 @@ class PlaybackSession extends ChangeNotifier {
   bool _standbyOpen = false;
   bool _standbyBusy = false; // 旧播放器 stop 未完时，禁止 _prime 复用它
   DateTime _standbyAt = DateTime(2000);
+
+  /// 每次 _prime / _dropStandby 都递增：在途的待机打开任务在回写前
+  /// 必须校验票据，防止上一集的预打开晚完成后覆盖新一集的状态。
+  int _standbyTicket = 0;
+
+  /// 待机预打开挂起过一次后不再尝试复用该实例：降级为只解析地址。
+  /// 目的不是「修好预加载」，而是保证它永远不能拖垮当前播放。
+  bool _standbyHung = false;
   double _openedAt = 0;
   double _speed = 1;
   int _quality = 0;
@@ -271,6 +436,9 @@ class PlaybackSession extends ChangeNotifier {
   bool _aspectKnown = false;
   double _resumePosition = 0;
   double _unmutedVolume = 100;
+
+  /// 统一对外状态。所有内部 bool 只是实现细节，读取状态一律以此为准。
+  PlaybackPhase get phase => _phase;
 
   Player get player => _player;
 
@@ -284,6 +452,15 @@ class PlaybackSession extends ChangeNotifier {
   bool get localFailure => _localFailure;
   bool get loginRequired => _loginRequired;
   String? get saveWarning => _saveWarning;
+
+  /// 恢复链的可观测状态（诊断/单测用）：已尝试次数、已到级别、是否耗尽。
+  int get recoveryAttempts => _recovery.attempts;
+  int get recoveryLevel => _recovery.lastLevel;
+  bool get recoveryExhausted => _recovery.exhausted;
+  bool get networkReachable => _networkReachable;
+  int get streamEpoch => _streamEpoch;
+
+  /// 画面/交互是否就绪。与 phase 保持一致：打开中、换集中、出错时均不就绪。
   bool get ready => !_loading && _error == null;
 
   bool get stalled => _stalled;
@@ -293,6 +470,27 @@ class PlaybackSession extends ChangeNotifier {
 
   /// 恢复瞬间纹理重建会出现一两帧花屏，用一个短黑幕遮住。
   bool get surfaceCover => _surfaceCover;
+
+  /// 3s 软兜底已触发：首帧迟迟不来，黑幕保留并交给恢复链。
+  bool get surfaceTimedOut => _surfaceTimedOut;
+
+  /// 真实画面就绪：组合视频轨道尺寸/参数、非打开中、无错误、非缓冲。
+  /// 与 [ready] 的区别：ready 表示「控件可交互」（UI 层 40+ 处依赖，暂停时
+  /// 仍为 true），frameReady 只表示「纹理上确实有画面」，供盖幕与诊断使用。
+  bool get frameReady =>
+      !_closed &&
+      !_loading &&
+      _error == null &&
+      !player.state.buffering &&
+      (_aspectKnown || (player.state.width ?? 0) > 0);
+
+  /// 统一生命周期入口的当前阶段，供日志与测试观察。
+  PlaybackLifecycleStage get lifecycleStage => _lifecycleStage;
+
+  /// 真实发生过的生命周期迁移次数（重复上报不计），用于验证去重。
+  int get lifecycleEpoch => _lifecycleEpoch;
+
+  bool get pipActive => _pipActive;
 
   bool get paused => !_playIntent;
   bool get boosting => _boosting;
@@ -326,13 +524,15 @@ class PlaybackSession extends ChangeNotifier {
   bool get _usable => !_closed && store.profileEpoch == _epoch;
   bool _current(int ticket) => _usable && ticket == _generation;
 
+  /// 只覆盖由会话实时驱动的那几项。
+  /// autoAdvance / preload 必须沿用用户设置：以前这里硬编码 true，
+  /// 导致任何一次偏好写入（改倍速、改清晰度）都把用户关掉的自动连播
+  /// 悄悄改回开启（P1-9）。
   PlaybackPreferences get _preferences => store.playbackPreferences.copyWith(
     speed: _speed,
     quality: _quality,
     danmaku: _danmakuEnabled,
     videoFit: _videoFit,
-    autoAdvance: true,
-    preload: true,
   );
 
   double get _rate => _boosting ? 2 : _speed;
@@ -345,14 +545,53 @@ class PlaybackSession extends ChangeNotifier {
         _stalled = true;
         _notify();
       });
-    } else if (_stalled) {
+    } else {
       _stalled = false;
+      // 缓冲结束即退出「检测级」，并清掉连续计数，避免下次缓冲被误判。
+      if (_bufferingRecovering) {
+        _bufferingRecovering = false;
+        _bufferingRecoveries = 0;
+        _health.resetBuffering();
+      }
       _notify();
     }
   }
 
+  /// 唯一的 phase 写入口；异常相关迁移留可观测日志。
+  void _setPhase(PlaybackPhase next) {
+    if (_phase == next) return;
+    final previous = _phase;
+    _phase = next;
+    if (next == PlaybackPhase.error ||
+        next == PlaybackPhase.recovering ||
+        next == PlaybackPhase.background) {
+      DiaryService.add(
+        '[Play] 状态 ${previous.name} → ${next.name} 集=${_index + 1}',
+      );
+    }
+  }
+
+  /// 由内部字段推导唯一状态。每次 notify 前调用，杜绝 bool 与 phase 不同步。
+  PlaybackPhase _derivePhase() {
+    if (_closed) return PlaybackPhase.idle;
+    if (_error != null) return PlaybackPhase.error;
+    if (!_foreground) return PlaybackPhase.background;
+    if (_bufferingRecovering || _restoring || _rebuilding || _pendingError) {
+      return PlaybackPhase.recovering;
+    }
+    if (_loading) {
+      return _switching ? PlaybackPhase.switching : PlaybackPhase.opening;
+    }
+    if (player.state.completed) return PlaybackPhase.completed;
+    if (player.state.buffering) return PlaybackPhase.buffering;
+    if (!_playIntent || _pausedByUser) return PlaybackPhase.paused;
+    return PlaybackPhase.playing;
+  }
+
   void _notify() {
-    if (!_closed) notifyListeners();
+    if (_closed) return;
+    _setPhase(_derivePhase());
+    notifyListeners();
   }
 
   void _accessChanged() {
@@ -363,6 +602,7 @@ class PlaybackSession extends ChangeNotifier {
       _playIntent = false;
       endBoost();
       unawaited(player.pause());
+      _notify();
     }
     if (store.profileEpoch != _epoch ||
         store.locked ||
@@ -402,6 +642,8 @@ class PlaybackSession extends ChangeNotifier {
 
   void _syncPreload() {
     if (_closed) return;
+    // 预加载结果只对本次会话有效：切集后旧会话的解析结果一律丢弃。
+    final ticket = _generation;
     if (!_foreground ||
         _plan?.local == true ||
         !ready ||
@@ -440,6 +682,7 @@ class PlaybackSession extends ChangeNotifier {
       detail.episodes[_index + 1],
       quality: _quality,
       online: _online,
+      isCurrent: () => !_closed && ticket == _generation,
     );
   }
 
@@ -458,20 +701,30 @@ class PlaybackSession extends ChangeNotifier {
     if (duration <= Duration.zero ||
         player.state.position < duration - const Duration(seconds: 2)) {
       _queueRecovery('early_completion');
-    } else if (_foreground && hasNext) {
-      unawaited(play(_index + 1));
-    } else if (_foreground && _nextSeason != null) {
+      return;
+    }
+    // 用户关掉自动连播时停在本集末尾，不再强制衔接（P1-9）。
+    final advance = store.playbackPreferences.autoAdvance;
+    if (!_foreground && advance && (hasNext || _nextSeason != null)) {
+      // 后台播完不在后台发起解析（网络/音频都可能已被系统回收）：
+      // 记下待办，回前台由 onLifecycleEvent 补切（P1-8）。
+      _pendingCompleted = true;
+      DiaryService.add('[Play] 后台播完，回前台补切 集=${_index + 1}');
+    } else if (_foreground && advance && hasNext) {
+      unawaited(switchTo(_index + 1, reason: SwitchReason.completed));
+    } else if (_foreground && advance && _nextSeason != null) {
       // 本季已看完：同一站源内自动接上下一季第 1 集。
       unawaited(_playNextSeason());
     } else {
       DiaryService.add(
-        '[Play] 本季已看完 季数=${detail.seasons.length} '
-        '下一季=${_nextSeason?.label ?? '无'}',
+        '[Play] 本集播完不连播 季数=${detail.seasons.length} '
+        '下一季=${_nextSeason?.label ?? '无'} 自动连播=$advance',
       );
       _playIntent = false;
       endBoost();
       unawaited(player.pause());
       unawaited(saveProgress());
+      _notify();
     }
   }
 
@@ -548,13 +801,14 @@ class PlaybackSession extends ChangeNotifier {
       _online = false;
       _playIntent = true;
       _notify();
-      await play(0, playWhenReady: true);
+      // 换季必须经统一切集入口：standby 属于上一季，禁止命中。
+      await switchTo(0, reason: SwitchReason.season, allowStandby: false);
       if (_error?.contains('context canceled') ?? false) {
         // 换季解析被并发操作取消时重试一次，避免停在错误页。
         DiaryService.add('[Play] 换季解析被取消，重试一次');
         _error = null;
         _loading = false;
-        await play(0, playWhenReady: true);
+        await switchTo(0, reason: SwitchReason.season, allowStandby: false);
       }
     } catch (error) {
       DiaryService.add('[Play] 切换下一季失败：${_diagnostic(error)}');
@@ -572,6 +826,7 @@ class PlaybackSession extends ChangeNotifier {
   void _queueRecovery(String reason) {
     if (_closed || !_acceptErrors || _error != null) return;
     _pendingError = true;
+    _notify();
     if (!_foreground || (_errorTimer?.isActive ?? false)) return;
     final ticket = _generation;
     final position = player.state.position;
@@ -587,6 +842,9 @@ class PlaybackSession extends ChangeNotifier {
         // 不代表地址可用（连接被拒也要等到 mpv 异步报错）。
         _iosRebuilds = 0;
         _forceSoftwareDecode = false;
+        // 画面真的在推进 = 本次恢复链已达成目标，清掉次数，
+        // 否则下一次正常播放中的偶发故障会被旧计数直接判死。
+        _recovery.reset();
         return;
       }
       unawaited(_recover(reason));
@@ -602,6 +860,31 @@ class PlaybackSession extends ChangeNotifier {
         _error != null) {
       return;
     }
+    final initialTicket = _generation;
+    // 取一次最新的取流代次（有界 2s；查询失败沿用缓存值，不阻塞恢复）。
+    await _refreshStreamStatus();
+    if (_closed ||
+        !_acceptErrors ||
+        !_foreground ||
+        _error != null ||
+        !_current(initialTicket)) {
+      return;
+    }
+    final state = player.state;
+    final context = PlaybackRecoveryContext(
+      now: DateTime.now(),
+      networkReachable: _networkReachable,
+      buffering: state.buffering,
+      playing: state.playing,
+      wanted: _playIntent && !_pausedByUser && !_rebuilding,
+      hasAlternative: current.hasAlternative,
+      streamEpochStale: current.streamEpoch > 0 &&
+          _streamEpoch > 0 &&
+          current.streamEpoch != _streamEpoch,
+      local: current.local,
+    );
+    final decision = _recovery.start(reason: reason, context: context);
+    if (decision == null) return; // 已有恢复任务在跑：单一互斥，不并发
     _acceptErrors = false;
     danmaku.setPlan(null);
     _errorTimer?.cancel();
@@ -609,28 +892,100 @@ class PlaybackSession extends ChangeNotifier {
     // 用本次播放请求的起点，而不是旧播放器的位置：切集失败时旧位置属于
     // 上一集，用它重开会直接跳到片尾之外。
     final position = _resumePosition;
-    if (Platform.isIOS && !current.local && _iosRebuilds < 3) {
-      // iOS 上换线路/刷新地址救不活被回收的实例，直接重建一次；
-      // 连续失败时改用软件解码，绕开刚恢复时 VideoToolbox 初始化失败。
-      _iosRebuilds++;
-      if (_iosRebuilds >= 2) _forceSoftwareDecode = true;
-      _errorTimer?.cancel();
-      DiaryService.add('[Play] iOS 播放异常，重建播放器 原因=$reason 次数=$_iosRebuilds');
-      await _rebuildAndResume(position, _playIntent);
-      return;
-    }
-    final action = current.local
-        ? PlaybackRecoveryAction.stop
-        : _recovery.next(current);
-    DiaryService.add(
-      '[Play] 自动恢复 原因=$reason 处理=${action.name} 线路=${current.routeIndex + 1}/${current.routeCount}',
-    );
-    if (action != PlaybackRecoveryAction.stop) {
-      await play(_index, position: position, recovery: action);
-      return;
-    }
-    _resumePosition = position;
     final ticket = _generation;
+    DiaryService.add(
+      '[Play] 自动恢复 原因=$reason ${decision.message} '
+      '次数=${decision.attempt}/$_recoveryMaxAttempts '
+      '退避=${decision.backoff.inMilliseconds}ms '
+      '线路=${current.routeIndex + 1}/${current.routeCount} '
+      '会话代次=${current.streamEpoch}/$_streamEpoch',
+    );
+    try {
+      if (decision.backoff > Duration.zero) {
+        await Future<void>.delayed(decision.backoff);
+        if (_closed ||
+            !_current(ticket) ||
+            _recovery.activeToken != decision.token) {
+          _recovery.cancel();
+          return;
+        }
+      }
+      if (decision.exhausted) {
+        await _finishRecovery(decision, current, position, ticket);
+        return;
+      }
+      // 第 1 级结论：画面其实已在推进，不做任何动作。
+      if (decision.action == PlaybackRecoveryAction.detect &&
+          context.alreadyHealthy) {
+        _recovery.complete(decision, recovered: true);
+        return;
+      }
+      switch (decision.action) {
+        case PlaybackRecoveryAction.detect:
+        case PlaybackRecoveryAction.probe:
+          final probe = await _probeStream();
+          DiaryService.add('[Play] 恢复检测级 取流探活=${probe.name}');
+          if (probe == _StreamProbe.dead) {
+            // 监听确认失效，中间级动作都没意义：下一次直接升到重建级。
+            _recovery.complete(decision, recovered: false);
+            _acceptErrors = true;
+            _queueRecovery('probe_stream_dead');
+            return;
+          }
+          break;
+        case PlaybackRecoveryAction.replay:
+          await _kickPlayer();
+          break;
+        case PlaybackRecoveryAction.reopen:
+          await _reopenCurrentMedia(position, ticket);
+          break;
+        case PlaybackRecoveryAction.alternative:
+        case PlaybackRecoveryAction.refresh:
+          _recovery.complete(decision, recovered: false);
+          _acceptErrors = true;
+          await play(_index, position: position, recovery: decision.action);
+          return;
+        case PlaybackRecoveryAction.rebuild:
+          _iosRebuilds++;
+          if (_iosRebuilds >= 2) _forceSoftwareDecode = true;
+          _recovery.complete(decision, recovered: false);
+          _acceptErrors = true;
+          await _rebuildAndResume(position, _playIntent);
+          return;
+        case PlaybackRecoveryAction.stop:
+          await _finishRecovery(decision, current, position, ticket);
+          return;
+      }
+      _recovery.complete(decision, recovered: false);
+      _acceptErrors = true;
+      // 动作本身不保证已恢复：900ms 后二次确认，画面推进就 reset，
+      // 否则由协调器的 _level+1 保证单调升级。
+      _queueRecovery('${decision.action.name}_failed');
+    } catch (error) {
+      _recovery.complete(decision, recovered: false);
+      // 禁止静默吞异常：记日志，并让统一入口继续升级。
+      DiaryService.add('[Play] 恢复动作异常：${_diagnostic(error)}');
+      if (!_closed && _error == null) {
+        _acceptErrors = true;
+        _queueRecovery('recovery_exception');
+      }
+    } finally {
+      if (!decision.exhausted && _error == null && !_closed) {
+        _acceptErrors = true;
+      }
+      _notify();
+    }
+  }
+
+  /// 恢复链终态：停止当前播放器、释放站源会话、落地可读错误与手动重试。
+  Future<void> _finishRecovery(
+    PlaybackRecoveryDecision decision,
+    PlaybackPlan current,
+    double position,
+    int ticket,
+  ) async {
+    _recovery.complete(decision, recovered: false);
+    _resumePosition = position;
     try {
       await _serialize(() async {
         if (!_current(ticket)) return;
@@ -642,42 +997,256 @@ class PlaybackSession extends ChangeNotifier {
           await _release(current.session);
         }
       });
-    } catch (_) {}
+    } catch (error) {
+      DiaryService.add('[Play] 恢复终止时停止播放器失败：${_diagnostic(error)}');
+    }
     if (!_current(ticket)) return;
     _loading = false;
+    _switching = false;
+    _clearOpenBudget();
     _localFailure = current.local;
     _loginRequired = false;
-    _error = current.local
-        ? '本地视频读取失败，请重试或重新下载；也可以改为在线播放。'
-        : '自动恢复未成功，请检查网络后重试，也可换一集或选择其他清晰度。';
+    _error = decision.message;
     _notify();
+  }
+
+  /// 第 4 级：不换地址、不重建实例，只对当前 Media 重新 open + play。
+  /// 旧 session 必须保留，否则本地取流网关的 token 立刻失效。
+  Future<void> _reopenCurrentMedia(double position, int ticket) async {
+    final plan = _plan;
+    if (plan == null || plan.url.isEmpty) {
+      throw AppFailure('当前播放地址已失效，需要重新解析');
+    }
+    await _serialize(() async {
+      if (!_current(ticket)) return;
+      await _guarded<void>(
+        ticket,
+        '重新打开媒体',
+        () => player.open(
+          Media(
+            plan.url,
+            httpHeaders: plan.headers,
+            start: position > 0
+                ? Duration(milliseconds: (position * 1000).round())
+                : null,
+          ),
+          play: _foreground && _playIntent,
+        ),
+        timeout: _openTimeout,
+      );
+      if (_current(ticket) && _playIntent && _foreground) {
+        await _guarded<void>(
+          ticket,
+          '重开后启动播放',
+          () => player.play(),
+          timeout: _playTimeout,
+        );
+      }
+    });
+  }
+
+  /// 查询取流代次，用于判断旧播放会话是否已随监听重建而作废。
+  Future<void> _refreshStreamStatus() async {
+    try {
+      final status = await repository
+          .playbackStatus()
+          .timeout(const Duration(seconds: 2));
+      if (!_closed) _streamEpoch = status.epoch;
+    } catch (error) {
+      DiaryService.add('[Play] 取流代次查询失败：${_diagnostic(error)}');
+    }
+  }
+
+  /// 网络可达性变化的唯一入口。C-Native 的 NWPathMonitor / EventChannel
+  /// 落地后由此转发；在原生事件接入前，Dart 单测直接驱动这个入口。
+  void onNetworkChanged(bool reachable) {
+    if (_networkReachable == reachable) return;
+    _networkReachable = reachable;
+    DiaryService.add('[Play] 网络状态变化 可达=$reachable 集=${_index + 1}');
+    _notify();
+    if (!reachable || _closed) return;
+    // 网络恢复给一次全新的机会；已有错误时 _queueRecovery 会被 guard
+    // 挡住，必须走与用户手动重试相同的 retry() 路径。
+    _recovery.reset();
+    if (_error != null) {
+      unawaited(retry());
+    } else if (_foreground) {
+      _queueRecovery('network_restored');
+    }
   }
 
   Future<void> _release(String session) async {
     if (session.isEmpty) return;
-    await repository.release(session).catchError((Object _) {});
+    try {
+      await repository.release(session);
+    } catch (error) {
+      DiaryService.add('[Play] 释放站源会话失败：${_diagnostic(error)}');
+    }
   }
 
-  /// 等待旧实例真正释放，再让新实例打开媒体；释放失败也不能阻塞恢复。
+  /// 等待旧实例真正释放，再让新实例打开媒体。
+  ///
+  /// dispose 超时**不代表原生侧结束**：此时不能摘掉映射，否则新会话会把
+  /// 仍在卸载音频/纹理的旧实例当成可用对象。等原 Future 真正结束再摘，
+  /// 既不阻塞恢复链，也不留下无主实例。
   Future<void> _retire(Player target) async {
     final watch = Stopwatch()..start();
+    var retired = false;
+    void retire() {
+      if (retired) return;
+      retired = true;
+      _onRetired?.call(target);
+    }
+
+    final Future<void> future;
     try {
-      // 上限 1.5s：dispose 卡住时不能让整条恢复链跟着停住。
-      await target.dispose().timeout(const Duration(milliseconds: 1500));
+      future = target.dispose();
+    } catch (error) {
+      DiaryService.add('[Play] 释放播放器异常：${_diagnostic(error)}');
+      retire();
+      return;
+    }
+    try {
+      await future.timeout(const Duration(milliseconds: 1500));
+      retire();
+    } on TimeoutException {
+      DiaryService.add(
+        '[Play] 释放播放器超时 用时=${watch.elapsedMilliseconds}ms，'
+        '等原生 dispose 结束后再摘映射',
+      );
+      unawaited(
+        future
+            .then<void>(
+              (_) {},
+              onError: (Object error) {
+                DiaryService.add('[Play] 延迟释放播放器失败：${_diagnostic(error)}');
+              },
+            )
+            .whenComplete(retire),
+      );
     } catch (error) {
       DiaryService.add(
         '[Play] 释放播放器异常 用时=${watch.elapsedMilliseconds}ms：'
         '${_diagnostic(error)}',
       );
-    } finally {
-      _onRetired?.call(target);
+      retire();
     }
   }
 
   Future<void> _serialize(Future<void> Function() operation) {
-    final next = _operations.catchError((Object _) {}).then((_) => operation());
+    final next = _operations
+        .then<void>(
+          (_) {},
+          onError: (Object error) {
+            DiaryService.add('[Play] 上一个串行任务失败：${_diagnostic(error)}');
+          },
+        )
+        .then((_) => operation());
     _operations = next;
     return next;
+  }
+
+  /// 统一的异步任务护栏。
+  ///
+  /// Future.timeout 不会取消原始任务：超时后只标记本次票据作废，原始
+  /// Future 留在后台自行结束，并在返回时丢弃结果、释放它创建的资源。
+  /// 任何晚于新会话返回的结果都不得写回 _plan / _index / _loading。
+  Future<T> _guarded<T>(
+    int ticket,
+    String label,
+    Future<T> Function() work, {
+    required Duration timeout,
+    void Function(T value)? onLate,
+  }) async {
+    final future = work();
+    try {
+      final value = await future.timeout(timeout);
+      if (!_current(ticket)) {
+        onLate?.call(value);
+        throw PlaybackTaskTimeout(label, timeout);
+      }
+      return value;
+    } on TimeoutException {
+      unawaited(
+        future.then<void>(
+          (value) {
+            DiaryService.add('[Play] 过期任务已返回并丢弃 任务=$label 票据=$ticket');
+            onLate?.call(value);
+          },
+          onError: (Object error) {
+            DiaryService.add(
+              '[Play] 过期任务失败并丢弃 任务=$label 票据=$ticket：'
+              '${_diagnostic(error)}',
+            );
+          },
+        ),
+      );
+      throw PlaybackTaskTimeout(label, timeout);
+    }
+  }
+
+  /// 整次打开的兜底预算：resolve / open / play 任一环节挂起，都不能让
+  /// 播放页一直转圈。预算耗尽即作废票据并落地可读错误 + 手动重试。
+  void _armOpenBudget(int ticket) {
+    _clearOpenBudget();
+    _openStartedAt = DateTime.now();
+    _openBudgetTimer = Timer(_openBudget, () => _onOpenBudgetExpired(ticket));
+  }
+
+  void _clearOpenBudget() {
+    _openBudgetTimer?.cancel();
+    _openBudgetTimer = null;
+    _openStartedAt = null;
+  }
+
+  void _onOpenBudgetExpired(int ticket) {
+    _openBudgetTimer = null;
+    if (_closed || !_current(ticket) || !_loading) return;
+    final started = _openStartedAt;
+    DiaryService.add(
+      '[Play] 打开预算耗尽 预算=${_openBudget.inMilliseconds}ms '
+      '已等待=${started == null ? 0 : DateTime.now().difference(started).inMilliseconds}ms '
+      '集=${_index + 1}，作废当前任务并落地可读错误',
+    );
+    _clearOpenBudget();
+    // 作废票据：晚返回的 resolve/open/play 一律不得再写状态。
+    _generation++;
+    _loader.invalidate();
+    _acceptErrors = false;
+    _pendingError = false;
+    _errorTimer?.cancel();
+    _errorTimer = null;
+    _switching = false;
+    _loading = false;
+    _error = '播放准备超时，请检查网络后重试';
+    _notify();
+  }
+
+  /// 第 1/2/3 级恢复的入口：真实检测到持续缓冲后，先只重发播放指令，
+  /// 既不换线路也不重建播放器；连续多次仍无效才交给恢复链。
+  bool _checkBuffering(DateTime now) {
+    if (!_health.bufferingStalled(
+      buffering: player.state.buffering,
+      wanted: _playIntent && _foreground && !_pausedByUser && !_rebuilding,
+      now: now,
+    )) {
+      return false;
+    }
+    _health.resetBuffering();
+    _bufferingRecoveries++;
+    DiaryService.add(
+      '[Play] 持续缓冲超过 ${_bufferingBudget.inMilliseconds}ms，'
+      '进入检测/重发播放级 次数=$_bufferingRecoveries 集=${_index + 1}',
+    );
+    if (_bufferingRecoveries <= _maxBufferingRecoveries) {
+      _bufferingRecovering = true;
+      _notify();
+      unawaited(_kickPlayer());
+    } else {
+      _bufferingRecovering = false;
+      _queueRecovery('buffering_timeout');
+    }
+    return true;
   }
 
   Future<void> _configure(Player target, PlaybackPlan plan) async {
@@ -722,13 +1291,52 @@ class PlaybackSession extends ChangeNotifier {
     await platform.setProperty('network-timeout', '20');
   }
 
+  /// 对外唯一的切集入口。
+  ///
+  /// 选集、上一集/下一集、滑动翻页、自动连播、换季、键盘、带进度进入
+  /// 全部经由这里：统一做越界校验、恢复任务作废、切集打点与 standby 策略。
+  /// `play()` 保留为底层「完整打开」实现，只供恢复链 / 重试 / 初始加载使用；
+  /// UI 层不得再直接调用它，否则又会出现互不相同的边界判断。
+  Future<void> switchTo(
+    int index, {
+    double position = 0,
+    SwitchReason reason = SwitchReason.other,
+    bool allowStandby = true,
+    bool playWhenReady = true,
+  }) async {
+    if (_closed || !_usable) return;
+    // 任何主动切集都作废「后台播完回前台补切」的待办，避免重复连播。
+    _pendingCompleted = false;
+    final count = detail.episodes.length;
+    if (index < 0 || index >= count) {
+      DiaryService.add('[Play] 忽略越界切集 目标=$index 集数=$count 原因=${reason.name}');
+      return;
+    }
+    DiaryService.add(
+      '[Play] 切集 ${_index + 1} → ${index + 1} 原因=${reason.name} '
+      '位置=${position.toStringAsFixed(2)} standby=$allowStandby',
+    );
+    return play(
+      index,
+      position: position,
+      playWhenReady: playWhenReady,
+      allowStandby: allowStandby,
+      switchReason: reason,
+    );
+  }
+
+  /// 底层「完整打开」实现。切集请走 [switchTo]。
   Future<void> play(
     int index, {
     double position = 0,
     PlaybackRecoveryAction? recovery,
     bool playWhenReady = true,
+    bool allowStandby = true,
+    SwitchReason? switchReason,
   }) async {
     if (!_usable || index < 0 || index >= detail.episodes.length) return;
+    // 是否已经打开过某一集，决定 phase 落在 opening 还是 switching。
+    final switching = _openedIndex >= 0 && index != _openedIndex;
     // 用户主动开新集/重试：作废还在等待的恢复任务，避免它反向覆盖。
     _restoreToken++;
     endBoost();
@@ -737,11 +1345,13 @@ class PlaybackSession extends ChangeNotifier {
     if (_playerSuspect) await _replacePlayer();
     if (index != _index) _online = false;
     if (recovery == null &&
+        allowStandby &&
+        !_standbyHung &&
         position == 0 &&
         _standbyOpen &&
         _standbyIndex == index &&
         !_online) {
-      return _swap(index, playWhenReady);
+      return _swap(index, playWhenReady, switchReason);
     }
     _dropStandby();
     final warmed = recovery == null
@@ -760,13 +1370,19 @@ class PlaybackSession extends ChangeNotifier {
     _pendingError = false;
     _errorTimer?.cancel();
     _health.reset();
+    _health.resetBuffering();
     if (recovery == null) {
+      // 用户主动开新集/切集/重试：作废在途恢复任务，再给一条干净的链。
+      _recovery.cancel();
       _recovery.reset();
       _playIntent = playWhenReady;
     }
     _resumePosition = position;
     _openedAt = position;
     _index = index;
+    _switching = switching;
+    _bufferingRecovering = false;
+    _bufferingRecoveries = 0;
     _loading = true;
     _error = null;
     _localFailure = false;
@@ -774,9 +1390,13 @@ class PlaybackSession extends ChangeNotifier {
     _loadingMessage = switch (recovery) {
       PlaybackRecoveryAction.alternative => '正在切换备用线路',
       PlaybackRecoveryAction.refresh => '正在重新获取播放地址',
+      PlaybackRecoveryAction.reopen => '正在重新打开媒体',
+      PlaybackRecoveryAction.rebuild => '正在重建播放器',
       _ => '正在准备播放',
     };
     _notify();
+    // 整次打开的兜底预算：任何一环挂起都必须有终点，不能永久 Loading。
+    _armOpenBudget(ticket);
     PlaybackPlan? prepared;
     PlaybackPlan? retained;
     var installed = false;
@@ -798,16 +1418,29 @@ class PlaybackSession extends ChangeNotifier {
         }
       });
       if (!_current(ticket)) return;
-      prepared = retained != null
-          ? await _loader.fallback(retained!)
-          : warmed != null
-          ? await _loader.use(warmed)
-          : await _loader.load(
-              detail.drama,
-              detail.episodes[index],
-              quality: _quality,
-              online: _online,
-            );
+      prepared = await _guarded<PlaybackPlan?>(
+        ticket,
+        '解析播放地址',
+        () => retained != null
+            ? _loader.fallback(retained!, isCurrent: () => _current(ticket))
+            : warmed != null
+            ? _loader.use(warmed, isCurrent: () => _current(ticket))
+            : _loader.load(
+                detail.drama,
+                detail.episodes[index],
+                quality: _quality,
+                online: _online,
+                // 第 5 级 refresh：站源地址可能已过期，强制跳过本地
+                // 下载缓存重新解析，而不是拿旧地址再开一次。
+                force: recovery == PlaybackRecoveryAction.refresh,
+                isCurrent: () => _current(ticket),
+              ),
+        timeout: _resolveTimeout,
+        onLate: (plan) {
+          // 晚于新会话返回的解析结果必须释放它创建的原生 session。
+          if (plan != null) unawaited(_release(plan.session));
+        },
+      );
       if (prepared == null) return;
       final plan = prepared;
       await _serialize(() async {
@@ -821,23 +1454,31 @@ class PlaybackSession extends ChangeNotifier {
         _plan = plan;
         installed = true;
         _acceptErrors = true;
-        await player.open(
-          Media(
-            plan.url,
-            httpHeaders: plan.headers,
-            start: position > 0
-                ? Duration(milliseconds: (position * 1000).round())
-                : null,
+        await _guarded<void>(
+          ticket,
+          '打开媒体',
+          () => player.open(
+            Media(
+              plan.url,
+              httpHeaders: plan.headers,
+              start: position > 0
+                  ? Duration(milliseconds: (position * 1000).round())
+                  : null,
+            ),
+            play: _foreground && _playIntent,
           ),
-          play: _foreground && _playIntent,
+          timeout: _openTimeout,
         );
         // open(play: true) 只是在 mpv open 之前先设 pause=false。
         // mpv 真正进入播放态要等 demux/decoder init 完成。
         // 显式再 play 一次，确保指令不会被 mpv 初始化覆盖。
         if (_playIntent && _foreground) {
-          try {
-            await player.play();
-          } catch (_) {}
+          await _guarded<void>(
+            ticket,
+            '启动播放',
+            () => player.play(),
+            timeout: _playTimeout,
+          );
         }
         if (!_current(ticket)) return;
         _openedIndex = index;
@@ -845,6 +1486,8 @@ class PlaybackSession extends ChangeNotifier {
         await _setRate(_rate);
         if (!_current(ticket)) return;
         _loading = false;
+        _switching = false;
+        _clearOpenBudget();
         _notify();
         danmaku.setPlan(plan);
         _syncDanmaku();
@@ -861,10 +1504,16 @@ class PlaybackSession extends ChangeNotifier {
           if (_current(ticket)) {
             DiaryService.add('[Play] 无法播放：${_diagnostic(error)}');
             _loading = false;
+            _switching = false;
+            _clearOpenBudget();
             _localFailure = error is AppFailure && error.code == 'local_media';
             _loginRequired =
                 error is AppFailure && error.code == 'source_login';
-            _error = error is AppFailure ? error.message : '无法播放这一集，请重试或换一集。';
+            _error = error is PlaybackTaskTimeout
+                ? '${error.label}超时，请检查网络后重试'
+                : error is AppFailure
+                ? error.message
+                : '无法播放这一集，请重试或换一集。';
             _notify();
           }
         }
@@ -877,7 +1526,11 @@ class PlaybackSession extends ChangeNotifier {
     }
   }
 
-  Future<void> _swap(int index, bool playWhenReady) async {
+  Future<void> _swap(
+    int index,
+    bool playWhenReady,
+    SwitchReason? reason,
+  ) async {
     final plan = _standbyPlan!;
     final next = _standby!;
     final previous = _player;
@@ -889,10 +1542,14 @@ class PlaybackSession extends ChangeNotifier {
     // 没有纹理重建，所以这里不再盖黑幕——否则竖屏滑到下一集时会
     // 出现「画面 → 黑 → 画面」的闪一下。
     final ticket = ++_generation;
+    DiaryService.add(
+      '[Play] 命中待机播放器 集=${index + 1} 原因=${reason?.name ?? 'other'}',
+    );
     _seekSequence++;
     _pendingError = false;
     _errorTimer?.cancel();
     _health.reset();
+    _health.resetBuffering();
     _recovery.reset();
     _playIntent = playWhenReady;
     _resumePosition = 0;
@@ -902,6 +1559,9 @@ class PlaybackSession extends ChangeNotifier {
     _localFailure = false;
     _loginRequired = false;
     _loading = false;
+    _switching = false;
+    _clearOpenBudget();
+    _standbyTicket++; // 作废针对旧待机实例的在途预打开任务
     _standbyPlan = null;
     _standbyIndex = -1;
     _standbyOpen = false;
@@ -913,8 +1573,12 @@ class PlaybackSession extends ChangeNotifier {
     _openedIndex = index;
     _acceptErrors = true;
     final stopping = previous.stop().catchError((Object _) {});
+    var abandoned = false;
     unawaited(
       stopping.whenComplete(() {
+        // 超时放弃交换后，旧 stop 晚完成也不许在已重建的状态上触发预加载，
+        // 更不能把刚挂住的实例重新放回 standby 位。
+        if (abandoned || !_current(ticket)) return;
         _standbyBusy = false;
         _prime(); // stop 完了，立刻尝试预加载下一集
       }),
@@ -934,13 +1598,25 @@ class PlaybackSession extends ChangeNotifier {
       // 音频/解码资源），放弃这次交换并走受控重建。
       try {
         await stopping.timeout(_swapStopTimeout);
-      } catch (_) {
-        DiaryService.add('[Play] 旧播放器 stop 超时，放弃交换改用重建');
+      } catch (error) {
+        abandoned = true;
+        _standbyBusy = false;
+        DiaryService.add(
+          '[Play] 旧播放器 stop 超时或失败，放弃交换改用重建：'
+          '${_diagnostic(error)}',
+        );
         // 挂住的实例不能再待机复用：摘下待机位并异步释放。
         final hung = _standby;
         _standby = null;
         if (hung != null) unawaited(_retire(hung));
-        await _rebuildAndResume(0, playWhenReady);
+        // 待机播放器已经打开过媒体，重建时必须从它实际所在的位置继续，
+        // 不能写死 0 —— 否则用户看到「跳回开头」甚至进度丢失。
+        final resumeAt = next.state.position.inMilliseconds / 1000.0;
+        DiaryService.add(
+          '[Play] 交换失败改走重建 恢复位置=${resumeAt.toStringAsFixed(2)}s '
+          '集=${index + 1}',
+        );
+        await _rebuildAndResume(resumeAt, playWhenReady);
         return;
       }
 
@@ -953,7 +1629,8 @@ class PlaybackSession extends ChangeNotifier {
         await next.play();
         unawaited(_ensurePlaying(ticket));
       }
-    } catch (_) {
+    } catch (error) {
+      DiaryService.add('[Play] 交换播放器失败：${_diagnostic(error)}');
       if (_current(ticket)) _queueRecovery('open_exception');
     }
   }
@@ -996,6 +1673,9 @@ class PlaybackSession extends ChangeNotifier {
               '[Play] 起播确认成功 连续$advancedCount轮position推进 '
               '位置=${state.position} 集=${_index + 1}',
             );
+            // 恢复动作后的真实起播确认：整条恢复链清零，
+            // 避免下一集/下一次偶发故障继承已消耗的次数。
+            _recovery.reset();
             return;
           }
           continue;
@@ -1057,7 +1737,9 @@ class PlaybackSession extends ChangeNotifier {
     try {
       await player.pause();
       await player.play();
-    } catch (_) {}
+    } catch (error) {
+      DiaryService.add('[Play] 重发播放指令失败：${_diagnostic(error)}');
+    }
   }
 
   void _prime() {
@@ -1067,6 +1749,7 @@ class PlaybackSession extends ChangeNotifier {
         standby == null ||
         _standbyIndex >= 0 ||
         _standbyBusy || // 旧播放器 stop 未完，等完再说
+        _standbyHung || // 预打开挂起过：只解析地址，不再复用待机实例
         !_preloader.ready ||
         next >= detail.episodes.length) {
       return;
@@ -1083,42 +1766,81 @@ class PlaybackSession extends ChangeNotifier {
       return;
     }
     _standbyPlan = plan;
-    unawaited(_open(standby, plan));
+    unawaited(_open(standby, plan, ++_standbyTicket));
   }
 
-  Future<void> _open(Player standby, PlaybackPlan plan) async {
+  /// 待机预打开。带独立票据与超时：任何失败都只作废这一份待机计划，
+  /// 绝不写回主播放状态，也绝不让挂起的 open 占住待机位。
+  Future<void> _open(Player standby, PlaybackPlan plan, int ticket) async {
+    bool current() =>
+        !_closed &&
+        ticket == _standbyTicket &&
+        identical(_standbyPlan, plan) &&
+        identical(_standby, standby);
     try {
-      await _configure(standby, plan);
-      // 待机播放器也保留完整缓存：限到 4MB 时高倍速/弱网切过去只缓冲了一两秒，
-      // 首帧播完就断流，表现为卡在第 1 秒。
-      await _limitCache(standby, false);
-      // 待机只做预缓冲：禁用音频轨，预加载期不初始化音频输出。
-      // iOS 上 mpv 的 ao_audiounit 在卸载文件时会调用进程级
-      // AVAudioSession.setActive(NO)，待机实例若已启动音频输出会被
-      // 正在播的实例 stop 时一起杀掉，新集以音频为主时钟会定格在开头
-      // （上游 Xanerix/guoapp#94）。
-      await _setAudioTrackEnabled(standby, false);
-      await standby.open(
-        Media(plan.url, httpHeaders: plan.headers),
-        play: false,
+      await Future<void>(() async {
+        await _configure(standby, plan);
+        if (!current()) return;
+        // 待机播放器也保留完整缓存：限到 4MB 时高倍速/弱网切过去只缓冲了一两秒，
+        // 首帧播完就断流，表现为卡在第 1 秒。
+        await _limitCache(standby, false);
+        if (!current()) return;
+        // 待机只做预缓冲：禁用音频轨，预加载期不初始化音频输出。
+        // iOS 上 mpv 的 ao_audiounit 在卸载文件时会调用进程级
+        // AVAudioSession.setActive(NO)，待机实例若已启动音频输出会被
+        // 正在播的实例 stop 时一起杀掉，新集以音频为主时钟会定格在开头
+        // （上游 Xanerix/guoapp#94）。
+        await _setAudioTrackEnabled(standby, false);
+        if (!current()) return;
+        await standby.open(
+          Media(plan.url, httpHeaders: plan.headers),
+          play: false,
+        );
+      }).timeout(_standbyOpenTimeout);
+      if (!current()) return;
+      _standbyOpen = true;
+      _standbyAt = DateTime.now();
+      _notify();
+    } catch (error) {
+      if (!current()) return;
+      final timedOut = error is TimeoutException;
+      DiaryService.add(
+        '[Play] 待机预打开${timedOut ? '超时' : '失败'}，降级为只解析地址：'
+        '${_diagnostic(error)}',
       );
-    } catch (_) {
-      if (identical(_standbyPlan, plan)) _dropStandby();
-      return;
+      _dropStandby();
+      if (timedOut) {
+        // open 挂起的实例状态未知，不能放回待机位复用（会泄漏/串音）。
+        // 真正 dispose，并保留引用直到会话结束做二次兜底。
+        _standbyHung = true;
+        // 置空后 dispose() 不会再二次释放它（_retire 已异步接管）。
+        _standby = null;
+        unawaited(_retire(standby));
+      }
     }
-    if (_closed || !identical(_standbyPlan, plan)) return;
-    _standbyOpen = true;
-    _standbyAt = DateTime.now();
-    _notify();
   }
 
   void _dropStandby() {
+    // 递增票据，作废所有在途的待机打开任务，避免晚完成后写回旧状态。
+    _standbyTicket++;
     final plan = _standbyPlan;
     final opened = _standbyOpen || plan != null;
     _standbyPlan = null;
     _standbyIndex = -1;
     _standbyOpen = false;
-    if (opened) unawaited(_standby?.stop().catchError((Object _) {}));
+    if (opened) {
+      final target = _standby;
+      if (target != null) {
+        unawaited(
+          target.stop().then<void>(
+            (_) {},
+            onError: (Object error) {
+              DiaryService.add('[Play] 待机播放器 stop 失败：${_diagnostic(error)}');
+            },
+          ),
+        );
+      }
+    }
     if (plan != null) unawaited(_release(plan.session));
   }
 
@@ -1155,7 +1877,14 @@ class PlaybackSession extends ChangeNotifier {
     if (index != _index ||
         (position - _openedAt).abs() > .5 ||
         _error != null) {
-      unawaited(play(index, position: position));
+      unawaited(
+        switchTo(
+          index,
+          position: position,
+          reason: SwitchReason.start,
+          allowStandby: false,
+        ),
+      );
       return;
     }
     _playIntent = true;
@@ -1167,6 +1896,7 @@ class PlaybackSession extends ChangeNotifier {
         unawaited(player.play());
       }
     }
+    _notify();
   }
 
   Future<void> retry() =>
@@ -1179,13 +1909,13 @@ class PlaybackSession extends ChangeNotifier {
 
   Future<bool> next() async {
     if (!hasNext) return false;
-    await play(_index + 1);
+    await switchTo(_index + 1, reason: SwitchReason.next);
     return true;
   }
 
   Future<bool> previous() async {
     if (!hasPrevious) return false;
-    await play(_index - 1);
+    await switchTo(_index - 1, reason: SwitchReason.previous);
     return true;
   }
 
@@ -1219,6 +1949,7 @@ class PlaybackSession extends ChangeNotifier {
     }
     if (!_playIntent) unawaited(saveProgress());
     _syncDanmaku();
+    _notify();
   }
 
   Future<bool> seekTo(Duration target) async {
@@ -1432,6 +2163,135 @@ class PlaybackSession extends ChangeNotifier {
     _notify();
   }
 
+  /// 唯一的应用生命周期入口。所有页面的 WidgetsBindingObserver 只上报
+  /// 原始 [AppLifecycleState]，不解释、不各自判定 PiP，口径统一在这里。
+  ///
+  /// 修复 P0-3：旧实现把 inactive 判为「前台」，只经历 inactive↔resumed
+  /// 的锁屏/控制中心序列既不保存快照也不触发恢复；现在 inactive 显式进入
+  /// preparing（存快照 + 抓帧），resumed 即使没经历过 paused 也会补一次
+  /// 轻量恢复检查。
+  void onLifecycleEvent(AppLifecycleState state, {String source = 'ui'}) {
+    if (_closed) return;
+    // 多个 observer 与未来的原生 EventChannel 会上报同一状态：只处理一次。
+    if (_lastLifecycle == state) return;
+    _lastLifecycle = state;
+    _lifecycleEpoch++;
+    switch (state) {
+      case AppLifecycleState.resumed:
+        _onResumed(source);
+      case AppLifecycleState.inactive:
+        _onInactive(source);
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.detached:
+        _onBackground(state, source);
+    }
+  }
+
+  /// PiP 由播放页唯一上报；session 本身不依赖 UI 层模块。
+  void setPictureInPicture(bool active) {
+    if (_closed || _pipActive == active) return;
+    _pipActive = active;
+    _lifecycleEpoch++;
+    DiaryService.add('[Play] 画中画 ${active ? '开启' : '关闭'}');
+    _applyForeground(_foregroundTarget(), reason: 'pip');
+  }
+
+  bool _foregroundTarget() {
+    final state = _lastLifecycle;
+    if (state == null) return true;
+    return state == AppLifecycleState.resumed || _pipActive;
+  }
+
+  void _snapshotForBackground() {
+    // 快照当前实例：此刻若 _swap 正并发执行到 _player = next，
+    // 延迟解析 getter 会暂停到错误的对象上（音频多响几秒）。
+    final player = this.player;
+    final snapshot = player.state.position;
+    if (_openedIndex == _index && snapshot > Duration.zero) {
+      _resumePosition = snapshot.inMilliseconds / 1000;
+    }
+    // 只信用户意图：系统挂起/恢复期间底层 playing 可能与实际操作不一致。
+    _resumeIntent = _playIntent;
+  }
+
+  void _onInactive(String source) {
+    _lifecycleStage = PlaybackLifecycleStage.preparing;
+    _snapshotForBackground();
+    _lifecycleDormant = true;
+    DiaryService.add(
+      '[Play] 生命周期 inactive（准备离开前台）来源=$source 集=${_index + 1} '
+      '位置=${_resumePosition.toStringAsFixed(1)}',
+    );
+    // 不改 _foreground、不 pause：iOS 此刻进程仍可渲染，
+    // PlayerVideo 会抓最后一帧；直接 pause 反而让回前台多一次重建。
+    _notify();
+  }
+
+  void _onBackground(AppLifecycleState state, String source) {
+    if (_pipActive) {
+      // PiP 播放中系统会把 app 判为后台，但小窗仍在出画面。
+      _lifecycleStage = PlaybackLifecycleStage.foreground;
+      DiaryService.add('[Play] 生命周期 ${state.name} 但 PiP 活跃，保持前台');
+      _notify();
+      return;
+    }
+    _lifecycleStage = PlaybackLifecycleStage.background;
+    _applyForeground(false, reason: '${state.name}:$source');
+  }
+
+  void _onResumed(String source) {
+    final wasForeground = _foreground;
+    final dormant = _lifecycleDormant;
+    _lifecycleDormant = false;
+    _lifecycleStage = PlaybackLifecycleStage.foreground;
+    DiaryService.add(
+      '[Play] 生命周期 resumed 来源=$source 原前台=$wasForeground '
+      '仅inactive=$dormant 待补切=$_pendingCompleted',
+    );
+    if (_pendingCompleted) {
+      // 后台播完：优先补切，跳过对本集末尾的恢复（那只会白跑一次解析）。
+      _pendingCompleted = false;
+      if (store.playbackPreferences.autoAdvance) {
+        if (hasNext) {
+          unawaited(switchTo(_index + 1, reason: SwitchReason.completed));
+          return;
+        }
+        if (_nextSeason != null) {
+          unawaited(_playNextSeason());
+          return;
+        }
+      }
+    }
+    if (!wasForeground) {
+      _applyForeground(true, reason: 'resumed:$source');
+      return;
+    }
+    if (dormant && _playIntent && _error == null && !_loading) {
+      // P0-3：只经历 inactive↔resumed 时旧实现完全不动作。
+      // 补一次轻量检查：盖幕 + 原地续播/探活，不销毁实例。
+      _restoreToken++;
+      _coverSurface();
+      if (Platform.isIOS) {
+        unawaited(_tryResumeInPlace(_restoreToken));
+      } else {
+        _queueRecovery('inactive_resume');
+      }
+    }
+    _notify();
+  }
+
+  void _applyForeground(bool visible, {required String reason}) {
+    if (_closed) return;
+    if (_pipActive) visible = true;
+    if (_foreground == visible) {
+      _notify();
+      return;
+    }
+    DiaryService.add('[Play] 前后台迁移 → ${visible ? '前台' : '后台'} 原因=$reason');
+    setForeground(visible);
+  }
+
   void setForeground(bool visible) {
     if (_closed || _foreground == visible) return;
     // 任何一次前后台变化都作废正在进行的恢复任务。
@@ -1440,16 +2300,8 @@ class PlaybackSession extends ChangeNotifier {
     _health.reset();
     _sync();
     if (!visible) {
-      // 快照当前实例：此刻若 _swap 正并发执行到 _player = next，
-      // 延迟解析 getter 会暂停到错误的对象上（音频多响几秒）。
-      final player = this.player;
       // 锁屏/切后台时直接读播放器状态，不等异步 position 事件。
-      final snapshot = player.state.position;
-      if (_openedIndex == _index && snapshot > Duration.zero) {
-        _resumePosition = snapshot.inMilliseconds / 1000;
-      }
-      // 只信用户意图：系统挂起/恢复期间底层 playing 可能与实际操作不一致。
-      _resumeIntent = _playIntent;
+      _snapshotForBackground();
       // 不主动 pause player——iOS 切后台时系统会挂起 AVPlayer 并保留
       // 最后一帧 pixel buffer。回前台直接 play() 就能无缝接上，不会花屏。
       endBoost();
@@ -1466,6 +2318,7 @@ class PlaybackSession extends ChangeNotifier {
       // 推进后自动揭开，不影响视觉。
       unawaited(player.pause());
       unawaited(saveProgress());
+      _notify();
       return;
     }
     _iosRebuilds = 0;
@@ -1476,6 +2329,9 @@ class PlaybackSession extends ChangeNotifier {
     } else if (_pendingError) {
       _queueRecovery('foreground_pending_error');
     }
+    // _coverSurface 只在「首次盖上」时 notify；连续恢复时 phase 会
+    // 滞留在 background，这里强制对齐一次。
+    _notify();
   }
 
   bool _restorable(int token) =>
@@ -1483,9 +2339,13 @@ class PlaybackSession extends ChangeNotifier {
 
   /// 盖黑幕遮住纹理重建时的花屏帧。
   /// 揭开时机：纹理报告了首帧参数（videoParams），或 position 相对盖幕时
-  /// 的位置推进 >500ms（解码器确实在出帧）→ 立即揭；或最长 3s 封顶。
+  /// 的位置推进 >500ms（解码器确实在出帧）→ 立即揭；3s 仍无画面则
+  /// 保留黑幕并进入恢复链，8s 硬兜底强制揭开。
   void _coverSurface() {
     _surfaceTimer?.cancel();
+    _surfaceHardTimer?.cancel();
+    _surfaceHardTimer = null;
+    _surfaceTimedOut = false;
     _surfaceCoverAt = DateTime.now();
     // 记录盖幕时的播放位置：续播恢复时 position 本来就在中途，
     // 不能用「position > 500ms」判断（那只会对新起播有效），
@@ -1497,15 +2357,40 @@ class PlaybackSession extends ChangeNotifier {
       _surfaceCover = true;
       _notify();
     }
-    // 3s 封顶保底——正常情况 _maybeRevealSurface 会先揭开。
-    _surfaceTimer = Timer(const Duration(seconds: 3), () {
+    // 3s 软兜底：旧实现到点强行揭幕，会露出还没就绪的花屏/黑帧。
+    // 现在改为保留黑幕并交给恢复链；另设 5s 硬兜底，防止恢复链也
+    // 拒绝执行时用户永远盯着黑幕。
+    _surfaceTimer = Timer(_surfaceCoverTimeout, () {
       _surfaceTimer = null;
       if (_closed || !_surfaceCover) return;
-      _surfaceCover = false;
-      _surfaceCoverAt = null;
-      _surfaceFrame = false;
+      if (frameReady) {
+        _revealSurface();
+        return;
+      }
+      _surfaceTimedOut = true;
+      DiaryService.add('[Play] 盖幕 3s 仍无首帧，保留黑幕并进入恢复链');
+      _queueRecovery('surface_cover_timeout');
+      _surfaceHardTimer = Timer(_surfaceHardTimeout, () {
+        _surfaceHardTimer = null;
+        if (_closed || !_surfaceCover) return;
+        DiaryService.add('[Play] 盖幕硬兜底 8s，强制揭幕');
+        _revealSurface();
+      });
       _notify();
     });
+  }
+
+  /// 揭开黑幕的唯一出口，两个 timer 都必须在这里收干净。
+  void _revealSurface() {
+    _surfaceTimer?.cancel();
+    _surfaceTimer = null;
+    _surfaceHardTimer?.cancel();
+    _surfaceHardTimer = null;
+    _surfaceCover = false;
+    _surfaceCoverAt = null;
+    _surfaceFrame = false;
+    _surfaceTimedOut = false;
+    _notify();
   }
 
   /// 黑幕是否该揭开了。
@@ -1519,16 +2404,14 @@ class PlaybackSession extends ChangeNotifier {
     if (!_surfaceCover || since == null) return;
     // 最小 150ms 保底，避免刚盖上又揭。
     if (DateTime.now().difference(since).inMilliseconds < 150) return;
+    // 缓冲中说明画面还没稳定，揭开会露出空纹理。
+    if (player.state.buffering) return;
     final position = player.state.position;
     if (!_surfaceFrame &&
         position < _surfaceCoverPosition + const Duration(milliseconds: 500)) {
       return;
     }
-    _surfaceTimer?.cancel();
-    _surfaceTimer = null;
-    _surfaceCover = false;
-    _surfaceFrame = false;
-    _notify();
+    _revealSurface();
   }
 
   /// iOS 前台快速路径：跳过探活，直接激活音频会话 + play()，
@@ -1650,12 +2533,14 @@ class PlaybackSession extends ChangeNotifier {
         await Future<void>.delayed(const Duration(milliseconds: 150));
       }
       try {
-        final alive = await repository.playbackAlive().timeout(
+        final status = await repository.playbackStatus().timeout(
           const Duration(seconds: 2),
         );
-        if (alive) return _StreamProbe.alive;
+        if (!_closed) _streamEpoch = status.epoch;
+        if (status.alive) return _StreamProbe.alive;
         sawDead = true;
-      } catch (_) {
+      } catch (error) {
+        DiaryService.add('[Play] 取流探活异常：${_diagnostic(error)}');
         sawError = true;
       }
     }
@@ -1958,8 +2843,9 @@ class PlaybackSession extends ChangeNotifier {
         '[Play] 重建后仍未播放 原因=$stalled 重置=${resetMs}ms '
         '总=${watch.elapsedMilliseconds}ms 位置=${currentPosition.toStringAsFixed(1)}',
       );
-      // 交给既有的有限恢复链：iOS 下最多再重建 3 次，之后换线路并最终报错。
-      unawaited(_recover('rebuild_$stalled'));
+      // 统一走恢复入口：由协调器按级别升级，不再直接调 _recover，
+      // 也不再有 iOS 专属的「无条件重建 3 次」旁路。
+      _queueRecovery('rebuild_$stalled');
     } finally {
       _rebuilding = false;
       if (_rebuildQueued) {
@@ -2015,6 +2901,7 @@ class PlaybackSession extends ChangeNotifier {
     _closed = true;
     _generation++;
     _restoreToken++;
+    _recovery.cancel();
     store.removeListener(_accessChanged);
     store.removeListener(_syncBlockedWords);
     _saveTimer?.cancel();
@@ -2024,6 +2911,9 @@ class PlaybackSession extends ChangeNotifier {
     _stallTimer?.cancel();
     _volumeTimer?.cancel();
     _surfaceTimer?.cancel();
+    _surfaceHardTimer?.cancel();
+    _surfaceHardTimer = null;
+    _clearOpenBudget();
     if (_volumeTimer != null) _saveVolume();
     for (final subscription in _subscriptions) {
       unawaited(subscription.cancel());
@@ -2036,13 +2926,36 @@ class PlaybackSession extends ChangeNotifier {
     if (standbyPlan != null) unawaited(_release(standbyPlan.session));
     final standby = _standby;
     final current = _player;
-    unawaited(_loader.close().catchError((Object _) {}));
     unawaited(
-      _operations.catchError((Object _) {}).then((_) async {
-        await _rates.catchError((Object _) {});
-        await _retire(current);
-        if (standby != null) await _retire(standby);
-      }),
+      _loader.close().then<void>(
+        (_) {},
+        onError: (Object error) {
+          DiaryService.add('[Play] dispose 时关闭解析任务失败：${_diagnostic(error)}');
+        },
+      ),
+    );
+    unawaited(
+      _operations
+          .then<void>(
+            (_) {},
+            onError: (Object error) {
+              DiaryService.add(
+                '[Play] dispose 时等待串行任务失败：${_diagnostic(error)}',
+              );
+            },
+          )
+          .then((_) async {
+            await _rates.then<void>(
+              (_) {},
+              onError: (Object error) {
+                DiaryService.add(
+                  '[Play] dispose 时等待倍速任务失败：${_diagnostic(error)}',
+                );
+              },
+            );
+            await _retire(current);
+            if (standby != null) await _retire(standby);
+          }),
     );
     super.dispose();
   }

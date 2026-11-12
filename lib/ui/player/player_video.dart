@@ -57,11 +57,27 @@ class _PlayerVideoState extends State<PlayerVideo> with WidgetsBindingObserver {
 
   /// 切出/锁屏瞬间（inactive，进程尚未挂起、画面仍在渲染）抓取最后一帧，
   /// 回前台重建纹理期间用它替代纯黑幕——用户看到的是画面静止而不是黑屏。
+  /// iOS 有时不经过 inactive 直接 paused，这里一并覆盖。
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.inactive) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
       // 只抓正在出声的那一路；待机播放器是暂停态，抓了也用不上。
       if (widget.player.state.playing) unawaited(_capture());
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant PlayerVideo oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 盖幕刚落下时也抓一帧：RepaintBoundary 是 Stack 的下层子树，
+    // toImage() 取的是视频层，不会被上层黑幕污染。这样「切集/恢复」
+    // 路径也能有最后一帧，而不只在生命周期事件里才有。
+    if (!oldWidget.covered &&
+        widget.covered &&
+        _lastFrame == null &&
+        widget.player.state.playing) {
+      unawaited(_capture());
     }
   }
 

@@ -305,6 +305,7 @@ class FakeRepository extends AppRepository {
     Drama drama,
     Episode episode, {
     int quality = 0,
+    bool force = false,
   }) async => throw UnimplementedError();
 
   @override

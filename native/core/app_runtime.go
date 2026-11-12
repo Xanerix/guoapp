@@ -168,6 +168,7 @@ type nativePlan struct {
 	Session         string            `json:"session,omitempty"`
 	RouteIndex      int               `json:"routeIndex"`
 	RouteCount      int               `json:"routeCount"`
+	Epoch           int64             `json:"streamEpoch,omitempty"`
 }
 
 type nativeEngine struct {
@@ -191,6 +192,7 @@ type nativeEngine struct {
 	covers           *nativeCoverCache
 	stream           *nativeStreamServer
 	streamMu         sync.Mutex
+	streamEpoch      int64
 	seasonDateMu     sync.Mutex
 	seasonDates      map[string]seasonDateEntry
 	seasonGroups     map[string]seasonGroupEntry
@@ -198,6 +200,7 @@ type nativeEngine struct {
 	playbackMu       sync.Mutex
 	playbackSequence int64
 	playbackCancel   context.CancelFunc
+	playbackCtx      context.Context
 	sourceCatalogMu  sync.Mutex
 	sourceCatalogs   map[string]chan struct{}
 }
@@ -495,7 +498,8 @@ func nativeDispatch(input nativeInput) (any, error) {
 		engine.nativeCancelPlayback(input.Sequence)
 		return true, nil
 	case "playbackAlive":
-		return map[string]any{"alive": engine.nativePlaybackAlive()}, nil
+		alive, epoch := engine.nativePlaybackStatus()
+		return map[string]any{"alive": alive, "epoch": epoch}, nil
 	case "release":
 		engine.nativeReleasePlayback(input.Session)
 		return true, nil

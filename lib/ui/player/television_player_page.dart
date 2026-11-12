@@ -106,9 +106,8 @@ class _TelevisionPlayerPageState extends State<TelevisionPlayerPage>
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    _session.setForeground(state == AppLifecycleState.resumed);
-  }
+  void didChangeAppLifecycleState(AppLifecycleState state) =>
+      _session.onLifecycleEvent(state, source: 'television');
 
   void _changed() {
     final player = _session.player;

@@ -111,9 +111,9 @@ class _PlaybackPageState extends State<PlaybackPage> {
     if (!shown && _shown) _pageScope.requestFocus();
     _shown = shown;
     if (!_television) {
-      _session.setForeground(
-        playerVisible(WidgetsBinding.instance.lifecycleState),
-      );
+      // PiP 状态交给 session 统一持有；observer 只上报原始生命周期，
+      // 不再由页面各自拼装「是否前台」的布尔口径。
+      _session.setPictureInPicture(shown);
     }
     _sync();
     setState(() {});

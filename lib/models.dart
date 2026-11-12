@@ -434,6 +434,7 @@ class PlaybackPlan {
     this.routeIndex = 0,
     this.routeCount = 1,
     this.local = false,
+    this.streamEpoch = 0,
   });
   final String url;
   final Map<String, String> headers;
@@ -447,6 +448,10 @@ class PlaybackPlan {
   final int routeIndex;
   final int routeCount;
   final bool local;
+
+  /// 建立该播放会话时 Go 取流监听的代次。监听重建后旧会话全部作废，
+  /// 恢复链据此跳过后备线路、直接强制刷新站源地址。
+  final int streamEpoch;
   bool get hasAlternative => session.isNotEmpty && routeIndex + 1 < routeCount;
   factory PlaybackPlan.fromJson(Map<String, dynamic> json) => PlaybackPlan(
     url: json['url'] as String? ?? '',
@@ -466,6 +471,7 @@ class PlaybackPlan {
     routeCount: intValue(json['routeCount']) > 0
         ? intValue(json['routeCount'])
         : 1,
+    streamEpoch: intValue(json['streamEpoch']),
   );
 }
 

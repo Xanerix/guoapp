@@ -19,7 +19,6 @@ import '../widgets/motion/motion_widgets.dart';
 import 'danmaku_overlay.dart';
 import '../widgets/follow_button.dart';
 import 'episode_grid.dart';
-import 'mini_player.dart';
 import 'playback_handle.dart';
 import 'playback_sheets.dart';
 import 'fade_presence.dart';
@@ -151,7 +150,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) =>
-      _session.setForeground(playerVisible(state));
+      _session.onLifecycleEvent(state, source: 'landscape');
 
   void _bind() {
     final player = _session.player;
@@ -217,7 +216,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
       if (page != _session.index && page >= 0 && page < count) {
         // 滑动换集后隐藏播控（横屏真全屏，红果行为）。
         _hideControls();
-        unawaited(_session.play(page));
+        unawaited(_session.switchTo(page, reason: SwitchReason.swipe));
       } else if (page >= count && _session.nextSeason != null) {
         // 滑过最后一集：衔接下一季第 1 集。
         _hideControls();
@@ -1345,7 +1344,12 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
                       onPick: (index) {
                         _closePanel();
                         if (index != session.index) {
-                          unawaited(session.play(index));
+                          unawaited(
+                            session.switchTo(
+                              index,
+                              reason: SwitchReason.select,
+                            ),
+                          );
                         }
                       },
                     )
@@ -2235,7 +2239,11 @@ class _EpisodeSheetState extends State<_EpisodeSheet> {
                 onSelectionChanged: () => setState(() {}),
                 onPick: (index) {
                   Navigator.pop(context);
-                  if (index != session.index) unawaited(session.play(index));
+                  if (index != session.index) {
+                    unawaited(
+                      session.switchTo(index, reason: SwitchReason.select),
+                    );
+                  }
                 },
               ),
             ),
