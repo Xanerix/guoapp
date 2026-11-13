@@ -8,9 +8,9 @@ import 'download_collections.dart';
 import 'download_merge.dart';
 import 'models.dart';
 
-String exportFileName(int number, int episodes) {
+String exportFileName(String title, int number, int episodes) {
   final width = max(2, '${max(number, episodes)}'.length);
-  return '第${'$number'.padLeft(width, '0')}集.mp4';
+  return '${safeFileName(title)} 第${'$number'.padLeft(width, '0')}集.mp4';
 }
 
 Future<void> exportDownload(
@@ -28,7 +28,7 @@ Future<void> exportDownload(
   await AppDevice.exportVideo(
     plan.url,
     safeFileName(job.drama.title),
-    exportFileName(job.episode.number, job.drama.episodes),
+    exportFileName(job.drama.title, job.episode.number, job.drama.episodes),
   );
   if (!delete) return;
   final result = await controlDownloadJobs(repository, 'remove', [job.id]);
