@@ -58,7 +58,7 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
   bool _scrolling = false;
   bool _edgeHinted = false;
   bool _holding = false;
-  bool _overMask = false;
+  bool _lockArmed = false;
   int _heldIndex = -1;
   bool _dragging = false;
   double? _seekValue;
@@ -352,13 +352,14 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
   }
 
   void _pressStart(LongPressStartDetails details, double width) {
-    if (details.localPosition.dx < width / 5) {
+    final x = details.localPosition.dx;
+    if (x < width / 5 || x > width * 4 / 5) {
       if (!_session.boostLocked) _session.holdBoost();
       unawaited(HapticFeedback.selectionClick());
       setState(() {
         _holding = true;
         _heldIndex = _session.index;
-        _overMask = false;
+        _lockArmed = false;
       });
     } else {
       unawaited(HapticFeedback.selectionClick());
@@ -368,25 +369,26 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
 
   void _pressMove(LongPressMoveUpdateDetails details) {
     if (!_holding) return;
-    final over =
-        details.globalPosition.dy >=
-        MediaQuery.sizeOf(context).height - _bars.bottom - _maskHeight;
-    if (over != _overMask) {
+    final height = MediaQuery.sizeOf(context).height;
+    final armed =
+        details.localOffsetFromOrigin.dy >= height / 3 ||
+        details.globalPosition.dy >= height - _bars.bottom - _maskHeight;
+    if (armed != _lockArmed) {
       unawaited(HapticFeedback.selectionClick());
-      setState(() => _overMask = over);
+      setState(() => _lockArmed = armed);
     }
   }
 
   void _pressEnd() {
     if (!_holding) return;
-    if (_overMask) {
+    if (_lockArmed) {
       _session.setBoostLocked(!_session.boostLocked);
     } else if (!_session.boostLocked) {
       _session.endBoost();
     }
     setState(() {
       _holding = false;
-      _overMask = false;
+      _lockArmed = false;
     });
   }
 
@@ -714,7 +716,7 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
                     spacing: 8,
                     children: [
                       Icon(
-                        !_overMask
+                        !_lockArmed
                             ? Icons.fast_forward_rounded
                             : locked
                             ? Icons.lock_open_rounded
@@ -723,7 +725,7 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
                         color: Colors.white,
                       ),
                       Text(
-                        '${_overMask ? '' : '下滑'}松手${locked ? '取消' : '锁定'} 2 倍速',
+                        '${_lockArmed ? '' : '下滑'}松手${locked ? '取消' : '锁定'} 2 倍速',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 15,
