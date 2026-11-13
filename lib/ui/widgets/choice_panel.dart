@@ -64,7 +64,6 @@ Future<T?> showChoicePanel<T>({
     },
     action: action,
   );
-  final navigator = Navigator.of(context);
   switch (form) {
     case FormFactor.phone:
       return showModalBottomSheet<T>(
@@ -77,20 +76,10 @@ Future<T?> showChoicePanel<T>({
         builder: panel,
       );
     case FormFactor.pad || FormFactor.window:
-      final overlay =
-          navigator.overlay!.context.findRenderObject()! as RenderBox;
-      final anchor = context.findRenderObject()! as RenderBox;
-      final rect =
-          anchor.localToGlobal(Offset.zero, ancestor: overlay) & anchor.size;
-      return navigator.push(
-        _AnchoredRoute<T>(
-          anchor: rect,
-          width: grid.wideWidth,
-          builder: panel,
-          barrierLabel: MaterialLocalizations.of(
-            context,
-          ).modalBarrierDismissLabel,
-        ),
+      return showAnchoredPanel<T>(
+        context: context,
+        width: grid.wideWidth,
+        builder: panel,
       );
     case FormFactor.television:
       return showGeneralDialog<T>(
@@ -121,6 +110,25 @@ Future<T?> showChoicePanel<T>({
         ),
       );
   }
+}
+
+Future<T?> showAnchoredPanel<T>({
+  required BuildContext context,
+  required double width,
+  required WidgetBuilder builder,
+}) {
+  final navigator = Navigator.of(context);
+  final overlay = navigator.overlay!.context.findRenderObject()! as RenderBox;
+  final anchor = context.findRenderObject()! as RenderBox;
+  return navigator.push(
+    _AnchoredRoute<T>(
+      anchor:
+          anchor.localToGlobal(Offset.zero, ancestor: overlay) & anchor.size,
+      width: width,
+      builder: builder,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+    ),
+  );
 }
 
 class _ChoicePanel<T> extends StatelessWidget {
