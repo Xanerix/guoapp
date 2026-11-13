@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -192,6 +193,10 @@ class _DanmakuLayer extends StatefulWidget {
 class _DanmakuLayerState extends State<_DanmakuLayer>
     with SingleTickerProviderStateMixin {
   late final Ticker _ticker = createTicker(_tick);
+  final _elapsed = Stopwatch();
+  Duration _pulsePeriod = Duration.zero;
+  Timer? _pulse;
+  Timer? _nextFlight;
   final _clock = ValueNotifier<double>(0);
   final _items = <String, Widget>{};
   Object? _layout;
@@ -213,6 +218,20 @@ class _DanmakuLayerState extends State<_DanmakuLayer>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final refreshRate = View.of(context).display.refreshRate;
+    final skip = (refreshRate / 60).floor();
+    final period = skip < 2
+        ? Duration.zero
+        : Duration(microseconds: (1e6 * skip / refreshRate).round());
+    if (period == _pulsePeriod) return;
+    _pulsePeriod = period;
+    _halt();
+    _drive();
+  }
+
+  @override
   void didUpdateWidget(_DanmakuLayer oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.controller != widget.controller) {
@@ -226,6 +245,7 @@ class _DanmakuLayerState extends State<_DanmakuLayer>
   @override
   void dispose() {
     widget.controller.removeListener(_changed);
+    _halt();
     _ticker.dispose();
     _clock.dispose();
     super.dispose();
@@ -242,13 +262,13 @@ class _DanmakuLayerState extends State<_DanmakuLayer>
       _revision = controller.motionRevision;
       _anchorMs = controller.positionMs;
       _rate = controller.rate;
-      _ticker.stop();
+      _elapsed
+        ..reset()
+        ..start();
       _clock.value = _anchorMs.toDouble();
       changed = _moveWindow();
     }
-    final run = controller.moving && widget.rows > 0;
-    if (run && !_ticker.isActive) _ticker.start();
-    if (!run && _ticker.isActive) _ticker.stop();
+    _drive();
     if (_visible != controller.visible ||
         _dataRevision != controller.dataRevision) {
       _visible = controller.visible;
@@ -258,9 +278,43 @@ class _DanmakuLayerState extends State<_DanmakuLayer>
     return changed;
   }
 
-  void _tick(Duration elapsed) {
-    _clock.value = _anchorMs + elapsed.inMicroseconds / 1000 * _rate;
+  double get _nowMs => _anchorMs + _elapsed.elapsedMicroseconds / 1000 * _rate;
+
+  void _tick([Object? _]) {
+    _clock.value = _nowMs;
     if (_moveWindow()) setState(() {});
+    _drive();
+  }
+
+  void _halt() {
+    _ticker.stop();
+    _pulse?.cancel();
+    _pulse = null;
+    _nextFlight?.cancel();
+    _nextFlight = null;
+  }
+
+  void _drive() {
+    final (first, last) = _window;
+    final moving = widget.controller.moving && widget.rows > 0;
+    if (moving && first < last) {
+      _nextFlight?.cancel();
+      _nextFlight = null;
+      if (_ticker.isActive || _pulse != null) return;
+      if (_pulsePeriod == Duration.zero) {
+        _ticker.start();
+      } else {
+        _pulse = Timer.periodic(_pulsePeriod, _tick);
+      }
+      return;
+    }
+    _halt();
+    if (!moving || last >= _schedule.length) return;
+    final wait = (_schedule[last].item.timeMs - _nowMs) / _rate;
+    _nextFlight = Timer(
+      Duration(milliseconds: math.max(0, wait.ceil())),
+      _tick,
+    );
   }
 
   (int, int) _windowAt(double now) {
@@ -322,6 +376,7 @@ class _DanmakuLayerState extends State<_DanmakuLayer>
         },
       );
       _window = _windowAt(_clock.value);
+      _drive();
     }
     final outline = style.hasStroke
         ? danmakuTextStyle(
