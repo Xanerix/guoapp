@@ -793,6 +793,7 @@ class _DetailPageState extends State<DetailPage> {
     while (_seasonFocus.length < details.seasons.length) {
       _seasonFocus.add(FocusNode());
     }
+    const focusBleed = 12.0;
     final page = Scaffold(
       body: _withBackdrop(
         details.drama,
@@ -801,7 +802,7 @@ class _DetailPageState extends State<DetailPage> {
           padding: const EdgeInsets.fromLTRB(
             televisionInset,
             40,
-            televisionInset,
+            televisionInset - focusBleed,
             27,
           ),
           child: Focus(
@@ -810,17 +811,24 @@ class _DetailPageState extends State<DetailPage> {
             onKeyEvent: (_, event) => _televisionKey(details, m, event),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
-              spacing: 40,
+              spacing: 40 - focusBleed,
               children: [
                 SizedBox(width: 380, child: _televisionInfo(details, m)),
                 Expanded(
                   child: details.seasons.isEmpty
-                      ? FadeSwitcher(
-                          alignment: Alignment.topCenter,
-                          child: _televisionEpisodes(details, m),
+                      ? Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: focusBleed,
+                          ),
+                          child: FadeSwitcher(
+                            alignment: Alignment.topCenter,
+                            child: _televisionEpisodes(details, m),
+                          ),
                         )
                       : SingleChildScrollView(
-                          clipBehavior: Clip.none,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: focusBleed,
+                          ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
