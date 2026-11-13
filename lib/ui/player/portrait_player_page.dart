@@ -725,7 +725,7 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
                         color: Colors.white,
                       ),
                       Text(
-                        '${_lockArmed ? '' : '下滑'}松手${locked ? '取消' : '锁定'} 2 倍速',
+                        '${_lockArmed ? '' : '下滑'}松手${locked ? '取消' : '锁定'} ${session.store.playbackPreferences.boostLabel}',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 15,
@@ -1007,14 +1007,14 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
       color: Colors.black.withValues(alpha: .5),
       borderRadius: BorderRadius.circular(16),
     ),
-    child: const Row(
+    child: Row(
       mainAxisSize: MainAxisSize.min,
       spacing: 6,
       children: [
-        Icon(Icons.fast_forward_rounded, size: 16, color: Colors.white),
+        const Icon(Icons.fast_forward_rounded, size: 16, color: Colors.white),
         Text(
-          '2 倍速播放中',
-          style: TextStyle(
+          '${_session.store.playbackPreferences.boostLabel}播放中',
+          style: const TextStyle(
             color: Colors.white,
             fontSize: 14,
             fontWeight: FontWeight.w600,

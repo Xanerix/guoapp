@@ -160,6 +160,14 @@ class SettingsSection extends StatelessWidget {
             onChanged: (speed) =>
                 savePreferences(preferences.copyWith(speed: speed)),
           ),
+          ValueTile<double>(
+            title: '长按倍速',
+            subtitle: '按住画面或方向键时临时使用的倍速',
+            options: {for (final speed in boostSpeeds) speed: '${speed}x'},
+            value: preferences.boostSpeed,
+            onChanged: (speed) =>
+                savePreferences(preferences.copyWith(boostSpeed: speed)),
+          ),
           ValueTile<int>(
             title: '默认清晰度',
             subtitle: '指定清晰度不可用时，使用源站可用画质',

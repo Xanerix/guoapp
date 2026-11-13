@@ -429,6 +429,13 @@ void main() {
     session.endBoost();
     await pumpEventQueue();
     expect(player.rates.last, 1);
+
+    await store.setPlaybackPreferences(
+      store.playbackPreferences.copyWith(boostSpeed: 3),
+    );
+    session.holdBoost();
+    await pumpEventQueue();
+    expect(player.rates.last, 3);
   });
 
   test('the next episode opens early and keeps loading while paused', () async {

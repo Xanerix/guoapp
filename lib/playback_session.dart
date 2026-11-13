@@ -268,7 +268,7 @@ class PlaybackSession extends ChangeNotifier {
     preload: true,
   );
 
-  double get _rate => _boosting ? 2 : _speed;
+  double get _rate => _boosting ? store.playbackPreferences.boostSpeed : _speed;
 
   void _buffering(bool buffering) {
     _stallTimer?.cancel();
@@ -979,7 +979,7 @@ class PlaybackSession extends ChangeNotifier {
         return;
       }
       _boosting = true;
-      unawaited(_setRate(2));
+      unawaited(_setRate(_rate));
       _notify();
     });
   }
@@ -989,7 +989,7 @@ class PlaybackSession extends ChangeNotifier {
     _boostTimer?.cancel();
     _boostTimer = null;
     _boosting = true;
-    unawaited(_setRate(2));
+    unawaited(_setRate(_rate));
     _notify();
   }
 
