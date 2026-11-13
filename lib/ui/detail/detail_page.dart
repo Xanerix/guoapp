@@ -184,9 +184,15 @@ const _television = _Metrics(
 );
 
 class DetailPage extends StatefulWidget {
-  const DetailPage({super.key, required this.store, required this.drama});
+  const DetailPage({
+    super.key,
+    required this.store,
+    required this.drama,
+    this.autoplay = false,
+  });
   final LocalStore store;
   final Drama drama;
+  final bool autoplay;
 
   @override
   State<DetailPage> createState() => _DetailPageState();
@@ -209,6 +215,8 @@ class _DetailPageState extends State<DetailPage> {
   final _episodeFocus = List.generate(episodeGroupSize, (_) => FocusNode());
   bool _entered = false;
   PlaybackHandle? _watched;
+  late bool _autoplayPending = widget.autoplay;
+  late bool _curtain = widget.autoplay;
 
   @override
   void didChangeDependencies() {
@@ -292,6 +300,36 @@ class _DetailPageState extends State<DetailPage> {
     _handle?.session.syncSeasons(seasons);
     _watched?.session.syncSeasons(seasons);
     _preopen();
+    unawaited(_autoplay());
+  }
+
+  Future<void> _autoplay() async {
+    final details = _details!;
+    if (!_autoplayPending || !mounted || details.loading) return;
+    _autoplayPending = false;
+    if (_ready && details.allowed) {
+      await _play(details.resumeIndex, resume: true);
+      if (!mounted) return;
+    }
+    if (_curtain) {
+      setState(() => _curtain = false);
+    } else if (AppScope.of(context).television &&
+        details.currentIndex == null) {
+      _playFocus.requestFocus();
+    }
+  }
+
+  void _liftCurtainAfter(Animation<double> entering) {
+    void lift(AnimationStatus status) {
+      if (status != AnimationStatus.completed) return;
+      entering.removeStatusListener(lift);
+      if (!mounted || !_curtain) return;
+      _entered = true;
+      setState(() => _curtain = false);
+    }
+
+    entering.addStatusListener(lift);
+    lift(entering.status);
   }
 
   void _preopen() {
@@ -344,11 +382,12 @@ class _DetailPageState extends State<DetailPage> {
     handle.session.start(index, position: position);
     _watching = true;
     _watched = handle;
-    await Navigator.of(context, rootNavigator: true).push(
-      MaterialPageRoute<void>(
-        builder: (_) => PlaybackPage(store: widget.store, handle: handle),
-      ),
+    final route = MaterialPageRoute<void>(
+      builder: (_) => PlaybackPage(store: widget.store, handle: handle),
     );
+    final closed = Navigator.of(context, rootNavigator: true).push(route);
+    if (_curtain) _liftCurtainAfter(route.animation!);
+    await closed;
     _watching = false;
     _watched = null;
     if (!mounted) return;
@@ -405,6 +444,12 @@ class _DetailPageState extends State<DetailPage> {
             message: '请返回剧库后重新选择。',
             icon: Icons.lock_outline_rounded,
           ),
+        );
+      }
+      if (_curtain) {
+        return const Scaffold(
+          backgroundColor: Colors.black,
+          body: Center(child: CircularProgressIndicator()),
         );
       }
       final form = AppScope.formFactorOf(context);
