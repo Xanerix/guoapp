@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../playback_preferences.dart';
 import '../../playback_session.dart';
 import '../theme/app_theme.dart';
+import 'cast_page.dart';
 import 'danmaku_settings.dart';
 
 (Color, ThemeData)? _darkPlayerTheme;
@@ -88,6 +91,11 @@ class PlaybackSettings extends StatelessWidget {
           session: session,
           onFailure: onFailure,
           onMiniWindow: onMiniWindow,
+          onCast: () {
+            final navigator = Navigator.of(context);
+            navigator.pop();
+            unawaited(startCast(navigator.context, session));
+          },
         ),
       ),
     ],
@@ -100,10 +108,12 @@ class PlaybackSettingsList extends StatelessWidget {
     required this.session,
     required this.onFailure,
     this.onMiniWindow,
+    required this.onCast,
   });
   final PlaybackSession session;
   final VoidCallback onFailure;
   final VoidCallback? onMiniWindow;
+  final VoidCallback onCast;
 
   Future<void> _change(Future<void> Function() change) async {
     try {
@@ -229,6 +239,13 @@ class PlaybackSettingsList extends StatelessWidget {
               leading: const Icon(Icons.picture_in_picture_alt_rounded),
               title: const Text('小窗播放'),
               onTap: onMiniWindow,
+            ),
+          if (castSupported)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.cast_rounded),
+              title: const Text('投屏'),
+              onTap: onCast,
             ),
         ],
       );

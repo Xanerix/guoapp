@@ -488,6 +488,8 @@ class DownloadJob {
 }
 
 typedef DownloadConversion = ({String input, String key, String output});
+typedef CastDevice = ({String id, String name});
+typedef CastStatus = ({String state, double position, double duration});
 
 List<Map<String, dynamic>> readJsonList(String? value) {
   try {

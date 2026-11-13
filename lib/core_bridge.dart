@@ -81,6 +81,17 @@ abstract class AppRepository {
     int quality = 0,
     bool online = false,
   }) async => null;
+  Future<List<CastDevice>> castDevices() async => throw AppFailure('当前环境不支持投屏');
+  Future<void> castPlay(
+    CastDevice device,
+    Drama drama,
+    Episode episode, {
+    int quality = 0,
+    double position = 0,
+  }) async => throw AppFailure('当前环境不支持投屏');
+  Future<CastStatus> castStatus() async => throw AppFailure('当前环境不支持投屏');
+  Future<void> castControl(String command, {double position = 0}) async {}
+  Future<bool> castActive() async => false;
   Future<void> cancelDanmaku() async {}
   Future<DanmakuPage> danmaku(
     PlaybackPlan plan, {
@@ -303,6 +314,63 @@ class NativeRepository extends AppRepository {
       durationMs: durationMs,
     );
   }
+
+  @override
+  Future<List<CastDevice>> castDevices() async {
+    final result = await _call({'action': 'cast', 'command': 'discover'});
+    return [
+      for (final row in (result['items'] as List? ?? []).whereType<Map>())
+        (id: row['id'] as String? ?? '', name: row['name'] as String? ?? ''),
+    ];
+  }
+
+  @override
+  Future<void> castPlay(
+    CastDevice device,
+    Drama drama,
+    Episode episode, {
+    int quality = 0,
+    double position = 0,
+  }) async {
+    try {
+      await BackgroundDownloads.ensureStarted();
+    } on AppFailure {
+      DiaryService.add('[Cast] 后台服务未启动，应用退到后台后投屏可能中断');
+    }
+    await _call({
+      'action': 'cast',
+      'command': 'play',
+      'device': device.id,
+      'drama': drama.toJson(),
+      'chapter': episode.raw,
+      'index': episode.number,
+      'quality': quality,
+      'startMs': (position * 1000).round(),
+    });
+  }
+
+  @override
+  Future<CastStatus> castStatus() async {
+    final result = await _call({'action': 'cast', 'command': 'status'});
+    return (
+      state: result['state'] as String? ?? 'stopped',
+      position: intValue(result['positionMs']) / 1000,
+      duration: intValue(result['durationMs']) / 1000,
+    );
+  }
+
+  @override
+  Future<void> castControl(String command, {double position = 0}) async {
+    await _call({
+      'action': 'cast',
+      'command': command,
+      'startMs': (position * 1000).round(),
+    });
+  }
+
+  @override
+  Future<bool> castActive() async =>
+      (await _call({'action': 'cast', 'command': 'active'}))['active'] == true;
 
   @override
   Future<void> cancelCatalog() => _cancelReads('catalog-');
@@ -549,6 +617,7 @@ class NativeRepository extends AppRepository {
           }.contains(action) ||
           action == 'workLease' && input['command'] == 'end' ||
           action == 'finishConversion' ||
+          action == 'cast' && {'stop', 'active'}.contains(input['command']) ||
           action == 'lan' &&
               {
                 'stop',
@@ -568,16 +637,17 @@ class NativeRepository extends AppRepository {
         _authorize(input['source'] as String);
       }
       if ({
-        'cover',
-        'prepareCover',
-        'detail',
-        'seasons',
-        'metadata',
-        'resolve',
-        'preload',
-        'enqueueDownloads',
-        'localPlayback',
-      }.contains(action)) {
+            'cover',
+            'prepareCover',
+            'detail',
+            'seasons',
+            'metadata',
+            'resolve',
+            'preload',
+            'enqueueDownloads',
+            'localPlayback',
+          }.contains(action) ||
+          action == 'cast' && input['command'] == 'play') {
         _authorize(
           (input['drama'] as Map)['source'] as String,
           download: action == 'enqueueDownloads' || action == 'localPlayback',

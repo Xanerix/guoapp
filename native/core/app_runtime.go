@@ -90,6 +90,7 @@ type nativeInput struct {
 	Version         string                  `json:"version"`
 	Since           string                  `json:"since"`
 	Account         json.RawMessage         `json:"account"`
+	Device          string                  `json:"device"`
 }
 
 type nativeCatalogResult struct {
@@ -137,6 +138,7 @@ type nativeEngine struct {
 	catalogSaveError error
 	covers           *nativeCoverCache
 	stream           *nativeStreamServer
+	cast             nativeCast
 	playbacks        map[string]nativePlaybackChoice
 	playbackMu       sync.Mutex
 	playbackSequence int64
@@ -441,6 +443,8 @@ func nativeDispatch(input nativeInput) (any, error) {
 	case "release":
 		engine.nativeReleasePlayback(input.Session)
 		return true, nil
+	case "cast":
+		return engine.nativeCast(ctx, input)
 	case "checkUpdate":
 		return engine.checkUpdate(ctx, input.Version)
 	case "reportUsage":

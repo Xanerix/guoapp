@@ -84,7 +84,8 @@ class DownloadTaskHandler extends TaskHandler {
       final jobs = await repository.downloads();
       final active = jobs.where((job) => job.active).toList();
       final work = await repository.workLease('', '');
-      if (active.isEmpty && work == 0) {
+      final casting = await repository.castActive();
+      if (active.isEmpty && work == 0 && !casting) {
         _idle++;
         if (_idle >= 5) {
           await FlutterForegroundTask.stopService();
@@ -103,6 +104,8 @@ class DownloadTaskHandler extends TaskHandler {
             ? '$converting 集正在处理'
             : work > 0
             ? '正在合并或迁移本地视频'
+            : casting
+            ? '正在投屏'
             : '下载已完成或暂停',
       );
     } catch (_) {
