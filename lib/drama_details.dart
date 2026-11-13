@@ -68,6 +68,9 @@ class DramaDetails extends ChangeNotifier {
     _loading = true;
     _error = null;
     _notify();
+    if (!_seasons.any((season) => season.drama.id == _drama.id)) {
+      unawaited(_loadSeasons(generation));
+    }
     try {
       final detail = await repository.detail(_drama);
       if (!_current(generation)) return;
@@ -80,9 +83,6 @@ class DramaDetails extends ChangeNotifier {
       repository.catalogUpdates.publish(_drama, retryCover: true);
       unawaited(store.refreshDrama(_drama).catchError((Object _) {}));
       unawaited(_supplement(generation));
-      if (!_seasons.any((season) => season.drama.id == _drama.id)) {
-        unawaited(_loadSeasons(generation));
-      }
     } catch (error) {
       if (!_current(generation)) return;
       _error = error.toString();
