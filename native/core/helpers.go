@@ -1,6 +1,9 @@
 package core
 
 import (
+	"bytes"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"net/url"
 
@@ -71,4 +74,17 @@ func Pkcs7Unpad(src []byte, blockSize int) ([]byte, error) {
 		}
 	}
 	return src[:len(src)-pad], nil
+}
+
+func Pkcs7Pad(src []byte, blockSize int) []byte {
+	pad := blockSize - len(src)%blockSize
+	return append(src, bytes.Repeat([]byte{byte(pad)}, pad)...)
+}
+
+func RandomHex(n int) string {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		return ""
+	}
+	return hex.EncodeToString(b)
 }
