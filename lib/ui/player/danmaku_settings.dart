@@ -99,6 +99,19 @@ class DanmakuSettings extends StatelessWidget {
     ),
   );
 
+  Widget _speedTile() => SliderTile(
+    title: '滚动速度',
+    subtitle: '弹幕划过屏幕的快慢',
+    value: _preferences.danmakuSpeed,
+    min: danmakuSpeedMin,
+    max: danmakuSpeedMax,
+    divisions: 15,
+    label: (value) => '${value.toStringAsFixed(1)}x',
+    onChanged: (value) => _apply(
+      () => session?.setDanmakuSpeed(value) ?? _asyncSave(speed: value),
+    ),
+  );
+
   Future<void> _asyncSave({
     double? scale,
     int? color,
@@ -107,6 +120,7 @@ class DanmakuSettings extends StatelessWidget {
     double? shadow,
     bool? bold,
     DanmakuCoverage? coverage,
+    double? speed,
     List<String>? words,
   }) async {
     _save(
@@ -118,6 +132,7 @@ class DanmakuSettings extends StatelessWidget {
         danmakuShadow: shadow,
         danmakuBold: bold,
         danmakuCoverage: coverage,
+        danmakuSpeed: speed,
         danmakuWords: words,
       ),
     );
@@ -178,6 +193,8 @@ class DanmakuSettings extends StatelessWidget {
         ),
         _strokeTile(),
         _shadowTile(),
+        _section(context, '滚动'),
+        _speedTile(),
         _section(context, '显示区域'),
         Padding(
           padding: const EdgeInsets.fromLTRB(0, 4, 0, 8),

@@ -25,6 +25,7 @@ List<DanmakuFlight> planDanmaku(
   required double width,
   required int rows,
   required double Function(String) measure,
+  int lifetimeMs = danmakuLifetimeMs,
 }) {
   if (!width.isFinite || width <= 0 || rows < 1) return const [];
   final lanes = List<DanmakuFlight?>.filled(
@@ -43,7 +44,7 @@ List<DanmakuFlight> planDanmaku(
     }
     if (flights.reversed
             .takeWhile(
-              (flight) => item.timeMs - flight.item.timeMs < danmakuLifetimeMs,
+              (flight) => item.timeMs - flight.item.timeMs < lifetimeMs,
             )
             .length >=
         24) {
@@ -56,15 +57,10 @@ List<DanmakuFlight> planDanmaku(
     final lane = lanes.indexWhere((previous) {
       if (previous == null) return true;
       final gap = item.timeMs - previous.item.timeMs;
-      if (gap >= danmakuLifetimeMs) return true;
-      return (width + previous.width) * gap / danmakuLifetimeMs -
-                  previous.width >=
+      if (gap >= lifetimeMs) return true;
+      return (width + previous.width) * gap / lifetimeMs - previous.width >=
               24 &&
-          width -
-                  (width + size) *
-                      (danmakuLifetimeMs - gap) /
-                      danmakuLifetimeMs >=
-              24;
+          width - (width + size) * (lifetimeMs - gap) / lifetimeMs >= 24;
     });
     if (lane < 0) continue;
     final flight = DanmakuFlight(item, text, lane, size);
@@ -207,6 +203,8 @@ class _DanmakuLayerState extends State<_DanmakuLayer>
   int _dataRevision = -1;
   (int, int) _window = (0, 0);
 
+  int get _lifetimeMs => (danmakuLifetimeMs / widget.style.speed).round();
+
   @override
   void initState() {
     super.initState();
@@ -268,7 +266,7 @@ class _DanmakuLayerState extends State<_DanmakuLayer>
   (int, int) _windowAt(double now) {
     var first = 0;
     while (first < _schedule.length &&
-        now >= _schedule[first].item.timeMs + danmakuLifetimeMs) {
+        now >= _schedule[first].item.timeMs + _lifetimeMs) {
       first++;
     }
     var last = first;
@@ -310,6 +308,7 @@ class _DanmakuLayerState extends State<_DanmakuLayer>
         controller.items,
         width: widget.width,
         rows: widget.rows,
+        lifetimeMs: _lifetimeMs,
         measure: (text) {
           final painter = TextPainter(
             text: TextSpan(text: text, style: fill),
@@ -348,6 +347,7 @@ class _DanmakuLayerState extends State<_DanmakuLayer>
               child: _DanmakuSlide(
                 clock: _clock,
                 startMs: flight.item.timeMs,
+                lifetimeMs: _lifetimeMs,
                 travel: widget.width + flight.width,
                 origin: widget.width,
                 child: RepaintBoundary(
@@ -370,18 +370,20 @@ class _DanmakuSlide extends SingleChildRenderObjectWidget {
   const _DanmakuSlide({
     required this.clock,
     required this.startMs,
+    required this.lifetimeMs,
     required this.travel,
     required this.origin,
     required super.child,
   });
   final ValueListenable<double> clock;
   final int startMs;
+  final int lifetimeMs;
   final double travel;
   final double origin;
 
   @override
   _RenderDanmakuSlide createRenderObject(BuildContext context) =>
-      _RenderDanmakuSlide(clock, startMs, travel, origin);
+      _RenderDanmakuSlide(clock, startMs, lifetimeMs, travel, origin);
 
   @override
   void updateRenderObject(
@@ -391,13 +393,20 @@ class _DanmakuSlide extends SingleChildRenderObjectWidget {
     renderObject
       ..clock = clock
       ..startMs = startMs
+      ..lifetimeMs = lifetimeMs
       ..travel = travel
       ..origin = origin;
   }
 }
 
 class _RenderDanmakuSlide extends RenderProxyBox {
-  _RenderDanmakuSlide(this._clock, this._startMs, this._travel, this._origin);
+  _RenderDanmakuSlide(
+    this._clock,
+    this._startMs,
+    this._lifetimeMs,
+    this._travel,
+    this._origin,
+  );
 
   ValueListenable<double> _clock;
   set clock(ValueListenable<double> value) {
@@ -412,6 +421,13 @@ class _RenderDanmakuSlide extends RenderProxyBox {
   set startMs(int value) {
     if (value == _startMs) return;
     _startMs = value;
+    markNeedsPaint();
+  }
+
+  int _lifetimeMs;
+  set lifetimeMs(int value) {
+    if (value == _lifetimeMs) return;
+    _lifetimeMs = value;
     markNeedsPaint();
   }
 
@@ -445,10 +461,7 @@ class _RenderDanmakuSlide extends RenderProxyBox {
   void paint(PaintingContext context, Offset offset) {
     final child = this.child;
     if (child == null) return;
-    final progress = ((_clock.value - _startMs) / danmakuLifetimeMs).clamp(
-      0.0,
-      1.0,
-    );
+    final progress = ((_clock.value - _startMs) / _lifetimeMs).clamp(0.0, 1.0);
     context.paintChild(child, offset + Offset(_origin - _travel * progress, 0));
   }
 }

@@ -1117,6 +1117,12 @@ class PlaybackSession extends ChangeNotifier {
     _notify();
   }
 
+  Future<void> setDanmakuSpeed(double value) async {
+    final speed = value.clamp(danmakuSpeedMin, danmakuSpeedMax);
+    await _savePreferences(_preferences.copyWith(danmakuSpeed: speed));
+    _notify();
+  }
+
   Future<void> setDanmakuCoverage(DanmakuCoverage value) async {
     await _savePreferences(_preferences.copyWith(danmakuCoverage: value));
     _notify();

@@ -69,6 +69,9 @@ const danmakuStrokeMax = 6.0;
 const danmakuShadowMin = 0.0;
 const danmakuShadowMax = 12.0;
 
+const danmakuSpeedMin = .5;
+const danmakuSpeedMax = 2.0;
+
 const danmakuWordLength = 40;
 const danmakuWordLimit = 60;
 
@@ -85,6 +88,7 @@ class PlaybackPreferences {
     this.danmakuStroke = 0,
     this.danmakuShadow = 3,
     this.danmakuCoverage = DanmakuCoverage.half,
+    this.danmakuSpeed = 1,
     this.danmakuWords = const [],
     this.preload = true,
     this.televisionDecoder = TelevisionDecoder.optimized,
@@ -113,6 +117,7 @@ class PlaybackPreferences {
   final double danmakuStroke;
   final double danmakuShadow;
   final DanmakuCoverage danmakuCoverage;
+  final double danmakuSpeed;
   final List<String> danmakuWords;
   final bool preload;
   final TelevisionDecoder televisionDecoder;
@@ -143,6 +148,7 @@ class PlaybackPreferences {
     double? danmakuStroke,
     double? danmakuShadow,
     DanmakuCoverage? danmakuCoverage,
+    double? danmakuSpeed,
     List<String>? danmakuWords,
     bool? preload,
     TelevisionDecoder? televisionDecoder,
@@ -170,6 +176,7 @@ class PlaybackPreferences {
     danmakuStroke: danmakuStroke ?? this.danmakuStroke,
     danmakuShadow: danmakuShadow ?? this.danmakuShadow,
     danmakuCoverage: danmakuCoverage ?? this.danmakuCoverage,
+    danmakuSpeed: danmakuSpeed ?? this.danmakuSpeed,
     danmakuWords: danmakuWords ?? this.danmakuWords,
     preload: preload ?? this.preload,
     televisionDecoder: televisionDecoder ?? this.televisionDecoder,
@@ -199,6 +206,7 @@ class PlaybackPreferences {
     'danmakuStroke': danmakuStroke,
     'danmakuShadow': danmakuShadow,
     'danmakuCoverage': danmakuCoverage.name,
+    'danmakuSpeed': danmakuSpeed,
     'danmakuWords': danmakuWords,
     'preload': preload,
     'televisionDecoder': televisionDecoder.name,
@@ -252,6 +260,10 @@ class PlaybackPreferences {
       danmakuCoverage:
           DanmakuCoverage.values.asNameMap()[value['danmakuCoverage']] ??
           DanmakuCoverage.half,
+      danmakuSpeed: (value['danmakuSpeed'] as num? ?? 1).toDouble().clamp(
+        danmakuSpeedMin,
+        danmakuSpeedMax,
+      ),
       danmakuWords: normalizeDanmakuWords(value['danmakuWords']),
       preload: preload,
       televisionDecoder:
