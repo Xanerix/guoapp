@@ -58,9 +58,10 @@ class PlaybackSession extends ChangeNotifier {
     _preloader = PlaybackPreloader(repository)..addListener(_prime);
     danmaku = DanmakuController(repository)
       ..setEnabled(_danmakuEnabled)
+      ..setMergeWindow(preferences.danmakuMerge)
       ..setBlockedWords(preferences.danmakuWords);
     store.addListener(_accessChanged);
-    store.addListener(_syncBlockedWords);
+    store.addListener(_syncDanmakuOptions);
     _bind();
     _saveTimer = Timer.periodic(
       const Duration(seconds: 5),
@@ -304,9 +305,11 @@ class PlaybackSession extends ChangeNotifier {
     }
   }
 
-  void _syncBlockedWords() {
+  void _syncDanmakuOptions() {
     if (_closed) return;
-    danmaku.setBlockedWords(store.playbackPreferences.danmakuWords);
+    final preferences = store.playbackPreferences;
+    danmaku.setMergeWindow(preferences.danmakuMerge);
+    danmaku.setBlockedWords(preferences.danmakuWords);
   }
 
   void _sync() {
@@ -1152,6 +1155,11 @@ class PlaybackSession extends ChangeNotifier {
     _notify();
   }
 
+  Future<void> setDanmakuMerge(DanmakuMerge value) async {
+    await _savePreferences(_preferences.copyWith(danmakuMerge: value));
+    _notify();
+  }
+
   Future<void> setDanmakuWords(List<String> words) async {
     final normalized = normalizeDanmakuWords(words);
     await _savePreferences(_preferences.copyWith(danmakuWords: normalized));
@@ -1214,7 +1222,7 @@ class PlaybackSession extends ChangeNotifier {
     _closed = true;
     _generation++;
     store.removeListener(_accessChanged);
-    store.removeListener(_syncBlockedWords);
+    store.removeListener(_syncDanmakuOptions);
     _saveTimer?.cancel();
     _healthTimer?.cancel();
     _errorTimer?.cancel();

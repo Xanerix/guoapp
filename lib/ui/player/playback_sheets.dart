@@ -221,7 +221,7 @@ class PlaybackSettingsList extends StatelessWidget {
               leading: const Icon(Icons.text_fields_rounded),
               title: const Text('弹幕样式'),
               subtitle: Text(
-                '字号、颜色、透明度与显示区域',
+                '字号、颜色、透明度、合并与显示区域',
                 style: TextStyle(fontSize: 12, color: label.color),
               ),
               children: [

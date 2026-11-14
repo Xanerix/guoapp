@@ -7,6 +7,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 
 import '../../danmaku_controller.dart';
+import '../../danmaku_emoji.dart';
 import '../../danmaku_models.dart';
 import '../../danmaku_style.dart';
 import '../../playback_preferences.dart';
@@ -14,9 +15,9 @@ import '../../playback_preferences.dart';
 const danmakuMaxRows = 64;
 
 class DanmakuFlight {
-  const DanmakuFlight(this.item, this.text, this.lane, this.width);
+  const DanmakuFlight(this.item, this.segments, this.lane, this.width);
   final DanmakuItem item;
-  final String text;
+  final List<DanmakuSegment> segments;
   final int lane;
   final double width;
 }
@@ -25,7 +26,7 @@ List<DanmakuFlight> planDanmaku(
   List<DanmakuItem> items, {
   required double width,
   required int rows,
-  required double Function(String) measure,
+  required double Function(List<DanmakuSegment> segments) measure,
   int lifetimeMs = danmakuLifetimeMs,
 }) {
   if (!width.isFinite || width <= 0 || rows < 1) return const [];
@@ -51,10 +52,15 @@ List<DanmakuFlight> planDanmaku(
         24) {
       continue;
     }
-    final runes = item.text.runes;
-    final text =
-        String.fromCharCodes(runes.take(100)) + (runes.length > 100 ? '…' : '');
-    final size = measure(text).ceilToDouble() + 8;
+    final trimmed = truncateDanmakuSegments(
+      parseDanmakuSegments(item.text),
+      100,
+    );
+    if (trimmed.isEmpty) continue;
+    final segments = item.count > 1
+        ? [...trimmed, DanmakuSegment.text(' ×${item.count}')]
+        : trimmed;
+    final size = measure(segments).ceilToDouble() + 8;
     final lane = lanes.indexWhere((previous) {
       if (previous == null) return true;
       final gap = item.timeMs - previous.item.timeMs;
@@ -64,7 +70,7 @@ List<DanmakuFlight> planDanmaku(
           width - (width + size) * (lifetimeMs - gap) / lifetimeMs >= 24;
     });
     if (lane < 0) continue;
-    final flight = DanmakuFlight(item, text, lane, size);
+    final flight = DanmakuFlight(item, segments, lane, size);
     lanes[lane] = flight;
     flights.add(flight);
   }
@@ -363,17 +369,12 @@ class _DanmakuLayerState extends State<_DanmakuLayer>
         width: widget.width,
         rows: widget.rows,
         lifetimeMs: _lifetimeMs,
-        measure: (text) {
-          final painter = TextPainter(
-            text: TextSpan(text: text, style: fill),
-            textDirection: TextDirection.ltr,
-            textScaler: widget.scaler,
-            maxLines: 1,
-          )..layout();
-          final measured = painter.width;
-          painter.dispose();
-          return measured;
-        },
+        measure: (segments) => measureDanmakuSegments(
+          segments,
+          fill,
+          textScaler: widget.scaler,
+          fontSize: widget.fontSize,
+        ),
       );
       _window = _windowAt(_clock.value);
       _drive();
@@ -407,10 +408,11 @@ class _DanmakuLayerState extends State<_DanmakuLayer>
                 origin: widget.width,
                 child: RepaintBoundary(
                   child: _DanmakuText(
-                    text: flight.text,
+                    segments: flight.segments,
                     style: fill,
                     outline: outline,
                     scaler: widget.scaler,
+                    fontSize: widget.fontSize,
                   ),
                 ),
               ),
@@ -523,41 +525,77 @@ class _RenderDanmakuSlide extends RenderProxyBox {
 
 class _DanmakuText extends StatelessWidget {
   const _DanmakuText({
-    required this.text,
+    required this.segments,
     required this.style,
     required this.outline,
     required this.scaler,
+    required this.fontSize,
   });
-  final String text;
+  final List<DanmakuSegment> segments;
   final TextStyle style;
   final TextStyle? outline;
   final TextScaler scaler;
+  final double fontSize;
 
-  @override
-  Widget build(BuildContext context) {
-    final label = Text(
-      text,
-      style: style,
+  InlineSpan? _span(
+    DanmakuSegment segment,
+    TextStyle textStyle, {
+    required bool withEmoji,
+  }) {
+    final text = segment.text;
+    if (text != null) {
+      if (text.isEmpty) return null;
+      return TextSpan(text: text, style: textStyle);
+    }
+    final extent = danmakuEmojiExtent(fontSize: fontSize, textScaler: scaler);
+    if (!withEmoji) {
+      return WidgetSpan(
+        alignment: PlaceholderAlignment.middle,
+        child: SizedBox(width: extent, height: extent),
+      );
+    }
+    return WidgetSpan(
+      alignment: PlaceholderAlignment.middle,
+      child: Image.asset(
+        segment.asset!,
+        width: extent,
+        height: extent,
+        filterQuality: FilterQuality.medium,
+        errorBuilder: (context, error, stackTrace) => SizedBox(
+          width: extent,
+          height: extent,
+          child: Center(
+            child: Text('🙂', style: textStyle, textScaler: scaler),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _rich(TextStyle textStyle, {required bool withEmoji}) {
+    final spans = <InlineSpan>[];
+    for (final segment in segments) {
+      final span = _span(segment, textStyle, withEmoji: withEmoji);
+      if (span != null) spans.add(span);
+    }
+    if (spans.isEmpty) return const SizedBox.shrink();
+    return Text.rich(
+      TextSpan(style: textStyle, children: spans),
       textScaler: scaler,
       textDirection: TextDirection.ltr,
       maxLines: 1,
       softWrap: false,
     );
-    final outline = this.outline;
-    if (outline == null) return label;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final label = _rich(style, withEmoji: true);
+    final stroke = outline;
+    if (stroke == null) return label;
     return Stack(
       clipBehavior: Clip.none,
-      children: [
-        Text(
-          text,
-          style: outline,
-          textScaler: scaler,
-          textDirection: TextDirection.ltr,
-          maxLines: 1,
-          softWrap: false,
-        ),
-        label,
-      ],
+      children: [_rich(stroke, withEmoji: false), label],
     );
   }
 }
