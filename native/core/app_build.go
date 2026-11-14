@@ -1,34 +1,14 @@
 package core
 
-import (
-	"errors"
-	"slices"
-)
+import "errors"
 
 var errNativeBuildSource = errors.New("当前版本不包含此站源")
 
-type buildFlavorSpec struct {
-	name    string
-	sources []string
-}
-
-var activeFlavor buildFlavorSpec
-
-func RegisterFlavor(name string, sources []string) {
-	if activeFlavor.name != "" && activeFlavor.name != name {
-		panic("core.RegisterFlavor: conflicting flavors " + activeFlavor.name + " and " + name)
-	}
-	activeFlavor = buildFlavorSpec{name: name, sources: append(activeFlavor.sources, sources...)}
-}
-
-func buildFlavor() string { return activeFlavor.name }
+func buildFlavor() string { return buildFlavorName }
 
 func nativeSourceAvailable(source string) bool {
-	source = canonicalProviderSource(source)
-	if _, ok := registeredDescriptor(source); !ok {
-		return false
-	}
-	return activeFlavor.sources == nil || slices.Contains(activeFlavor.sources, source) || moduleSource(source)
+	_, ok := registeredDescriptor(canonicalProviderSource(source))
+	return ok
 }
 
 func nativeDramaAvailable(drama LibraryDrama) bool {

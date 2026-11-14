@@ -13,12 +13,12 @@ Flutter `3.47.9`、Dart `3.12+`、Go `1.24.1+`、Python `3.10+`。
 
 ## 调试运行
 
-官方站源不在本仓库，放在单独的私有站源仓库里（Go 模块 `guoapp/sources`）。编译 Go 核心时用 `--sources <站源仓库路径>` 接入站源，可以多次指定以同时接入多个站源模块；脚本会在 `native/` 下生成不入库的 `go.work` 与 `bridge/sources_gen.go`，之后可以省略。从未接入过站源时自动使用 `native/sources_example` 的示例站源，它只返回假数据、不访问网络、不能播放，用来在没有站源仓库时调试界面；想换回示例站源，传 `--sources native/sources_example`。所有出包脚本都接受同一个参数。站源模块的写法见[站源开发约定](#站源开发约定)。
+本体不内置任何站源。站源是运行时加载的 JS 模块，调试时把模块文件夹放进数据目录的 `modules` 下（见[站源模块](#站源模块)）；仓库里的 `native/module_example/jsexample` 是只返回假数据的示例模块，不访问网络、不能播放，用来调试界面。
 
 Flutter 运行前必须先编译对应平台 / 架构的 Go 核心：
 
 ~~~sh
-python3 scripts/build_native.py --platform android --abi arm64-v8a --sources ../guoapp-sources
+python3 scripts/build_native.py --platform android --abi arm64-v8a
 flutter pub get --enforce-lockfile
 flutter run
 ~~~
@@ -61,7 +61,7 @@ Flutter 测试一律带 `DISABLE_REMOTE_IMAGES=true`，避免加载站源图片�
 Flutter 界面 + Go 原生核心。站源请求、解析、签名、缓存、下载调度和播放代理都在 Go 里完成，Dart 只负责界面、播放器和本地用户数据。
 
 - **FFI**：`native/bridge` 以 `-buildmode=c-shared` 只导出 `DuanjuRequest(json) -> json` 与 `DuanjuFree`。`lib/core_bridge.dart` 的 `NativeRepository` 把每次调用编码成 `{"action": ...}`，在 `Isolate.run` 中调用；Go 侧在 `native/core/app_runtime.go` 的 `NativeRequest` 里按 action 分派。新增能力两端都要改。Android 与 Windows 动态加载（`libduanju_core.so` / `duanju_core.dll`）；iOS 与 macOS 改成 `-buildmode=c-archive` 静态库（`ios/DuanjuCore`、`macos/DuanjuCore`）链进主程序，Dart 侧用 `DynamicLibrary.process()` 查符号，避免 dylib 的签名与库校验问题。
-- **Go 核心**：`native/core` 是运行时，站源只经它导出的接口（`Provider`、`Host` 及各可选接口）访问。站源与各版本的站源名单放在站源模块里（官方站源模块是私有站源仓库，示例站源模块是 `native/sources_example`），只单向依赖 core，由构建脚本生成的 `native/bridge/sources_gen.go` 空白导入接入。core 里 `app_*.go` 运行时与业务（目录缓存、下载、弹幕、存储、设置），`network_*.go` HTTP 客户端、DNS、CDN、限流。`app_stream.go` 在本机起播放代理，重写 HLS playlist、透传 Range，并处理带密钥的媒体。
+- **Go 核心**：`native/core` 是运行时。站源模块由 `module_loader.go` 读取清单并注册，`module_script.go` 用 [goja](https://github.com/dop251/goja) 执行并适配成内部的 `Provider` 接口。`app_*.go` 运行时与业务（目录缓存、下载、弹幕、存储、设置），`network_*.go` HTTP 客户端、DNS、CDN、限流。`app_stream.go` 在本机起播放代理，重写 HLS playlist、透传 Range，并处理带密钥的媒体。
 - **Flutter**：界面在 `lib/ui/`（按页面分子目录，入口 `lib/main.dart` → `lib/ui/app.dart`），逻辑层平铺在 `lib/`，状态管理只用 ChangeNotifier。
 - **播放与下载**：播放器用 [media_kit](https://github.com/media-kit/media-kit) / libmpv；每集下载完由 [FFmpegKit min-gpl](https://github.com/sk3llo/ffmpeg_kit_flutter)（含 GPL 媒体组件）转成单个 mp4，只换封装、不重新编码，不参与正常播放。
 - **本地数据**：存储格式须兼容旧版。本地快照遇到未知键会整体报错，新增设置若要兼容旧版须存为快照外的独立键。
@@ -73,87 +73,23 @@ Flutter 界面 + Go 原生核心。站源请求、解析、签名、缓存、下
 | `lib/ui` | 界面：主题、导航壳、各页面、播放器、公共组件 |
 | `lib` | 逻辑层：FFI、站源目录、播放、下载、本地存储与用户 |
 | `native/core`、`native/bridge` | Go 运行时（缓存、下载、播放代理）及 C ABI |
-| `native/sources_example` | 示例站源模块（假数据，不访问网络） |
+| `native/module_example` | 示例站源模块（假数据，不访问网络） |
 | `android`、`windows`、`ios`、`macos` | 平台工程与资源 |
 | `packages/media_kit_libs_windows_video` | 本地覆盖的 Windows 媒体依赖插件 |
 | `scripts` | 构建、图标生成与数据清理脚本 |
 | `test` | 逻辑层测试 |
 
-## 站源开发约定
+## 站源模块
 
-站源是站源模块里的 Go 原生 provider，不是运行期加载的脚本。新增站源实现 `core.Provider`（按需实现可选接口），在 `init` 里用 `core.Register` 登记描述符和工厂，并加进所在模块 `flavor_*.go` 的版本名单；运行时与界面代码都不用改，界面的站源列表由核心在初始化时下发。
+站源是运行时加载的 JS 模块。模块接口还在随官方站源的迁移调整，定为第 1 版之前可能有不兼容的改动。
 
-### 站源模块
-
-- 站源模块是任意路径的 Go 模块，经构建脚本生成的 `go.work` 解析 `duanjuapp/native/core`，`go.mod` 不需要 `require` 它。构建脚本只空白导入模块根包，所有注册都要在根包的 `init` 里完成。新模块从复制 `native/sources_example` 开始，改掉 `go.mod` 的模块名和站源 ID。
-- 按编译标签调用 `core.RegisterFlavor`：默认（`!zhenguojian`）注册 `hongguojian`，`zhenguojian` 标签下注册 `zhenguojian`，列出本模块要在该版本启用的站源 ID。没列进当前版本名单的站源在该版本不可用。多个模块注册的同名版本会合并站源名单。
-- 版本名不一致或站源 ID 重复时原生库加载即 panic，不提供覆盖规则：编译期拼装的站源本来就该在出包时暴露冲突。别名不查重，撞上时后注册的生效，起别名时自己避开。
-- 模块要声明它所适配的站源接口版本：`var _ core.SourceAPI1`。
-
-### 接口版本
-
-站源接口指 `native/core` 的全部导出标识符，包括下面列出的类型和站源常用的工具函数（`core.Truncate`、`core.FirstNonEmpty` 等）。core 对这些标识符做不兼容改动（删除、改名、改签名、改语义）时，把 `native/core/source_api.go` 的 `SourceAPI1` 改名为下一个版本号，并在 `CHANGELOG.md` 写明迁移办法。没跟上的模块会以 `undefined: core.SourceAPI1` 编译失败，而不是装到设备上才出错。只新增导出标识符、新增可选接口或给描述符加字段不升版本。
-
-### 标识
-
-- 站源 ID 用小写字母、数字和 `-`，不能含 `:`；`Aliases` 里的域名或旧 ID 也会解析到本站源。
-- 剧的 ID 用 `core.ProviderDramaID(站源 ID, 站内 ID)`，分集 ID 用 `core.ProviderChapterID(站源 ID, 站内 ID, 分集键)`。这些 ID 会写进用户的追剧、记录和下载，发布后不能改格式。
-- 分类 ID 由站源自定，空字符串表示「全部」；`ValidCategory` 必须放行站源自己返回的所有分类 ID，否则界面切换分类时会被拒绝。
-
-### `SourceDescriptor`
-
-| 字段 | 作用 |
-| --- | --- |
-| `ID`、`Name`、`Description` | 站源 ID、显示名、站源列表里的说明 |
-| `Group`、`GroupName`、`EntryName` | 同组站源在界面里合并成一个入口时的分组 ID、分组名和组内名称 |
-| `DefaultOff` | 新用户默认不启用 |
-| `SkipVIPPrompt` | 不对 VIP 剧弹提示 |
-| `Aliases`、`HostSuffixes`、`MatchesHost` | 把别名、域名后缀或任意判断函数匹配到的主机归到本站源，用于按地址识别站源 |
-| `BaseURL` | 站点默认地址，`Host.BaseURL` 和域名轮换以它为准 |
-| `NoHostRotation` | 请求失败时不在多个站点地址间轮换 |
-| `AllowEmptyCatalog` | 目录第一页为空时不报错 |
-| `ContinuousFeed` | 目录是不分页的信息流：运行时经 `ctx` 传入已知剧集（`core.LibraryKnownKey`）和是否加载更多（`core.LibraryMoreKey`），缓存合并也按信息流处理 |
-| `KeepDetailEpisodes` | 详情的分集少于剧集信息里的总集数时，保留较大的总集数 |
-| `BrowserFingerprint` | 本站源域名的请求改用浏览器 TLS 指纹 |
-| `ValidCategory` | 校验分类 ID，见上 |
-| `Rankings` | 榜单列表，配合 `Ranker` 使用 |
-
-### `Provider` 与可选接口
-
-`Provider` 必须实现：`Descriptor`、`Categories`（分类列表）、`CatalogPage`（按页取目录，返回本页剧集和是否还有下一页）、`Detail`（按站内 ID 取剧集信息和分集）、`ResolveMedia`（把分集解析成可播放的媒体）。
-
-需要哪种能力就实现哪个接口，运行时用类型断言检测，界面上的对应入口随之出现：
-
-| 接口 | 能力 |
-| --- | --- |
-| `Searcher`、`WarningSearcher` | 搜索；后者可以在有结果的同时附带一条提示 |
-| `Suggester` | 搜索联想 |
-| `Recommender` | 推荐流 |
-| `Ranker` | 榜单分页 |
-| `DanmakuProvider` | 弹幕 |
-| `DeviceProvider`、`AccountProvider` | 站源设备注册、站源账号操作 |
-| `CatalogStateful` | 目录翻页状态随剧库缓存一起保存和恢复 |
-| `Sited`、`URLRotator` | 运行时决定的站点地址；同一地址的候选镜像 |
-| `CoverResolver`、`CoverRepairer`、`CoverRefererProvider` | 按需解析封面地址；修复旧数据的封面；封面请求的 Referer |
-| `MetadataEnricher` | 详情之外再补齐剧集元数据 |
-| `SeasonProvider` | 同一部剧的各季，按季序返回；详情页显示季标签，本季播完自动接下一季 |
-| `MediaAuthorizer` | 播放请求需要临时授权头时由站源签发，失效时被告知 |
-
-返回 `core.SourceLoginError` 表示要先登录站源账号；`Categories` 同时返回已取到的分类和 `core.ErrCategoriesIncomplete` 表示分类不完整，本次照常显示但不写入缓存，下次重新获取。
-
-### `Host`
-
-工厂函数收到的 `core.Host` 是站源访问运行时的唯一入口。所有网络请求都走 `Fetch`、`FetchText`、`FetchPlaylist`，不要自建 `http.Client`，代理、限流、重试、DNS 和诊断日志都由运行时统一处理。
-
-| 方法 | 作用 |
-| --- | --- |
-| `Fetch`、`FetchText` | 通用 HTTP 请求；取文本页面 |
-| `FetchPlaylist` | 取 HLS 播放列表，可带媒体凭证 |
-| `Reserve` | 先占用限流名额再请求，返回的票据填进 `HTTPRequest.Ticket` |
-| `Retries`、`MaxPages` | 用户设置的重试次数、每个分类最多翻页数 |
-| `BaseURL`、`PreferredSite`、`RememberSite` | 站点地址；上次可用的站点；记住可用站点 |
-| `LoadState`、`SaveState` | 读写站源自己的状态文件。各站源共用一个目录，文件名只能是单个文件名，请带上站源 ID 前缀 |
-| `PrepareWebMedia`、`FinishMedia` | 把网页或播放列表里取到的媒体整理成播放器可用的形式 |
+- 位置：数据目录下的 `modules/<模块标识>/`，应用启动时加载。Windows 的数据目录是 `%APPDATA%\<包名>`，便携版是程序旁的 `userdata`。
+- 文件：`manifest.json` 与 `main.js`，写法参照 `native/module_example/jsexample`。
+- 清单：`id`（小写字母、数字、`_`、`-`，最长 32 个字符，须与文件夹同名）、`name`、`version`、`description`、`runtime`（只支持 `js`）、`api`（当前为 `1`）、`hosts`（允许请求的域名，`*.example.com` 匹配子域名）、`capabilities`（可选能力，目前只有 `search`）、`defaultOff`、`allowEmptyCatalog`。
+- 入口：`main.js` 是 CommonJS，用 `module.exports` 导出 `categories(force)`、`catalogPage(page, category)`、`detail(sourceId)`、`resolveMedia(task)`，以及可选的 `validCategory(category)` 和 `search(page, query)`。函数必须同步返回，不能是异步函数。
+- 宿主：全局对象 `host` 提供 `source`、`dramaId(sourceId)`、`chapterId(sourceId, key)`、`fetch(request)`、`loadState(name)`、`saveState(name, value)`、`log(message)`。请求只能发往清单声明的域名，状态按模块隔离。
+- 运行环境不是浏览器也不是 Node：没有 `fetch`、`URL`、`Buffer`、`atob`、`TextEncoder` 这些全局对象。
+- 剧和分集的 ID 会写进用户的追剧、记录和下载，发布后不能改格式。
 
 ## 发布
 

@@ -19,23 +19,12 @@ type nativeSourceInfo struct {
 }
 
 func (engine *nativeEngine) sourceList() []nativeSourceInfo {
-	descriptors := map[string]SourceDescriptor{}
-	order := append([]string{}, activeFlavor.sources...)
-	listed := map[string]bool{}
-	for _, id := range order {
-		listed[id] = true
-	}
-	for _, descriptor := range registeredDescriptors() {
-		descriptors[descriptor.ID] = descriptor
-		if !listed[descriptor.ID] {
-			order = append(order, descriptor.ID)
-		}
-	}
-	list := make([]nativeSourceInfo, 0, len(order))
-	for _, id := range order {
-		descriptor, registered := descriptors[id]
+	registered := registeredDescriptors()
+	list := make([]nativeSourceInfo, 0, len(registered))
+	for _, descriptor := range registered {
+		id := descriptor.ID
 		p, ok := engine.downloader.provider(id)
-		if !registered || !ok {
+		if !ok {
 			continue
 		}
 		info := nativeSourceInfo{

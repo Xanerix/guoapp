@@ -42,7 +42,4 @@ Thumbs.db
 desktop.ini
 .claude/settings.local.json
 
-native/go.work
-native/go.work.sum
-native/bridge/sources_gen.go
 /guoapp-sources/

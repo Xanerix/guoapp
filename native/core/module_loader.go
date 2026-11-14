@@ -58,12 +58,6 @@ var loadedModules = struct {
 	ids map[string]bool
 }{ids: map[string]bool{}}
 
-func moduleSource(source string) bool {
-	loadedModules.Lock()
-	defer loadedModules.Unlock()
-	return loadedModules.ids[source]
-}
-
 func readModule(directory string) (*jsModule, error) {
 	raw, err := os.ReadFile(filepath.Join(directory, moduleManifest))
 	if err != nil {
