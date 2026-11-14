@@ -16,6 +16,7 @@ import (
 
 type Config struct {
 	dataDir         string
+	cacheDir        string
 	MaxPagesPerSort int
 	PageSize        int
 	Retries         int
@@ -75,6 +76,7 @@ type nativeInput struct {
 	Command         string                  `json:"command"`
 	Action          string                  `json:"action"`
 	Directory       string                  `json:"directory"`
+	Cache           string                  `json:"cache"`
 	Downloads       string                  `json:"downloads"`
 	Source          string                  `json:"source"`
 	Page            int                     `json:"page"`
@@ -119,32 +121,34 @@ type nativePlan struct {
 }
 
 type nativeEngine struct {
-	settingsMu       sync.Mutex
-	settings         nativeResourceSettings
-	readMu           sync.Mutex
-	reads            map[string]nativeReadRequest
-	readCount        int
-	work             map[string]bool
-	downloads        *nativeDownloads
-	downloader       *Downloader
-	directory        string
-	defaultDownloads string
-	mu               sync.Mutex
-	catalogs         map[string][]LibraryDrama
-	catalogStates    map[string]nativeCatalogState
-	categoryOptions  map[string][]Category
-	providerStates   map[string]json.RawMessage
-	recommendations  map[string]nativeRecommendationState
-	catalogSaveError error
-	covers           *nativeCoverCache
-	stream           *nativeStreamServer
-	cast             nativeCast
-	playbacks        map[string]nativePlaybackChoice
-	playbackMu       sync.Mutex
-	playbackSequence int64
-	playbackCancel   context.CancelFunc
-	sourceCatalogMu  sync.Mutex
-	sourceCatalogs   map[string]chan struct{}
+	settingsMu          sync.Mutex
+	settings            nativeResourceSettings
+	readMu              sync.Mutex
+	reads               map[string]nativeReadRequest
+	readCount           int
+	work                map[string]bool
+	downloads           *nativeDownloads
+	downloader          *Downloader
+	directory           string
+	cacheDirectory      string
+	defaultDownloads    string
+	mu                  sync.Mutex
+	catalogs            map[string][]LibraryDrama
+	catalogStates       map[string]nativeCatalogState
+	categoryOptions     map[string][]Category
+	providerStates      map[string]json.RawMessage
+	providerStatesSaved []byte
+	recommendations     map[string]nativeRecommendationState
+	catalogSaveError    error
+	covers              *nativeCoverCache
+	stream              *nativeStreamServer
+	cast                nativeCast
+	playbacks           map[string]nativePlaybackChoice
+	playbackMu          sync.Mutex
+	playbackSequence    int64
+	playbackCancel      context.CancelFunc
+	sourceCatalogMu     sync.Mutex
+	sourceCatalogs      map[string]chan struct{}
 }
 
 var nativeState struct {
@@ -225,15 +229,23 @@ func nativeDramaCategory(drama Drama) string {
 	return ""
 }
 
-func newNativeEngine(directory, downloads string) (*nativeEngine, error) {
+func newNativeEngine(directory, cache, downloads string) (*nativeEngine, error) {
 	if !filepath.IsAbs(directory) {
 		return nil, errors.New("应用数据目录无效")
+	}
+	if !filepath.IsAbs(cache) {
+		return nil, errors.New("应用缓存目录无效")
 	}
 	if err := os.MkdirAll(directory, 0700); err != nil {
 		return nil, err
 	}
+	if err := os.MkdirAll(cache, 0700); err != nil {
+		return nil, err
+	}
+	moveLegacyNativeCache(directory, cache)
 	cfg := DefaultConfig()
 	cfg.dataDir = directory
+	cfg.cacheDir = cache
 	router := &proxyRouter{}
 	d := &Downloader{cfg: cfg, providerHosts: map[string]string{}, proxyRouter: router,
 		limiter: newRequestLimiter(3, 250*time.Millisecond), diagnostics: newDiagnosticLog(directory)}
@@ -253,14 +265,14 @@ func newNativeEngine(directory, downloads string) (*nativeEngine, error) {
 			}
 			return nil
 		}}
-	engine := &nativeEngine{downloader: d, directory: directory, defaultDownloads: nativeDefaultDownloads(directory), catalogs: map[string][]LibraryDrama{}, catalogStates: map[string]nativeCatalogState{}}
+	engine := &nativeEngine{downloader: d, directory: directory, cacheDirectory: cache, defaultDownloads: nativeDefaultDownloads(directory), catalogs: map[string][]LibraryDrama{}, catalogStates: map[string]nativeCatalogState{}}
 	if filepath.IsAbs(downloads) {
 		engine.defaultDownloads = filepath.Clean(downloads)
 	}
 	engine.loadResourceSettings()
 	d.loadRankingCache()
 	engine.loadCatalogCache()
-	engine.covers = newNativeCoverCache(directory, d)
+	engine.covers = newNativeCoverCache(cache, d)
 	engine.downloads = newNativeDownloads(engine)
 	return engine, nil
 }
@@ -307,7 +319,7 @@ func nativeDispatch(input nativeInput) (any, error) {
 	nativeState.Lock()
 	if input.Action == "initialize" {
 		if nativeState.engine == nil {
-			engine, err := newNativeEngine(input.Directory, input.Downloads)
+			engine, err := newNativeEngine(input.Directory, input.Cache, input.Downloads)
 			if err != nil {
 				nativeState.Unlock()
 				return nil, err

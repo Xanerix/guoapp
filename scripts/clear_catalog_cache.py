@@ -48,12 +48,13 @@ def main() -> int:
         print(f"找不到数据目录 {directory}")
         return 1
 
-    remove(directory / "catalogs.json")
+    cache = Path(os.environ["LOCALAPPDATA"]) / variant.bundle_identifier
+    remove(cache / "catalogs.json")
     remove(directory / "sources.json")
-    for temporary in directory.glob(".cache-write-*"):
+    for temporary in cache.glob(".cache-write-*"):
         remove(temporary)
     if args.covers:
-        remove(directory / "covers-v1")
+        remove(cache / "covers-v1")
     print("完成，追剧、收藏、设置和下载未改动")
     return 0
 

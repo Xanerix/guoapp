@@ -769,6 +769,7 @@ class NativeRepository extends AppRepository {
     final build = await _call({
       'action': 'initialize',
       'directory': directory.path,
+      'cache': (await getApplicationCacheDirectory()).path,
       if (external != null) 'downloads': path.join(external.path, 'downloads'),
     });
     if (build['flavor'] != appFlavor) {

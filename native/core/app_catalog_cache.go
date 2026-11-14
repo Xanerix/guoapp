@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"os"
@@ -10,6 +11,8 @@ import (
 )
 
 const nativeCatalogTTL = 15 * time.Minute
+
+const nativeProviderStatesFile = "provider-states.json"
 
 type nativeCatalogState struct {
 	UpdatedAt time.Time `json:"updatedAt"`
@@ -59,6 +62,13 @@ func (engine *nativeEngine) restoreProviderStates(disk nativeCatalogDisk) {
 		}
 		states["hongguo"] = disk.HongguoApp
 	}
+	if body, err := os.ReadFile(filepath.Join(engine.directory, nativeProviderStatesFile)); err == nil {
+		var saved map[string]json.RawMessage
+		if json.Unmarshal(body, &saved) == nil {
+			states, engine.providerStatesSaved = saved, body
+		}
+	}
+	defer engine.writeProviderStatesLocked()
 	for source, raw := range states {
 		if p, ok := engine.downloader.provider(source); ok {
 			if stateful, ok := p.(CatalogStateful); ok {
@@ -69,8 +79,21 @@ func (engine *nativeEngine) restoreProviderStates(disk nativeCatalogDisk) {
 	}
 }
 
+func (engine *nativeEngine) writeProviderStatesLocked() error {
+	body, err := json.Marshal(engine.providerStates)
+	if err != nil || len(engine.providerStates) == 0 || bytes.Equal(body, engine.providerStatesSaved) {
+		return err
+	}
+	if err = nativeDownloadWrite(filepath.Join(engine.directory, nativeProviderStatesFile), body); err == nil {
+		engine.providerStatesSaved = body
+	}
+	return err
+}
+
 func (engine *nativeEngine) loadCatalogCache() {
-	file, err := os.Open(filepath.Join(engine.directory, "catalogs.json"))
+	var legacyStates nativeCatalogDisk
+	defer func() { engine.restoreProviderStates(legacyStates) }()
+	file, err := os.Open(filepath.Join(engine.cacheDirectory, "catalogs.json"))
 	if err != nil {
 		return
 	}
@@ -104,7 +127,7 @@ func (engine *nativeEngine) loadCatalogCache() {
 				engine.recommendations[nativeRecommendationKey(source, genre)] = state
 			}
 		}
-		engine.restoreProviderStates(disk)
+		legacyStates = nativeCatalogDisk{HongguoApp: disk.HongguoApp, ProviderStates: disk.ProviderStates}
 		return
 	}
 	var legacy map[string][]LibraryDrama
@@ -301,15 +324,31 @@ func (engine *nativeEngine) saveCatalogCache(source string, result *nativeCatalo
 
 func (engine *nativeEngine) writeCatalogDiskLocked() error {
 	trimNativeCatalogs(engine.catalogs)
-	body, err := json.Marshal(nativeCatalogDisk{Version: 3, Catalogs: engine.catalogs, States: engine.catalogStates, Categories: engine.categoryOptions, ProviderStates: engine.providerStates, Recommendations: engine.recommendations})
+	body, err := json.Marshal(nativeCatalogDisk{Version: 3, Catalogs: engine.catalogs, States: engine.catalogStates, Categories: engine.categoryOptions, Recommendations: engine.recommendations})
 	if err == nil && len(body) > nativeCatalogMaxBytes {
 		err = errNativeCatalogLimit
 	}
 	if err == nil {
-		err = writeNativeCacheFile(filepath.Join(engine.directory, "catalogs.json"), body)
+		err = writeNativeCacheFile(filepath.Join(engine.cacheDirectory, "catalogs.json"), body)
+	}
+	if stateErr := engine.writeProviderStatesLocked(); err == nil {
+		err = stateErr
 	}
 	engine.catalogSaveError = nativeSaveError("剧库", err)
 	return engine.catalogSaveError
+}
+
+func moveLegacyNativeCache(directory, cache string) {
+	if filepath.Clean(directory) == filepath.Clean(cache) {
+		return
+	}
+	for _, name := range []string{"catalogs.json", "rankings.json", "covers-v1"} {
+		legacy, target := filepath.Join(directory, name), filepath.Join(cache, name)
+		if _, err := os.Lstat(target); os.IsNotExist(err) && os.Rename(legacy, target) == nil {
+			continue
+		}
+		_ = os.RemoveAll(legacy)
+	}
 }
 
 func writeNativeCacheFile(path string, data []byte) error {

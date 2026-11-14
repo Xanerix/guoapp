@@ -124,6 +124,9 @@ end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
-  if (CurUninstallStep = usPostUninstall) and DeleteLocalData then
+  if CurUninstallStep <> usPostUninstall then
+    Exit;
+  DelTree(ExpandConstant('{localappdata}\{#AppId}'), True, True, True);
+  if DeleteLocalData then
     DelTree(ExpandConstant('{userappdata}\{#AppId}'), True, True, True);
 end;

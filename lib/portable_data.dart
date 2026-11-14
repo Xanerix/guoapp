@@ -32,4 +32,8 @@ class _PortablePathProvider extends PathProviderWindows {
 
   @override
   Future<String?> getApplicationSupportPath() async => directory;
+
+  @override
+  Future<String?> getApplicationCachePath() async =>
+      path.join(directory, 'cache');
 }
