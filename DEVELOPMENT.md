@@ -86,7 +86,7 @@ Flutter 界面 + Go 原生核心。站源请求、解析、签名、缓存、下
 - 位置：数据目录下的 `modules/<模块标识>/`，应用启动时加载。Windows 的数据目录是 `%APPDATA%\<包名>`，便携版是程序旁的 `userdata`。
 - 文件：`manifest.json` 与 `main.js`，写法参照 `native/module_example/jsexample`。
 - 安装包：zip，`manifest.json` 和 `main.js` 放在根目录或唯一的一层文件夹里，其余文件忽略，整包不超过 8 MB。在 设置 › 站源 › 模块管理 里从文件或地址安装，同一标识覆盖旧版本，标识或别名与其他站源重复时拒绝安装；安装和卸载不用重启。
-- 清单：`id`（小写字母、数字、`_`、`-`，最长 32 个字符，须与文件夹同名）、`name`、`version`、`description`、`runtime`（只支持 `js`）、`api`（当前为 `1`）、`hosts`（允许请求的域名，`*.example.com` 匹配子域名）、`capabilities`（可选能力，见下表）、`rankings`（榜单列表，每项 `id`、`name`、`description`）。其余可选字段对应站源描述：`defaultOff`、`allowEmptyCatalog`、`group`、`groupName`、`entryName`、`skipVipPrompt`、`aliases`、`hostSuffixes`、`baseUrl`、`noHostRotation`、`keepDetailEpisodes`、`continuousFeed`、`browserFingerprint`。
+- 清单：`id`（小写字母、数字、`_`、`-`，最长 32 个字符，须与文件夹同名）、`name`、`version`、`description`、`runtime`（只支持 `js`）、`api`（当前为 `1`）、`hosts`（允许请求的域名，`*.example.com` 匹配子域名）、`capabilities`（可选能力，见下表）、`rankings`（榜单列表，每项 `id`、`name`、`description`）。其余可选字段对应站源描述：`allowEmptyCatalog`、`group`、`groupName`、`entryName`、`skipVipPrompt`、`aliases`、`hostSuffixes`、`baseUrl`、`noHostRotation`、`keepDetailEpisodes`、`continuousFeed`、`browserFingerprint`。
 - 入口：`main.js` 是 CommonJS，用 `module.exports` 导出 `categories(force)`、`catalogPage(page, category)`、`detail(sourceId)`、`resolveMedia(task)`，以及可选的 `validCategory(category)`。`categories` 只取到部分分类时返回 `{ items, incomplete: true }`，应用稍后会重取；`catalogPage` 和 `search` 返回 `{ items, hasMore, warning }`，有剧集又有 `warning` 时作为提示显示。函数必须同步返回，不能是异步函数。需要用户登录时抛出带 `loginRequired = true` 属性的 `Error`。
 - 能力：声明后才会调用对应的函数。
 
@@ -106,11 +106,11 @@ Flutter 界面 + Go 原生核心。站源请求、解析、签名、缓存、下
 
 - 宿主：全局对象 `host` 提供：
   - 标识：`source`、`dramaId(sourceId)`、`chapterId(sourceId, key)`。
-  - 网络：`fetch(request)`、`fetchText(request)`、`fetchPlaylist(request)`、`reserve({ url, lane, background })`（先占限流名额，返回的 `ticket` 传给 `fetch`，用于签名里带时间戳的请求）、`retries()`、`maxPages()`、`sleep(ms)`。`fetch` 和 `reserve` 抛出的错误带 `backoff`（站点要求暂缓）和 `oversized`（响应过大）属性。请求只能发往清单声明的域名。
+  - 网络：`fetch(request)`、`fetchText(request)`、`fetchPlaylist(request)`、`reserve({ url, lane, background })`（先占限流名额，返回的 `ticket` 传给 `fetch`，用于签名里带时间戳的请求）、`retries()`、`maxPages()`、`sleep(ms)`。`fetch` 的 `acceptStatus` 列出按正常响应返回的错误状态码（响应体须是 JSON）。`fetch` 和 `reserve` 抛出的错误带 `backoff`（站点要求暂缓）和 `oversized`（响应过大）属性，`fetch` 的错误还带 `status`、`body`、`blocked`（站点返回的状态码、响应体和是否被拦截）；报错信息里的站源名取清单的 `name`。请求只能发往清单声明的域名。
   - 媒体：`prepareWebMedia(media, sourceName)`、`finishMedia(media)`。`resolveMedia` 返回的 `cencKey`、`hlsKey` 用 Base64 字符串。
   - 目录：`catalogContext()` 返回 `{ more, background }`，`isKnown(id)` 判断剧集是否已在列表里，`reportProgress(items)` 边取边上报。
   - 数据：`loadState(name)`、`saveState(name, value)`（按模块隔离、存到磁盘），`cacheGet(key)`、`cacheSet(key, value, ttlMs)`（同一模块各实例共享的内存缓存，`ttlMs` 为 0 表示不过期，`value` 为 `null` 删除），`exclusive(fn)`，`log(message)`。
-  - 解析：`parseUrl(raw)`、`parseHtml(text)`（返回 `{ tag, attrs, text, children }` 节点树）、`preserveIntegers(text)`（把 JSON 里超出安全范围的整数改成字符串，再交给 `JSON.parse`）。
+  - 解析：`parseUrl(raw)`、`resolveUrl(base, ref)`（按 `base` 解析相对地址）、`parseHtml(text)`（返回 `{ tag, attrs, text, children }` 节点树）、`preserveIntegers(text)`（把 JSON 里超出安全范围的整数改成字符串，再交给 `JSON.parse`）。
   - 字节与加密：`utf8Encode`、`utf8Decode`、`hexEncode`、`hexDecode`、`base64Encode`、`base64Decode`、`md5`、`sha256`、`randomBytes(n)`、`aesCbcEncrypt(key, iv, data)`（不填充）。字节用 `Uint8Array` 表示，输入也接受字符串（按 UTF-8）和数字数组。站点私有的签名算法写在模块里，JS 的 `BigInt` 足够快。
 - 并发：同一个模块会有多个互不共享变量的实例同时执行，跨调用的数据放进状态或缓存；读改写的过程用 `host.exclusive` 包起来，它不可重入，嵌套调用会抛错。
 - 调试：在 `native` 下执行 `go run ./cmd/moduletool <模块目录> <请求 JSON>`，在临时数据目录里加载该模块并依次执行请求，例如 `{"action":"catalog","source":"jsexample","page":1}`。

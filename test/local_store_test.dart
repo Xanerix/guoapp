@@ -164,7 +164,7 @@ void main() {
       expect(store.themeMode, 'system');
       expect(store.themeColor, ThemeColor.orange);
       expect(store.sourceEnabled('hongguo'), isTrue);
-      expect(store.sourceEnabled('huangdou'), isFalse);
+      expect(store.sourceEnabled('huangdou'), isTrue);
     });
 
     for (final (name, records) in [

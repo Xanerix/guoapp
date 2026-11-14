@@ -12,7 +12,6 @@ class SourceSite {
     this.group = '',
     this.groupLabel = '',
     this.entryLabel = '',
-    this.defaultOff = false,
     this.available = true,
     this.pagedSearch = false,
     this.searchSuggestions = false,
@@ -30,7 +29,6 @@ class SourceSite {
     group: json['group'] as String? ?? '',
     groupLabel: json['groupName'] as String? ?? '',
     entryLabel: json['entryName'] as String? ?? '',
-    defaultOff: json['defaultOff'] == true,
     available: json['available'] == true,
     pagedSearch: json['search'] == true,
     searchSuggestions: json['suggestions'] == true,
@@ -47,7 +45,6 @@ class SourceSite {
   final String group;
   final String groupLabel;
   final String entryLabel;
-  final bool defaultOff;
   final bool available;
   final bool pagedSearch;
   final bool searchSuggestions;
@@ -72,14 +69,8 @@ class SourceSite {
 
   static List<SourceSite> get allValues => _all;
   static List<SourceSite> get values => _available;
-  static List<SourceSite> get restrictedValues => [
-    for (final site in _all)
-      if (site.defaultOff) site,
-  ];
   static bool isAvailable(String id) => _available.any((site) => site.id == id);
   static bool isKnown(String id) => _all.any((site) => site.id == id);
-  static bool isRestricted(String id) =>
-      _all.any((site) => site.id == id && site.defaultOff);
   static SourceSite byId(String id) => _all.firstWhere(
     (site) => site.id == id,
     orElse: () => SourceSite(id, id, '', available: false),

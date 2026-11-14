@@ -197,6 +197,34 @@ module.exports = {
 	}
 }
 
+type moduleStatusHost struct{ moduleTestHost }
+
+func (host *moduleStatusHost) Fetch(context.Context, HTTPRequest) (HTTPResponse, error) {
+	return HTTPResponse{Status: 503, Body: []byte(`{"message":"忙"}`), Blocked: true}, errors.New("HTTP 503")
+}
+
+func TestModuleFetchErrorCarriesResponse(t *testing.T) {
+	directory := writeTestModule(t, `{"id":"statustest","name":"状态测试","runtime":"js","api":1,"hosts":["api.example.invalid"]}`, `
+module.exports = {
+  categories() {
+    try {
+      host.fetch({ url: "https://api.example.invalid/x", acceptStatus: [401] });
+    } catch (error) {
+      return [{ id: String(error.status), name: error.body + " " + error.blocked + " " + error.message }];
+    }
+    return [];
+  },
+};`)
+	module, err := readModule(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	categories, err := module.provider(&moduleStatusHost{}).Categories(context.Background(), false)
+	if err != nil || len(categories) != 1 || categories[0].ID != "503" || categories[0].Name != `{"message":"忙"} true HTTP 503` {
+		t.Fatalf("categories = %v, %v", categories, err)
+	}
+}
+
 func TestPreserveIntegers(t *testing.T) {
 	input := `{"id":7701280094358096920,"small":42,"neg":-9007199254740993,"edge":9007199254740991,"float":1.5e3,"text":"12345678901234567890 \"7701280094358096920\"","list":[18446744073709551616,0]}`
 	want := `{"id":"7701280094358096920","small":42,"neg":"-9007199254740993","edge":9007199254740991,"float":1.5e3,"text":"12345678901234567890 \"7701280094358096920\"","list":["18446744073709551616",0]}`
@@ -224,6 +252,7 @@ module.exports = {
       items: [{ id: host.dramaId(parsed.id), title: [
         host.hexEncode(host.md5("abc")), host.hexEncode(host.sha256(host.utf8Encode("abc"))), host.base64Encode(sealed),
         host.utf8Decode(host.base64Decode("57qi5p6c")), host.cacheGet("query"), String(host.cacheGet("missing")), String(host.randomBytes(5).length),
+        host.resolveUrl("https://a.example/x/y.html", "../z?q=1"),
       ].join("|") }],
       hasMore: true,
       warning: "注意",
@@ -262,7 +291,7 @@ module.exports = {
 		t.Fatal("search capability does not expose warnings")
 	}
 	items, more, warning, err := searcher.SearchWithWarning(ctx, 1, "红果")
-	want := "900150983cd24fb0d6963f7d28e17f72|ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad|oYSMQruLXhpGrNlYzP7FTw==|红果|红果|null|5"
+	want := "900150983cd24fb0d6963f7d28e17f72|ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad|oYSMQruLXhpGrNlYzP7FTw==|红果|红果|null|5|https://a.example/z?q=1"
 	if err != nil || !more || warning != "注意" || len(items) != 1 || items[0].Title != want || items[0].ID != "utiltest:7701280094358096920" {
 		t.Fatalf("search = %+v, %v, %q, %v", items, more, warning, err)
 	}

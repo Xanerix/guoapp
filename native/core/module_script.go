@@ -56,6 +56,7 @@ type jsFetchRequest struct {
 	Limit           int64             `json:"limit"`
 	FollowRedirects bool              `json:"followRedirects"`
 	AnyStatus       bool              `json:"anyStatus"`
+	AcceptStatus    []int             `json:"acceptStatus"`
 	Ticket          uint64            `json:"ticket"`
 	Background      bool              `json:"background"`
 }
@@ -367,7 +368,7 @@ func (p *jsProvider) hostObject(instance *jsInstance) *goja.Object {
 		"fetch": func(request jsFetchRequest) jsFetchResponse {
 			response, err := p.fetch(instance.ctx, request)
 			if err != nil {
-				instance.fail(err, response.Oversized)
+				instance.failResponse(err, response)
 			}
 			return response
 		},
@@ -431,10 +432,17 @@ func (p *jsProvider) hostObject(instance *jsInstance) *goja.Object {
 }
 
 func (instance *jsInstance) fail(err error, oversized bool) {
+	instance.failResponse(err, jsFetchResponse{Oversized: oversized})
+}
+
+func (instance *jsInstance) failResponse(err error, response jsFetchResponse) {
 	failure := instance.vm.NewGoError(err)
 	var backoff *RequestBackoff
 	_ = failure.Set("backoff", errors.As(err, &backoff))
-	_ = failure.Set("oversized", oversized)
+	_ = failure.Set("oversized", response.Oversized)
+	_ = failure.Set("status", response.Status)
+	_ = failure.Set("body", response.Body)
+	_ = failure.Set("blocked", response.Blocked)
 	panic(failure)
 }
 
@@ -488,12 +496,12 @@ func (p *jsProvider) fetch(ctx context.Context, request jsFetchRequest) (jsFetch
 		ctx = context.WithValue(ctx, BackgroundCatalogKey{}, true)
 	}
 	response, err := p.host.Fetch(ctx, HTTPRequest{
-		Label: p.module.manifest.ID, Method: request.Method, URL: request.URL, Header: request.Headers,
+		Label: p.module.manifest.Name, Method: request.Method, URL: request.URL, Header: request.Headers,
 		Body: moduleBody(request.Body), Timeout: time.Duration(request.TimeoutMS) * time.Millisecond, Limit: request.Limit,
-		FollowRedirects: request.FollowRedirects, AnyStatus: request.AnyStatus, Ticket: request.Ticket,
+		FollowRedirects: request.FollowRedirects, AnyStatus: request.AnyStatus, AcceptJSONStatus: request.AcceptStatus, Ticket: request.Ticket,
 	})
 	if err != nil {
-		return jsFetchResponse{Oversized: response.Oversized}, err
+		return jsFetchResponse{Status: response.Status, Body: string(response.Body), Blocked: response.Blocked, Oversized: response.Oversized}, err
 	}
 	return jsFetchResponse{Status: response.Status, Headers: response.Header, Body: string(response.Body),
 		Blocked: response.Blocked, Oversized: response.Oversized}, nil

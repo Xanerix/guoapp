@@ -58,7 +58,6 @@ type ModuleManifest struct {
 	API               int      `json:"api"`
 	Hosts             []string `json:"hosts"`
 	Capabilities      []string `json:"capabilities"`
-	DefaultOff        bool     `json:"defaultOff"`
 	AllowEmptyCatalog bool     `json:"allowEmptyCatalog"`
 
 	Group              string   `json:"group"`
@@ -161,7 +160,6 @@ func (module *jsModule) descriptor() SourceDescriptor {
 		ID:                module.manifest.ID,
 		Name:              module.manifest.Name,
 		Description:       module.manifest.Description,
-		DefaultOff:        module.manifest.DefaultOff,
 		AllowEmptyCatalog: module.manifest.AllowEmptyCatalog,
 		ValidCategory:     module.validCategory,
 

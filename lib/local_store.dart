@@ -355,7 +355,7 @@ class LocalStore extends ChangeNotifier {
   bool sourceEnabled(String source) => switch (_settings['sourceSwitches']) {
     final Map switches when switches[source] is bool =>
       switches[source] as bool,
-    _ => !SourceSite.isRestricted(source),
+    _ => true,
   };
 
   Future<void> setSourceEnabled(String source, bool enabled) {

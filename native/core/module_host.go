@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -134,6 +135,17 @@ func (p *jsProvider) hostUtilities(instance *jsInstance) map[string]any {
 			return p.storeCache(key, text, time.Duration(ttl)*time.Millisecond)
 		},
 		"preserveIntegers": preserveIntegers,
+		"resolveUrl": func(base, ref string) (string, error) {
+			baseURL, err := url.Parse(base)
+			if err != nil {
+				return "", errors.New("地址无效")
+			}
+			refURL, err := url.Parse(ref)
+			if err != nil {
+				return "", errors.New("地址无效")
+			}
+			return baseURL.ResolveReference(refURL).String(), nil
+		},
 		"parseHtml": func(text string) (goja.Value, error) {
 			if len(text) > moduleHTMLBytes {
 				return nil, errors.New("网页内容过大")

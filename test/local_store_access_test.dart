@@ -129,18 +129,12 @@ void main() {
   });
 
   group('sources', () {
-    test('restricted sources start switched off', () async {
+    test('available sources start switched on', () async {
       final store = await openStore();
       expect(
         store.sources.map((site) => site.id),
-        allSourcesEnabled
-            ? ['hongguo', 'hanxiaoquan', 'guipian', 'sorani']
-            : ['hongguo'],
+        SourceSite.values.map((site) => site.id),
       );
-      for (final site in SourceSite.restrictedValues) {
-        expect(store.sourceEnabled(site.id), isFalse, reason: site.id);
-        expect(store.allowsSource(site.id), isFalse, reason: site.id);
-      }
     });
 
     test('switches persist and follow the build edition', () async {

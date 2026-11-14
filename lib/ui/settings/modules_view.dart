@@ -111,6 +111,9 @@ class _ModulesViewState extends State<ModulesView> {
     );
     if (accepted != true) return;
     final id = await _repository.installModule(module.token);
+    if (!module.installed) {
+      await widget.store.setSourceEnabled(id, true);
+    }
     final site = SourceSite.byId(id);
     if (site.devices && !await _repository.sourceDevices(id)) {
       try {
