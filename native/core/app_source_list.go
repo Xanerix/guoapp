@@ -43,14 +43,14 @@ func (engine *nativeEngine) sourceList() []nativeSourceInfo {
 			Group: descriptor.Group, GroupName: descriptor.GroupName, EntryName: descriptor.EntryName,
 			DefaultOff: descriptor.DefaultOff, Available: nativeSourceAvailable(id), VIPPrompt: !descriptor.SkipVIPPrompt,
 		}
-		_, search := p.(Searcher)
-		_, warningSearch := p.(WarningSearcher)
+		_, search := providerAs[Searcher](p)
+		_, warningSearch := providerAs[WarningSearcher](p)
 		info.Search = search || warningSearch
-		_, info.Suggestions = p.(Suggester)
-		_, info.Recommendations = p.(Recommender)
-		_, info.Danmaku = p.(DanmakuProvider)
-		_, info.Devices = p.(DeviceProvider)
-		_, info.Account = p.(AccountProvider)
+		_, info.Suggestions = providerAs[Suggester](p)
+		_, info.Recommendations = providerAs[Recommender](p)
+		_, info.Danmaku = providerAs[DanmakuProvider](p)
+		_, info.Devices = providerAs[DeviceProvider](p)
+		_, info.Account = providerAs[AccountProvider](p)
 		list = append(list, info)
 	}
 	return list

@@ -14,7 +14,7 @@ func (engine *nativeEngine) suggestions(ctx context.Context, source, query strin
 	if !ok {
 		return nil, errors.New("请选择有效站源")
 	}
-	suggester, ok := p.(Suggester)
+	suggester, ok := providerAs[Suggester](p)
 	if !ok {
 		return []string{}, nil
 	}

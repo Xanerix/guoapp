@@ -85,7 +85,7 @@ func newNativeCoverCache(directory string, downloader *Downloader) *nativeCoverC
 
 func nativeCoverReferer(downloader *Downloader, source, address string) string {
 	if p, ok := downloader.provider(source); ok {
-		if referer, ok := p.(CoverRefererProvider); ok {
+		if referer, ok := providerAs[CoverRefererProvider](p); ok {
 			return referer.CoverReferer(address)
 		}
 	}

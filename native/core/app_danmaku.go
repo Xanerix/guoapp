@@ -23,7 +23,7 @@ func (engine *nativeEngine) nativeDanmaku(ctx context.Context, input nativeInput
 	if !ok {
 		return DanmakuPage{}, errors.New("本集暂不支持弹幕")
 	}
-	danmaku, ok := p.(DanmakuProvider)
+	danmaku, ok := providerAs[DanmakuProvider](p)
 	if !ok {
 		return DanmakuPage{}, errors.New("本集暂不支持弹幕")
 	}

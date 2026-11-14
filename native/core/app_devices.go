@@ -10,7 +10,7 @@ func (engine *nativeEngine) sourceDevices(ctx context.Context, source string, re
 	if !ok {
 		return map[string]any{"ready": true}, nil
 	}
-	devices, ok := p.(DeviceProvider)
+	devices, ok := providerAs[DeviceProvider](p)
 	if !ok {
 		return map[string]any{"ready": true}, nil
 	}
@@ -35,7 +35,7 @@ func (engine *nativeEngine) sourceAccount(ctx context.Context, source, command s
 	if !ok {
 		return nil, errNativeBuildSource
 	}
-	account, ok := p.(AccountProvider)
+	account, ok := providerAs[AccountProvider](p)
 	if !ok {
 		return nil, errNativeBuildSource
 	}

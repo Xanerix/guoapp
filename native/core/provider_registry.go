@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"maps"
 	"net/url"
+	"reflect"
+	"slices"
 	"strings"
 	"sync"
 )
@@ -154,13 +157,41 @@ var ErrCategoriesIncomplete = errors.New("categories incomplete")
 
 type ProviderFactory func(host Host) Provider
 
+type CapabilityLimiter interface {
+	ProvidesCapability(capability reflect.Type) bool
+}
+
+func providerAs[T any](p Provider) (T, bool) {
+	capability, ok := p.(T)
+	if limiter, limited := p.(CapabilityLimiter); ok && limited && !limiter.ProvidesCapability(reflect.TypeFor[T]()) {
+		var none T
+		return none, false
+	}
+	return capability, ok
+}
+
 var providerRegistry = struct {
 	sync.RWMutex
 	factories   map[string]ProviderFactory
 	descriptors map[string]SourceDescriptor
 	aliases     map[string]string
+	revisions   map[string]uint64
 	order       []string
-}{factories: map[string]ProviderFactory{}, descriptors: map[string]SourceDescriptor{}, aliases: map[string]string{}}
+}{factories: map[string]ProviderFactory{}, descriptors: map[string]SourceDescriptor{}, aliases: map[string]string{}, revisions: map[string]uint64{}}
+
+func Unregister(source string) {
+	id := strings.ToLower(strings.TrimSpace(source))
+	providerRegistry.Lock()
+	defer providerRegistry.Unlock()
+	if _, ok := providerRegistry.factories[id]; !ok {
+		return
+	}
+	delete(providerRegistry.factories, id)
+	delete(providerRegistry.descriptors, id)
+	maps.DeleteFunc(providerRegistry.aliases, func(_, target string) bool { return target == id })
+	providerRegistry.order = slices.DeleteFunc(providerRegistry.order, func(registered string) bool { return registered == id })
+	providerRegistry.revisions[id]++
+}
 
 func Register(descriptor SourceDescriptor, factory ProviderFactory) {
 	id := strings.ToLower(strings.TrimSpace(descriptor.ID))
@@ -223,20 +254,26 @@ func (d *Downloader) provider(source string) (Provider, bool) {
 	source = canonicalProviderSource(source)
 	d.providersMu.Lock()
 	defer d.providersMu.Unlock()
-	if p, ok := d.providers[source]; ok {
-		return p, true
-	}
 	providerRegistry.RLock()
 	factory, ok := providerRegistry.factories[source]
+	revision := providerRegistry.revisions[source]
 	providerRegistry.RUnlock()
+	if p, cached := d.providers[source]; cached && d.providerRevisions[source] == revision {
+		return p, true
+	}
 	if !ok {
+		delete(d.providers, source)
 		return nil, false
 	}
 	if d.providers == nil {
 		d.providers = map[string]Provider{}
 	}
+	if d.providerRevisions == nil {
+		d.providerRevisions = map[string]uint64{}
+	}
 	p := factory(d)
 	d.providers[source] = p
+	d.providerRevisions[source] = revision
 	return p, true
 }
 

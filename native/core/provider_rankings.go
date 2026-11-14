@@ -138,7 +138,7 @@ func (d *Downloader) loadRankingPage(ctx context.Context, board RankingBoard, pa
 
 func (d *Downloader) fetchRankingPage(ctx context.Context, board RankingBoard, page int) (RankingPage, error) {
 	if p, ok := d.provider(board.Source); ok {
-		if ranker, ok := p.(Ranker); ok {
+		if ranker, ok := providerAs[Ranker](p); ok {
 			return ranker.RankingPage(ctx, board, page)
 		}
 	}

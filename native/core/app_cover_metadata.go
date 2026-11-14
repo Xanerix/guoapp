@@ -16,7 +16,7 @@ func (d *Downloader) nativeCoverAddress(ctx context.Context, drama LibraryDrama)
 		return "", errors.New("无效的剧集 ID")
 	}
 	if p, ok := d.provider(source); ok {
-		if resolver, ok := p.(CoverResolver); ok {
+		if resolver, ok := providerAs[CoverResolver](p); ok {
 			return resolver.CoverAddress(ctx, drama, id)
 		}
 		fresh, _, err := p.Detail(ctx, id)

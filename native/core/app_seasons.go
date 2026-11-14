@@ -20,7 +20,7 @@ func (engine *nativeEngine) nativeSeasons(ctx context.Context, drama LibraryDram
 		return nil, errors.New("请选择有效站源")
 	}
 	items := []nativeSeason{}
-	provider, ok := p.(SeasonProvider)
+	provider, ok := providerAs[SeasonProvider](p)
 	if !ok {
 		return map[string]any{"items": items}, nil
 	}

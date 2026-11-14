@@ -8,7 +8,7 @@ import (
 
 func (engine *nativeEngine) nativeNeedsExtraMetadata(drama LibraryDrama) bool {
 	if p, ok := engine.downloader.provider(drama.Source); ok {
-		enricher, ok := p.(MetadataEnricher)
+		enricher, ok := providerAs[MetadataEnricher](p)
 		return ok && enricher.NeedsExtraMetadata(drama)
 	}
 	return false
@@ -28,7 +28,11 @@ func (engine *nativeEngine) nativeExtraMetadata(ctx context.Context, drama Libra
 	if !ok {
 		return drama, errors.New("请选择有效站源")
 	}
-	return p.(MetadataEnricher).ExtraMetadata(ctx, drama, id)
+	enricher, ok := providerAs[MetadataEnricher](p)
+	if !ok {
+		return drama, nil
+	}
+	return enricher.ExtraMetadata(ctx, drama, id)
 }
 
 func (engine *nativeEngine) nativeFollowCheck(ctx context.Context, drama LibraryDrama) (any, error) {

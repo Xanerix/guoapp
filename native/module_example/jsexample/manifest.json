@@ -1,0 +1,11 @@
+{
+  "id": "jsexample",
+  "name": "JS 示例",
+  "version": "1.0.0",
+  "description": "假数据示例模块，不访问网络",
+  "runtime": "js",
+  "api": 1,
+  "hosts": [],
+  "capabilities": ["search"],
+  "allowEmptyCatalog": true
+}

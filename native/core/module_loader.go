@@ -1,0 +1,178 @@
+package core
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"reflect"
+	"regexp"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/dop251/goja"
+)
+
+const (
+	moduleAPIVersion  = 1
+	moduleRuntimeJS   = "js"
+	moduleDirectory   = "modules"
+	moduleManifest    = "manifest.json"
+	moduleEntry       = "main.js"
+	moduleEntryBytes  = 4 << 20
+	moduleStatePrefix = "module-"
+)
+
+var moduleIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,31}$`)
+
+var moduleCapabilityTypes = map[string]reflect.Type{
+	"search": reflect.TypeFor[Searcher](),
+}
+
+type ModuleManifest struct {
+	ID                string   `json:"id"`
+	Name              string   `json:"name"`
+	Version           string   `json:"version"`
+	Description       string   `json:"description"`
+	Runtime           string   `json:"runtime"`
+	API               int      `json:"api"`
+	Hosts             []string `json:"hosts"`
+	Capabilities      []string `json:"capabilities"`
+	DefaultOff        bool     `json:"defaultOff"`
+	AllowEmptyCatalog bool     `json:"allowEmptyCatalog"`
+}
+
+type jsModule struct {
+	manifest     ModuleManifest
+	program      *goja.Program
+	capabilities map[reflect.Type]bool
+	active       atomic.Pointer[jsProvider]
+}
+
+var loadedModules = struct {
+	sync.Mutex
+	ids map[string]bool
+}{ids: map[string]bool{}}
+
+func moduleSource(source string) bool {
+	loadedModules.Lock()
+	defer loadedModules.Unlock()
+	return loadedModules.ids[source]
+}
+
+func readModule(directory string) (*jsModule, error) {
+	raw, err := os.ReadFile(filepath.Join(directory, moduleManifest))
+	if err != nil {
+		return nil, err
+	}
+	var manifest ModuleManifest
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		return nil, fmt.Errorf("%s 无法解析：%w", moduleManifest, err)
+	}
+	if !moduleIDPattern.MatchString(manifest.ID) {
+		return nil, errors.New("模块标识只能用小写字母、数字、下划线和连字符，最长 32 个字符")
+	}
+	if strings.TrimSpace(manifest.Name) == "" {
+		return nil, errors.New("模块缺少名称")
+	}
+	if manifest.Runtime != moduleRuntimeJS {
+		return nil, fmt.Errorf("不支持的模块运行时 %q", manifest.Runtime)
+	}
+	if manifest.API != moduleAPIVersion {
+		return nil, fmt.Errorf("模块接口版本为 %d，当前应用支持 %d", manifest.API, moduleAPIVersion)
+	}
+	capabilities := map[reflect.Type]bool{}
+	for _, name := range manifest.Capabilities {
+		capability, known := moduleCapabilityTypes[name]
+		if !known {
+			return nil, fmt.Errorf("未知的模块能力 %q", name)
+		}
+		capabilities[capability] = true
+	}
+	info, err := os.Stat(filepath.Join(directory, moduleEntry))
+	if err != nil {
+		return nil, err
+	}
+	if info.Size() > moduleEntryBytes {
+		return nil, fmt.Errorf("%s 超过 %d MB", moduleEntry, moduleEntryBytes>>20)
+	}
+	code, err := os.ReadFile(filepath.Join(directory, moduleEntry))
+	if err != nil {
+		return nil, err
+	}
+	program, err := goja.Compile(manifest.ID+"/"+moduleEntry, "(function(module, exports, host) {"+string(code)+"\n})", true)
+	if err != nil {
+		return nil, err
+	}
+	return &jsModule{manifest: manifest, program: program, capabilities: capabilities}, nil
+}
+
+func (module *jsModule) descriptor() SourceDescriptor {
+	return SourceDescriptor{
+		ID:                module.manifest.ID,
+		Name:              module.manifest.Name,
+		Description:       module.manifest.Description,
+		DefaultOff:        module.manifest.DefaultOff,
+		AllowEmptyCatalog: module.manifest.AllowEmptyCatalog,
+		ValidCategory:     module.validCategory,
+	}
+}
+
+func (module *jsModule) allowsHost(host string) bool {
+	host = strings.ToLower(host)
+	for _, pattern := range module.manifest.Hosts {
+		pattern = strings.ToLower(strings.TrimSpace(pattern))
+		if suffix, wildcard := strings.CutPrefix(pattern, "*"); wildcard && strings.HasPrefix(suffix, ".") && strings.HasSuffix(host, suffix) {
+			return true
+		}
+		if pattern != "" && pattern == host {
+			return true
+		}
+	}
+	return false
+}
+
+func (d *Downloader) loadModules() {
+	loadedModules.Lock()
+	defer loadedModules.Unlock()
+	for id := range loadedModules.ids {
+		Unregister(id)
+	}
+	clear(loadedModules.ids)
+	root := filepath.Join(d.cfg.dataDir, moduleDirectory)
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
+			d.recordModuleFailure("", err)
+		}
+		return
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		module, err := readModule(filepath.Join(root, entry.Name()))
+		if err == nil && module.manifest.ID != entry.Name() {
+			err = fmt.Errorf("模块文件夹名应与标识 %q 一致", module.manifest.ID)
+		}
+		if err == nil {
+			if _, taken := registeredSource(module.manifest.ID); taken {
+				err = errors.New("模块标识与已有站源重复")
+			}
+		}
+		if err != nil {
+			d.recordModuleFailure(entry.Name(), err)
+			continue
+		}
+		Register(module.descriptor(), module.provider)
+		loadedModules.ids[module.manifest.ID] = true
+	}
+}
+
+func (d *Downloader) recordModuleFailure(module string, err error) {
+	d.recordDiagnostic(diagnosticEvent{Time: time.Now(), Level: "error", Event: "module_load", Source: module, Message: err.Error()})
+}

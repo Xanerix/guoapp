@@ -87,6 +87,8 @@ def link_sources(paths):
     directories = [path.expanduser().resolve() for path in paths]
     modules = [source_module(directory) for directory in directories]
     uses = ''.join(f'\t{directory.as_posix()}\n' for directory in directories)
-    workspace.write_text(f'go 1.24.1\n\nuse (\n\t.\n{uses})\n', encoding='utf-8')
+    declared = (NATIVE_ROOT / 'go.mod').read_text(encoding='utf-8').splitlines()
+    version = next(line for line in declared if line.startswith('go '))
+    workspace.write_text(f'{version}\n\nuse (\n\t.\n{uses})\n', encoding='utf-8')
     imports = ''.join(f'\t_ "{module}"\n' for module in modules)
     anchor.write_text(f'package main\n\nimport (\n{imports})\n', encoding='utf-8')

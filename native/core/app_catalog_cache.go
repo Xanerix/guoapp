@@ -37,7 +37,7 @@ func (engine *nativeEngine) commitProviderStateLocked(source string) {
 	if !ok {
 		return
 	}
-	stateful, ok := p.(CatalogStateful)
+	stateful, ok := providerAs[CatalogStateful](p)
 	if !ok {
 		return
 	}
@@ -71,7 +71,7 @@ func (engine *nativeEngine) restoreProviderStates(disk nativeCatalogDisk) {
 	defer engine.writeProviderStatesLocked()
 	for source, raw := range states {
 		if p, ok := engine.downloader.provider(source); ok {
-			if stateful, ok := p.(CatalogStateful); ok {
+			if stateful, ok := providerAs[CatalogStateful](p); ok {
 				stateful.RestoreCatalogState(raw)
 				engine.commitProviderStateLocked(source)
 			}

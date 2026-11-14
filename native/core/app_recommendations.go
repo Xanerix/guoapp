@@ -21,7 +21,7 @@ func nativeRecommendationKey(source, genre string) string {
 func (engine *nativeEngine) recommender(source string) (Recommender, error) {
 	if engine.downloader != nil {
 		if p, ok := engine.downloader.provider(source); ok {
-			if recommender, ok := p.(Recommender); ok {
+			if recommender, ok := providerAs[Recommender](p); ok {
 				return recommender, nil
 			}
 		}

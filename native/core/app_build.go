@@ -28,7 +28,7 @@ func nativeSourceAvailable(source string) bool {
 	if _, ok := registeredDescriptor(source); !ok {
 		return false
 	}
-	return activeFlavor.sources == nil || slices.Contains(activeFlavor.sources, source)
+	return activeFlavor.sources == nil || slices.Contains(activeFlavor.sources, source) || moduleSource(source)
 }
 
 func nativeDramaAvailable(drama LibraryDrama) bool {

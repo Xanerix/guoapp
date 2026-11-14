@@ -28,7 +28,7 @@ func (d *Downloader) providerBaseURL(source string) string {
 	source = canonicalProviderSource(source)
 	if descriptor, ok := registeredDescriptor(source); ok {
 		if p, ok := d.provider(source); ok {
-			if sited, ok := p.(Sited); ok {
+			if sited, ok := providerAs[Sited](p); ok {
 				return strings.TrimRight(sited.BaseURL(), "/")
 			}
 		}
@@ -74,7 +74,7 @@ func (d *Downloader) providerURLCandidates(raw string) []string {
 	}
 	rotated := []string{raw}
 	if p, ok := d.provider(source); ok {
-		if rotator, ok := p.(URLRotator); ok {
+		if rotator, ok := providerAs[URLRotator](p); ok {
 			rotated = rotator.URLCandidates(raw)
 		}
 	}
@@ -271,7 +271,7 @@ func (d *Downloader) repairCover(drama LibraryDrama) string {
 	}
 	for _, source := range []string{drama.Source, SourceFromDramaID(drama.ID)} {
 		if p, ok := d.provider(source); ok {
-			if repairer, ok := p.(CoverRepairer); ok {
+			if repairer, ok := providerAs[CoverRepairer](p); ok {
 				return repairer.RepairCover(drama)
 			}
 		}
@@ -282,7 +282,7 @@ func (d *Downloader) repairCover(drama LibraryDrama) string {
 func (d *Downloader) mediaAuthorizer(address *url.URL) MediaAuthorizer {
 	for _, descriptor := range registeredDescriptors() {
 		if p, ok := d.provider(descriptor.ID); ok {
-			if authorizer, ok := p.(MediaAuthorizer); ok && authorizer.AuthorizesMedia(address) {
+			if authorizer, ok := providerAs[MediaAuthorizer](p); ok && authorizer.AuthorizesMedia(address) {
 				return authorizer
 			}
 		}
