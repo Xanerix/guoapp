@@ -155,6 +155,48 @@ module.exports = {
 	}
 }
 
+func TestModuleAccountAndLoginError(t *testing.T) {
+	directory := writeTestModule(t, `{"id":"accounttest","name":"账号测试","runtime":"js","api":1,"capabilities":["account"]}`, `
+module.exports = {
+  account(command, payload) {
+    return host.exclusive(() => ({ command, name: payload ? payload.name : "" }));
+  },
+  detail() {
+    const failure = new Error("需要登录");
+    failure.loginRequired = true;
+    throw failure;
+  },
+  categories() {
+    return host.exclusive(() => { throw new Error("临界区出错"); });
+  },
+};`)
+	module, err := readModule(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := module.provider(&moduleTestHost{})
+	account, ok := providerAs[AccountProvider](p)
+	if !ok {
+		t.Fatal("declared account capability is missing")
+	}
+	result, err := account.Account(context.Background(), "login", []byte(`{"name":"neko"}`))
+	if row, _ := result.(map[string]any); err != nil || row["command"] != "login" || row["name"] != "neko" {
+		t.Fatalf("account = %v, %v", result, err)
+	}
+	if result, err := account.Account(context.Background(), "", nil); err != nil || result.(map[string]any)["name"] != "" {
+		t.Fatalf("account status = %v, %v", result, err)
+	}
+	if _, _, err := p.Detail(context.Background(), "x"); !errors.Is(err, ErrSourceLogin) || err.Error() != "需要登录" {
+		t.Fatalf("login error = %v", err)
+	}
+	if _, err := p.Categories(context.Background(), false); err == nil || !strings.Contains(err.Error(), "临界区出错") {
+		t.Fatalf("exclusive error = %v", err)
+	}
+	if _, err := account.Account(context.Background(), "again", nil); err != nil {
+		t.Fatalf("exclusive lock was not released: %v", err)
+	}
+}
+
 func TestLoadModulesRegistersAndReplaces(t *testing.T) {
 	data := t.TempDir()
 	target := filepath.Join(data, moduleDirectory, "jsexample")

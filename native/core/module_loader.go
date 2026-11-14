@@ -30,7 +30,8 @@ const (
 var moduleIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,31}$`)
 
 var moduleCapabilityTypes = map[string]reflect.Type{
-	"search": reflect.TypeFor[Searcher](),
+	"search":  reflect.TypeFor[Searcher](),
+	"account": reflect.TypeFor[AccountProvider](),
 }
 
 type ModuleManifest struct {

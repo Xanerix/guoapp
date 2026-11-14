@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/url"
 	"reflect"
+	"sync"
 	"time"
 
 	"github.com/dop251/goja"
@@ -29,10 +30,11 @@ var moduleInvoker = goja.MustCompile("module-invoker", `(function(exports) {
 })`, true)
 
 type jsProvider struct {
-	module *jsModule
-	host   Host
-	slots  chan struct{}
-	idle   chan *jsInstance
+	module    *jsModule
+	host      Host
+	exclusive sync.Mutex
+	slots     chan struct{}
+	idle      chan *jsInstance
 }
 
 type jsInstance struct {
@@ -47,6 +49,7 @@ type jsFetchRequest struct {
 	Headers         map[string]string `json:"headers"`
 	Body            string            `json:"body"`
 	TimeoutMS       int64             `json:"timeoutMs"`
+	Limit           int64             `json:"limit"`
 	FollowRedirects bool              `json:"followRedirects"`
 	AnyStatus       bool              `json:"anyStatus"`
 }
@@ -81,6 +84,18 @@ type jsTextRequest struct {
 type jsTextResponse struct {
 	Body string `json:"body"`
 	URL  string `json:"url"`
+}
+
+type jsPlaylistRequest struct {
+	URL         string         `json:"url"`
+	Referer     string         `json:"referer"`
+	Credentials *jsCredentials `json:"credentials"`
+}
+
+type jsPlaylist struct {
+	Playlist   string `json:"playlist"`
+	URL        string `json:"url"`
+	DurationMS int64  `json:"durationMs"`
 }
 
 type jsURL struct {
@@ -194,6 +209,11 @@ func (p *jsProvider) Detail(ctx context.Context, sourceID string) (Drama, []Chap
 	return result.Drama, result.Chapters, err
 }
 
+func (p *jsProvider) Account(ctx context.Context, command string, payload json.RawMessage) (any, error) {
+	var result any
+	return result, p.call(ctx, "account", &result, command, payload)
+}
+
 func (p *jsProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
 	var media jsMedia
 	if err := p.call(ctx, "resolveMedia", &media, task); err != nil {
@@ -245,6 +265,9 @@ func moduleError(ctx context.Context, err error) error {
 	}
 	if thrown, ok := exception.Value().(*goja.Object); ok {
 		if message := thrown.Get("message"); message != nil && !goja.IsUndefined(message) {
+			if login := thrown.Get("loginRequired"); login != nil && login.ToBoolean() {
+				return SourceLoginError(message.String())
+			}
 			return errors.New(message.String())
 		}
 	}
@@ -310,6 +333,22 @@ func (p *jsProvider) hostObject(instance *jsInstance) *goja.Object {
 		"fetch":     func(request jsFetchRequest) (jsFetchResponse, error) { return p.fetch(instance.ctx, request) },
 		"fetchText": func(request jsTextRequest) (jsTextResponse, error) { return p.fetchText(instance.ctx, request) },
 		"parseUrl":  parseModuleURL,
+		"fetchPlaylist": func(request jsPlaylistRequest) (jsPlaylist, error) {
+			return p.fetchPlaylist(instance.ctx, request)
+		},
+		"exclusive": func(call goja.FunctionCall) goja.Value {
+			critical, ok := goja.AssertFunction(call.Argument(0))
+			if !ok {
+				panic(instance.vm.NewTypeError("exclusive 需要一个函数"))
+			}
+			p.exclusive.Lock()
+			defer p.exclusive.Unlock()
+			value, err := critical(goja.Undefined())
+			if err != nil {
+				panic(err)
+			}
+			return value
+		},
 		"prepareWebMedia": func(media jsMedia, sourceName string) (jsMedia, error) {
 			prepared, err := p.host.PrepareWebMedia(instance.ctx, media.providerMedia(), sourceName)
 			return moduleMedia(prepared), err
@@ -360,6 +399,12 @@ func (p *jsProvider) allowedAddress(raw string) error {
 	return nil
 }
 
+func (p *jsProvider) fetchPlaylist(ctx context.Context, request jsPlaylistRequest) (jsPlaylist, error) {
+	media := jsMedia{Credentials: request.Credentials}.providerMedia()
+	playlist, address, err := p.host.FetchPlaylist(ctx, request.URL, request.Referer, media.Credentials)
+	return jsPlaylist{Playlist: playlist, URL: address, DurationMS: M3u8Duration(playlist).Milliseconds()}, err
+}
+
 func (p *jsProvider) fetchText(ctx context.Context, request jsTextRequest) (jsTextResponse, error) {
 	if err := p.allowedAddress(request.URL); err != nil {
 		return jsTextResponse{}, err
@@ -375,7 +420,7 @@ func (p *jsProvider) fetch(ctx context.Context, request jsFetchRequest) (jsFetch
 	}
 	response, err := p.host.Fetch(ctx, HTTPRequest{
 		Label: p.module.manifest.ID, Method: request.Method, URL: request.URL, Header: request.Headers,
-		Body: moduleBody(request.Body), Timeout: time.Duration(request.TimeoutMS) * time.Millisecond,
+		Body: moduleBody(request.Body), Timeout: time.Duration(request.TimeoutMS) * time.Millisecond, Limit: request.Limit,
 		FollowRedirects: request.FollowRedirects, AnyStatus: request.AnyStatus,
 	})
 	if err != nil {
