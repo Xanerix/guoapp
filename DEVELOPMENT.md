@@ -85,9 +85,10 @@ Flutter 界面 + Go 原生核心。站源请求、解析、签名、缓存、下
 
 - 位置：数据目录下的 `modules/<模块标识>/`，应用启动时加载。Windows 的数据目录是 `%APPDATA%\<包名>`，便携版是程序旁的 `userdata`。
 - 文件：`manifest.json` 与 `main.js`，写法参照 `native/module_example/jsexample`。
-- 清单：`id`（小写字母、数字、`_`、`-`，最长 32 个字符，须与文件夹同名）、`name`、`version`、`description`、`runtime`（只支持 `js`）、`api`（当前为 `1`）、`hosts`（允许请求的域名，`*.example.com` 匹配子域名）、`capabilities`（可选能力，目前只有 `search`）、`defaultOff`、`allowEmptyCatalog`。
+- 清单：`id`（小写字母、数字、`_`、`-`，最长 32 个字符，须与文件夹同名）、`name`、`version`、`description`、`runtime`（只支持 `js`）、`api`（当前为 `1`）、`hosts`（允许请求的域名，`*.example.com` 匹配子域名）、`capabilities`（可选能力，目前只有 `search`）。其余可选字段对应站源描述：`defaultOff`、`allowEmptyCatalog`、`group`、`groupName`、`entryName`、`skipVipPrompt`、`aliases`、`hostSuffixes`、`baseUrl`、`noHostRotation`、`keepDetailEpisodes`、`continuousFeed`、`browserFingerprint`。
 - 入口：`main.js` 是 CommonJS，用 `module.exports` 导出 `categories(force)`、`catalogPage(page, category)`、`detail(sourceId)`、`resolveMedia(task)`，以及可选的 `validCategory(category)` 和 `search(page, query)`。函数必须同步返回，不能是异步函数。
-- 宿主：全局对象 `host` 提供 `source`、`dramaId(sourceId)`、`chapterId(sourceId, key)`、`fetch(request)`、`loadState(name)`、`saveState(name, value)`、`log(message)`。请求只能发往清单声明的域名，状态按模块隔离。
+- 宿主：全局对象 `host` 提供 `source`、`dramaId(sourceId)`、`chapterId(sourceId, key)`、`fetch(request)`、`fetchText(request)`、`parseUrl(raw)`、`prepareWebMedia(media, sourceName)`、`loadState(name)`、`saveState(name, value)`、`log(message)`。请求只能发往清单声明的域名，状态按模块隔离。
+- 调试：在 `native` 下执行 `go run ./cmd/moduletool <模块目录> <请求 JSON>`，在临时数据目录里加载该模块并依次执行请求，例如 `{"action":"catalog","source":"jsexample","page":1}`。
 - 运行环境不是浏览器也不是 Node：没有 `fetch`、`URL`、`Buffer`、`atob`、`TextEncoder` 这些全局对象。
 - 剧和分集的 ID 会写进用户的追剧、记录和下载，发布后不能改格式。
 

@@ -44,6 +44,18 @@ type ModuleManifest struct {
 	Capabilities      []string `json:"capabilities"`
 	DefaultOff        bool     `json:"defaultOff"`
 	AllowEmptyCatalog bool     `json:"allowEmptyCatalog"`
+
+	Group              string   `json:"group"`
+	GroupName          string   `json:"groupName"`
+	EntryName          string   `json:"entryName"`
+	SkipVIPPrompt      bool     `json:"skipVipPrompt"`
+	Aliases            []string `json:"aliases"`
+	HostSuffixes       []string `json:"hostSuffixes"`
+	BaseURL            string   `json:"baseUrl"`
+	NoHostRotation     bool     `json:"noHostRotation"`
+	KeepDetailEpisodes bool     `json:"keepDetailEpisodes"`
+	ContinuousFeed     bool     `json:"continuousFeed"`
+	BrowserFingerprint bool     `json:"browserFingerprint"`
 }
 
 type jsModule struct {
@@ -113,6 +125,18 @@ func (module *jsModule) descriptor() SourceDescriptor {
 		DefaultOff:        module.manifest.DefaultOff,
 		AllowEmptyCatalog: module.manifest.AllowEmptyCatalog,
 		ValidCategory:     module.validCategory,
+
+		Group:              module.manifest.Group,
+		GroupName:          module.manifest.GroupName,
+		EntryName:          module.manifest.EntryName,
+		SkipVIPPrompt:      module.manifest.SkipVIPPrompt,
+		Aliases:            module.manifest.Aliases,
+		HostSuffixes:       module.manifest.HostSuffixes,
+		BaseURL:            module.manifest.BaseURL,
+		NoHostRotation:     module.manifest.NoHostRotation,
+		KeepDetailEpisodes: module.manifest.KeepDetailEpisodes,
+		ContinuousFeed:     module.manifest.ContinuousFeed,
+		BrowserFingerprint: module.manifest.BrowserFingerprint,
 	}
 }
 

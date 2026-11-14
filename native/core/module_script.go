@@ -69,20 +69,80 @@ type jsDetail struct {
 	Chapters []Chapter `json:"chapters"`
 }
 
+type jsTextRequest struct {
+	URL       string `json:"url"`
+	Referer   string `json:"referer"`
+	UserAgent string `json:"userAgent"`
+	Cookie    string `json:"cookie"`
+	NoCache   bool   `json:"noCache"`
+	Body      string `json:"body"`
+}
+
+type jsTextResponse struct {
+	Body string `json:"body"`
+	URL  string `json:"url"`
+}
+
+type jsURL struct {
+	Scheme   string `json:"scheme"`
+	Host     string `json:"host"`
+	Hostname string `json:"hostname"`
+	Port     string `json:"port"`
+	Path     string `json:"path"`
+	Query    string `json:"query"`
+	Fragment string `json:"fragment"`
+	UserInfo bool   `json:"userInfo"`
+	Href     string `json:"href"`
+}
+
+type jsCredentials struct {
+	Cookie    string `json:"cookie"`
+	Origin    string `json:"origin"`
+	Referer   string `json:"referer"`
+	UserAgent string `json:"userAgent"`
+	ExpiresMS int64  `json:"expiresMs"`
+}
+
 type jsMedia struct {
-	URL        string    `json:"url"`
-	Referer    string    `json:"referer"`
-	Playlist   string    `json:"playlist"`
-	Quality    int       `json:"quality"`
-	DurationMS int64     `json:"durationMs"`
-	Variants   []jsMedia `json:"variants"`
+	Credentials *jsCredentials `json:"credentials"`
+	URL         string         `json:"url"`
+	Referer     string         `json:"referer"`
+	Playlist    string         `json:"playlist"`
+	HLSKey      []byte         `json:"hlsKey"`
+	CENCKey     []byte         `json:"cencKey"`
+	Quality     int            `json:"quality"`
+	DurationMS  int64          `json:"durationMs"`
+	Variants    []jsMedia      `json:"variants"`
 }
 
 func (media jsMedia) providerMedia() ProviderMedia {
 	converted := ProviderMedia{URL: media.URL, Referer: media.Referer, Playlist: media.Playlist, Quality: media.Quality,
-		Duration: time.Duration(media.DurationMS) * time.Millisecond}
+		HLSKey: media.HLSKey, CENCKey: media.CENCKey, Duration: time.Duration(media.DurationMS) * time.Millisecond}
+	if credentials := media.Credentials; credentials != nil {
+		converted.Credentials = &MediaCredentials{Cookie: credentials.Cookie, Origin: credentials.Origin,
+			Referer: credentials.Referer, UserAgent: credentials.UserAgent}
+		if credentials.ExpiresMS > 0 {
+			converted.Credentials.Expires = time.UnixMilli(credentials.ExpiresMS)
+		}
+	}
 	for _, variant := range media.Variants {
 		converted.Variants = append(converted.Variants, variant.providerMedia())
+	}
+	return converted
+}
+
+func moduleMedia(media ProviderMedia) jsMedia {
+	converted := jsMedia{URL: media.URL, Referer: media.Referer, Playlist: media.Playlist, Quality: media.Quality,
+		HLSKey: media.HLSKey, CENCKey: media.CENCKey, DurationMS: media.Duration.Milliseconds()}
+	if credentials := media.Credentials; credentials != nil {
+		converted.Credentials = &jsCredentials{Cookie: credentials.Cookie, Origin: credentials.Origin,
+			Referer: credentials.Referer, UserAgent: credentials.UserAgent}
+		if !credentials.Expires.IsZero() {
+			converted.Credentials.ExpiresMS = credentials.Expires.UnixMilli()
+		}
+	}
+	for _, variant := range media.Variants {
+		converted.Variants = append(converted.Variants, moduleMedia(variant))
 	}
 	return converted
 }
@@ -248,6 +308,12 @@ func (p *jsProvider) hostObject(instance *jsInstance) *goja.Object {
 		"dramaId":   func(sourceID string) string { return ProviderDramaID(id, sourceID) },
 		"chapterId": func(sourceID, key string) string { return ProviderChapterID(id, sourceID, key) },
 		"fetch":     func(request jsFetchRequest) (jsFetchResponse, error) { return p.fetch(instance.ctx, request) },
+		"fetchText": func(request jsTextRequest) (jsTextResponse, error) { return p.fetchText(instance.ctx, request) },
+		"parseUrl":  parseModuleURL,
+		"prepareWebMedia": func(media jsMedia, sourceName string) (jsMedia, error) {
+			prepared, err := p.host.PrepareWebMedia(instance.ctx, media.providerMedia(), sourceName)
+			return moduleMedia(prepared), err
+		},
 		"loadState": func(name string) (string, error) {
 			data, err := p.host.LoadState(moduleStatePrefix + id + "-" + name)
 			return string(data), err
@@ -267,17 +333,49 @@ func (p *jsProvider) hostObject(instance *jsInstance) *goja.Object {
 	return host
 }
 
-func (p *jsProvider) fetch(ctx context.Context, request jsFetchRequest) (jsFetchResponse, error) {
-	address, err := url.Parse(request.URL)
+func moduleBody(body string) []byte {
+	if body == "" {
+		return nil
+	}
+	return []byte(body)
+}
+
+func parseModuleURL(raw string) (jsURL, error) {
+	address, err := url.Parse(raw)
+	if err != nil {
+		return jsURL{}, errors.New("地址无效")
+	}
+	return jsURL{Scheme: address.Scheme, Host: address.Host, Hostname: address.Hostname(), Port: address.Port(),
+		Path: address.Path, Query: address.RawQuery, Fragment: address.Fragment, UserInfo: address.User != nil, Href: address.String()}, nil
+}
+
+func (p *jsProvider) allowedAddress(raw string) error {
+	address, err := url.Parse(raw)
 	if err != nil || address.Scheme != "https" && address.Scheme != "http" || address.Hostname() == "" {
-		return jsFetchResponse{}, errors.New("请求地址无效")
+		return errors.New("请求地址无效")
 	}
 	if !p.module.allowsHost(address.Hostname()) {
-		return jsFetchResponse{}, fmt.Errorf("模块清单未声明访问 %s", address.Hostname())
+		return fmt.Errorf("模块清单未声明访问 %s", address.Hostname())
+	}
+	return nil
+}
+
+func (p *jsProvider) fetchText(ctx context.Context, request jsTextRequest) (jsTextResponse, error) {
+	if err := p.allowedAddress(request.URL); err != nil {
+		return jsTextResponse{}, err
+	}
+	response, err := p.host.FetchText(ctx, TextRequest{URL: request.URL, Referer: request.Referer, UserAgent: request.UserAgent,
+		Cookie: request.Cookie, NoCache: request.NoCache, Body: moduleBody(request.Body)})
+	return jsTextResponse{Body: response.Body, URL: response.URL}, err
+}
+
+func (p *jsProvider) fetch(ctx context.Context, request jsFetchRequest) (jsFetchResponse, error) {
+	if err := p.allowedAddress(request.URL); err != nil {
+		return jsFetchResponse{}, err
 	}
 	response, err := p.host.Fetch(ctx, HTTPRequest{
 		Label: p.module.manifest.ID, Method: request.Method, URL: request.URL, Header: request.Headers,
-		Body: []byte(request.Body), Timeout: time.Duration(request.TimeoutMS) * time.Millisecond,
+		Body: moduleBody(request.Body), Timeout: time.Duration(request.TimeoutMS) * time.Millisecond,
 		FollowRedirects: request.FollowRedirects, AnyStatus: request.AnyStatus,
 	})
 	if err != nil {
