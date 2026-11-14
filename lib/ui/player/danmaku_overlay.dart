@@ -52,11 +52,14 @@ List<DanmakuFlight> planDanmaku(
         24) {
       continue;
     }
-    final segments = truncateDanmakuSegments(
+    final trimmed = truncateDanmakuSegments(
       parseDanmakuSegments(item.text),
       100,
     );
-    if (segments.isEmpty) continue;
+    if (trimmed.isEmpty) continue;
+    final segments = item.count > 1
+        ? [...trimmed, DanmakuSegment.text(' ×${item.count}')]
+        : trimmed;
     final size = measure(segments).ceilToDouble() + 8;
     final lane = lanes.indexWhere((previous) {
       if (previous == null) return true;
