@@ -197,6 +197,102 @@ module.exports = {
 	}
 }
 
+func TestPreserveIntegers(t *testing.T) {
+	input := `{"id":7701280094358096920,"small":42,"neg":-9007199254740993,"edge":9007199254740991,"float":1.5e3,"text":"12345678901234567890 \"7701280094358096920\"","list":[18446744073709551616,0]}`
+	want := `{"id":"7701280094358096920","small":42,"neg":"-9007199254740993","edge":9007199254740991,"float":1.5e3,"text":"12345678901234567890 \"7701280094358096920\"","list":["18446744073709551616",0]}`
+	if got := preserveIntegers(input); got != want {
+		t.Fatalf("preserveIntegers =\n%s\nwant\n%s", got, want)
+	}
+}
+
+func TestModuleHostUtilitiesAndOptionalCapabilities(t *testing.T) {
+	directory := writeTestModule(t, `{"id":"utiltest","name":"工具测试","runtime":"js","api":1,"capabilities":["search","danmaku","rankings"],
+"rankings":[{"id":"util-hot","name":"热榜","description":"说明"}]}`, `
+module.exports = {
+  categories(force) {
+    return force ? { items: [{ id: "a", name: "A" }], incomplete: true } : [{ id: "b", name: "B" }];
+  },
+  catalogPage(page) {
+    return { items: [{ id: host.dramaId("x" + page), title: "x" }], hasMore: false, warning: page > 1 ? "部分失败" : "" };
+  },
+  search(page, query) {
+    const key = host.hexDecode("000102030405060708090a0b0c0d0e0f");
+    const sealed = host.aesCbcEncrypt(key, key, host.utf8Encode("0123456789abcdef"));
+    host.cacheSet("query", query, 0);
+    const parsed = JSON.parse(host.preserveIntegers('{"id":7701280094358096920}'));
+    return {
+      items: [{ id: host.dramaId(parsed.id), title: [
+        host.hexEncode(host.md5("abc")), host.hexEncode(host.sha256(host.utf8Encode("abc"))), host.base64Encode(sealed),
+        host.utf8Decode(host.base64Decode("57qi5p6c")), host.cacheGet("query"), String(host.cacheGet("missing")), String(host.randomBytes(5).length),
+      ].join("|") }],
+      hasMore: true,
+      warning: "注意",
+    };
+  },
+  detail() {
+    return host.exclusive(() => host.exclusive(() => ({})));
+  },
+  danmakuIds(task) {
+    return task.chapter.videoUrl === "ok" ? { series: "s", video: "v" } : null;
+  },
+  danmaku(series, video, start, duration) {
+    return { episodeId: video, items: [{ id: "1", text: series, timeMs: start }], startMs: start, nextMs: duration, total: 1 };
+  },
+  rankingPage(board, page) {
+    return { items: [{ rank: page, drama: { id: host.dramaId(board), title: board } }], hasMore: false };
+  },
+};`)
+	module, err := readModule(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := module.provider(&moduleTestHost{state: map[string][]byte{}})
+	ctx := context.Background()
+	if categories, err := p.Categories(ctx, true); !errors.Is(err, ErrCategoriesIncomplete) || len(categories) != 1 || categories[0].ID != "a" {
+		t.Fatalf("incomplete categories = %v, %v", categories, err)
+	}
+	if categories, err := p.Categories(ctx, false); err != nil || len(categories) != 1 || categories[0].ID != "b" {
+		t.Fatalf("categories = %v, %v", categories, err)
+	}
+	if items, _, err := p.CatalogPage(ctx, 2, ""); err == nil || err.Error() != "部分失败" || len(items) != 1 {
+		t.Fatalf("catalog warning = %v, %v", items, err)
+	}
+	searcher, ok := providerAs[WarningSearcher](p)
+	if !ok {
+		t.Fatal("search capability does not expose warnings")
+	}
+	items, more, warning, err := searcher.SearchWithWarning(ctx, 1, "红果")
+	want := "900150983cd24fb0d6963f7d28e17f72|ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad|oYSMQruLXhpGrNlYzP7FTw==|红果|红果|null|5"
+	if err != nil || !more || warning != "注意" || len(items) != 1 || items[0].Title != want || items[0].ID != "utiltest:7701280094358096920" {
+		t.Fatalf("search = %+v, %v, %q, %v", items, more, warning, err)
+	}
+	if _, _, err := p.Detail(ctx, "x"); err == nil || !strings.Contains(err.Error(), "不可重入") {
+		t.Fatalf("nested exclusive error = %v", err)
+	}
+	danmaku, ok := providerAs[DanmakuProvider](p)
+	if !ok {
+		t.Fatal("declared danmaku capability is missing")
+	}
+	if _, _, valid := danmaku.DanmakuIDs(Task{Chapter: Chapter{VideoURL: "no"}}); valid {
+		t.Fatal("danmaku ids accepted a rejected task")
+	}
+	series, video, valid := danmaku.DanmakuIDs(Task{Chapter: Chapter{VideoURL: "ok"}})
+	if page, err := danmaku.Danmaku(ctx, series, video, 5, 9); !valid || err != nil || page.Items[0].Text != "s" || page.NextMS != 9 {
+		t.Fatalf("danmaku = %+v, %v", page, err)
+	}
+	boards := module.descriptor().Rankings
+	if len(boards) != 1 || boards[0].Source != "utiltest" || boards[0].Name != "热榜" {
+		t.Fatalf("boards = %+v", boards)
+	}
+	ranker, _ := providerAs[Ranker](p)
+	if page, err := ranker.RankingPage(ctx, boards[0], 3); err != nil || page.Items[0].Rank != 3 || page.Items[0].Drama.Title != "util-hot" {
+		t.Fatalf("ranking = %+v, %v", page, err)
+	}
+	if _, ok := providerAs[Suggester](p); ok {
+		t.Fatal("undeclared suggestions capability is exposed")
+	}
+}
+
 func TestLoadModulesRegistersAndReplaces(t *testing.T) {
 	data := t.TempDir()
 	target := filepath.Join(data, moduleDirectory, "jsexample")

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/url"
 	"reflect"
 	"sync"
@@ -32,15 +33,18 @@ var moduleInvoker = goja.MustCompile("module-invoker", `(function(exports) {
 type jsProvider struct {
 	module    *jsModule
 	host      Host
-	exclusive sync.Mutex
+	exclusive chan struct{}
 	slots     chan struct{}
 	idle      chan *jsInstance
+	cacheMu   sync.Mutex
+	cache     map[string]moduleCacheEntry
 }
 
 type jsInstance struct {
-	vm     *goja.Runtime
-	invoke goja.Callable
-	ctx    context.Context
+	vm        *goja.Runtime
+	invoke    goja.Callable
+	ctx       context.Context
+	exclusive bool
 }
 
 type jsFetchRequest struct {
@@ -52,6 +56,8 @@ type jsFetchRequest struct {
 	Limit           int64             `json:"limit"`
 	FollowRedirects bool              `json:"followRedirects"`
 	AnyStatus       bool              `json:"anyStatus"`
+	Ticket          uint64            `json:"ticket"`
+	Background      bool              `json:"background"`
 }
 
 type jsFetchResponse struct {
@@ -65,6 +71,7 @@ type jsFetchResponse struct {
 type jsDramaPage struct {
 	Items   []Drama `json:"items"`
 	HasMore bool    `json:"hasMore"`
+	Warning string  `json:"warning"`
 }
 
 type jsDetail struct {
@@ -163,7 +170,7 @@ func moduleMedia(media ProviderMedia) jsMedia {
 }
 
 func (module *jsModule) provider(host Host) Provider {
-	p := &jsProvider{module: module, host: host,
+	p := &jsProvider{module: module, host: host, exclusive: make(chan struct{}, 1), cache: map[string]moduleCacheEntry{},
 		slots: make(chan struct{}, moduleInstanceLimit), idle: make(chan *jsInstance, moduleInstanceLimit)}
 	module.active.Store(p)
 	return p
@@ -187,20 +194,47 @@ func (p *jsProvider) ProvidesCapability(capability reflect.Type) bool {
 }
 
 func (p *jsProvider) Categories(ctx context.Context, force bool) ([]Category, error) {
+	var raw json.RawMessage
+	if err := p.call(ctx, "categories", &raw, force); err != nil {
+		return nil, err
+	}
 	var categories []Category
-	return categories, p.call(ctx, "categories", &categories, force)
+	if json.Unmarshal(raw, &categories) == nil {
+		return categories, nil
+	}
+	var partial struct {
+		Items      []Category `json:"items"`
+		Incomplete bool       `json:"incomplete"`
+	}
+	if err := json.Unmarshal(raw, &partial); err != nil {
+		return nil, err
+	}
+	if partial.Incomplete {
+		return partial.Items, ErrCategoriesIncomplete
+	}
+	return partial.Items, nil
 }
 
 func (p *jsProvider) CatalogPage(ctx context.Context, page int, category string) ([]Drama, bool, error) {
 	var result jsDramaPage
-	err := p.call(ctx, "catalogPage", &result, page, category)
-	return result.Items, result.HasMore, err
+	if err := p.call(ctx, "catalogPage", &result, page, category); err != nil {
+		return nil, false, err
+	}
+	if result.Warning != "" {
+		return result.Items, result.HasMore, errors.New(result.Warning)
+	}
+	return result.Items, result.HasMore, nil
 }
 
 func (p *jsProvider) Search(ctx context.Context, page int, query string) ([]Drama, bool, error) {
+	items, more, _, err := p.SearchWithWarning(ctx, page, query)
+	return items, more, err
+}
+
+func (p *jsProvider) SearchWithWarning(ctx context.Context, page int, query string) ([]Drama, bool, string, error) {
 	var result jsDramaPage
 	err := p.call(ctx, "search", &result, page, query)
-	return result.Items, result.HasMore, err
+	return result.Items, result.HasMore, result.Warning, err
 }
 
 func (p *jsProvider) Detail(ctx context.Context, sourceID string) (Drama, []Chapter, error) {
@@ -330,9 +364,21 @@ func (p *jsProvider) hostObject(instance *jsInstance) *goja.Object {
 		"source":    id,
 		"dramaId":   func(sourceID string) string { return ProviderDramaID(id, sourceID) },
 		"chapterId": func(sourceID, key string) string { return ProviderChapterID(id, sourceID, key) },
-		"fetch":     func(request jsFetchRequest) (jsFetchResponse, error) { return p.fetch(instance.ctx, request) },
-		"fetchText": func(request jsTextRequest) (jsTextResponse, error) { return p.fetchText(instance.ctx, request) },
-		"parseUrl":  parseModuleURL,
+		"fetch": func(request jsFetchRequest) jsFetchResponse {
+			response, err := p.fetch(instance.ctx, request)
+			if err != nil {
+				instance.fail(err, response.Oversized)
+			}
+			return response
+		},
+		"fetchText": func(request jsTextRequest) jsTextResponse {
+			response, err := p.fetchText(instance.ctx, request)
+			if err != nil {
+				instance.fail(err, false)
+			}
+			return response
+		},
+		"parseUrl": parseModuleURL,
 		"fetchPlaylist": func(request jsPlaylistRequest) (jsPlaylist, error) {
 			return p.fetchPlaylist(instance.ctx, request)
 		},
@@ -341,8 +387,19 @@ func (p *jsProvider) hostObject(instance *jsInstance) *goja.Object {
 			if !ok {
 				panic(instance.vm.NewTypeError("exclusive 需要一个函数"))
 			}
-			p.exclusive.Lock()
-			defer p.exclusive.Unlock()
+			if instance.exclusive {
+				panic(instance.vm.NewTypeError("exclusive 不可重入"))
+			}
+			select {
+			case p.exclusive <- struct{}{}:
+			case <-instance.ctx.Done():
+				panic(instance.vm.NewGoError(instance.ctx.Err()))
+			}
+			instance.exclusive = true
+			defer func() {
+				instance.exclusive = false
+				<-p.exclusive
+			}()
 			value, err := critical(goja.Undefined())
 			if err != nil {
 				panic(err)
@@ -366,10 +423,19 @@ func (p *jsProvider) hostObject(instance *jsInstance) *goja.Object {
 			}
 		},
 	}
+	maps.Copy(members, p.hostUtilities(instance))
 	for name, member := range members {
 		_ = host.Set(name, member)
 	}
 	return host
+}
+
+func (instance *jsInstance) fail(err error, oversized bool) {
+	failure := instance.vm.NewGoError(err)
+	var backoff *RequestBackoff
+	_ = failure.Set("backoff", errors.As(err, &backoff))
+	_ = failure.Set("oversized", oversized)
+	panic(failure)
 }
 
 func moduleBody(body string) []byte {
@@ -418,13 +484,16 @@ func (p *jsProvider) fetch(ctx context.Context, request jsFetchRequest) (jsFetch
 	if err := p.allowedAddress(request.URL); err != nil {
 		return jsFetchResponse{}, err
 	}
+	if request.Background {
+		ctx = context.WithValue(ctx, BackgroundCatalogKey{}, true)
+	}
 	response, err := p.host.Fetch(ctx, HTTPRequest{
 		Label: p.module.manifest.ID, Method: request.Method, URL: request.URL, Header: request.Headers,
 		Body: moduleBody(request.Body), Timeout: time.Duration(request.TimeoutMS) * time.Millisecond, Limit: request.Limit,
-		FollowRedirects: request.FollowRedirects, AnyStatus: request.AnyStatus,
+		FollowRedirects: request.FollowRedirects, AnyStatus: request.AnyStatus, Ticket: request.Ticket,
 	})
 	if err != nil {
-		return jsFetchResponse{}, err
+		return jsFetchResponse{Oversized: response.Oversized}, err
 	}
 	return jsFetchResponse{Status: response.Status, Headers: response.Header, Body: string(response.Body),
 		Blocked: response.Blocked, Oversized: response.Oversized}, nil

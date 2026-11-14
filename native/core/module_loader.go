@@ -29,9 +29,24 @@ const (
 
 var moduleIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,31}$`)
 
-var moduleCapabilityTypes = map[string]reflect.Type{
-	"search":  reflect.TypeFor[Searcher](),
-	"account": reflect.TypeFor[AccountProvider](),
+var moduleCapabilityTypes = map[string][]reflect.Type{
+	"search":          {reflect.TypeFor[Searcher](), reflect.TypeFor[WarningSearcher]()},
+	"account":         {reflect.TypeFor[AccountProvider]()},
+	"suggestions":     {reflect.TypeFor[Suggester]()},
+	"recommendations": {reflect.TypeFor[Recommender]()},
+	"danmaku":         {reflect.TypeFor[DanmakuProvider]()},
+	"devices":         {reflect.TypeFor[DeviceProvider]()},
+	"rankings":        {reflect.TypeFor[Ranker]()},
+	"seasons":         {reflect.TypeFor[SeasonProvider]()},
+	"cover":           {reflect.TypeFor[CoverResolver]()},
+	"metadata":        {reflect.TypeFor[MetadataEnricher]()},
+	"catalogState":    {reflect.TypeFor[CatalogStateful]()},
+}
+
+type ModuleRanking struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
 }
 
 type ModuleManifest struct {
@@ -57,6 +72,8 @@ type ModuleManifest struct {
 	KeepDetailEpisodes bool     `json:"keepDetailEpisodes"`
 	ContinuousFeed     bool     `json:"continuousFeed"`
 	BrowserFingerprint bool     `json:"browserFingerprint"`
+
+	Rankings []ModuleRanking `json:"rankings"`
 }
 
 type jsModule struct {
@@ -94,11 +111,20 @@ func readModule(directory string) (*jsModule, error) {
 	}
 	capabilities := map[reflect.Type]bool{}
 	for _, name := range manifest.Capabilities {
-		capability, known := moduleCapabilityTypes[name]
+		types, known := moduleCapabilityTypes[name]
 		if !known {
 			return nil, fmt.Errorf("未知的模块能力 %q", name)
 		}
-		capabilities[capability] = true
+		for _, capability := range types {
+			capabilities[capability] = true
+		}
+	}
+	rankings := map[string]bool{}
+	for _, ranking := range manifest.Rankings {
+		if strings.TrimSpace(ranking.ID) == "" || strings.TrimSpace(ranking.Name) == "" || rankings[ranking.ID] {
+			return nil, errors.New("榜单缺少标识、名称或标识重复")
+		}
+		rankings[ranking.ID] = true
 	}
 	info, err := os.Stat(filepath.Join(directory, moduleEntry))
 	if err != nil {
@@ -119,7 +145,12 @@ func readModule(directory string) (*jsModule, error) {
 }
 
 func (module *jsModule) descriptor() SourceDescriptor {
+	var rankings []RankingBoard
+	for _, ranking := range module.manifest.Rankings {
+		rankings = append(rankings, RankingBoard{ID: ranking.ID, Source: module.manifest.ID, Name: ranking.Name, Description: ranking.Description})
+	}
 	return SourceDescriptor{
+		Rankings:          rankings,
 		ID:                module.manifest.ID,
 		Name:              module.manifest.Name,
 		Description:       module.manifest.Description,
