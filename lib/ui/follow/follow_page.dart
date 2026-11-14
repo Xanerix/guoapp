@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../follow_list.dart';
 import '../../local_store.dart';
 import '../../models.dart';
+import '../../source_modules.dart';
 import '../app_scope.dart';
 import '../detail/detail_page.dart';
 import '../settings/settings_rows.dart';
@@ -515,6 +516,12 @@ class _FollowPageState extends State<FollowPage> {
                 child: StatusView(
                   key: ValueKey(view.follows.isEmpty),
                   title: view.follows.isEmpty ? '还没有追剧' : '没有匹配的追剧',
+                  message: view.follows.isEmpty
+                      ? missingSourceHint(
+                          widget.store.missingSourceRecords().follows,
+                          '部追剧',
+                        )
+                      : null,
                   icon: view.follows.isEmpty
                       ? Icons.bookmark_border_rounded
                       : Icons.search_off_rounded,

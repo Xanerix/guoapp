@@ -147,12 +147,20 @@ class ExplorePageState extends State<ExplorePage> {
             child: Column(
               children: [
                 if (!television) const PageHeader(title: '发现'),
-                const Expanded(
-                  child: StatusView(
-                    title: '暂无可用站源',
-                    message: '请在站源管理中开启站源，或联系管理员开放权限。',
-                    icon: Icons.public_off_rounded,
-                  ),
+                Expanded(
+                  child: SourceSite.values.isEmpty
+                      ? StatusView(
+                          title: '还没有安装站源',
+                          message: widget.store.profile.admin
+                              ? '站源以模块的形式提供，请在 设置 › 站源 › 模块管理 中安装。'
+                              : '请联系管理员安装站源模块。',
+                          icon: Icons.extension_off_rounded,
+                        )
+                      : const StatusView(
+                          title: '暂无可用站源',
+                          message: '请在站源管理中开启站源，或联系管理员开放权限。',
+                          icon: Icons.public_off_rounded,
+                        ),
                 ),
               ],
             ),

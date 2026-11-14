@@ -2,6 +2,8 @@ import 'dart:convert';
 
 const hongguoSourceId = 'hongguo';
 
+bool validSourceId(String id) => RegExp(r'^[a-z0-9_-]{1,64}$').hasMatch(id);
+
 class SourceSite {
   const SourceSite(
     this.id,
@@ -18,6 +20,7 @@ class SourceSite {
     this.danmaku = false,
     this.devices = false,
     this.account = false,
+    this.metadata = false,
     this.vipPrompt = true,
   });
   factory SourceSite.fromJson(Map<String, dynamic> json) => SourceSite(
@@ -35,6 +38,7 @@ class SourceSite {
     danmaku: json['danmaku'] == true,
     devices: json['devices'] == true,
     account: json['account'] == true,
+    metadata: json['metadata'] == true,
     vipPrompt: json['vipPrompt'] != false,
   );
   final String id;
@@ -51,6 +55,7 @@ class SourceSite {
   final bool danmaku;
   final bool devices;
   final bool account;
+  final bool metadata;
   final bool vipPrompt;
   bool get onlineSearch => pagedSearch;
   String get groupId => group.isEmpty ? id : group;

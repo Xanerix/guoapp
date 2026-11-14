@@ -6,6 +6,7 @@ import '../../download_overview.dart';
 import '../../local_store.dart';
 import '../../merge_queue.dart';
 import '../../models.dart';
+import '../../source_modules.dart';
 import '../app_scope.dart';
 import '../shell/app_shell.dart';
 import '../theme/motion.dart';
@@ -624,7 +625,11 @@ class _DownloadsPageState extends State<DownloadsPage>
 
   Widget _pendingBody(BuildContext context, _View view) {
     if (view.pending.isEmpty) {
-      return const StatusView(title: '没有正在下载的剧集', icon: Icons.download_rounded);
+      return StatusView(
+        title: '没有正在下载的剧集',
+        message: _missingHint(context),
+        icon: Icons.download_rounded,
+      );
     }
     final phone = AppScope.formFactorOf(context) == FormFactor.phone;
     final inset = phone ? 16.0 : 24.0;
@@ -679,6 +684,11 @@ class _DownloadsPageState extends State<DownloadsPage>
     );
   }
 
+  String? _missingHint(BuildContext context) => missingSourceHint(
+    AppScope.of(context).repository.missingSourceDownloads(),
+    '集下载',
+  );
+
   Widget _mergeList(BuildContext context) {
     final tasks = widget.merges.tasks.reversed.toList();
     if (tasks.isEmpty) {
@@ -722,8 +732,9 @@ class _DownloadsPageState extends State<DownloadsPage>
 
   Widget _downloadedBody(BuildContext context, _View view) {
     if (view.downloaded.isEmpty) {
-      return const StatusView(
+      return StatusView(
         title: '没有下载完成的剧集',
+        message: _missingHint(context),
         icon: Icons.download_done_rounded,
       );
     }

@@ -70,7 +70,10 @@ class SourceAccountsView extends StatelessWidget {
             const _Note('需要管理员才能登录或退出站源账号'),
             const SizedBox(height: 12),
           ],
-          SettingsCard(children: [SoraniAccountTile(admin: admin)]),
+          if (soraniAccountAvailable())
+            SettingsCard(children: [SoraniAccountTile(admin: admin)])
+          else
+            const _Note('没有已安装且需要登录的站源'),
         ],
       );
     },

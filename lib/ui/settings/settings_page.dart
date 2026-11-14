@@ -154,7 +154,7 @@ class _SettingsPageState extends State<SettingsPage> {
       SettingsGroup.danmaku => '字号、颜色、显示区域与屏蔽词',
       SettingsGroup.download => '默认画质、目录与空间、同时下载数量',
       SettingsGroup.sources =>
-        SourceSite.values.length > 1 ? '站源管理、目录请求间隔' : '目录请求间隔',
+        SourceSite.values.length > 1 ? '模块、站源管理、目录请求间隔' : '模块、目录请求间隔',
       SettingsGroup.proxy => '连接方式、代理地址',
       SettingsGroup.users => '当前：${store.profile.name}',
       SettingsGroup.about =>

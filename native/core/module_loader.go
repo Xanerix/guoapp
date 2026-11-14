@@ -93,6 +93,21 @@ func readModule(directory string) (*jsModule, error) {
 	if err != nil {
 		return nil, err
 	}
+	info, err := os.Stat(filepath.Join(directory, moduleEntry))
+	if err != nil {
+		return nil, err
+	}
+	if info.Size() > moduleEntryBytes {
+		return nil, fmt.Errorf("%s 超过 %d MB", moduleEntry, moduleEntryBytes>>20)
+	}
+	code, err := os.ReadFile(filepath.Join(directory, moduleEntry))
+	if err != nil {
+		return nil, err
+	}
+	return parseModule(raw, code)
+}
+
+func parseModule(raw, code []byte) (*jsModule, error) {
 	var manifest ModuleManifest
 	if err := json.Unmarshal(raw, &manifest); err != nil {
 		return nil, fmt.Errorf("%s 无法解析：%w", moduleManifest, err)
@@ -126,16 +141,8 @@ func readModule(directory string) (*jsModule, error) {
 		}
 		rankings[ranking.ID] = true
 	}
-	info, err := os.Stat(filepath.Join(directory, moduleEntry))
-	if err != nil {
-		return nil, err
-	}
-	if info.Size() > moduleEntryBytes {
+	if len(code) > moduleEntryBytes {
 		return nil, fmt.Errorf("%s 超过 %d MB", moduleEntry, moduleEntryBytes>>20)
-	}
-	code, err := os.ReadFile(filepath.Join(directory, moduleEntry))
-	if err != nil {
-		return nil, err
 	}
 	program, err := goja.Compile(manifest.ID+"/"+moduleEntry, "(function(module, exports, host) {"+string(code)+"\n})", true)
 	if err != nil {
@@ -193,8 +200,7 @@ func (d *Downloader) loadModules() {
 		Unregister(id)
 	}
 	clear(loadedModules.ids)
-	root := filepath.Join(d.cfg.dataDir, moduleDirectory)
-	entries, err := os.ReadDir(root)
+	entries, err := os.ReadDir(d.moduleRoot())
 	if err != nil {
 		if !errors.Is(err, fs.ErrNotExist) {
 			d.recordModuleFailure("", err)
@@ -202,25 +208,47 @@ func (d *Downloader) loadModules() {
 		return
 	}
 	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
+		if entry.IsDir() && !strings.HasPrefix(entry.Name(), ".") {
+			d.registerModuleLocked(entry.Name())
 		}
-		module, err := readModule(filepath.Join(root, entry.Name()))
-		if err == nil && module.manifest.ID != entry.Name() {
-			err = fmt.Errorf("模块文件夹名应与标识 %q 一致", module.manifest.ID)
-		}
-		if err == nil {
-			if _, taken := registeredSource(module.manifest.ID); taken {
-				err = errors.New("模块标识与已有站源重复")
-			}
-		}
-		if err != nil {
-			d.recordModuleFailure(entry.Name(), err)
-			continue
-		}
-		Register(module.descriptor(), module.provider)
-		loadedModules.ids[module.manifest.ID] = true
 	}
+}
+
+func (d *Downloader) moduleRoot() string { return filepath.Join(d.cfg.dataDir, moduleDirectory) }
+
+func (d *Downloader) reloadModuleLocked(id string) {
+	if loadedModules.ids[id] {
+		Unregister(id)
+		delete(loadedModules.ids, id)
+	}
+	if _, err := os.Stat(filepath.Join(d.moduleRoot(), id)); err == nil {
+		d.registerModuleLocked(id)
+	}
+}
+
+func (d *Downloader) registerModuleLocked(name string) {
+	module, err := readModule(filepath.Join(d.moduleRoot(), name))
+	if err == nil && module.manifest.ID != name {
+		err = fmt.Errorf("模块文件夹名应与标识 %q 一致", module.manifest.ID)
+	}
+	if err == nil {
+		err = moduleConflict(module.manifest)
+	}
+	if err != nil {
+		d.recordModuleFailure(name, err)
+		return
+	}
+	Register(module.descriptor(), module.provider)
+	loadedModules.ids[module.manifest.ID] = true
+}
+
+func moduleConflict(manifest ModuleManifest) error {
+	for _, name := range append([]string{manifest.ID}, manifest.Aliases...) {
+		if owner, taken := registeredSource(name); taken && owner != manifest.ID {
+			return fmt.Errorf("模块标识或别名 %q 与已有站源 %q 重复", name, owner)
+		}
+	}
+	return nil
 }
 
 func (d *Downloader) recordModuleFailure(module string, err error) {

@@ -46,6 +46,9 @@ func (engine *nativeEngine) nativeFollowCheck(ctx context.Context, drama Library
 }
 
 func (engine *nativeEngine) nativeMetadata(ctx context.Context, drama LibraryDrama) (any, error) {
+	if !engine.nativeNeedsExtraMetadata(drama) {
+		return map[string]any{"drama": drama, "warning": ""}, nil
+	}
 	fresh, err := engine.nativeExtraMetadata(ctx, drama)
 	if err != nil {
 		return nil, err

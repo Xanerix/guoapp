@@ -101,7 +101,12 @@ class SourceCatalog {
   Future<CatalogPage> recommendations({
     bool more = false,
     bool force = false,
-  }) => repository.recommendations(recommendGenre, more: more, force: force);
+  }) => repository.recommendations(
+    source.id,
+    recommendGenre,
+    more: more,
+    force: force,
+  );
 
   Future<CatalogPage> search(String query, {int page = 1}) async {
     final result = await repository.catalog(

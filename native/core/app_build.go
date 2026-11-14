@@ -39,11 +39,8 @@ func nativeActionSource(input nativeInput) string {
 	if input.Source != "" {
 		return canonicalProviderSource(input.Source)
 	}
-	switch input.Action {
-	case "soraniAccount":
+	if input.Action == "soraniAccount" {
 		return "sorani"
-	case "hongguoDevices", "recommendations", "cachedRecommendations", "suggestions":
-		return "hongguo"
 	}
 	return ""
 }

@@ -94,6 +94,9 @@ type nativeInput struct {
 	Since           string                  `json:"since"`
 	Account         json.RawMessage         `json:"account"`
 	Device          string                  `json:"device"`
+	File            string                  `json:"file"`
+	URL             string                  `json:"url"`
+	Token           string                  `json:"token"`
 }
 
 type nativeCatalogResult struct {
@@ -375,7 +378,16 @@ func nativeDispatch(input nativeInput) (any, error) {
 		return engine.nativeRecommendations(ctx, input)
 	case "cachedRecommendations":
 		return engine.cachedRecommendations(nativeActionSource(input), input.Category)
-	case "hongguoDevices", "sourceDevices":
+	case "modules":
+		items, err := engine.modules()
+		return map[string]any{"items": items}, err
+	case "prepareModule":
+		return engine.prepareModule(ctx, input.File, input.URL)
+	case "installModule":
+		return engine.installModule(input.Token)
+	case "uninstallModule":
+		return engine.uninstallModule(input.Source)
+	case "sourceDevices":
 		return engine.sourceDevices(ctx, nativeActionSource(input), input.Command == "register")
 	case "soraniAccount", "sourceAccount":
 		return engine.sourceAccount(ctx, nativeActionSource(input), input.Command, input.Account)

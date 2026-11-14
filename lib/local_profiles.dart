@@ -49,7 +49,7 @@ class LocalProfile {
         name.isEmpty ||
         name.length > 40 ||
         admin != (id == 'default') ||
-        sources.any((id) => !SourceSite.isKnown(id)) ||
+        sources.any((id) => !validSourceId(id)) ||
         (salt.isEmpty != hash.isEmpty) ||
         (salt.isNotEmpty &&
             (!RegExp(r'^[a-f0-9]{32}$').hasMatch(salt) ||

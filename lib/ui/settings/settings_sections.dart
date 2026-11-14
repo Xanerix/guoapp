@@ -24,7 +24,9 @@ import 'appearance_settings.dart';
 import 'backup_actions.dart';
 import 'diary_view.dart';
 import 'settings_rows.dart';
+import 'sorani_account_view.dart';
 import 'sources_view.dart';
+import 'modules_view.dart';
 import 'storage_view.dart';
 
 enum SettingsGroup {
@@ -396,23 +398,28 @@ class SettingsSection extends StatelessWidget {
   List<Widget> _sources(BuildContext context) {
     final settings = editor.settings;
     final editable = settings != null && !editor.saving;
-    return [
-      if (SourceSite.values.length > 1)
-        SettingsCard(
-          children: [
-            SettingsTile(
-              title: '站源管理',
-              subtitle: '开启或关闭站源',
-              onTap: () => open('站源管理', (_) => SourcesView(store: store)),
-            ),
-            SettingsTile(
-              title: '站源账号',
-              subtitle: '登录需要账号的站源',
-              onTap: () =>
-                  open('站源账号', (_) => SourceAccountsView(store: store)),
-            ),
-          ],
+    final entries = [
+      if (store.profile.admin)
+        SettingsTile(
+          title: '模块管理',
+          subtitle: '安装、更新或卸载站源模块',
+          onTap: () => open('模块管理', (_) => ModulesView(store: store)),
         ),
+      if (SourceSite.values.length > 1)
+        SettingsTile(
+          title: '站源管理',
+          subtitle: '开启或关闭站源',
+          onTap: () => open('站源管理', (_) => SourcesView(store: store)),
+        ),
+      if (soraniAccountAvailable())
+        SettingsTile(
+          title: '站源账号',
+          subtitle: '登录需要账号的站源',
+          onTap: () => open('站源账号', (_) => SourceAccountsView(store: store)),
+        ),
+    ];
+    return [
+      if (entries.isNotEmpty) SettingsCard(children: entries),
       SettingsCard(
         children: [
           ?_editorError(),

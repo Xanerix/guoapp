@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../local_store.dart';
 import '../../models.dart';
+import '../../source_modules.dart';
 import '../../watch_history.dart';
 import '../app_scope.dart';
 import '../detail/detail_page.dart';
@@ -529,6 +530,12 @@ class _HistoryPageState extends State<HistoryPage> {
                 child: StatusView(
                   key: ValueKey(view.history.isEmpty),
                   title: view.history.isEmpty ? '还没有观看记录' : '没有匹配的记录',
+                  message: view.history.isEmpty
+                      ? missingSourceHint(
+                          widget.store.missingSourceRecords().history,
+                          '条观看记录',
+                        )
+                      : null,
                   icon: view.history.isEmpty
                       ? Icons.history_rounded
                       : Icons.search_off_rounded,

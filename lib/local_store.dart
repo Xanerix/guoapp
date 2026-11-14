@@ -298,6 +298,27 @@ class LocalStore extends ChangeNotifier {
     if (!_disposed) notifyListeners();
   }
 
+  void sourcesChanged() => _notify();
+
+  ({Map<String, int> follows, Map<String, int> history})
+  missingSourceRecords() {
+    Map<String, int> count(Iterable<String> sources) {
+      final counts = <String, int>{};
+      for (final source in sources) {
+        if (!SourceSite.isAvailable(source)) {
+          counts[source] = (counts[source] ?? 0) + 1;
+        }
+      }
+      return counts;
+    }
+
+    if (locked) return (follows: const {}, history: const {});
+    return (
+      follows: count(_favorites.values.map((drama) => drama.source)),
+      history: count(_history.values.map((entry) => entry.drama.source)),
+    );
+  }
+
   Future<void> _write(String name, Object? value) async {
     try {
       await files.write(name, value);
@@ -899,7 +920,7 @@ class LocalStore extends ChangeNotifier {
     if (cleanName.isEmpty || cleanName.length > 40) {
       throw StateError('用户名需要 1 至 40 个字符');
     }
-    if (sources.any((source) => !SourceSite.isKnown(source))) {
+    if (sources.any((source) => !validSourceId(source))) {
       throw StateError('站源无效');
     }
     if (targetId != 'default' &&

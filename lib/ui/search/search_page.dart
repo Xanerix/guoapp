@@ -102,7 +102,7 @@ class _SearchPageState extends State<SearchPage> {
     }
     _debounce = Timer(const Duration(milliseconds: 250), () async {
       try {
-        final items = await _repository.suggestions(query);
+        final items = await _repository.suggestions(widget.source.id, query);
         if (mounted && generation == _suggestion) {
           setState(() => _suggestions = items);
         }
@@ -125,7 +125,9 @@ class _SearchPageState extends State<SearchPage> {
       onChanged: _changed,
       onSubmitted: _submit,
       letterKeyboard: widget.store.televisionKeyboard,
-      matches: widget.source.searchSuggestions ? _repository.suggestions : null,
+      matches: widget.source.searchSuggestions
+          ? (query) => _repository.suggestions(widget.source.id, query)
+          : null,
     );
     if (AppScope.of(context).television) {
       return Scaffold(

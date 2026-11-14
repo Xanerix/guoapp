@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core_bridge.dart';
 import '../local_store.dart';
+import '../models.dart';
 import 'app_scope.dart';
 import 'settings/settings_page.dart';
 import 'update_prompt.dart';
@@ -34,7 +35,12 @@ class _DeviceRegistrationGateState extends State<DeviceRegistrationGate> {
   Future<void> _open() async {
     if (!mounted) return;
     final repository = AppScope.of(context).repository;
-    var ready = await repository.hongguoDevices().catchError((_) => false);
+    final pending = <SourceSite>[
+      for (final site in SourceSite.values.where((site) => site.devices))
+        if (!await repository.sourceDevices(site.id).catchError((_) => false))
+          site,
+    ];
+    var ready = pending.isEmpty;
     if (!ready && mounted) {
       await runStartupChecks(context, widget.store);
       if (!mounted) return;
@@ -45,6 +51,7 @@ class _DeviceRegistrationGateState extends State<DeviceRegistrationGate> {
             builder: (_) => _RegistrationDialog(
               repository: repository,
               store: widget.store,
+              sources: pending,
             ),
           ) ??
           false;
@@ -59,9 +66,14 @@ class _DeviceRegistrationGateState extends State<DeviceRegistrationGate> {
 }
 
 class _RegistrationDialog extends StatefulWidget {
-  const _RegistrationDialog({required this.repository, required this.store});
+  const _RegistrationDialog({
+    required this.repository,
+    required this.store,
+    required this.sources,
+  });
   final AppRepository repository;
   final LocalStore store;
+  final List<SourceSite> sources;
 
   @override
   State<_RegistrationDialog> createState() => _RegistrationDialogState();
@@ -80,7 +92,13 @@ class _RegistrationDialogState extends State<_RegistrationDialog> {
     if (_error != null) setState(() => _error = null);
     String error;
     try {
-      if (await widget.repository.hongguoDevices(register: true)) {
+      var ready = true;
+      for (final site in widget.sources) {
+        ready =
+            await widget.repository.sourceDevices(site.id, register: true) &&
+            ready;
+      }
+      if (ready) {
         if (mounted) Navigator.pop(context, true);
         return;
       }
@@ -104,14 +122,18 @@ class _RegistrationDialogState extends State<_RegistrationDialog> {
       child: AlertDialog(
         title: Text(error == null ? '正在注册设备...' : '设备注册失败'),
         content: error == null
-            ? const Row(
+            ? Row(
                 spacing: 16,
                 children: [
-                  SizedBox.square(
+                  const SizedBox.square(
                     dimension: 24,
                     child: CircularProgressIndicator(strokeWidth: 3),
                   ),
-                  Flexible(child: Text('正在注册红果设备和辅助设备，完成后自动进入')),
+                  Flexible(
+                    child: Text(
+                      '正在注册${widget.sources.map((site) => site.name).join('、')}的设备，完成后自动进入',
+                    ),
+                  ),
                 ],
               )
             : Text('$error\n\n可以直接重试，或在网络设置中修改代理后重试。'),

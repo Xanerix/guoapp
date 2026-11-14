@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core_bridge.dart';
+import '../../models.dart';
 import '../../sorani_account.dart';
 import '../app_scope.dart';
 import '../widgets/focus_ring.dart';
@@ -20,6 +21,11 @@ Future<SoraniAccount?> showSoraniLogin(BuildContext context) =>
       builder: (_) =>
           _SoraniLoginDialog(repository: AppScope.of(context).repository),
     );
+
+bool soraniAccountAvailable() {
+  final site = SourceSite.byId('sorani');
+  return site.available && site.account;
+}
 
 class SoraniAccountTile extends StatefulWidget {
   const SoraniAccountTile({super.key, required this.admin});
