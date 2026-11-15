@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from app_build import BuildVariant, add_variant_argument
+from app_build import app
 
 root = Path(__file__).resolve().parents[1]
 
@@ -74,10 +74,8 @@ def repair_media_kit(env):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='构建红果鉴 / 全站源版 macOS 应用与 dmg')
-    add_variant_argument(parser)
+    parser = argparse.ArgumentParser(description='构建 macOS 应用与 dmg')
     options = parser.parse_args()
-    variant = BuildVariant(options.all_sources)
     if platform.system() != 'Darwin':
         raise SystemExit('macOS 构建需要 macOS 与完整 Xcode。')
     env = toolchain_environment(developer_directory())
@@ -87,15 +85,13 @@ def main():
         raise SystemExit('请先将 Flutter SDK 的 bin 目录加入 PATH。')
     if not pod:
         raise SystemExit('请先安装 CocoaPods（brew install cocoapods）。')
-    run([sys.executable, root / 'scripts' / 'build_native.py', '--platform', 'darwin',
-         *variant.arguments], env)
+    run([sys.executable, root / 'scripts' / 'build_native.py', '--platform', 'darwin'], env)
     run([flutter, 'pub', 'get', '--enforce-lockfile'], env)
     run([pod, 'install'], env, cwd=root / 'macos')
     repair_media_kit(env)
     run([flutter, 'build', 'macos', '--release', '--no-pub',
-         *variant.flutter_arguments], env)
-    run([sys.executable, root / 'scripts' / 'package_release.py', '--platform', 'macos',
-         *variant.arguments], env)
+         *app.flutter_arguments], env)
+    run([sys.executable, root / 'scripts' / 'package_release.py', '--platform', 'macos'], env)
 
 
 if __name__ == '__main__':

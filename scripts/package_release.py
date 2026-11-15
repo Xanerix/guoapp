@@ -8,7 +8,7 @@ import sys
 import zipfile
 from pathlib import Path
 
-from app_build import BuildVariant, add_variant_argument
+from app_build import app
 
 root = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
@@ -16,9 +16,7 @@ parser.add_argument('--platform', choices=['android', 'windows', 'macos'], requi
 parser.add_argument('--abi', action='append', choices=['arm64-v8a', 'armeabi-v7a', 'x86_64'])
 parser.add_argument('--identity', default='',
                     help='macOS 签名身份；默认 ad-hoc 签名（-），有 Developer ID 时传证书名')
-add_variant_argument(parser)
 options = parser.parse_args()
-variant = BuildVariant(options.all_sources)
 match = re.search(r'^version:\s*([\w.+-]+)\s*$', (root / 'pubspec.yaml').read_text(encoding='utf-8'), re.MULTILINE)
 if not match:
     raise SystemExit('pubspec.yaml 缺少合法版本号。')
@@ -131,7 +129,7 @@ def build_macos_dmg(display, staging, staged, target):
 
 
 def package_macos(application):
-    display = variant.display_name
+    display = app.display_name
     staging = root / 'build' / 'macos-dmg'
     if staging.exists():
         shutil.rmtree(staging)
@@ -142,11 +140,11 @@ def package_macos(application):
     info = plistlib.loads(plist_path.read_bytes())
     info['CFBundleDisplayName'] = display
     info['CFBundleName'] = display
-    info['CFBundleIdentifier'] = variant.bundle_identifier
+    info['CFBundleIdentifier'] = app.bundle_identifier
     plist_path.write_bytes(plistlib.dumps(info))
     sign_macos_application(staged, options.identity)
     verify_macos_application(staged)
-    target = output / f'{variant.slug}-{version}-macos-universal.dmg'
+    target = output / f'{app.slug}-{version}-macos-universal.dmg'
     if target.exists():
         target.unlink()
     build_macos_dmg(display, staging, staged, target)
@@ -193,13 +191,13 @@ def find_inno_compiler():
 
 
 def package_windows_installer(bundle, bundle_executable):
-    base_name = f'{variant.slug}-{version}-windows-x64-setup'
+    base_name = f'{app.slug}-{version}-windows-x64-setup'
     run([find_inno_compiler(), '/Q',
-         f'/DAppId={variant.bundle_identifier}',
-         f'/DAppName={variant.display_name}',
+         f'/DAppId={app.bundle_identifier}',
+         f'/DAppName={app.display_name}',
          f'/DAppVersion={version}',
          f'/DNumericVersion={version.replace("+", ".")}',
-         f'/DSlug={variant.slug}',
+         f'/DSlug={app.slug}',
          f'/DBundleExecutable={bundle_executable}',
          f'/DSourceDir={bundle}',
          f'/DOutputDir={output}',
@@ -223,12 +221,12 @@ if options.platform == 'android':
             missing = set(required) - names
             if missing:
                 raise SystemExit('APK 缺少原生库：' + ', '.join(sorted(missing)))
-        target = output / f'{variant.slug}-{version}-{abi}.apk'
+        target = output / f'{app.slug}-{version}-{abi}.apk'
         shutil.copy2(source, target)
         artifacts.append(target)
 elif options.platform == 'windows':
     bundle = root / 'build' / 'windows' / 'x64' / 'runner' / 'Release'
-    bundle_executable = 'zhenguojian.exe'
+    bundle_executable = 'guoapp.exe'
     required = [bundle_executable, 'duanju_core.dll', 'flutter_windows.dll', 'libffmpegkit.dll',
                 'libmpv-2.dll', 'msvcp140.dll', 'vcruntime140.dll',
                 'data/icudtl.dat', 'data/app.so']
@@ -236,16 +234,16 @@ elif options.platform == 'windows':
     if missing:
         raise SystemExit('Windows 安装包缺少文件：' + ', '.join(missing))
     built = windows_product_name(bundle / bundle_executable)
-    if built != variant.bundle_identifier:
-        raise SystemExit(f'构建产物是 {built or "未知版本"}，与要打包的 {variant.bundle_identifier} 不符，'
+    if built != app.bundle_identifier:
+        raise SystemExit(f'构建产物是 {built or "未知版本"}，与要打包的 {app.bundle_identifier} 不符，'
                          '请先用 build_windows.py 以相同参数重新构建。')
-    target = output / f'{variant.slug}-{version}-windows-x64.zip'
+    target = output / f'{app.slug}-{version}-windows-x64.zip'
     with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED) as archive:
         for source in sorted(bundle.rglob('*')):
             if source.is_file():
                 relative = source.relative_to(bundle).as_posix()
                 if relative == bundle_executable:
-                    relative = variant.slug + '.exe'
+                    relative = app.slug + '.exe'
                 archive.write(source, relative)
         archive.writestr('userdata/', '')
     artifacts.append(target)

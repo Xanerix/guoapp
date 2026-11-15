@@ -23,22 +23,19 @@ flutter pub get --enforce-lockfile
 flutter run
 ~~~
 
-调试全站源版：`build_native.py` 加 `--all-sources`，再 `flutter run --dart-define=APP_FLAVOR=zhenguojian`；iOS 对应 `build_ios.py --core-only --all-sources`，macOS 用 `build_native.py --platform darwin --all-sources`。版本是编译期开关，Dart 常量和 Go 编译参数必须一致，应用启动时会校验，避免混装原生库。
-
 ## 出包
 
 ~~~sh
-python3 scripts/build_android.py                 # 红果鉴
-python3 scripts/build_android.py --all-sources   # 全站源版
+python3 scripts/build_android.py
 python3 scripts/build_android.py --abi arm64-v8a
-python scripts/build_windows.py [--all-sources]
-python3 scripts/build_ios.py [--all-sources]
-python3 scripts/build_macos.py [--all-sources]
+python scripts/build_windows.py
+python3 scripts/build_ios.py
+python3 scripts/build_macos.py
 python3 scripts/build_ios.py --core-only [--simulator]
 python3 scripts/build_ios.py --export-options /path/to/ExportOptions.plist
 ~~~
 
-产物在 `dist/android`、`dist/windows`、`dist/ios`、`dist/macos`，红果鉴以 `hongguojian-` 开头，全站源版以 `zhenguojian-` 开头。Windows 同时出便携 zip 和 Inno Setup 安装包（`windows/installer/setup.iss`，简体中文语言文件取自 Inno Setup 官方仓库），安装包以包名为 AppId，两个版本可同时安装，默认装到 `%LOCALAPPDATA%\Programs\<包名>`，安装时可提权改为所有用户，卸载窗口先显示「卸载选项」页（插在卸载进度窗口里），勾选「同时清除本地数据」才删除 `%APPDATA%\<包名>`（含默认下载目录），默认保留；静默卸载不删。缓存目录 `%LOCALAPPDATA%\<包名>` 卸载时总是删除。macOS 出 arm64 + x86_64 通用 dmg；dmg 的安装窗口（背景图、图标位置、隐藏工具栏）由 `dmgbuild` 写入 `.DS_Store`，打包机需要 `pip install dmgbuild Pillow`，没装时会退回普通镜像并提示。默认 ad-hoc 签名，从网络下载的 dmg 在其他 Mac 上首次打开会被 Gatekeeper 拦一次（右键「打开」，或执行 `xattr -dr com.apple.quarantine /Applications/红果鉴.app`）。有 Developer ID 时用 `package_release.py --platform macos --identity "Developer ID Application: ..."` 重新打包并公证，才能免掉这一步。本机 Android 签名：红果鉴用 `android/key.properties`，全站源版用 `android/key-all-sources.properties`（均不入库）。
+产物在 `dist/android`、`dist/windows`、`dist/ios`、`dist/macos`，以 `guoapp-` 开头。Windows 同时出便携 zip 和 Inno Setup 安装包（`windows/installer/setup.iss`，简体中文语言文件取自 Inno Setup 官方仓库），安装包以包名为 AppId，默认装到 `%LOCALAPPDATA%\Programs\<包名>`，安装时可提权改为所有用户，卸载窗口先显示「卸载选项」页（插在卸载进度窗口里），勾选「同时清除本地数据」才删除 `%APPDATA%\<包名>`（含默认下载目录），默认保留；静默卸载不删。缓存目录 `%LOCALAPPDATA%\<包名>` 卸载时总是删除。macOS 出 arm64 + x86_64 通用 dmg；dmg 的安装窗口（背景图、图标位置、隐藏工具栏）由 `dmgbuild` 写入 `.DS_Store`，打包机需要 `pip install dmgbuild Pillow`，没装时会退回普通镜像并提示。默认 ad-hoc 签名，从网络下载的 dmg 在其他 Mac 上首次打开会被 Gatekeeper 拦一次（右键「打开」，或执行 `xattr -dr com.apple.quarantine /Applications/小果影视.app`）。有 Developer ID 时用 `package_release.py --platform macos --identity "Developer ID Application: ..."` 重新打包并公证，才能免掉这一步。本机 Android 签名读 `android/key.properties`（不入库）。
 
 其他脚本：`generate_brand_assets.py` 从 `brand_icon.svg` 生成各平台图标；`clear_app_data.py`、`clear_catalog_cache.py` 清理 Windows 上的应用数据和剧库缓存。
 
@@ -48,10 +45,9 @@ python3 scripts/build_ios.py --export-options /path/to/ExportOptions.plist
 dart format --output=none --set-exit-if-changed lib test
 dart analyze --fatal-infos lib test
 flutter test --dart-define=DISABLE_REMOTE_IMAGES=true
-flutter test --dart-define=DISABLE_REMOTE_IMAGES=true --dart-define=APP_FLAVOR=zhenguojian
+flutter test --dart-define=DISABLE_REMOTE_IMAGES=true --dart-define=ONLY_HONGGUO=true   # 模拟只装了红果
 cd native
 go test -race ./...
-go test -race -tags=zhenguojian ./...
 ~~~
 
 Flutter 测试一律带 `DISABLE_REMOTE_IMAGES=true`，避免加载站源图片。测试只覆盖数据兼容、权限和逻辑层，界面改动不写测试；公共假仓库在 `test/support/`。
@@ -127,30 +123,22 @@ Flutter 界面 + Go 原生核心。站源请求、解析、签名、缓存、下
 2. 在 `CHANGELOG.md` 新增同名一节（标题如 `## 1.0.1+101`），工作流会把它写入 Release 说明；未验证的改动标为开发快照。
 3. 推送到 `main`，在 Actions 中手动运行 **Build app packages**。
 
-工作流先检查版本：tag `app-v{version}`（`+` 替换为 `-`）或同名 Release 已存在时直接失败。随后四个平台各构建红果鉴、全站源版两版：
+工作流先检查版本：tag `app-v{version}`（`+` 替换为 `-`）或同名 Release 已存在时直接失败。随后四个平台各构建一份：
 
 | 产物 | 内容 |
 | --- | --- |
-| `*-android` | 三种架构 APK，使用发布证书签名并通过指纹校验 |
-| `*-windows` | Windows x64 安装包和便携 ZIP |
-| `*-ios-unsigned` | arm64 iPhone 未签名 IPA |
-| `*-macos` | arm64 + x86_64 通用 dmg，ad-hoc 签名、未公证 |
-
-各平台出包任务用仓库 Secret `SOURCES_DEPLOY_KEY`（站源仓库只读 deploy key 的私钥）把站源仓库检出到 `guoapp-sources/`，再以 `--sources guoapp-sources` 构建，示例站源不会进入发布包。检查任务会对示例站源单独做编译检查。
+| `android` | 三种架构 APK，使用发布证书签名并通过指纹校验 |
+| `windows` | Windows x64 安装包和便携 ZIP |
+| `ios-unsigned` | arm64 iPhone 未签名 IPA |
+| `macos` | arm64 + x86_64 通用 dmg，ad-hoc 签名、未公证 |
 
 格式、分析、测试不阻塞出包；Android、Windows、iOS、macOS 全部成功后才创建 tag 和 Release，任一平台失败就不发布，已有 Release 不会被覆盖。
 
-Android 签名只用仓库 Secrets，两个版本各用一套：红果鉴为 `ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`，另需仓库变量 `ANDROID_CERT_SHA256`；全站源版把前缀 `ANDROID_` 换成 `ZHENGUOJIAN_`，证书变量为 `ZHENGUOJIAN_CERT_SHA256`（证书 SHA-256，冒号和大小写不限）。工作流按矩阵的 `signing` 前缀选取，缺任意一项都会失败。CI 通过环境变量把签名传给 Gradle；本机红果鉴读 `android/key.properties`，全站源版读 `android/key-all-sources.properties`（均不入库）。
+Android 签名只用仓库 Secrets：`SIGNING_KEYSTORE_BASE64`、`SIGNING_KEYSTORE_PASSWORD`、`SIGNING_KEY_ALIAS`、`SIGNING_KEY_PASSWORD`，另需仓库变量 `SIGNING_CERT_SHA256`（证书 SHA-256，冒号和大小写不限），缺任意一项都会失败。CI 通过环境变量把签名传给 Gradle；本机读 `android/key.properties`（不入库）。
 
-全站源版的包名和显示名取环境变量（CI 取同名仓库变量），没设或为空时用默认值；红果鉴固定为 `com.guoapp.phoenix`、`红果鉴`、`HongGuoJian`：
+包名取环境变量 `PACKAGE_NAME`（CI 取同名仓库变量），没设或为空时用 `com.guoapp.app`，由 Android `build.gradle.kts`、Windows `app_branding.cmake`、iOS / macOS `scripts/app_build.py` 读取。应用名固定为「小果影视」，英文名 `GuoApp`；安装包前缀、Windows 可执行文件和使用统计的构建标识为 `guoapp`。
 
-| 变量 | 默认值 | 读取位置 |
-| --- | --- | --- |
-| `ZHENGUOJIAN_PACKAGE_NAME` | `com.guoapp.all` | Android `build.gradle.kts`、Windows `app_branding.cmake`、iOS / macOS `scripts/app_build.py` |
-| `ZHENGUOJIAN_DISPLAY_NAME` | `真果鉴` | 由 `scripts/app_build.py` 作为 `--dart-define` 传入，Dart `appName`、Android `build.gradle.kts`、iOS「Thin Binary」构建阶段读取；Windows `app_branding.cmake` 直接读环境变量；macOS 由 `package_release.py` 写入 |
-| `ZHENGUOJIAN_LATIN_NAME` | `ZhenGuoJian` | iOS「Thin Binary」构建阶段，作为英文 `CFBundleDisplayName` |
-
-Windows 数据目录为 `%APPDATA%\<包名>`：`Runner.rc` 不设 CompanyName，ProductName 为包名，`path_provider` 据此拼出应用支持目录，两个版本数据互不共用。删除不影响使用的缓存（`covers-v1/`、`catalogs.json`、`rankings.json`）放在 `getApplicationCacheDirectory()` 给出的目录，Windows 为 `%LOCALAPPDATA%\<包名>`，便携版为 `userdata\cache`；初始化时由 `moveLegacyNativeCache` 把数据目录里的旧缓存搬过去，新增缓存文件要写进 `cacheDirectory` 并加到这份清单。站源的 `CatalogState`（红果设备、辅助设备和列表游标）不算缓存，存在数据目录的 `provider-states.json`，旧版写在 `catalogs.json` 里的会在首次启动时迁出。旧版数据在 `%APPDATA%\真果鉴\真果鉴`，`lib/windows_data_migration.dart` 在启动最早阶段检查：新目录为空且旧目录存在时整个改名移入，先启动的版本拿到旧数据；新目录已有内容或移动失败都不处理，失败写入日志。Android TV 横幅 `tv_banner_all_sources.png` 只有图标不带文字，改名不用重新生成。
+Windows 数据目录为 `%APPDATA%\<包名>`：`Runner.rc` 不设 CompanyName，ProductName 为包名，`path_provider` 据此拼出应用支持目录。删除不影响使用的缓存（`covers-v1/`、`catalogs.json`、`rankings.json`）放在 `getApplicationCacheDirectory()` 给出的目录，Windows 为 `%LOCALAPPDATA%\<包名>`，便携版为 `userdata\cache`；初始化时由 `moveLegacyNativeCache` 把数据目录里的旧缓存搬过去，新增缓存文件要写进 `cacheDirectory` 并加到这份清单。站源的 `CatalogState`（红果设备、辅助设备和列表游标）不算缓存，存在数据目录的 `provider-states.json`，旧版写在 `catalogs.json` 里的会在首次启动时迁出。旧版数据在 `%APPDATA%\真果鉴\真果鉴`，`lib/windows_data_migration.dart` 在启动最早阶段检查：新目录为空且旧目录存在时整个改名移入；新目录已有内容或移动失败都不处理，失败写入日志。Android TV 横幅 `tv_banner.png` 只有图标不带文字，改名不用重新生成。
 
 关于页的重建版 GitHub、Telegram 交流群组和更新频道链接分别取环境变量 `PROJECT_URL`、`TELEGRAM_GROUP_URL`、`TELEGRAM_CHANNEL_URL`（CI 取同名仓库变量），由 `scripts/app_build.py` 作为 `--dart-define` 传给 Flutter；没设的链接在关于页不显示，直接 `flutter run` 时需自行加 `--dart-define`。`PROJECT_URL` 同时注入 Go 的 `nativeProjectURL`，检查更新只接受 `{PROJECT_URL}/releases/` 开头的发布页，没设时启动不提示更新，手动检查更新会提示没有配置。
 
@@ -167,4 +155,4 @@ npx wrangler d1 execute guoapp-stats --remote --command "SELECT COUNT(DISTINCT i
 npx wrangler d1 execute guoapp-stats --remote --command "SELECT platform, build, version, COUNT(*) FROM pings WHERE day = date('now', '+8 hours') GROUP BY 1, 2, 3 ORDER BY 4 DESC"  # 今日分布
 ~~~
 
-应用显示名：Android 在 `android/app/build.gradle.kts`，Windows 在 `windows/runner/app_branding.cmake`，iOS 由 Xcode「Thin Binary」构建阶段按 `DART_DEFINES` 写入，macOS 由 `scripts/package_release.py` 打包时改 `CFBundleDisplayName` / `CFBundleName` / `CFBundleIdentifier` 后重新签名。iOS 的 `CFBundleDisplayName` 用英文名（红果鉴 `HongGuoJian`，真果鉴取 `ZHENGUOJIAN_LATIN_NAME`）以通过侧载工具的名称校验，中文名写在 `zh-Hans.lproj/InfoPlist.strings`。macOS 关闭了 App Sandbox，以便本地播放代理和自选下载目录正常工作；系统代理由 `MainFlutterWindow.swift` 的 `duanju/device` 通道读取。
+应用显示名：Android 在 `android/app/build.gradle.kts`，Windows 在 `windows/runner/app_branding.cmake`，iOS 由 Xcode「Thin Binary」构建阶段写入，macOS 由 `scripts/package_release.py` 打包时改 `CFBundleDisplayName` / `CFBundleName` / `CFBundleIdentifier` 后重新签名。iOS 的 `CFBundleDisplayName` 用英文名 `GuoApp` 以通过侧载工具的名称校验，中文名写在 `zh-Hans.lproj/InfoPlist.strings`。macOS 关闭了 App Sandbox，以便本地播放代理和自选下载目录正常工作；系统代理由 `MainFlutterWindow.swift` 的 `duanju/device` 通道读取。

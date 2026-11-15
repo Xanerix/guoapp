@@ -4,8 +4,6 @@ import "errors"
 
 var errNativeBuildSource = errors.New("当前版本不包含此站源")
 
-func buildFlavor() string { return buildFlavorName }
-
 func nativeSourceAvailable(source string) bool {
 	_, ok := registeredDescriptor(canonicalProviderSource(source))
 	return ok

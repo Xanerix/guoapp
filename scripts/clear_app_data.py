@@ -5,9 +5,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-from app_build import BuildVariant
+from app_build import app
 
-EXECUTABLES = ("zhenguojian.exe", "hongguojian.exe")
+EXECUTABLES = ("guoapp.exe",)
 
 
 def running(executable: str) -> bool:
@@ -24,15 +24,14 @@ def main() -> int:
         if running(executable):
             print(f"{executable} 正在运行，请先退出应用")
             return 1
-    for variant in (BuildVariant(False), BuildVariant(True)):
-        for root in ("APPDATA", "LOCALAPPDATA"):
-            directory = Path(os.environ[root]) / variant.bundle_identifier
-            if not directory.exists():
-                print(f"{variant.display_name} 目录 {directory} 不存在，无需清理")
-                continue
-            shutil.rmtree(directory)
-            print(f"已删除 {directory}")
-    print("完成，两个版本的设置、追剧、收藏、缓存、日志和默认下载目录均已清空")
+    for root in ("APPDATA", "LOCALAPPDATA"):
+        directory = Path(os.environ[root]) / app.bundle_identifier
+        if not directory.exists():
+            print(f"{app.display_name} 目录 {directory} 不存在，无需清理")
+            continue
+        shutil.rmtree(directory)
+        print(f"已删除 {directory}")
+    print("完成，设置、追剧、收藏、缓存、日志和默认下载目录均已清空")
     return 0
 
 

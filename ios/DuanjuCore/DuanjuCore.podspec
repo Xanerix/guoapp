@@ -1,9 +1,9 @@
 Pod::Spec.new do |spec|
   spec.name = 'DuanjuCore'
   spec.version = '0.2.0'
-  spec.summary = '真果鉴本地站源核心'
+  spec.summary = '小果影视原生核心'
   spec.homepage = 'https://github.com/fish2018/guoapp'
-  spec.author = '真果鉴 contributors'
+  spec.author = 'GuoApp contributors'
   spec.source = { :path => '.' }
   spec.license = { :type => 'See application repository' }
   spec.ios.deployment_target = '15.1'

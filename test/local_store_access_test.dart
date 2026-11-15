@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:duanju_app/app_build.dart';
 import 'package:duanju_app/local_profiles.dart';
 import 'package:duanju_app/local_store.dart';
 import 'package:duanju_app/models.dart';
@@ -172,9 +171,7 @@ void main() {
     }
   });
 
-  test('build edition names match the source list', () {
-    expect(appSlug, allSourcesEnabled ? 'zhenguojian' : 'hongguojian');
-    expect(appName, allSourcesEnabled ? '真果鉴' : '红果鉴');
+  test('installed sources match the source list', () {
     expect(
       SourceSite.values.map((site) => site.id),
       allSourcesEnabled

@@ -12,7 +12,6 @@ import 'models.dart';
 import 'danmaku_models.dart';
 import 'background_downloads.dart';
 import 'local_store.dart';
-import 'app_build.dart';
 import 'ranking_models.dart';
 import 'cover_decoder.dart';
 import 'catalog_updates.dart';
@@ -860,9 +859,6 @@ class NativeRepository extends AppRepository {
       'cache': (await getApplicationCacheDirectory()).path,
       if (external != null) 'downloads': path.join(external.path, 'downloads'),
     });
-    if (build['flavor'] != appFlavor) {
-      throw AppFailure('应用与原生核心的站源版本不一致，请使用完整安装包重新安装');
-    }
     _installSources(build['sources']);
     if (!background) await BackgroundDownloads.prepare();
     if (!background) {

@@ -13,9 +13,7 @@ env:
   GOPROXY: https://proxy.golang.org,direct
   GOSUMDB: sum.golang.org
   UPDATE_SERVER_URL: ${{ vars.UPDATE_SERVER_URL }}
-  ZHENGUOJIAN_PACKAGE_NAME: ${{ vars.ZHENGUOJIAN_PACKAGE_NAME }}
-  ZHENGUOJIAN_DISPLAY_NAME: ${{ vars.ZHENGUOJIAN_DISPLAY_NAME }}
-  ZHENGUOJIAN_LATIN_NAME: ${{ vars.ZHENGUOJIAN_LATIN_NAME }}
+  PACKAGE_NAME: ${{ vars.PACKAGE_NAME }}
   PROJECT_URL: ${{ vars.PROJECT_URL }}
   TELEGRAM_GROUP_URL: ${{ vars.TELEGRAM_GROUP_URL }}
   TELEGRAM_CHANNEL_URL: ${{ vars.TELEGRAM_CHANNEL_URL }}
@@ -45,12 +43,9 @@ jobs:
       # 测试当前不阻塞出包（开发优先、集中验证暂缓），结果仍会显示在运行详情里。
       - run: flutter test --dart-define=DISABLE_REMOTE_IMAGES=true
         continue-on-error: true
-      - run: flutter test --dart-define=DISABLE_REMOTE_IMAGES=true --dart-define=APP_FLAVOR=zhenguojian
+      - run: flutter test --dart-define=DISABLE_REMOTE_IMAGES=true --dart-define=ONLY_HONGGUO=true
         continue-on-error: true
       - run: go test -race ./...
-        working-directory: native
-        continue-on-error: true
-      - run: go test -race -tags=zhenguojian ./...
         working-directory: native
         continue-on-error: true
 
@@ -88,16 +83,6 @@ jobs:
     needs: prepare
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    strategy: &editions
-      fail-fast: false
-      matrix:
-        include:
-          - edition: hongguojian
-            arguments: ''
-            signing: ANDROID
-          - edition: zhenguojian
-            arguments: '--all-sources'
-            signing: ZHENGUOJIAN
     steps:
       - uses: actions/checkout@v4
       - &setup-python
@@ -118,7 +103,7 @@ jobs:
       - run: sdkmanager 'ndk;28.2.13676358'
       - name: Configure Android signing
         env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets[format('{0}_KEYSTORE_BASE64', matrix.signing)] }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
         run: |
           set -euo pipefail
           if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
@@ -127,16 +112,16 @@ jobs:
           fi
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -d '[:space:]' | base64 -d > "$RUNNER_TEMP/release.jks"
           echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
-      - run: python scripts/build_android.py ${{ matrix.arguments }}
+      - run: python scripts/build_android.py
         env:
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets[format('{0}_KEYSTORE_PASSWORD', matrix.signing)] }}
-          ANDROID_KEY_ALIAS: ${{ secrets[format('{0}_KEY_ALIAS', matrix.signing)] }}
-          ANDROID_KEY_PASSWORD: ${{ secrets[format('{0}_KEY_PASSWORD', matrix.signing)] }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
       - name: 校验 APK 签名证书
         shell: bash
         env:
-          CERT_SHA256: ${{ vars[format('{0}_CERT_SHA256', matrix.signing)] }}
-          CERT_VARIABLE: ${{ matrix.signing }}_CERT_SHA256
+          CERT_SHA256: ${{ vars.SIGNING_CERT_SHA256 }}
+          CERT_VARIABLE: SIGNING_CERT_SHA256
         run: |
           set -euo pipefail
           expected=$(printf '%s' "$CERT_SHA256" | tr -d ': ' | tr '[:upper:]' '[:lower:]')
@@ -162,7 +147,7 @@ jobs:
           done
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.edition }}-android
+          name: android
           path: dist/android/*
           if-no-files-found: error
           retention-days: 14
@@ -171,7 +156,6 @@ jobs:
     needs: prepare
     runs-on: windows-latest
     timeout-minutes: 45
-    strategy: *editions
     steps:
       - uses: actions/checkout@v4
       - *setup-go
@@ -191,10 +175,10 @@ jobs:
       - name: Set up Inno Setup
         shell: pwsh
         run: choco upgrade innosetup --no-progress -y
-      - run: python scripts/build_windows.py ${{ matrix.arguments }}
+      - run: python scripts/build_windows.py
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.edition }}-windows
+          name: windows
           path: dist/windows/*
           if-no-files-found: error
           retention-days: 14
@@ -203,7 +187,6 @@ jobs:
     needs: prepare
     runs-on: macos-latest
     timeout-minutes: 60
-    strategy: *editions
     steps:
       - uses: actions/checkout@v4
       - *setup-python
@@ -225,10 +208,10 @@ jobs:
           flutter --version
           flutter precache --ios
       - name: Build unsigned iOS packages
-        run: python scripts/build_ios.py ${{ matrix.arguments }}
+        run: python scripts/build_ios.py
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.edition }}-ios-unsigned
+          name: ios-unsigned
           path: dist/ios/*
           if-no-files-found: error
           retention-days: 14
@@ -237,7 +220,6 @@ jobs:
     needs: prepare
     runs-on: macos-latest
     timeout-minutes: 60
-    strategy: *editions
     steps:
       - uses: actions/checkout@v4
       - *setup-python
@@ -259,10 +241,10 @@ jobs:
           flutter --version
           flutter precache --macos
       - name: Build macOS packages
-        run: python scripts/build_macos.py ${{ matrix.arguments }}
+        run: python scripts/build_macos.py
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.edition }}-macos
+          name: macos
           path: dist/macos/*
           if-no-files-found: error
           retention-days: 14
@@ -284,16 +266,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.prepare.outputs.version }}
           TAG: ${{ needs.prepare.outputs.tag }}
-          ANDROID_CERT_SHA256: ${{ vars.ANDROID_CERT_SHA256 }}
-          ZHENGUOJIAN_CERT_SHA256: ${{ vars.ZHENGUOJIAN_CERT_SHA256 }}
+          SIGNING_CERT_SHA256: ${{ vars.SIGNING_CERT_SHA256 }}
         run: |
           set -euo pipefail
-          name="${ZHENGUOJIAN_DISPLAY_NAME:-真果鉴}"
           cat > notes.md <<EOF
-          版本 ${VERSION}。两个版本功能相同，区别只在站源范围，按需选择：
-
-          - 红果鉴 hongguojian：仅红果站源
-          - ${name} zhenguojian：全部站源
+          版本 ${VERSION}。应用不内置站源，在 设置 › 站源 › 模块管理 的模块商店安装。
 
           Android：
           - *-arm64-v8a.apk：适用于较新的安卓设备
@@ -305,14 +282,12 @@ jobs:
 
           Windows：
           - *-windows-x64-setup.exe：安装包，默认安装到当前用户，无需管理员权限；安装时可改为所有用户
-          - *-windows-x64.zip：便携版，解压后运行 hongguojian.exe 或 zhenguojian.exe；设置、记录、海报缓存和默认下载都保存在程序旁的 userdata 目录，升级时把旧版的 userdata 目录复制过来即可
+          - *-windows-x64.zip：便携版，解压后运行 guoapp.exe；设置、记录、海报缓存和默认下载都保存在程序旁的 userdata 目录，升级时把旧版的 userdata 目录复制过来即可
 
           macOS：
-          - *-macos-universal.dmg：适用于 macOS 12 及以上的 Apple 芯片和 Intel 电脑，打开后拖入 Applications；未经公证，首次打开前在终端执行 xattr -dr com.apple.quarantine /Applications/红果鉴.app（${name}为 ${name}.app）
+          - *-macos-universal.dmg：适用于 macOS 12 及以上的 Apple 芯片和 Intel 电脑，打开后拖入 Applications；未经公证，首次打开前在终端执行 xattr -dr com.apple.quarantine /Applications/小果影视.app
 
-          签名证书 SHA-256：
-          - 红果鉴：${ANDROID_CERT_SHA256}
-          - ${name}：${ZHENGUOJIAN_CERT_SHA256}
+          Android 签名证书 SHA-256：${SIGNING_CERT_SHA256}
           EOF
           changes="$(awk -v heading="## ${VERSION}" '
             $0 == heading { found = 1; next }
@@ -325,7 +300,7 @@ jobs:
             { printf '更新内容：\n\n%s\n\n' "$changes"; cat notes.md; } > notes.tmp
             mv notes.tmp notes.md
           fi
-          gh release create "$TAG" release/* --target "$GITHUB_SHA" --title "红果鉴 / ${name} ${VERSION}" --notes-file notes.md
+          gh release create "$TAG" release/* --target "$GITHUB_SHA" --title "小果影视 ${VERSION}" --notes-file notes.md
       - name: 推送到 Telegram 频道
         continue-on-error: true
         env:
@@ -339,10 +314,9 @@ jobs:
             echo "未配置 Telegram，跳过推送。"
             exit 0
           fi
-          name="${ZHENGUOJIAN_DISPLAY_NAME:-真果鉴}"
           changes="$(cat changes.md)"
           url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$TAG"
-          text="红果鉴 / ${name} ${VERSION} 已发布"
+          text="小果影视 ${VERSION} 已发布"
           if [ -n "$changes" ]; then
             text="$(printf '%s\n\n更新内容：\n\n%s' "$text" "${changes:0:3500}")"
           fi

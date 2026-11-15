@@ -1,37 +1,19 @@
 import os
-from dataclasses import dataclass
 
-ENVIRONMENT_DEFINES = ['PROJECT_URL', 'TELEGRAM_GROUP_URL', 'TELEGRAM_CHANNEL_URL',
-                       'ZHENGUOJIAN_DISPLAY_NAME', 'ZHENGUOJIAN_LATIN_NAME']
+ENVIRONMENT_DEFINES = ['PROJECT_URL', 'TELEGRAM_GROUP_URL', 'TELEGRAM_CHANNEL_URL']
 
 
-@dataclass(frozen=True)
-class BuildVariant:
-    all_sources: bool = False
-
-    @property
-    def slug(self):
-        return 'zhenguojian' if self.all_sources else 'hongguojian'
+class AppBuild:
+    slug = 'guoapp'
+    display_name = '小果影视'
 
     @property
     def bundle_identifier(self):
-        if not self.all_sources:
-            return 'com.guoapp.phoenix'
-        return os.environ.get('ZHENGUOJIAN_PACKAGE_NAME', '').strip() or 'com.guoapp.all'
-
-    @property
-    def display_name(self):
-        if not self.all_sources:
-            return '红果鉴'
-        return os.environ.get('ZHENGUOJIAN_DISPLAY_NAME', '').strip() or '真果鉴'
-
-    @property
-    def arguments(self):
-        return ['--all-sources'] if self.all_sources else []
+        return os.environ.get('PACKAGE_NAME', '').strip() or 'com.guoapp.app'
 
     @property
     def flutter_arguments(self):
-        arguments = ['--dart-define=APP_FLAVOR=' + self.slug]
+        arguments = []
         for name in ENVIRONMENT_DEFINES:
             value = os.environ.get(name, '').strip()
             if value:
@@ -40,7 +22,7 @@ class BuildVariant:
 
     @property
     def go_arguments(self):
-        return ['-tags=' + self.slug, '-ldflags=' + self.linker_flags]
+        return ['-ldflags=' + self.linker_flags]
 
     @property
     def linker_flags(self):
@@ -54,6 +36,4 @@ class BuildVariant:
         return flags
 
 
-def add_variant_argument(parser):
-    parser.add_argument('--all-sources', action='store_true',
-                        help='构建包含全部站源的全站源版；默认构建仅红果的红果鉴')
+app = AppBuild()

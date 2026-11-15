@@ -17,11 +17,11 @@
 
 ## 站源模块
 
-站源是运行时加载的 JS 模块，写法见 DEVELOPMENT.md 的[站源模块](DEVELOPMENT.md#站源模块)，模板是 `native/module_example/jsexample`。模块接口还没定为第 1 版，在那之前可能有不兼容的改动。
+站源是运行时加载的 JS 模块，写法见 DEVELOPMENT.md 的[站源模块](DEVELOPMENT.md#站源模块)，模板是 [guoapp-modules/template](https://github.com/guoapp-modules/template)。模块接口为第 1 版，不兼容的改动会升级 `api` 版本号。
 
 官方发布包不带任何站源，不收录、不审核、不分发社区模块，社区模块与本项目无关，使用和分发的责任由其作者和使用者承担。
 
-自行出包时请设置环境变量 `ZHENGUOJIAN_PACKAGE_NAME`、`ZHENGUOJIAN_DISPLAY_NAME`、`ZHENGUOJIAN_LATIN_NAME` 为自己的包名和名称并加 `--all-sources`，避免覆盖安装或被误认为官方版本。
+自行出包时请设置环境变量 `PACKAGE_NAME` 为自己的包名，避免覆盖安装官方版本。
 
 ## 模块接口的改动
 

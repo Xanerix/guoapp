@@ -333,7 +333,7 @@ func nativeDispatch(input nativeInput) (any, error) {
 		}
 		engine := nativeState.engine
 		nativeState.Unlock()
-		return map[string]any{"version": "0.2.17", "standalone": true, "flavor": buildFlavor(), "sources": engine.sourceList()}, nil
+		return map[string]any{"version": "0.2.17", "standalone": true, "sources": engine.sourceList()}, nil
 	}
 	engine := nativeState.engine
 	nativeState.Unlock()

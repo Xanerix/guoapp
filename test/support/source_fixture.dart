@@ -1,7 +1,6 @@
-import 'package:duanju_app/app_build.dart';
 import 'package:duanju_app/models.dart';
 
-const allSourcesEnabled = appFlavor == 'zhenguojian';
+const allSourcesEnabled = !bool.fromEnvironment('ONLY_HONGGUO');
 
 SourceSite _site(
   String id,

@@ -32,6 +32,10 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Dirs]
 Name: "{app}"; Flags: uninsalwaysuninstall
 
+[InstallDelete]
+Type: files; Name: "{app}\hongguojian.exe"
+Type: files; Name: "{app}\zhenguojian.exe"
+
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "\{#BundleExecutable}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#SourceDir}\{#BundleExecutable}"; DestDir: "{app}"; DestName: "{#ExecutableName}"; Flags: ignoreversion

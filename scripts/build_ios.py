@@ -9,7 +9,7 @@ import sys
 import zipfile
 from pathlib import Path
 
-from app_build import BuildVariant, add_variant_argument
+from app_build import app
 
 root = Path(__file__).resolve().parents[1]
 
@@ -41,14 +41,14 @@ def validate_package(package, prefix):
             raise SystemExit('iOS 压缩包损坏：' + corrupt)
 
 
-def write_variant_config(variant):
-    display = variant.display_name
+def write_app_config():
+    display = app.display_name
     config = root / 'ios' / 'Flutter' / 'AppVariant.xcconfig'
-    config.write_text(f'PRODUCT_BUNDLE_IDENTIFIER = {variant.bundle_identifier}\n'
+    config.write_text(f'PRODUCT_BUNDLE_IDENTIFIER = {app.bundle_identifier}\n'
                       f'APP_DISPLAY_NAME = {display}\n', encoding='utf-8')
 
 
-def build_core(simulator=False, variant=BuildVariant()):
+def build_core(simulator=False):
     if platform.system() != 'Darwin':
         raise SystemExit('iOS 构建需要 macOS 和完整 Xcode。')
     go = shutil.which('go')
@@ -78,7 +78,7 @@ def build_core(simulator=False, variant=BuildVariant()):
             'GOOS': 'ios', 'GOARCH': architecture, 'CC': compiler,
             'CGO_CFLAGS': flags, 'CGO_LDFLAGS': flags,
         }
-        run([go, 'build', '-trimpath', '-buildmode=c-archive', *variant.go_arguments,
+        run([go, 'build', '-trimpath', '-buildmode=c-archive', *app.go_arguments,
              '-o', str(output), './bridge'], cwd=root / 'native', env=build_env)
         shutil.copy2(output.with_suffix('.h'), headers / 'DuanjuCore.h')
         libraries.append((sdk, output, headers))
@@ -98,15 +98,13 @@ def build_core(simulator=False, variant=BuildVariant()):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='构建红果鉴 / 全站源版 iOS 核心和应用')
+    parser = argparse.ArgumentParser(description='构建 iOS 核心和应用')
     parser.add_argument('--core-only', action='store_true')
     parser.add_argument('--simulator', action='store_true', help='额外生成模拟器核心；不启动模拟器')
     parser.add_argument('--export-options', type=Path, help='使用自己的 Xcode 签名配置导出 IPA')
-    add_variant_argument(parser)
     options = parser.parse_args()
-    variant = BuildVariant(options.all_sources)
-    write_variant_config(variant)
-    build_core(options.simulator, variant)
+    write_app_config()
+    build_core(options.simulator)
     if options.core_only:
         return
     flutter = shutil.which('flutter')
@@ -122,13 +120,13 @@ def main():
         config = options.export_options.expanduser().resolve()
         if not config.is_file():
             raise SystemExit('ExportOptions.plist 不存在。')
-        run([flutter, 'build', 'ipa', '--release', '--no-pub', '--export-options-plist', str(config), *variant.flutter_arguments])
+        run([flutter, 'build', 'ipa', '--release', '--no-pub', '--export-options-plist', str(config), *app.flutter_arguments])
         for package in (root / 'build' / 'ios' / 'ipa').glob('*.ipa'):
-            destination = output / f'{variant.slug}-{version}-ios.ipa'
+            destination = output / f'{app.slug}-{version}-ios.ipa'
             shutil.copy2(package, destination)
             artifacts.append(destination)
     else:
-        run([flutter, 'build', 'ios', '--release', '--no-codesign', '--no-pub', *variant.flutter_arguments])
+        run([flutter, 'build', 'ios', '--release', '--no-codesign', '--no-pub', *app.flutter_arguments])
         application = root / 'build' / 'ios' / 'iphoneos' / 'Runner.app'
         validate_unsigned_application(application)
         symbols = subprocess.check_output(['xcrun', 'nm', '-gU', str(application / 'Runner')], text=True)
@@ -140,7 +138,7 @@ def main():
             shutil.rmtree(payload)
         payload.mkdir(parents=True)
         shutil.copytree(application, payload / application.name, symlinks=True)
-        ipa = output / f'{variant.slug}-{version}-ios-unsigned.ipa'
+        ipa = output / f'{app.slug}-{version}-ios-unsigned.ipa'
         if ipa.exists():
             ipa.unlink()
         run(['ditto', '-c', '-k', '--sequesterRsrc', '--keepParent', str(payload), str(ipa)])
