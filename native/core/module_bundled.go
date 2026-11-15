@@ -155,7 +155,7 @@ func bundledIndexEntries() []moduleIndexEntry {
 	entries := make([]moduleIndexEntry, 0, len(modules))
 	for _, module := range modules {
 		entries = append(entries, moduleIndexEntry{ID: module.manifest.ID, Name: module.manifest.Name, Version: module.manifest.Version,
-			Description: module.manifest.Description, API: module.manifest.API, Bundled: true})
+			Description: module.manifest.Description, API: module.manifest.API, Adult: *module.manifest.Adult, Bundled: true})
 	}
 	sort.Slice(entries, func(a, b int) bool { return entries[a].ID < entries[b].ID })
 	return entries

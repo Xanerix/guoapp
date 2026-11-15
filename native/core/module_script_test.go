@@ -80,7 +80,7 @@ func TestExampleModuleServesCatalog(t *testing.T) {
 }
 
 func TestModuleHostRestrictsFetchAndIsolatesState(t *testing.T) {
-	directory := writeTestModule(t, `{"id":"hosttest","name":"宿主测试","runtime":"js","api":1,"hosts":["api.example.invalid","*.cdn.example.invalid"]}`, `
+	directory := writeTestModule(t, `{"id":"hosttest","name":"宿主测试","runtime":"js","api":1,"adult":false,"hosts":["api.example.invalid","*.cdn.example.invalid"]}`, `
 module.exports = {
   categories() {
     host.saveState("token", "abc");
@@ -127,7 +127,7 @@ module.exports = {
 }
 
 func TestModuleCallStopsWithContext(t *testing.T) {
-	directory := writeTestModule(t, `{"id":"looptest","name":"循环测试","runtime":"js","api":1}`, `
+	directory := writeTestModule(t, `{"id":"looptest","name":"循环测试","runtime":"js","api":1,"adult":false}`, `
 module.exports = {
   categories(force) {
     if (force) for (;;) {}
@@ -157,7 +157,7 @@ module.exports = {
 }
 
 func TestModuleAccountAndLoginError(t *testing.T) {
-	directory := writeTestModule(t, `{"id":"accounttest","name":"账号测试","runtime":"js","api":1,"capabilities":["account"]}`, `
+	directory := writeTestModule(t, `{"id":"accounttest","name":"账号测试","runtime":"js","api":1,"adult":false,"capabilities":["account"]}`, `
 module.exports = {
   account(command, payload) {
     return host.exclusive(() => ({ command, name: payload ? payload.name : "" }));
@@ -205,7 +205,7 @@ func (host *moduleStatusHost) Fetch(context.Context, HTTPRequest) (HTTPResponse,
 }
 
 func TestModuleFetchErrorCarriesResponse(t *testing.T) {
-	directory := writeTestModule(t, `{"id":"statustest","name":"状态测试","runtime":"js","api":1,"hosts":["api.example.invalid"]}`, `
+	directory := writeTestModule(t, `{"id":"statustest","name":"状态测试","runtime":"js","api":1,"adult":false,"hosts":["api.example.invalid"]}`, `
 module.exports = {
   categories() {
     try {
@@ -235,7 +235,7 @@ func TestPreserveIntegers(t *testing.T) {
 }
 
 func TestModuleHostUtilitiesAndOptionalCapabilities(t *testing.T) {
-	directory := writeTestModule(t, `{"id":"utiltest","name":"工具测试","runtime":"js","api":1,"capabilities":["search","danmaku","rankings"],
+	directory := writeTestModule(t, `{"id":"utiltest","name":"工具测试","runtime":"js","api":1,"adult":false,"capabilities":["search","danmaku","rankings"],
 "rankings":[{"id":"util-hot","name":"热榜","description":"说明"}]}`, `
 module.exports = {
   categories(force) {
@@ -324,7 +324,7 @@ module.exports = {
 }
 
 func TestModuleCryptoAndMediaAuthorization(t *testing.T) {
-	directory := writeTestModule(t, `{"id":"cryptotest","name":"加密测试","runtime":"js","api":1,"hosts":["media.example"],
+	directory := writeTestModule(t, `{"id":"cryptotest","name":"加密测试","runtime":"js","api":1,"adult":false,"hosts":["media.example"],
 "capabilities":["search","mediaAuth"],"mediaAuthPaths":["/key/"]}`, `
 module.exports = {
   categories() { return []; },
@@ -384,8 +384,14 @@ module.exports = {
 	if _, value, err := authorizer.MediaAuthorization(ctx, key, ""); err != nil || value != "renewed" {
 		t.Fatalf("renewed authorization = %q %v", value, err)
 	}
-	if _, err := parseModule([]byte(`{"id":"x","name":"x","runtime":"js","api":1,"capabilities":["mediaAuth"]}`), []byte("")); err == nil {
+	if _, err := parseModule([]byte(`{"id":"x","name":"x","runtime":"js","api":1,"adult":false,"capabilities":["mediaAuth"]}`), []byte("")); err == nil {
 		t.Fatal("media authorization without paths was accepted")
+	}
+	if _, err := parseModule([]byte(`{"id":"x","name":"x","runtime":"js","api":1}`), []byte("")); err == nil {
+		t.Fatal("manifest without adult was accepted")
+	}
+	if _, err := parseModule([]byte(`{"id":"x","name":"x","runtime":"js","api":1,"adult":"yes"}`), []byte("")); err == nil {
+		t.Fatal("manifest with non-boolean adult was accepted")
 	}
 }
 
@@ -399,7 +405,7 @@ func TestLoadModulesRegistersAndReplaces(t *testing.T) {
 	if err := os.MkdirAll(broken, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(broken, moduleManifest), []byte(`{"id":"other","name":"x","runtime":"js","api":1}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(broken, moduleManifest), []byte(`{"id":"other","name":"x","runtime":"js","api":1,"adult":false}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	downloader := &Downloader{cfg: Config{dataDir: data}}

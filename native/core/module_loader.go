@@ -59,6 +59,7 @@ type ModuleManifest struct {
 	API               int      `json:"api"`
 	Hosts             []string `json:"hosts"`
 	Capabilities      []string `json:"capabilities"`
+	Adult             *bool    `json:"adult"`
 	AllowEmptyCatalog bool     `json:"allowEmptyCatalog"`
 
 	Group              string   `json:"group"`
@@ -124,6 +125,9 @@ func parseModule(raw, code []byte) (*jsModule, error) {
 	}
 	if manifest.API != moduleAPIVersion {
 		return nil, fmt.Errorf("模块接口版本为 %d，当前应用支持 %d", manifest.API, moduleAPIVersion)
+	}
+	if manifest.Adult == nil {
+		return nil, errors.New("模块缺少 adult 声明")
 	}
 	capabilities := map[reflect.Type]bool{}
 	for _, name := range manifest.Capabilities {

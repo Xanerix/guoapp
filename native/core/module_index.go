@@ -40,6 +40,7 @@ type moduleIndexEntry struct {
 	Version     string            `json:"version"`
 	Description string            `json:"description"`
 	API         int               `json:"api"`
+	Adult       bool              `json:"adult"`
 	Repo        string            `json:"repo"`
 	Tag         string            `json:"tag"`
 	SHA256      map[string]string `json:"sha256"`

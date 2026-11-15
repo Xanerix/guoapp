@@ -6,6 +6,7 @@ class SourceModule {
     this.description = '',
     this.hosts = const [],
     this.capabilities = const [],
+    this.adult = false,
     this.installed = false,
     this.previous = '',
     this.token = '',
@@ -20,6 +21,7 @@ class SourceModule {
     capabilities: (json['capabilities'] as List? ?? const [])
         .whereType<String>()
         .toList(),
+    adult: json['adult'] == true,
     installed: json['installed'] == true,
     previous: json['previous'] as String? ?? '',
     token: json['token'] as String? ?? '',
@@ -31,6 +33,7 @@ class SourceModule {
   final String description;
   final List<String> hosts;
   final List<String> capabilities;
+  final bool adult;
   final bool installed;
   final String previous;
   final String token;
@@ -44,6 +47,7 @@ class ModuleIndexEntry {
     required this.version,
     this.description = '',
     this.repo = '',
+    this.adult = false,
     this.bundled = false,
   });
   factory ModuleIndexEntry.fromJson(Map<String, dynamic> json) =>
@@ -53,6 +57,7 @@ class ModuleIndexEntry {
         version: json['version'] as String? ?? '',
         description: json['description'] as String? ?? '',
         repo: json['repo'] as String? ?? '',
+        adult: json['adult'] == true,
         bundled: json['bundled'] == true,
       );
   final String id;
@@ -60,6 +65,7 @@ class ModuleIndexEntry {
   final String version;
   final String description;
   final String repo;
+  final bool adult;
   final bool bundled;
 }
 

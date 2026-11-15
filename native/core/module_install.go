@@ -33,6 +33,7 @@ type nativeModuleInfo struct {
 	Description  string   `json:"description"`
 	Hosts        []string `json:"hosts"`
 	Capabilities []string `json:"capabilities"`
+	Adult        bool     `json:"adult"`
 	Installed    bool     `json:"installed"`
 	Previous     string   `json:"previous,omitempty"`
 	Token        string   `json:"token,omitempty"`
@@ -41,7 +42,7 @@ type nativeModuleInfo struct {
 
 func moduleInfo(manifest ModuleManifest) nativeModuleInfo {
 	return nativeModuleInfo{ID: manifest.ID, Name: manifest.Name, Version: manifest.Version, Description: manifest.Description,
-		Hosts: manifest.Hosts, Capabilities: manifest.Capabilities}
+		Hosts: manifest.Hosts, Capabilities: manifest.Capabilities, Adult: *manifest.Adult}
 }
 
 func (engine *nativeEngine) modules() ([]nativeModuleInfo, error) {

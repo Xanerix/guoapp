@@ -455,7 +455,7 @@ class _ModuleTile extends StatelessWidget {
       child: ListTile(
         minTileHeight: 68,
         contentPadding: const EdgeInsets.fromLTRB(20, 4, 8, 4),
-        title: Text('${module.name}$version'),
+        title: _ModuleTitle('${module.name}$version', adult: module.adult),
         subtitle: Text(
           module.error.isNotEmpty
               ? module.error
@@ -492,6 +492,36 @@ class _ModuleTile extends StatelessWidget {
   }
 }
 
+class _ModuleTitle extends StatelessWidget {
+  const _ModuleTitle(this.text, {required this.adult});
+  final String text;
+  final bool adult;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!adult) return Text(text);
+    final theme = Theme.of(context);
+    final color = theme.colorScheme.error;
+    return Row(
+      spacing: 8,
+      children: [
+        Flexible(child: Text(text)),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+          decoration: BoxDecoration(
+            border: Border.all(color: color),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(
+            '限制级',
+            style: theme.textTheme.labelSmall?.copyWith(color: color),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _IndexTile extends StatelessWidget {
   const _IndexTile({
     required this.entry,
@@ -513,7 +543,10 @@ class _IndexTile extends StatelessWidget {
       child: ListTile(
         minTileHeight: 68,
         contentPadding: const EdgeInsets.fromLTRB(20, 4, 8, 4),
-        title: Text('${entry.name} · ${entry.version}'),
+        title: _ModuleTitle(
+          '${entry.name} · ${entry.version}',
+          adult: entry.adult,
+        ),
         subtitle: Text(
           records != null
               ? '待恢复：$records'
@@ -584,6 +617,7 @@ class _InstallDialog extends StatelessWidget {
                   : version,
             ),
             section('标识', module.id),
+            section('内容分级', module.adult ? '限制级' : '非限制级'),
             section(
               '可访问的域名',
               module.hosts.isEmpty ? '无' : module.hosts.join('\n'),
