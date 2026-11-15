@@ -17,9 +17,9 @@
 
 ## 站源模块
 
-站源是运行时加载的 JS 模块，写法见 DEVELOPMENT.md 的[站源模块](DEVELOPMENT.md#站源模块)，模板是 [guoapp-modules/template](https://github.com/guoapp-modules/template)。模块接口为第 1 版，不兼容的改动会升级 `api` 版本号。
+站源是运行时加载的 JS 模块，放在 GitHub 组织 [guoapp-modules](https://github.com/guoapp-modules) 里，一个仓库一个模块。写法见 DEVELOPMENT.md 的[站源模块](DEVELOPMENT.md#站源模块)，模板是 [guoapp-modules/template](https://github.com/guoapp-modules/template)，改进已有模块、新增模块和申请上架见组织的[贡献指南](https://github.com/guoapp-modules/.github/blob/main/CONTRIBUTING.md)。模块接口为第 1 版，不兼容的改动会升级 `api` 版本号。
 
-官方发布包只内置红果模块（代码不在本仓库），不收录、不审核、不分发社区模块，社区模块与本项目无关，使用和分发的责任由其作者和使用者承担。
+官方安装包只内置红果模块（代码不在本仓库），其他模块由用户在应用内的模块商店安装，或用 zip 手动安装。商店读取 [guoapp-modules/index](https://github.com/guoapp-modules/index) 的索引，社区模块按其中的规则审核上架。模块的使用和分发责任由其作者和使用者承担。
 
 自行出包时请设置环境变量 `PACKAGE_NAME` 为自己的包名，避免覆盖安装官方版本。
 
