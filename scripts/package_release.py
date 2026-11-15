@@ -61,7 +61,8 @@ def sign_macos_application(application, identity):
         flags += ['--options', 'runtime', '--timestamp']
     for framework in sorted((application / 'Contents' / 'Frameworks').glob('*')):
         run(flags + [framework])
-    run(flags + [application])
+    entitlements = root / 'macos' / 'Runner' / 'Release.entitlements'
+    run(flags + ['--entitlements', entitlements, application])
 
 
 def draw_dmg_background(path, display):
