@@ -15,8 +15,10 @@ import '../../download_overview.dart';
 import '../../local_store.dart';
 import '../../models.dart';
 import '../app_scope.dart';
+import '../detail/detail_page.dart';
 import '../player/playback_handle.dart';
 import '../player/playback_page.dart';
+import '../shell/app_shell.dart';
 import '../theme/motion.dart';
 import '../widgets/cover_image.dart';
 import '../widgets/focus_ring.dart';
@@ -260,6 +262,11 @@ class _DownloadedDramaPageState extends State<DownloadedDramaPage> {
     icon: icon ? Icons.refresh_rounded : null,
   );
 
+  void _openDetail(Drama drama) => openPage<void>(
+    context,
+    (_) => DetailPage(store: widget.store, drama: drama),
+  );
+
   Widget _editButton(DownloadedDrama? item, {bool icon = true}) => _textButton(
     '编辑',
     item == null ? null : () => setState(() => _selection = {}),
@@ -327,7 +334,7 @@ class _DownloadedDramaPageState extends State<DownloadedDramaPage> {
           ? AppBar(
               title: Text(drama.title),
               actions: [
-                _fillButton(drama, icon: false),
+                _textButton('详情', () => _openDetail(drama)),
                 _editButton(item, icon: false),
                 const SizedBox(width: 8),
               ],
@@ -339,7 +346,11 @@ class _DownloadedDramaPageState extends State<DownloadedDramaPage> {
                 icon: const Icon(Icons.close_rounded),
               ),
               title: Text('已选择 ${selection.length} 集'),
-              actions: [_selectAll(item, selection), const SizedBox(width: 8)],
+              actions: [
+                _fillButton(drama, icon: false),
+                _selectAll(item, selection),
+                const SizedBox(width: 8),
+              ],
             ),
       body: SafeArea(
         top: false,
@@ -428,6 +439,7 @@ class _DownloadedDramaPageState extends State<DownloadedDramaPage> {
                               mainAxisSize: MainAxisSize.min,
                               spacing: 8,
                               children: [
+                                _fillButton(drama),
                                 _selectAll(item, selection),
                                 _mergeButton(item, selection),
                                 if (Platform.isAndroid)
@@ -443,7 +455,14 @@ class _DownloadedDramaPageState extends State<DownloadedDramaPage> {
                               key: const ValueKey('normal'),
                               mainAxisSize: MainAxisSize.min,
                               spacing: 8,
-                              children: [_fillButton(drama), _editButton(item)],
+                              children: [
+                                _textButton(
+                                  '详情',
+                                  () => _openDetail(drama),
+                                  icon: Icons.info_outline_rounded,
+                                ),
+                                _editButton(item),
+                              ],
                             ),
                     ),
                   ],
