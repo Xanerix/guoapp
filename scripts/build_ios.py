@@ -9,7 +9,7 @@ import sys
 import zipfile
 from pathlib import Path
 
-from app_build import app
+from app_build import app, prepare_bundled_modules
 
 root = Path(__file__).resolve().parents[1]
 
@@ -51,6 +51,7 @@ def write_app_config():
 def build_core(simulator=False):
     if platform.system() != 'Darwin':
         raise SystemExit('iOS 构建需要 macOS 和完整 Xcode。')
+    prepare_bundled_modules()
     go = shutil.which('go')
     if not go:
         raise SystemExit('请安装 Go 1.24.1 或更新版本。')

@@ -13,7 +13,7 @@ Flutter `3.47.9`、Dart `3.12+`、Go `1.24.1+`、Python `3.10+`。
 
 ## 调试运行
 
-本体不内置任何站源。站源是运行时加载的 JS 模块，调试时把模块文件夹放进数据目录的 `modules` 下（见[站源模块](#站源模块)）；仓库里的 `native/module_example/jsexample` 是只返回假数据的示例模块，不访问网络、不能播放，用来调试界面。
+本仓库不含任何站源代码。站源是运行时加载的 JS 模块，调试时把模块文件夹放进数据目录的 `modules` 下（见[站源模块](#站源模块)）；仓库里的 `native/module_example/jsexample` 是只返回假数据的示例模块，不访问网络、不能播放，用来调试界面。
 
 Flutter 运行前必须先编译对应平台 / 架构的 Go 核心：
 
@@ -83,6 +83,7 @@ Flutter 界面 + Go 原生核心。站源请求、解析、签名、缓存、下
 - 文件：`manifest.json` 与 `main.js`，写法参照 `native/module_example/jsexample`。
 - 安装包：zip，`manifest.json` 和 `main.js` 放在根目录或唯一的一层文件夹里，其余文件忽略，整包不超过 8 MB。在 设置 › 站源 › 模块管理 里从文件或地址安装，同一标识覆盖旧版本，标识或别名与其他站源重复时拒绝安装；安装和卸载不用重启。
 - 模块商店：读取 GitHub 组织 guoapp-modules 的 `index` 仓库里的 `index.json`（先 raw.githubusercontent.com，失败换 jsDelivr），按其中的仓库和标签下载 `manifest.json` 与 `main.js` 并核对 sha256，再走同样的安装确认。模块的发版和上架方式见该组织的 `template` 与 `index` 仓库。
+- 内置模块：出包脚本把环境变量 `BUNDLED_MODULES`（逗号分隔的模块目录，相对路径以仓库根目录为准）里的模块复制到 `native/core/bundled/`，由 Go 以 `go:embed` 打进核心；该目录除 `.gitkeep` 外不入库，每次出包前清空重建。应用启动时，未安装或内置版本更高的内置模块写入数据目录的 `modules/`，用户卸载过的不再自动安装（记在 `modules/.bundled-removed.json`），模块商店照常列出，从安装包内的副本安装，索引读不到时也能装。官方包内置红果，来自私有仓库 guoapp-modules/hongguo，CI 用 Secret `HONGGUO_DEPLOY_KEY`（只读部署密钥）检出到 `bundled-modules/hongguo`。
 - 清单：`id`（小写字母、数字、`_`、`-`，最长 32 个字符，须与文件夹同名）、`name`、`version`、`description`、`runtime`（只支持 `js`）、`api`（当前为 `1`）、`hosts`（允许请求的域名，`*.example.com` 匹配子域名）、`capabilities`（可选能力，见下表）、`rankings`（榜单列表，每项 `id`、`name`、`description`）。`mediaAuthPaths`（声明 `mediaAuth` 时必填，见下表）。其余可选字段对应站源描述：`allowEmptyCatalog`、`group`、`groupName`、`entryName`、`skipVipPrompt`、`aliases`、`hostSuffixes`、`baseUrl`、`noHostRotation`、`keepDetailEpisodes`、`continuousFeed`、`browserFingerprint`。
 - 入口：`main.js` 是 CommonJS，用 `module.exports` 导出 `categories(force)`、`catalogPage(page, category)`、`detail(sourceId)`、`resolveMedia(task)`，以及可选的 `validCategory(category)`。`categories` 只取到部分分类时返回 `{ items, incomplete: true }`，应用稍后会重取；`catalogPage` 和 `search` 返回 `{ items, hasMore, warning }`，有剧集又有 `warning` 时作为提示显示。函数必须同步返回，不能是异步函数。需要用户登录时抛出带 `loginRequired = true` 属性的 `Error`。
 - 能力：声明后才会调用对应的函数。

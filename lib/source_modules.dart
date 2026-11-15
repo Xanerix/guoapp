@@ -44,6 +44,7 @@ class ModuleIndexEntry {
     required this.version,
     this.description = '',
     this.repo = '',
+    this.bundled = false,
   });
   factory ModuleIndexEntry.fromJson(Map<String, dynamic> json) =>
       ModuleIndexEntry(
@@ -52,12 +53,20 @@ class ModuleIndexEntry {
         version: json['version'] as String? ?? '',
         description: json['description'] as String? ?? '',
         repo: json['repo'] as String? ?? '',
+        bundled: json['bundled'] == true,
       );
   final String id;
   final String name;
   final String version;
   final String description;
   final String repo;
+  final bool bundled;
+}
+
+class ModuleStore {
+  const ModuleStore(this.entries, {this.warning = ''});
+  final List<ModuleIndexEntry> entries;
+  final String warning;
 }
 
 bool isNewerModuleVersion(String latest, String installed) {

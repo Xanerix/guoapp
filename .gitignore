@@ -43,3 +43,7 @@ desktop.ini
 .claude/settings.local.json
 
 /guoapp-sources/
+
+/native/core/bundled/*
+!/native/core/bundled/.gitkeep
+/bundled-modules/

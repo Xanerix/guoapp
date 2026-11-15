@@ -208,6 +208,7 @@ func (d *Downloader) loadModules() {
 		Unregister(id)
 	}
 	clear(loadedModules.ids)
+	d.installBundledModulesLocked()
 	entries, err := os.ReadDir(d.moduleRoot())
 	if err != nil {
 		if !errors.Is(err, fs.ErrNotExist) {

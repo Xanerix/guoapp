@@ -5,13 +5,14 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from app_build import app
+from app_build import app, prepare_bundled_modules
 
 root = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
 parser.add_argument('--platform', choices=['android', 'windows', 'darwin'], required=True)
 parser.add_argument('--abi', action='append', choices=['arm64-v8a', 'armeabi-v7a', 'x86_64'])
 options = parser.parse_args()
+prepare_bundled_modules()
 
 environment = os.environ.copy()
 environment.setdefault('GOPROXY', 'https://goproxy.cn,direct')

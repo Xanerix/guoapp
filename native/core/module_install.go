@@ -139,26 +139,10 @@ func (engine *nativeEngine) installModule(token string) (map[string]any, error) 
 		return nil, err
 	}
 	id := module.manifest.ID
-	root := d.moduleRoot()
-	temporary := filepath.Join(root, "."+id+".installing")
-	if err := os.RemoveAll(temporary); err != nil {
+	if err := d.writeModuleLocked(id, manifest, code); err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(temporary, 0o700); err != nil {
-		return nil, err
-	}
-	defer os.RemoveAll(temporary)
-	if err := os.WriteFile(filepath.Join(temporary, moduleManifest), manifest, 0o600); err != nil {
-		return nil, err
-	}
-	if err := os.WriteFile(filepath.Join(temporary, moduleEntry), code, 0o600); err != nil {
-		return nil, err
-	}
-	target := filepath.Join(root, id)
-	if err := os.RemoveAll(target); err != nil {
-		return nil, err
-	}
-	if err := os.Rename(temporary, target); err != nil {
+	if err := d.markBundledRemoved(id, false); err != nil {
 		return nil, err
 	}
 	_ = os.Remove(staged)
@@ -179,8 +163,34 @@ func (engine *nativeEngine) uninstallModule(name string) (map[string]any, error)
 	if err := os.RemoveAll(filepath.Join(d.moduleRoot(), name)); err != nil {
 		return nil, err
 	}
+	if err := d.markBundledRemoved(name, true); err != nil {
+		return nil, err
+	}
 	d.reloadModuleLocked(name)
 	return map[string]any{"sources": engine.sourceList()}, nil
+}
+
+func (d *Downloader) writeModuleLocked(id string, manifest, code []byte) error {
+	root := d.moduleRoot()
+	temporary := filepath.Join(root, "."+id+".installing")
+	if err := os.RemoveAll(temporary); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(temporary, 0o700); err != nil {
+		return err
+	}
+	defer os.RemoveAll(temporary)
+	if err := os.WriteFile(filepath.Join(temporary, moduleManifest), manifest, 0o600); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(temporary, moduleEntry), code, 0o600); err != nil {
+		return err
+	}
+	target := filepath.Join(root, id)
+	if err := os.RemoveAll(target); err != nil {
+		return err
+	}
+	return os.Rename(temporary, target)
 }
 
 func (engine *nativeEngine) downloadModulePackage(ctx context.Context, address string) ([]byte, error) {

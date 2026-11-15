@@ -43,6 +43,7 @@ type moduleIndexEntry struct {
 	Repo        string            `json:"repo"`
 	Tag         string            `json:"tag"`
 	SHA256      map[string]string `json:"sha256"`
+	Bundled     bool              `json:"bundled,omitempty"`
 }
 
 func (entry moduleIndexEntry) usable() bool {
@@ -86,7 +87,29 @@ func (engine *nativeEngine) moduleIndex(ctx context.Context) ([]moduleIndexEntry
 	return nil, 0, fmt.Errorf("读取模块索引失败：%s", strings.Join(failures, "；"))
 }
 
+func (engine *nativeEngine) moduleStore(ctx context.Context) (map[string]any, error) {
+	entries, _, err := engine.moduleIndex(ctx)
+	bundled := bundledIndexEntries()
+	if err != nil && len(bundled) == 0 {
+		return nil, err
+	}
+	items := bundled
+	for _, entry := range entries {
+		if !isBundledModule(entry.ID) {
+			items = append(items, entry)
+		}
+	}
+	result := map[string]any{"items": items}
+	if err != nil {
+		result["warning"] = err.Error()
+	}
+	return result, nil
+}
+
 func (engine *nativeEngine) indexedModulePackage(ctx context.Context, id string) ([]byte, error) {
+	if modules, _ := readBundledModules(); modules[id].raw != nil {
+		return zipModuleFiles(modules[id].raw, modules[id].code)
+	}
 	entries, mirror, err := engine.moduleIndex(ctx)
 	if err != nil {
 		return nil, err

@@ -26,7 +26,7 @@ class ModulesView extends StatefulWidget {
 class _ModulesViewState extends State<ModulesView> {
   List<SourceModule>? _modules;
   String? _error;
-  List<ModuleIndexEntry>? _index;
+  ModuleStore? _index;
   String? _indexError;
   bool _busy = false;
 
@@ -192,7 +192,7 @@ class _ModulesViewState extends State<ModulesView> {
       final admin = widget.store.profile.admin && !widget.store.locked;
       final modules = _modules;
       final missing = _missingSources();
-      final index = _index;
+      final index = _index?.entries;
       final latest = {for (final entry in index ?? const []) entry.id: entry};
       final installed = {for (final module in modules ?? const []) module.id};
       final available =
@@ -251,6 +251,8 @@ class _ModulesViewState extends State<ModulesView> {
                 : _reloadIndex,
             padding: const EdgeInsets.fromLTRB(16, 12, 0, 0),
           ),
+          if (_index case ModuleStore(:final warning) when warning.isNotEmpty)
+            _Note('$warning；下面只列出安装包内置的模块。'),
           if (_indexError case final error?)
             _Note(error)
           else if (index == null)
@@ -398,7 +400,9 @@ class _IndexTile extends StatelessWidget {
       child: ListTile(
         minTileHeight: 68,
         contentPadding: const EdgeInsets.fromLTRB(20, 4, 8, 4),
-        title: Text('${entry.name} · ${entry.version}'),
+        title: Text(
+          '${entry.name} · ${entry.version}${entry.bundled ? ' · 内置' : ''}',
+        ),
         subtitle: Text(
           records != null
               ? '待恢复：$records'
