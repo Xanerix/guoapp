@@ -150,7 +150,7 @@ class ExplorePageState extends State<ExplorePage> {
                         )
                       : const StatusView(
                           title: '暂无可用站源',
-                          message: '请在站源管理中开启站源，或联系管理员开放权限。',
+                          message: '请在 我的 › 模块 中开启站源，或联系管理员开放权限。',
                           icon: Icons.public_off_rounded,
                         ),
                 ),

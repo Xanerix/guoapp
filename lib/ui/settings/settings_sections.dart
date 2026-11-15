@@ -8,7 +8,6 @@ import '../../app_build.dart';
 import '../../app_device.dart';
 import '../../download_preferences.dart';
 import '../../local_store.dart';
-import '../../models.dart';
 import '../../playback_preferences.dart';
 import '../../resource_settings.dart';
 import '../../resource_settings_editor.dart';
@@ -24,8 +23,6 @@ import 'appearance_settings.dart';
 import 'backup_actions.dart';
 import 'diary_view.dart';
 import 'settings_rows.dart';
-import 'sorani_account_view.dart';
-import 'sources_view.dart';
 import 'storage_view.dart';
 
 enum SettingsGroup {
@@ -33,7 +30,6 @@ enum SettingsGroup {
   playback('播放', Icons.play_arrow_rounded),
   danmaku('弹幕', Icons.subtitles_outlined),
   download('下载', Icons.download_rounded),
-  sources('站源', Icons.dns_outlined),
   proxy('代理', Icons.language_rounded),
   users('用户', Icons.manage_accounts_outlined),
   about('关于', Icons.info_outline_rounded),
@@ -50,7 +46,6 @@ const adminOnly = '需要管理员';
 const _noDownload = '当前用户没有下载权限';
 const _proxyModes = {'auto': '自动', 'direct': '直连', 'manual': '手动代理'};
 const _counts = {1: '1', 2: '2', 3: '3', 4: '4', 5: '5', 6: '6'};
-const _intervals = [0, 100, 250, 500, 1000, 2000, 3000, 5000];
 const _decoders = {
   TelevisionDecoder.optimized: '默认',
   TelevisionDecoder.hardware: '硬解（兼容）',
@@ -95,7 +90,6 @@ class SettingsSection extends StatelessWidget {
               SettingsGroup.playback => _playback(context),
               SettingsGroup.danmaku => _danmaku(context),
               SettingsGroup.download => _download(context),
-              SettingsGroup.sources => _sources(context),
               SettingsGroup.proxy => _proxy(context),
               SettingsGroup.users => [UsersView(store: store, open: open)],
               SettingsGroup.about => _about(context),
@@ -391,51 +385,6 @@ class SettingsSection extends StatelessWidget {
         ],
       ),
       if (Platform.isIOS) const _Note('iOS 下载和媒体处理需要保持应用在前台；切到后台会暂停，回到前台后可继续。'),
-    ];
-  }
-
-  List<Widget> _sources(BuildContext context) {
-    final settings = editor.settings;
-    final editable = settings != null && !editor.saving;
-    final entries = [
-      if (SourceSite.values.length > 1)
-        SettingsTile(
-          title: '站源管理',
-          subtitle: '开启或关闭站源',
-          onTap: () => open('站源管理', (_) => SourcesView(store: store)),
-        ),
-      if (soraniAccountAvailable())
-        SettingsTile(
-          title: '站源账号',
-          subtitle: '登录需要账号的站源',
-          onTap: () => open('站源账号', (_) => SourceAccountsView(store: store)),
-        ),
-    ];
-    return [
-      if (entries.isNotEmpty) SettingsCard(children: entries),
-      SettingsCard(
-        children: [
-          ?_editorError(),
-          ValueTile<int>(
-            title: '目录请求间隔',
-            subtitle: store.profile.admin ? '同一站源两次请求之间的最短间隔' : adminOnly,
-            options: {
-              for (final interval in {
-                ..._intervals,
-                ?settings?.catalogIntervalMs,
-              }.toList()..sort())
-                interval: '$interval 毫秒',
-            },
-            value: settings?.catalogIntervalMs,
-            onChanged: editable
-                ? (value) => _saveResource(
-                    context,
-                    settings.copyWith(catalogIntervalMs: value),
-                  )
-                : null,
-          ),
-        ],
-      ),
     ];
   }
 
