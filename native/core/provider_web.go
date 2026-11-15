@@ -15,6 +15,7 @@ import (
 type providerTextUserAgentKey struct{}
 type providerTextNoCacheKey struct{}
 type providerTextCookieKey struct{}
+type providerTextMirrorsKey struct{}
 
 var WebProviderNumericID = regexp.MustCompile(`^[1-9][0-9]{0,17}$`)
 

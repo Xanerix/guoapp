@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/ecdh"
+	"crypto/hkdf"
 	"crypto/md5"
 	"crypto/rand"
 	"crypto/sha256"
@@ -26,6 +28,7 @@ const (
 	moduleRandomBytes     = 1024
 	moduleSleepLimit      = time.Minute
 	moduleHTMLBytes       = 8 << 20
+	moduleDerivedBytes    = 1024
 )
 
 type moduleCacheEntry struct {
@@ -197,18 +200,101 @@ func (p *jsProvider) hostUtilities(instance *jsInstance) map[string]any {
 			return bytesValue(data), nil
 		},
 		"aesCbcEncrypt": func(key, iv, data goja.Value) (goja.Value, error) {
-			block, err := aes.NewCipher(bytesOf(key))
+			block, vector, plain, err := moduleCBC(bytesOf(key), bytesOf(iv), bytesOf(data))
 			if err != nil {
-				return nil, errors.New("AES 密钥长度无效")
-			}
-			vector, plain := bytesOf(iv), bytesOf(data)
-			if len(vector) != aes.BlockSize || len(plain)%aes.BlockSize != 0 {
-				return nil, errors.New("AES 向量或数据长度无效")
+				return nil, err
 			}
 			cipher.NewCBCEncrypter(block, vector).CryptBlocks(plain, plain)
 			return bytesValue(plain), nil
 		},
+		"aesCbcDecrypt": func(key, iv, data goja.Value) (goja.Value, error) {
+			block, vector, sealed, err := moduleCBC(bytesOf(key), bytesOf(iv), bytesOf(data))
+			if err != nil {
+				return nil, err
+			}
+			cipher.NewCBCDecrypter(block, vector).CryptBlocks(sealed, sealed)
+			return bytesValue(sealed), nil
+		},
+		"aesGcmSeal": func(key, nonce, plain, extra goja.Value) (goja.Value, error) {
+			aead, vector, err := moduleGCM(bytesOf(key), bytesOf(nonce))
+			if err != nil {
+				return nil, err
+			}
+			return bytesValue(aead.Seal(nil, vector, bytesOf(plain), bytesOf(extra))), nil
+		},
+		"aesGcmOpen": func(key, nonce, sealed, extra goja.Value) (goja.Value, error) {
+			aead, vector, err := moduleGCM(bytesOf(key), bytesOf(nonce))
+			if err != nil {
+				return nil, err
+			}
+			plain, err := aead.Open(nil, vector, bytesOf(sealed), bytesOf(extra))
+			if err != nil {
+				return nil, errors.New("AES-GCM 校验失败")
+			}
+			return bytesValue(plain), nil
+		},
+		"ecdhP256KeyPair": func() (*goja.Object, error) {
+			private, err := ecdh.P256().GenerateKey(rand.Reader)
+			if err != nil {
+				return nil, err
+			}
+			pair := vm.NewObject()
+			_ = pair.Set("privateKey", bytesValue(private.Bytes()))
+			_ = pair.Set("publicKey", bytesValue(private.PublicKey().Bytes()))
+			return pair, nil
+		},
+		"ecdhP256": func(privateKey, publicKey goja.Value) (goja.Value, error) {
+			private, err := ecdh.P256().NewPrivateKey(bytesOf(privateKey))
+			if err != nil {
+				return nil, errors.New("ECDH 私钥无效")
+			}
+			public, err := ecdh.P256().NewPublicKey(bytesOf(publicKey))
+			if err != nil {
+				return nil, errors.New("ECDH 公钥无效")
+			}
+			secret, err := private.ECDH(public)
+			if err != nil {
+				return nil, errors.New("ECDH 协商失败")
+			}
+			return bytesValue(secret), nil
+		},
+		"hkdfSha256": func(secret, salt, info goja.Value, length int) (goja.Value, error) {
+			if length < 1 || length > moduleDerivedBytes {
+				return nil, errors.New("HKDF 长度无效")
+			}
+			key, err := hkdf.Key(sha256.New, bytesOf(secret), bytesOf(salt), string(bytesOf(info)), length)
+			if err != nil {
+				return nil, err
+			}
+			return bytesValue(key), nil
+		},
 	}
+}
+
+func moduleCBC(key, iv, data []byte) (cipher.Block, []byte, []byte, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, nil, nil, errors.New("AES 密钥长度无效")
+	}
+	if len(iv) != aes.BlockSize || len(data)%aes.BlockSize != 0 {
+		return nil, nil, nil, errors.New("AES 向量或数据长度无效")
+	}
+	return block, iv, data, nil
+}
+
+func moduleGCM(key, nonce []byte) (cipher.AEAD, []byte, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, nil, errors.New("AES 密钥长度无效")
+	}
+	aead, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(nonce) != aead.NonceSize() {
+		return nil, nil, errors.New("AES-GCM 随机数长度无效")
+	}
+	return aead, nonce, nil
 }
 
 func (instance *jsInstance) jsonValue(value any) (goja.Value, error) {

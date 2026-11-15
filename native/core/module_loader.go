@@ -41,6 +41,7 @@ var moduleCapabilityTypes = map[string][]reflect.Type{
 	"cover":           {reflect.TypeFor[CoverResolver]()},
 	"metadata":        {reflect.TypeFor[MetadataEnricher]()},
 	"catalogState":    {reflect.TypeFor[CatalogStateful]()},
+	"mediaAuth":       {reflect.TypeFor[MediaAuthorizer]()},
 }
 
 type ModuleRanking struct {
@@ -72,7 +73,8 @@ type ModuleManifest struct {
 	ContinuousFeed     bool     `json:"continuousFeed"`
 	BrowserFingerprint bool     `json:"browserFingerprint"`
 
-	Rankings []ModuleRanking `json:"rankings"`
+	Rankings       []ModuleRanking `json:"rankings"`
+	MediaAuthPaths []string        `json:"mediaAuthPaths"`
 }
 
 type jsModule struct {
@@ -131,6 +133,14 @@ func parseModule(raw, code []byte) (*jsModule, error) {
 		}
 		for _, capability := range types {
 			capabilities[capability] = true
+		}
+	}
+	if capabilities[reflect.TypeFor[MediaAuthorizer]()] != (len(manifest.MediaAuthPaths) > 0) {
+		return nil, errors.New("媒体鉴权能力与 mediaAuthPaths 须同时声明")
+	}
+	for _, path := range manifest.MediaAuthPaths {
+		if !strings.HasPrefix(path, "/") {
+			return nil, errors.New("mediaAuthPaths 的每一项须以 / 开头")
 		}
 	}
 	rankings := map[string]bool{}

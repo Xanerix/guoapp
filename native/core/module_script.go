@@ -59,6 +59,7 @@ type jsFetchRequest struct {
 	AcceptStatus    []int             `json:"acceptStatus"`
 	Ticket          uint64            `json:"ticket"`
 	Background      bool              `json:"background"`
+	Direct          bool              `json:"direct"`
 }
 
 type jsFetchResponse struct {
@@ -81,12 +82,13 @@ type jsDetail struct {
 }
 
 type jsTextRequest struct {
-	URL       string `json:"url"`
-	Referer   string `json:"referer"`
-	UserAgent string `json:"userAgent"`
-	Cookie    string `json:"cookie"`
-	NoCache   bool   `json:"noCache"`
-	Body      string `json:"body"`
+	URL       string   `json:"url"`
+	Referer   string   `json:"referer"`
+	UserAgent string   `json:"userAgent"`
+	Cookie    string   `json:"cookie"`
+	NoCache   bool     `json:"noCache"`
+	Body      string   `json:"body"`
+	Mirrors   []string `json:"mirrors"`
 }
 
 type jsTextResponse struct {
@@ -379,7 +381,8 @@ func (p *jsProvider) hostObject(instance *jsInstance) *goja.Object {
 			}
 			return response
 		},
-		"parseUrl": parseModuleURL,
+		"parseUrl":      parseModuleURL,
+		"preferredSite": func() string { return p.host.PreferredSite(id) },
 		"fetchPlaylist": func(request jsPlaylistRequest) (jsPlaylist, error) {
 			return p.fetchPlaylist(instance.ctx, request)
 		},
@@ -483,8 +486,14 @@ func (p *jsProvider) fetchText(ctx context.Context, request jsTextRequest) (jsTe
 	if err := p.allowedAddress(request.URL); err != nil {
 		return jsTextResponse{}, err
 	}
+	var mirrors []string
+	for _, mirror := range request.Mirrors {
+		if p.allowedAddress(mirror) == nil {
+			mirrors = append(mirrors, mirror)
+		}
+	}
 	response, err := p.host.FetchText(ctx, TextRequest{URL: request.URL, Referer: request.Referer, UserAgent: request.UserAgent,
-		Cookie: request.Cookie, NoCache: request.NoCache, Body: moduleBody(request.Body)})
+		Cookie: request.Cookie, NoCache: request.NoCache, Body: moduleBody(request.Body), Mirrors: mirrors})
 	return jsTextResponse{Body: response.Body, URL: response.URL}, err
 }
 
@@ -499,6 +508,7 @@ func (p *jsProvider) fetch(ctx context.Context, request jsFetchRequest) (jsFetch
 		Label: p.module.manifest.Name, Method: request.Method, URL: request.URL, Header: request.Headers,
 		Body: moduleBody(request.Body), Timeout: time.Duration(request.TimeoutMS) * time.Millisecond, Limit: request.Limit,
 		FollowRedirects: request.FollowRedirects, AnyStatus: request.AnyStatus, AcceptJSONStatus: request.AcceptStatus, Ticket: request.Ticket,
+		Direct: request.Direct,
 	})
 	if err != nil {
 		return jsFetchResponse{Status: response.Status, Body: string(response.Body), Blocked: response.Blocked, Oversized: response.Oversized}, err

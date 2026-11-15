@@ -23,6 +23,7 @@ type TextRequest struct {
 	Cookie    string
 	NoCache   bool
 	Body      []byte
+	Mirrors   []string
 }
 
 type TextResponse struct {
@@ -87,6 +88,9 @@ func (d *Downloader) FetchText(ctx context.Context, request TextRequest) (TextRe
 	}
 	if request.NoCache {
 		ctx = context.WithValue(ctx, providerTextNoCacheKey{}, true)
+	}
+	if len(request.Mirrors) > 0 {
+		ctx = context.WithValue(ctx, providerTextMirrorsKey{}, request.Mirrors)
 	}
 	body, err := d.fetchProviderRequest(ctx, request.URL, request.Referer, request.Body)
 	if err != nil {

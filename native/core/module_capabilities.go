@@ -3,6 +3,9 @@ package core
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"net/url"
+	"strings"
 )
 
 type jsRecommendationPage struct {
@@ -14,6 +17,11 @@ type jsRecommendationPage struct {
 type jsDanmakuIDs struct {
 	Series string `json:"series"`
 	Video  string `json:"video"`
+}
+
+type jsMediaAuthorization struct {
+	Header string `json:"header"`
+	Value  string `json:"value"`
 }
 
 type jsSeason struct {
@@ -119,4 +127,32 @@ func (p *jsProvider) CatalogState() json.RawMessage {
 func (p *jsProvider) RestoreCatalogState(raw json.RawMessage) {
 	var ignored any
 	_ = p.quickCall("restoreCatalogState", &ignored, moduleRaw(raw))
+}
+
+func (p *jsProvider) AuthorizesMedia(address *url.URL) bool {
+	if address == nil || !p.module.allowsHost(address.Hostname()) {
+		return false
+	}
+	for _, path := range p.module.manifest.MediaAuthPaths {
+		if strings.HasPrefix(address.Path, path) {
+			return true
+		}
+	}
+	return false
+}
+
+func (p *jsProvider) MediaAuthorization(ctx context.Context, address *url.URL, referer string) (string, string, error) {
+	var result jsMediaAuthorization
+	if err := p.call(ctx, "mediaAuthorization", &result, address.String(), referer); err != nil {
+		return "", "", err
+	}
+	if strings.TrimSpace(result.Header) == "" || strings.ContainsAny(result.Header+result.Value, "\r\n") {
+		return "", "", errors.New("模块返回的播放凭证无效")
+	}
+	return result.Header, result.Value, nil
+}
+
+func (p *jsProvider) RejectMediaAuthorization(address *url.URL, value string) {
+	var ignored any
+	_ = p.quickCall("rejectMediaAuthorization", &ignored, address.String(), value)
 }

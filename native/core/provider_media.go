@@ -49,7 +49,7 @@ func ProviderSourceForURL(raw string) string {
 	return ""
 }
 
-func (d *Downloader) providerURLCandidates(raw string) []string {
+func (d *Downloader) providerURLCandidates(ctx context.Context, raw string) []string {
 	source := ProviderSourceForURL(raw)
 	if descriptor, registered := registeredDescriptor(source); source == "" || registered && descriptor.NoHostRotation {
 		return []string{raw}
@@ -73,7 +73,9 @@ func (d *Downloader) providerURLCandidates(raw string) []string {
 		return candidates
 	}
 	rotated := []string{raw}
-	if p, ok := d.provider(source); ok {
+	if mirrors, ok := ctx.Value(providerTextMirrorsKey{}).([]string); ok {
+		rotated = mirrors
+	} else if p, ok := d.provider(source); ok {
 		if rotator, ok := providerAs[URLRotator](p); ok {
 			rotated = rotator.URLCandidates(raw)
 		}
@@ -127,7 +129,7 @@ func (d *Downloader) fetchProviderRequest(ctx context.Context, rawURL, referer s
 	if referer == "" {
 		referer = rawURL
 	}
-	candidates := d.providerURLCandidates(rawURL)
+	candidates := d.providerURLCandidates(ctx, rawURL)
 	var lastErr error
 	tried := 0
 	for _, candidate := range candidates {

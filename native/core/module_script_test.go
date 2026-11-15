@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"errors"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -319,6 +320,72 @@ module.exports = {
 	}
 	if _, ok := providerAs[Suggester](p); ok {
 		t.Fatal("undeclared suggestions capability is exposed")
+	}
+}
+
+func TestModuleCryptoAndMediaAuthorization(t *testing.T) {
+	directory := writeTestModule(t, `{"id":"cryptotest","name":"加密测试","runtime":"js","api":1,"hosts":["media.example"],
+"capabilities":["search","mediaAuth"],"mediaAuthPaths":["/key/"]}`, `
+module.exports = {
+  categories() { return []; },
+  catalogPage() { return { items: [], hasMore: false }; },
+  search() {
+    const key = host.hexDecode("000102030405060708090a0b0c0d0e0f");
+    const plain = host.utf8Decode(host.aesCbcDecrypt(key, key, host.aesCbcEncrypt(key, key, host.utf8Encode("0123456789abcdef"))));
+    const nonce = host.hexDecode("000000000000000000000001");
+    const sealed = host.aesGcmSeal(key, nonce, "红果", "aad");
+    const opened = host.utf8Decode(host.aesGcmOpen(key, nonce, sealed, "aad"));
+    let tampered = "accepted";
+    try { host.aesGcmOpen(key, nonce, sealed, "other"); } catch (error) { tampered = "rejected"; }
+    const left = host.ecdhP256KeyPair(), right = host.ecdhP256KeyPair();
+    const agreed = host.hexEncode(host.ecdhP256(left.privateKey, right.publicKey)) === host.hexEncode(host.ecdhP256(right.privateKey, left.publicKey));
+    const okm = host.hexEncode(host.hkdfSha256(host.hexDecode("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b"),
+      host.hexDecode("000102030405060708090a0b0c"), host.hexDecode("f0f1f2f3f4f5f6f7f8f9"), 42));
+    return { items: [{ id: host.dramaId("x"), title: [plain, opened, tampered, agreed, left.publicKey.length, okm].join("|") }], hasMore: false };
+  },
+  detail() { return {}; },
+  resolveMedia() { return {}; },
+  mediaAuthorization(address, referer) {
+    return { header: "X-Token", value: host.cacheGet("token") || address + "|" + referer };
+  },
+  rejectMediaAuthorization(address, value) {
+    host.cacheSet("token", "renewed", 0);
+  },
+};`)
+	module, err := readModule(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := module.provider(&moduleTestHost{state: map[string][]byte{}})
+	ctx := context.Background()
+	searcher, _ := providerAs[Searcher](p)
+	items, _, err := searcher.Search(ctx, 1, "x")
+	want := "0123456789abcdef|红果|rejected|true|65|3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865"
+	if err != nil || len(items) != 1 || items[0].Title != want {
+		t.Fatalf("crypto = %+v, %v", items, err)
+	}
+	authorizer, ok := providerAs[MediaAuthorizer](p)
+	if !ok {
+		t.Fatal("declared media authorization capability is missing")
+	}
+	key, _ := url.Parse("https://media.example/key/1")
+	for _, raw := range []string{"https://media.example/seg/1.ts", "https://other.example/key/1"} {
+		if address, _ := url.Parse(raw); authorizer.AuthorizesMedia(address) {
+			t.Fatalf("authorized %s", raw)
+		}
+	}
+	if !authorizer.AuthorizesMedia(key) {
+		t.Fatal("declared media path is not authorized")
+	}
+	if header, value, err := authorizer.MediaAuthorization(ctx, key, "https://media.example/"); err != nil || header != "X-Token" || value != "https://media.example/key/1|https://media.example/" {
+		t.Fatalf("authorization = %q %q %v", header, value, err)
+	}
+	authorizer.RejectMediaAuthorization(key, "old")
+	if _, value, err := authorizer.MediaAuthorization(ctx, key, ""); err != nil || value != "renewed" {
+		t.Fatalf("renewed authorization = %q %v", value, err)
+	}
+	if _, err := parseModule([]byte(`{"id":"x","name":"x","runtime":"js","api":1,"capabilities":["mediaAuth"]}`), []byte("")); err == nil {
+		t.Fatal("media authorization without paths was accepted")
 	}
 }
 
