@@ -42,6 +42,8 @@ dev_dependencies:
 dependency_overrides:
   media_kit_libs_windows_video:
     path: packages/media_kit_libs_windows_video
+  media_kit_video:
+    path: packages/media_kit_video
   shared_preferences_windows:
     path: packages/shared_preferences_windows
 

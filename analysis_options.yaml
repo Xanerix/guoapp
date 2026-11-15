@@ -9,3 +9,4 @@ analyzer:
     - windows/**
     - ios/**
     - macos/**
+    - packages/media_kit_video/**
