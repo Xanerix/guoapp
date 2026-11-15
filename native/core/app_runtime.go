@@ -381,8 +381,11 @@ func nativeDispatch(input nativeInput) (any, error) {
 	case "modules":
 		items, err := engine.modules()
 		return map[string]any{"items": items}, err
+	case "moduleIndex":
+		items, _, err := engine.moduleIndex(ctx)
+		return map[string]any{"items": items}, err
 	case "prepareModule":
-		return engine.prepareModule(ctx, input.File, input.URL)
+		return engine.prepareModule(ctx, input.File, input.URL, input.Source)
 	case "installModule":
 		return engine.installModule(input.Token)
 	case "uninstallModule":

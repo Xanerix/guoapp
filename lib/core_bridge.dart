@@ -123,9 +123,12 @@ abstract class AppRepository {
   }) async => const [CatalogCategory.all];
   bool get supportsSourceManagement => false;
   Future<List<SourceModule>> modules() async => const [];
+  Future<List<ModuleIndexEntry>> moduleIndex() async =>
+      throw AppFailure('当前环境不支持模块商店');
   Future<SourceModule> prepareModule({
     String file = '',
     String url = '',
+    String indexed = '',
   }) async => throw AppFailure('当前环境不支持安装模块');
   Future<String> installModule(String token) async =>
       throw AppFailure('当前环境不支持安装模块');
@@ -789,13 +792,29 @@ class NativeRepository extends AppRepository {
   }
 
   @override
+  Future<List<ModuleIndexEntry>> moduleIndex() async {
+    _adminPermission();
+    final result = await _call({'action': 'moduleIndex'});
+    return [
+      for (final row in result['items'] as List? ?? const [])
+        ModuleIndexEntry.fromJson(Map<String, dynamic>.from(row as Map)),
+    ];
+  }
+
+  @override
   Future<SourceModule> prepareModule({
     String file = '',
     String url = '',
+    String indexed = '',
   }) async {
     _adminPermission();
     return SourceModule.fromJson(
-      await _call({'action': 'prepareModule', 'file': file, 'url': url}),
+      await _call({
+        'action': 'prepareModule',
+        'file': file,
+        'url': url,
+        'source': indexed,
+      }),
     );
   }
 

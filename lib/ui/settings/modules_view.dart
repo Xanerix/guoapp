@@ -26,6 +26,8 @@ class ModulesView extends StatefulWidget {
 class _ModulesViewState extends State<ModulesView> {
   List<SourceModule>? _modules;
   String? _error;
+  List<ModuleIndexEntry>? _index;
+  String? _indexError;
   bool _busy = false;
 
   AppRepository get _repository => AppScope.of(context).repository;
@@ -33,7 +35,23 @@ class _ModulesViewState extends State<ModulesView> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _reload());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _reload();
+      _reloadIndex();
+    });
+  }
+
+  Future<void> _reloadIndex() async {
+    setState(() {
+      _index = null;
+      _indexError = null;
+    });
+    try {
+      final index = await _repository.moduleIndex();
+      if (mounted) setState(() => _index = index);
+    } catch (failure) {
+      if (mounted) setState(() => _indexError = '$failure');
+    }
   }
 
   Future<void> _reload() async {
@@ -103,6 +121,10 @@ class _ModulesViewState extends State<ModulesView> {
     );
   }
 
+  Future<void> _installIndexed(ModuleIndexEntry entry) => _run(
+    () async => _install(await _repository.prepareModule(indexed: entry.id)),
+  );
+
   Future<void> _install(SourceModule module) async {
     if (!mounted) return;
     final accepted = await showDialog<bool>(
@@ -170,6 +192,18 @@ class _ModulesViewState extends State<ModulesView> {
       final admin = widget.store.profile.admin && !widget.store.locked;
       final modules = _modules;
       final missing = _missingSources();
+      final index = _index;
+      final latest = {for (final entry in index ?? const []) entry.id: entry};
+      final installed = {for (final module in modules ?? const []) module.id};
+      final available =
+          [
+            for (final entry in index ?? const <ModuleIndexEntry>[])
+              if (!installed.contains(entry.id)) entry,
+          ]..sort(
+            (a, b) => (missing.containsKey(a.id) ? 0 : 1).compareTo(
+              missing.containsKey(b.id) ? 0 : 1,
+            ),
+          );
       return ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [
@@ -190,8 +224,51 @@ class _ModulesViewState extends State<ModulesView> {
                 for (final module in modules)
                   _ModuleTile(
                     module: module,
+                    update: switch (latest[module.id]) {
+                      final entry?
+                          when module.error.isEmpty &&
+                              isNewerModuleVersion(
+                                entry.version,
+                                module.version,
+                              ) =>
+                        entry,
+                      _ => null,
+                    },
+                    onUpdate: admin && !_busy
+                        ? () => _installIndexed(latest[module.id]!)
+                        : null,
                     onUninstall: admin && !_busy
                         ? () => _uninstall(module)
+                        : null,
+                  ),
+              ],
+            ),
+          SectionHeader(
+            title: '模块商店',
+            action: '刷新',
+            onAction: index == null && _indexError == null
+                ? null
+                : _reloadIndex,
+            padding: const EdgeInsets.fromLTRB(16, 12, 0, 0),
+          ),
+          if (_indexError case final error?)
+            _Note(error)
+          else if (index == null)
+            const Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (available.isEmpty)
+            _Note(index.isEmpty ? '商店里还没有模块。' : '商店里的模块都已安装。')
+          else
+            SettingsCard(
+              children: [
+                for (final entry in available)
+                  _IndexTile(
+                    entry: entry,
+                    records: missing[entry.id],
+                    onInstall: admin && !_busy
+                        ? () => _installIndexed(entry)
                         : null,
                   ),
               ],
@@ -221,14 +298,16 @@ class _ModulesViewState extends State<ModulesView> {
           const _Note('安装同一标识的模块会覆盖旧版本。只安装来源可信的模块：模块能访问它声明的域名，并在本机保存自己的数据。'),
           if (missing.isNotEmpty) ...[
             const SizedBox(height: 12),
-            _Note('以下站源未安装，相关记录已隐藏，安装对应模块后恢复显示：\n$missing'),
+            _Note(
+              '以下站源未安装，相关记录已隐藏，安装对应模块后恢复显示：\n${[for (final MapEntry(:key, :value) in missing.entries) '$key：$value'].join('\n')}',
+            ),
           ],
         ],
       );
     },
   );
 
-  String _missingSources() {
+  Map<String, String> _missingSources() {
     final records = widget.store.missingSourceRecords();
     final downloads = _repository.missingSourceDownloads();
     final sources = {
@@ -241,15 +320,20 @@ class _ModulesViewState extends State<ModulesView> {
       if (records.history[source] case final count?) '观看记录 $count 条',
       if (downloads[source] case final count?) '下载 $count 集',
     ].join('，');
-    return [
-      for (final source in sources) '$source：${describe(source)}',
-    ].join('\n');
+    return {for (final source in sources) source: describe(source)};
   }
 }
 
 class _ModuleTile extends StatelessWidget {
-  const _ModuleTile({required this.module, required this.onUninstall});
+  const _ModuleTile({
+    required this.module,
+    required this.update,
+    required this.onUpdate,
+    required this.onUninstall,
+  });
   final SourceModule module;
+  final ModuleIndexEntry? update;
+  final VoidCallback? onUpdate;
   final VoidCallback? onUninstall;
 
   @override
@@ -264,14 +348,68 @@ class _ModuleTile extends StatelessWidget {
         subtitle: Text(
           module.error.isNotEmpty
               ? module.error
+              : update != null
+              ? '可更新到 ${update!.version}'
               : module.description.isEmpty
               ? module.id
               : module.description,
-          style: module.error.isEmpty ? null : TextStyle(color: colors.error),
+          style: module.error.isNotEmpty
+              ? TextStyle(color: colors.error)
+              : update != null
+              ? TextStyle(color: colors.primary)
+              : null,
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (update != null)
+              FocusRing(
+                radius: 20,
+                child: TextButton(onPressed: onUpdate, child: const Text('更新')),
+              ),
+            FocusRing(
+              radius: 20,
+              child: TextButton(
+                onPressed: onUninstall,
+                child: const Text('卸载'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _IndexTile extends StatelessWidget {
+  const _IndexTile({
+    required this.entry,
+    required this.records,
+    required this.onInstall,
+  });
+  final ModuleIndexEntry entry;
+  final String? records;
+  final VoidCallback? onInstall;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return MergeSemantics(
+      child: ListTile(
+        minTileHeight: 68,
+        contentPadding: const EdgeInsets.fromLTRB(20, 4, 8, 4),
+        title: Text('${entry.name} · ${entry.version}'),
+        subtitle: Text(
+          records != null
+              ? '待恢复：$records'
+              : entry.description.isEmpty
+              ? entry.id
+              : entry.description,
+          style: records == null ? null : TextStyle(color: colors.primary),
         ),
         trailing: FocusRing(
           radius: 20,
-          child: TextButton(onPressed: onUninstall, child: const Text('卸载')),
+          child: TextButton(onPressed: onInstall, child: const Text('安装')),
         ),
       ),
     );

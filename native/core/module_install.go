@@ -71,12 +71,15 @@ func (engine *nativeEngine) modules() ([]nativeModuleInfo, error) {
 	return items, nil
 }
 
-func (engine *nativeEngine) prepareModule(ctx context.Context, file, address string) (nativeModuleInfo, error) {
+func (engine *nativeEngine) prepareModule(ctx context.Context, file, address, indexed string) (nativeModuleInfo, error) {
 	var raw []byte
 	var err error
-	if address != "" {
+	switch {
+	case indexed != "":
+		raw, err = engine.indexedModulePackage(ctx, indexed)
+	case address != "":
 		raw, err = engine.downloadModulePackage(ctx, address)
-	} else {
+	default:
 		raw, err = readModulePackage(file)
 	}
 	if err != nil {
@@ -85,6 +88,9 @@ func (engine *nativeEngine) prepareModule(ctx context.Context, file, address str
 	module, err := unpackModule(raw)
 	if err != nil {
 		return nativeModuleInfo{}, err
+	}
+	if indexed != "" && module.manifest.ID != indexed {
+		return nativeModuleInfo{}, fmt.Errorf("索引里的 %s 实际是模块 %s", indexed, module.manifest.ID)
 	}
 	if err := moduleConflict(module.manifest); err != nil {
 		return nativeModuleInfo{}, err
@@ -182,24 +188,35 @@ func (engine *nativeEngine) downloadModulePackage(ctx context.Context, address s
 	if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.Host == "" {
 		return nil, errors.New("请填写以 http:// 或 https:// 开头的安装包地址")
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), nil)
+	raw, err := engine.fetchLimited(ctx, parsed.String(), modulePackageBytes)
+	if err != nil {
+		return nil, fmt.Errorf("下载安装包失败：%w", err)
+	}
+	return raw, nil
+}
+
+func (engine *nativeEngine) fetchLimited(ctx context.Context, address string, limit int) ([]byte, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, address, nil)
 	if err != nil {
 		return nil, err
 	}
 	response, err := engine.downloader.client.Do(request)
 	if err != nil {
-		return nil, fmt.Errorf("下载安装包失败：%w", err)
+		return nil, err
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("下载安装包失败：HTTP %d", response.StatusCode)
+		return nil, fmt.Errorf("HTTP %d", response.StatusCode)
 	}
-	raw, err := io.ReadAll(io.LimitReader(response.Body, modulePackageBytes+1))
+	raw, err := io.ReadAll(io.LimitReader(response.Body, int64(limit)+1))
 	if err != nil {
-		return nil, fmt.Errorf("下载安装包失败：%w", err)
+		return nil, err
 	}
-	if len(raw) > modulePackageBytes {
-		return nil, fmt.Errorf("安装包超过 %d MB", modulePackageBytes>>20)
+	if len(raw) > limit {
+		if limit >= 1<<20 {
+			return nil, fmt.Errorf("文件超过 %d MB", limit>>20)
+		}
+		return nil, fmt.Errorf("文件超过 %d KB", limit>>10)
 	}
 	return raw, nil
 }
