@@ -10,6 +10,7 @@ import '../core_bridge.dart';
 import '../local_store.dart';
 import '../theme_color.dart';
 import 'app_scope.dart';
+import 'cover_blur.dart';
 import 'device_registration.dart';
 import 'shell/app_shell.dart';
 import 'terms_page.dart';
@@ -47,6 +48,7 @@ class _DuanjuAppState extends State<DuanjuApp> with WidgetsBindingObserver {
   var _television = false;
   var _phone = false;
   (Color, bool, bool)? _themeKey;
+  CoverBlur? _coverBlur;
   late (ThemeData, ThemeData) _themes;
 
   @override
@@ -180,6 +182,12 @@ class _DuanjuAppState extends State<DuanjuApp> with WidgetsBindingObserver {
       unawaited(AppDevice.setTelevisionMode(television));
     }
     _television = television;
+    if (store != null) {
+      _coverBlur ??= store.blurCoversButton
+          ? CoverBlur.values.byName(store.blurCoversLaunch)
+          : CoverBlur.off;
+    }
+    final coverBlur = _coverBlur ?? CoverBlur.off;
     final systemColor = (store?.followSystemColor ?? true)
         ? _systemColor
         : null;
@@ -234,25 +242,35 @@ class _DuanjuAppState extends State<DuanjuApp> with WidgetsBindingObserver {
               formFactor: formFactor,
               systemColorAvailable: _systemColor != null,
               version: widget.version,
-              child: Builder(
-                builder: (context) {
-                  final phone =
-                      AppScope.formFactorOf(context) == FormFactor.phone;
-                  if (phone != _phone) {
-                    _phone = phone;
-                    unawaited(AppDevice.setPhoneMode(phone));
-                  }
-                  return FocusOutlineMotion(
-                    child: FocusOutlineLayer(
-                      child: FocusTraversalGroup(
-                        policy: ReadingOrderTraversalPolicy(
-                          requestFocusCallback: revealFocus,
+              child: CoverBlurScope(
+                mode: coverBlur,
+                enabled: !television && (store?.blurCoversButton ?? false),
+                everywhere: store?.blurAllCovers ?? false,
+                onToggle: () => setState(
+                  () => _coverBlur = coverBlur == CoverBlur.off
+                      ? CoverBlur.all
+                      : CoverBlur.off,
+                ),
+                child: Builder(
+                  builder: (context) {
+                    final phone =
+                        AppScope.formFactorOf(context) == FormFactor.phone;
+                    if (phone != _phone) {
+                      _phone = phone;
+                      unawaited(AppDevice.setPhoneMode(phone));
+                    }
+                    return FocusOutlineMotion(
+                      child: FocusOutlineLayer(
+                        child: FocusTraversalGroup(
+                          policy: ReadingOrderTraversalPolicy(
+                            requestFocusCallback: revealFocus,
+                          ),
+                          child: child!,
                         ),
-                        child: child!,
                       ),
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
             ),
           ),

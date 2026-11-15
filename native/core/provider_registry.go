@@ -19,6 +19,7 @@ type SourceDescriptor struct {
 	Group              string
 	GroupName          string
 	EntryName          string
+	Adult              bool
 	SkipVIPPrompt      bool
 	Aliases            []string
 	HostSuffixes       []string

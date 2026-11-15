@@ -7,6 +7,7 @@ import '../../explore_feed.dart';
 import '../../local_store.dart';
 import '../../models.dart';
 import '../app_scope.dart';
+import '../cover_blur.dart';
 import '../shell/app_shell.dart';
 import '../theme/motion.dart';
 import '../detail/detail_page.dart';
@@ -38,15 +39,6 @@ class ExplorePageState extends State<ExplorePage> {
   final _tabsKey = GlobalKey();
   final _refreshKey = GlobalKey<RefreshIndicatorState>();
   String _shown = '';
-  bool _blurCovers = false;
-
-  bool get _blurring => widget.store.blurCoversButton && _blurCovers;
-
-  @override
-  void initState() {
-    super.initState();
-    _blurCovers = widget.store.blurCoversOnLaunch;
-  }
 
   @override
   void didChangeDependencies() {
@@ -200,14 +192,14 @@ class ExplorePageState extends State<ExplorePage> {
                   onSearchSubmitted: (query) => _searchSubmitted(source, query),
                   leading: [
                     if (widget.store.blurCoversButton)
-                      BarButton(
-                        icon: _blurCovers
-                            ? Icons.visibility_off_rounded
-                            : Icons.visibility_rounded,
-                        tooltip: _blurCovers ? '显示封面' : '模糊封面',
-                        onPressed: () =>
-                            setState(() => _blurCovers = !_blurCovers),
-                      ),
+                      if (CoverBlurScope.of(context) case final blur?)
+                        BarButton(
+                          icon: blur.mode != CoverBlur.off
+                              ? Icons.visibility_off_rounded
+                              : Icons.visibility_rounded,
+                          tooltip: blur.mode != CoverBlur.off ? '显示封面' : '模糊封面',
+                          onPressed: blur.onToggle,
+                        ),
                   ],
                   actions: [
                     if (desktop)
@@ -265,7 +257,7 @@ class ExplorePageState extends State<ExplorePage> {
     Widget tabs,
   ) {
     final feed = explore.feed!;
-    final hero = _hero(explore, _blurring && !television);
+    final hero = _hero(explore);
     final items = explore.items;
     if (feed.items.isEmpty) {
       return FadeSwitcher(child: _status(feed));
@@ -363,7 +355,7 @@ class ExplorePageState extends State<ExplorePage> {
                     television && hero == null && ShellForeground.of(context),
                 heroScope: 'drama',
                 showScore: !explore.recommending,
-                blurCovers: _blurring && !television,
+                exploreBlur: true,
                 onOpen: _open,
                 onMore: (drama) => quickFollow(context, widget.store, drama),
               ),
@@ -416,7 +408,7 @@ class ExplorePageState extends State<ExplorePage> {
     );
   }
 
-  Widget? _hero(ExploreFeed explore, bool blurCover) {
+  Widget? _hero(ExploreFeed explore) {
     if (explore.resume case final entry?) {
       final drama = entry.drama;
       final total = drama.episodes;
@@ -432,7 +424,6 @@ class ExplorePageState extends State<ExplorePage> {
             : '看到第 ${entry.episode} 集',
         progress: total > 0 ? entry.episode / total : null,
         action: '继续第 $next 集',
-        blurCover: blurCover,
         onPlay: () => _open(drama, autoplay: true),
         onDetail: () => _open(drama),
       );
@@ -447,7 +438,6 @@ class ExplorePageState extends State<ExplorePage> {
           if (drama.episodes > 0) '共 ${drama.episodes} 集',
         ].join(' · '),
         action: '立即观看',
-        blurCover: blurCover,
         onPlay: () => _open(drama, autoplay: true),
         onDetail: () => _open(drama),
       );

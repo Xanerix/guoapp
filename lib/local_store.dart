@@ -20,6 +20,7 @@ const _usersFile = LocalFiles.marker;
 const _settingsFile = 'settings.json';
 const _displayModes = {'auto', 'television', 'phone', 'pad', 'window'};
 const _themeModes = {'light', 'dark', 'system'};
+const coverBlurLaunchModes = {'off': '关闭', 'adult': '仅限制级', 'all': '全部'};
 const _movedFlags = {
   'followSystemColor': 'followSystemColor',
   'checkUpdates': 'checkUpdates',
@@ -41,6 +42,7 @@ const _backupFlags = {
   'pureBlack',
   'blurCoversButton',
   'blurCoversOnLaunch',
+  'blurAllCovers',
 };
 const _blocked = '本地用户配置损坏，已锁定访问。原始记录已保留，请重新读取或从备份恢复。';
 const _unreadable = '读写本地记录时系统报错，已锁定访问，原有记录已保留。请稍后重新读取；反复出现时请查看日记里的报错内容。';
@@ -445,8 +447,11 @@ class LocalStore extends ChangeNotifier {
   bool get historyTab => _flag('historyTab', true);
   bool get pureBlack => _flag('pureBlack', false);
   bool get blurCoversButton => _flag('blurCoversButton', false);
-  bool get blurCoversOnLaunch =>
-      blurCoversButton && _flag('blurCoversOnLaunch', false);
+  String get blurCoversLaunch => switch (_settings['blurCoversLaunch']) {
+    final String mode when coverBlurLaunchModes.containsKey(mode) => mode,
+    _ => _flag('blurCoversOnLaunch', false) ? 'all' : 'off',
+  };
+  bool get blurAllCovers => _flag('blurAllCovers', true);
   bool get checkUpdates => _flag('checkUpdates', true);
   bool get autoExport => _flag('exportAfterDownload', false);
   bool get deleteAfterAutoExport => _flag('deleteAfterAutoExport', false);
@@ -591,8 +596,11 @@ class LocalStore extends ChangeNotifier {
   Future<void> setPureBlack(bool value) => _setting('pureBlack', value);
   Future<void> setBlurCoversButton(bool value) =>
       _setting('blurCoversButton', value);
-  Future<void> setBlurCoversOnLaunch(bool value) =>
-      _setting('blurCoversOnLaunch', value);
+  Future<void> setBlurCoversLaunch(String value) =>
+      coverBlurLaunchModes.containsKey(value)
+      ? _setting('blurCoversLaunch', value)
+      : Future.value();
+  Future<void> setBlurAllCovers(bool value) => _setting('blurAllCovers', value);
   Future<void> setCheckUpdates(bool value) => _setting('checkUpdates', value);
   Future<void> setAutoExport(bool value) =>
       _setting('exportAfterDownload', value);
@@ -1016,7 +1024,8 @@ class LocalStore extends ChangeNotifier {
       'themeColor': themeColor.name,
       'pureBlack': pureBlack,
       'blurCoversButton': blurCoversButton,
-      'blurCoversOnLaunch': _flag('blurCoversOnLaunch', false),
+      'blurCoversLaunch': blurCoversLaunch,
+      'blurAllCovers': blurAllCovers,
       'forceLogin': forceLogin,
       'checkUpdates': checkUpdates,
       'shareUsage': shareUsage,
@@ -1051,6 +1060,10 @@ class LocalStore extends ChangeNotifier {
         data.containsKey('themeColor') &&
             ThemeColor.byName(data['themeColor']) == null) {
       throw const FormatException('备份主题色设置无效');
+    }
+    if (data.containsKey('blurCoversLaunch') &&
+        !coverBlurLaunchModes.containsKey(data['blurCoversLaunch'])) {
+      throw const FormatException('备份封面模糊设置无效');
     }
     if (data.containsKey('forceLogin') && data['forceLogin'] is! bool) {
       throw const FormatException('备份登录设置无效');
@@ -1119,6 +1132,10 @@ class LocalStore extends ChangeNotifier {
           'themeColor': color.name,
         for (final key in _backupFlags)
           if (data[key] case final bool value) key: value,
+        if (data['blurCoversLaunch'] case final String mode)
+          'blurCoversLaunch': mode
+        else if (data['blurCoversOnLaunch'] case final bool launch)
+          'blurCoversLaunch': launch ? 'all' : 'off',
       },
       _usersFile: {
         'profiles': [for (final profile in profiles) profile.toJson()],

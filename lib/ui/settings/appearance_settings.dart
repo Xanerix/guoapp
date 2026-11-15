@@ -155,16 +155,40 @@ class AppearanceSettings extends StatelessWidget {
               ),
               const Divider(indent: 16, endIndent: 16),
               SwitchTile(
-                title: '开屏自动模糊封面',
+                title: '模糊所有界面的封面',
                 subtitle: store.blurCoversButton
-                    ? '每次启动后发现页的封面先模糊显示'
+                    ? '关闭后只模糊发现页的封面'
                     : '需先打开在主页显示模糊封面按钮',
-                value: store.blurCoversOnLaunch,
+                value: store.blurCoversButton && store.blurAllCovers,
                 onChanged: store.blurCoversButton
                     ? (value) => saveSetting(
                         context,
-                        () => store.setBlurCoversOnLaunch(value),
+                        () => store.setBlurAllCovers(value),
                       )
+                    : null,
+              ),
+              const Divider(indent: 16, endIndent: 16),
+              SettingsTile(
+                title: '开屏自动模糊封面',
+                subtitle: store.blurCoversButton
+                    ? coverBlurLaunchModes[store.blurCoversLaunch]!
+                    : '需先打开在主页显示模糊封面按钮',
+                enabled: store.blurCoversButton,
+                onTap: store.blurCoversButton
+                    ? () async {
+                        final selection = await showOptionDialog(
+                          context,
+                          title: '开屏自动模糊封面',
+                          options: coverBlurLaunchModes,
+                          selected: store.blurCoversLaunch,
+                        );
+                        if (selection != null && context.mounted) {
+                          await saveSetting(
+                            context,
+                            () => store.setBlurCoversLaunch(selection),
+                          );
+                        }
+                      }
                     : null,
               ),
             ],

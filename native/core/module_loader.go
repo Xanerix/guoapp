@@ -180,6 +180,7 @@ func (module *jsModule) descriptor() SourceDescriptor {
 		Group:              module.manifest.Group,
 		GroupName:          module.manifest.GroupName,
 		EntryName:          module.manifest.EntryName,
+		Adult:              *module.manifest.Adult,
 		SkipVIPPrompt:      module.manifest.SkipVIPPrompt,
 		Aliases:            module.manifest.Aliases,
 		HostSuffixes:       module.manifest.HostSuffixes,

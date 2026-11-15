@@ -55,9 +55,7 @@ class ExploreHero extends StatelessWidget {
     required this.onPlay,
     required this.onDetail,
     this.progress,
-    this.blurCover = false,
   });
-  final bool blurCover;
   final Drama drama;
   final String kicker;
   final String meta;
@@ -286,7 +284,7 @@ class ExploreHero extends StatelessWidget {
                           drama: drama,
                           radius: metrics.coverRadius,
                           details: false,
-                          blurred: blurCover,
+                          exploreBlur: true,
                         ),
                       ),
                     ),

@@ -20,6 +20,7 @@ class SourceSite {
     this.devices = false,
     this.account = false,
     this.metadata = false,
+    this.adult = false,
     this.vipPrompt = true,
   });
   factory SourceSite.fromJson(Map<String, dynamic> json) => SourceSite(
@@ -37,6 +38,7 @@ class SourceSite {
     devices: json['devices'] == true,
     account: json['account'] == true,
     metadata: json['metadata'] == true,
+    adult: json['adult'] == true,
     vipPrompt: json['vipPrompt'] != false,
   );
   final String id;
@@ -53,6 +55,7 @@ class SourceSite {
   final bool devices;
   final bool account;
   final bool metadata;
+  final bool adult;
   final bool vipPrompt;
   bool get onlineSearch => pagedSearch;
   String get groupId => group.isEmpty ? id : group;
@@ -71,6 +74,8 @@ class SourceSite {
   static List<SourceSite> get values => _available;
   static bool isAvailable(String id) => _available.any((site) => site.id == id);
   static bool isKnown(String id) => _all.any((site) => site.id == id);
+  static bool isAdult(String id) =>
+      _all.any((site) => site.id == id && site.adult);
   static SourceSite byId(String id) => _all.firstWhere(
     (site) => site.id == id,
     orElse: () => SourceSite(id, id, '', available: false),

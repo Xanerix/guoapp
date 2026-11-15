@@ -7,6 +7,7 @@ import '../../core_bridge.dart';
 import '../../cover_loader.dart';
 import '../../models.dart';
 import '../app_scope.dart';
+import '../cover_blur.dart';
 import 'motion/motion_widgets.dart';
 
 const vipGold = Color(0xFFF6C86B);
@@ -43,12 +44,12 @@ class DramaCover extends StatelessWidget {
     this.rank,
     this.heroScope,
     this.showScore = false,
-    this.blurred = false,
+    this.exploreBlur = false,
   });
   final Drama drama;
   final double radius;
   final bool details;
-  final bool blurred;
+  final bool exploreBlur;
   final bool showScore;
   final int? rank;
   final String? heroScope;
@@ -83,6 +84,8 @@ class DramaCover extends StatelessWidget {
     // Always build the same wrapper so the CoverImage state is kept when the
     // hero condition flips; HeroMode just turns the flight on or off.
     final heroEnabled = heroScope != null && drama.id.isNotEmpty;
+    final blurred =
+        CoverBlurScope.of(context)?.blurs(drama, explore: exploreBlur) ?? false;
     image = HeroMode(
       enabled: heroEnabled,
       child: Hero(

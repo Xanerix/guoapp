@@ -15,6 +15,7 @@ type nativeSourceInfo struct {
 	Devices         bool   `json:"devices"`
 	Account         bool   `json:"account"`
 	Metadata        bool   `json:"metadata"`
+	Adult           bool   `json:"adult"`
 	VIPPrompt       bool   `json:"vipPrompt"`
 }
 
@@ -30,7 +31,7 @@ func (engine *nativeEngine) sourceList() []nativeSourceInfo {
 		info := nativeSourceInfo{
 			ID: id, Name: descriptor.Name, Description: descriptor.Description,
 			Group: descriptor.Group, GroupName: descriptor.GroupName, EntryName: descriptor.EntryName,
-			Available: nativeSourceAvailable(id), VIPPrompt: !descriptor.SkipVIPPrompt,
+			Available: nativeSourceAvailable(id), VIPPrompt: !descriptor.SkipVIPPrompt, Adult: descriptor.Adult,
 		}
 		_, search := providerAs[Searcher](p)
 		_, warningSearch := providerAs[WarningSearcher](p)

@@ -80,9 +80,9 @@ class DramaSliverGrid extends StatelessWidget {
     this.entered,
     this.heroScope,
     this.showScore = false,
-    this.blurCovers = false,
+    this.exploreBlur = false,
   });
-  final bool blurCovers;
+  final bool exploreBlur;
   final double width;
   final List<Drama> items;
   final ValueChanged<Drama> onOpen;
@@ -116,7 +116,7 @@ class DramaSliverGrid extends StatelessWidget {
             autofocus: autofocus && index == 0,
             heroScope: heroIndex[drama.id] == index ? heroScope : null,
             showScore: showScore,
-            blurCover: blurCovers,
+            exploreBlur: exploreBlur,
             onTap: () => onOpen(drama),
             onMore: onMore == null ? null : () => onMore!(drama),
           ),
