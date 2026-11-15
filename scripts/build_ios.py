@@ -48,10 +48,10 @@ def write_app_config():
                       f'APP_DISPLAY_NAME = {display}\n', encoding='utf-8')
 
 
-def build_core(simulator=False):
+def build_core(simulator=False, bundles=()):
     if platform.system() != 'Darwin':
         raise SystemExit('iOS 构建需要 macOS 和完整 Xcode。')
-    prepare_bundled_modules()
+    prepare_bundled_modules(bundles)
     go = shutil.which('go')
     if not go:
         raise SystemExit('请安装 Go 1.24.1 或更新版本。')
@@ -103,9 +103,10 @@ def main():
     parser.add_argument('--core-only', action='store_true')
     parser.add_argument('--simulator', action='store_true', help='额外生成模拟器核心；不启动模拟器')
     parser.add_argument('--export-options', type=Path, help='使用自己的 Xcode 签名配置导出 IPA')
+    parser.add_argument('--bundle', action='append', default=[], help='内置模块目录，可多次指定；也可用逗号分隔写在环境变量 BUNDLED_MODULES 里')
     options = parser.parse_args()
     write_app_config()
-    build_core(options.simulator)
+    build_core(options.simulator, options.bundle)
     if options.core_only:
         return
     flutter = shutil.which('flutter')

@@ -45,7 +45,7 @@ class AppBuild:
 app = AppBuild()
 
 
-def prepare_bundled_modules():
+def prepare_bundled_modules(extra=()):
     BUNDLED_DIRECTORY.mkdir(parents=True, exist_ok=True)
     for child in BUNDLED_DIRECTORY.iterdir():
         if child.name != '.gitkeep':
@@ -53,7 +53,7 @@ def prepare_bundled_modules():
                 shutil.rmtree(child)
             else:
                 child.unlink()
-    for item in os.environ.get('BUNDLED_MODULES', '').split(','):
+    for item in [*os.environ.get('BUNDLED_MODULES', '').split(','), *extra]:
         if not item.strip():
             continue
         source = Path(item.strip())
