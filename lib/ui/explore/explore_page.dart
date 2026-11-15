@@ -144,7 +144,7 @@ class ExplorePageState extends State<ExplorePage> {
                       ? StatusView(
                           title: '还没有安装站源',
                           message: widget.store.profile.admin
-                              ? '站源以模块的形式提供，请在「模块」页安装。'
+                              ? '站源以模块的形式提供，请在 我的 › 模块 安装。'
                               : '请联系管理员安装站源模块。',
                           icon: Icons.extension_off_rounded,
                         )

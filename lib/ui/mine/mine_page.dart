@@ -10,19 +10,13 @@ import '../app_scope.dart';
 import '../detail/detail_page.dart';
 import '../downloads/downloads_page.dart';
 import '../history/history_page.dart';
+import '../modules/modules_page.dart';
 import '../shell/app_shell.dart';
 import '../settings/settings_page.dart';
-import '../theme/motion.dart';
-import '../widgets/cover_image.dart';
 import '../widgets/drama_tile.dart';
 import '../widgets/focus_ring.dart';
 import '../widgets/page_header.dart';
 import '../widgets/group_card.dart';
-import '../widgets/motion/motion_widgets.dart';
-
-String _size(int bytes) => bytes >= 1 << 30
-    ? '${(bytes / (1 << 30)).toStringAsFixed(1)} GB'
-    : '${(bytes / (1 << 20)).round()} MB';
 
 class MinePage extends StatelessWidget {
   const MinePage({
@@ -46,7 +40,7 @@ class MinePage extends StatelessWidget {
     body: SafeArea(
       bottom: false,
       child: ListenableBuilder(
-        listenable: Listenable.merge([store, downloads]),
+        listenable: store,
         builder: (context, _) => switch (AppScope.formFactorOf(context)) {
           FormFactor.phone => _phone(context),
           FormFactor.pad || FormFactor.window => _wide(context),
@@ -72,8 +66,34 @@ class MinePage extends StatelessWidget {
   Widget _userCard(BuildContext context) =>
       _UserCard(store: store, onTap: () => openUsers(context, store));
 
-  Widget _settings(BuildContext context) => _SettingsEntry(
-    onTap: () => openPage<void>(context, (_) => SettingsPage(store: store)),
+  void _openModules(BuildContext context) =>
+      openPage<void>(context, (_) => ModulesPage(store: store));
+
+  void _openSettings(BuildContext context) =>
+      openPage<void>(context, (_) => SettingsPage(store: store));
+
+  Widget _entries(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    spacing: 12,
+    children: [
+      if (store.canDownload)
+        _Entry(
+          icon: Icons.download_rounded,
+          title: '下载',
+          onTap: () => _openDownloads(context),
+        ),
+      if (store.profile.admin)
+        _Entry(
+          icon: Icons.extension_outlined,
+          title: '模块',
+          onTap: () => _openModules(context),
+        ),
+      _Entry(
+        icon: Icons.settings_outlined,
+        title: '设置',
+        onTap: () => _openSettings(context),
+      ),
+    ],
   );
 
   Widget _poster(
@@ -134,22 +154,10 @@ class MinePage extends StatelessWidget {
                   _poster(context, history[index], width),
             ),
           ),
-        if (store.canDownload) ...[
-          SectionHeader(
-            title: '下载',
-            action: '全部',
-            onAction: () => _openDownloads(context),
-          ),
-          const SizedBox(height: 6),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: _DownloadCard(downloads: downloads),
-          ),
-        ],
         const SizedBox(height: 16),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: _settings(context),
+          child: _entries(context),
         ),
       ],
     );
@@ -168,18 +176,8 @@ class MinePage extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _userCard(context),
-            if (store.canDownload) ...[
-              SectionHeader(
-                title: '下载',
-                action: '全部',
-                onAction: () => _openDownloads(context),
-                padding: sectionPadding,
-              ),
-              const SizedBox(height: 6),
-              _DownloadCard(downloads: downloads),
-            ],
             const SizedBox(height: 16),
-            _settings(context),
+            _entries(context),
           ],
         );
         final recent = Column(
@@ -306,15 +304,21 @@ class MinePage extends StatelessWidget {
                         onTap: () => openUsers(context, store),
                       ),
                     ),
+                    if (store.profile.admin)
+                      Expanded(
+                        child: _TelevisionEntry(
+                          icon: Icons.extension_outlined,
+                          title: '模块',
+                          subtitle: '安装与管理站源模块',
+                          onTap: () => _openModules(context),
+                        ),
+                      ),
                     Expanded(
                       child: _TelevisionEntry(
                         icon: Icons.settings_outlined,
                         title: '设置',
                         subtitle: '外观、播放、站源与网络',
-                        onTap: () => openPage<void>(
-                          context,
-                          (_) => SettingsPage(store: store),
-                        ),
+                        onTap: () => _openSettings(context),
                       ),
                     ),
                   ],
@@ -451,145 +455,10 @@ class _UserCard extends StatelessWidget {
   }
 }
 
-class _DownloadCard extends StatelessWidget {
-  const _DownloadCard({required this.downloads});
-  final DownloadOverview downloads;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final secondary = TextStyle(fontSize: 12, color: colors.onSurfaceVariant);
-    final current = downloads.current;
-    final active = downloads.active;
-    return Semantics(
-      container: true,
-      label: '下载概览',
-      child: Material(
-        color: colors.surfaceContainer,
-        borderRadius: BorderRadius.circular(20),
-        clipBehavior: Clip.antiAlias,
-        child: AnimatedSize(
-          duration: Motion.of(context, Motion.long),
-          curve: Motion.enter,
-          alignment: Alignment.topCenter,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (current != null) ...[
-                FadeSwitcher(
-                  duration: Motion.short,
-                  child: Padding(
-                    key: ValueKey((current.drama.id, current.episode.number)),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 14,
-                    ),
-                    child: Row(
-                      spacing: 12,
-                      children: [
-                        SizedBox(
-                          width: 40,
-                          height: 60,
-                          child: DramaCover(
-                            drama: current.drama,
-                            radius: 8,
-                            details: false,
-                          ),
-                        ),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            spacing: 6,
-                            children: [
-                              Row(
-                                spacing: 8,
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      '${current.drama.title} · 第 ${current.episode.number} 集',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ),
-                                  Text(
-                                    '${(current.progress * 100).round()}%',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      color: colors.onSurfaceVariant,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              TweenAnimationBuilder<double>(
-                                tween: Tween(end: current.progress),
-                                duration: Motion.of(context, Motion.medium),
-                                builder: (context, value, _) =>
-                                    LinearProgressIndicator(
-                                      value: value,
-                                      minHeight: 4,
-                                      borderRadius: BorderRadius.circular(2),
-                                    ),
-                              ),
-                              Text(
-                                active > 1
-                                    ? '另有 ${active - 1} 个任务排队中'
-                                    : current.stateLabel,
-                                style: secondary,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const Divider(height: 1, indent: 16, endIndent: 16),
-              ],
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 14,
-                ),
-                child: Row(
-                  spacing: 12,
-                  children: [
-                    Icon(
-                      Icons.download_rounded,
-                      size: 20,
-                      color: colors.onSurfaceVariant,
-                    ),
-                    Expanded(
-                      child: FadeSwitcher(
-                        duration: Motion.short,
-                        alignment: AlignmentDirectional.centerStart,
-                        child: Text(
-                          key: ValueKey(
-                            downloads.completed == 0 && active == 0,
-                          ),
-                          downloads.completed == 0 && active == 0
-                              ? '还没有下载任务'
-                              : '已完成 ${downloads.completed} 集 · 占用 ${_size(downloads.completedBytes)}',
-                          style: secondary.copyWith(fontSize: 14),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SettingsEntry extends StatelessWidget {
-  const _SettingsEntry({required this.onTap});
+class _Entry extends StatelessWidget {
+  const _Entry({required this.icon, required this.title, required this.onTap});
+  final IconData icon;
+  final String title;
   final VoidCallback onTap;
 
   @override
@@ -610,15 +479,11 @@ class _SettingsEntry extends StatelessWidget {
               child: Row(
                 spacing: 14,
                 children: [
-                  Icon(
-                    Icons.settings_outlined,
-                    size: 22,
-                    color: colors.onSurfaceVariant,
-                  ),
-                  const Expanded(
+                  Icon(icon, size: 22, color: colors.onSurfaceVariant),
+                  Expanded(
                     child: Text(
-                      '设置',
-                      style: TextStyle(
+                      title,
+                      style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w500,
                       ),
