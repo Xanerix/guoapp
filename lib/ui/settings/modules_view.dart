@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -10,6 +11,8 @@ import '../../local_store.dart';
 import '../../models.dart';
 import '../../source_modules.dart';
 import '../app_scope.dart';
+import '../shell/app_shell.dart';
+import '../widgets/bar_button.dart';
 import '../widgets/focus_ring.dart';
 import '../widgets/form_text_field.dart';
 import '../widgets/group_card.dart';
@@ -23,50 +26,16 @@ class ModulesView extends StatefulWidget {
   State<ModulesView> createState() => _ModulesViewState();
 }
 
-class _ModulesViewState extends State<ModulesView> {
-  List<SourceModule>? _modules;
-  String? _error;
-  ModuleStore? _index;
-  String? _indexError;
+mixin _ModuleActions<T extends StatefulWidget> on State<T> {
   bool _busy = false;
+
+  LocalStore get _store;
 
   AppRepository get _repository => AppScope.of(context).repository;
 
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _reload();
-      _reloadIndex();
-    });
-  }
+  bool get _canInstall => _store.profile.admin && !_store.locked && !_busy;
 
-  Future<void> _reloadIndex() async {
-    setState(() {
-      _index = null;
-      _indexError = null;
-    });
-    try {
-      final index = await _repository.moduleIndex();
-      if (mounted) setState(() => _index = index);
-    } catch (failure) {
-      if (mounted) setState(() => _indexError = '$failure');
-    }
-  }
-
-  Future<void> _reload() async {
-    try {
-      final modules = await _repository.modules();
-      if (mounted) {
-        setState(() {
-          _modules = modules;
-          _error = null;
-        });
-      }
-    } catch (failure) {
-      if (mounted) setState(() => _error = '$failure');
-    }
-  }
+  Future<void> _refresh();
 
   void _show(String message) {
     if (mounted) {
@@ -85,8 +54,114 @@ class _ModulesViewState extends State<ModulesView> {
       _show('$failure');
     } finally {
       if (mounted) setState(() => _busy = false);
-      await _reload();
+      await _refresh();
     }
+  }
+
+  Future<void> _installIndexed(ModuleIndexEntry entry) => _run(
+    () async => _install(await _repository.prepareModule(indexed: entry.id)),
+  );
+
+  Future<void> _install(SourceModule module) async {
+    if (!mounted) return;
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (_) => _InstallDialog(module: module),
+    );
+    if (accepted != true) return;
+    final id = await _repository.installModule(module.token);
+    if (!module.installed) {
+      await _store.setSourceEnabled(id, true);
+    }
+    final site = SourceSite.byId(id);
+    if (site.devices && !await _repository.sourceDevices(id)) {
+      try {
+        if (!await _repository.sourceDevices(id, register: true)) {
+          throw AppFailure('设备注册未完成');
+        }
+      } catch (failure) {
+        _show('${module.name} 已安装，但$failure；下次打开应用时会再次注册');
+        return;
+      }
+    }
+    _show('${module.name} 已安装');
+  }
+}
+
+ModuleIndexEntry? _updateFor(SourceModule module, ModuleIndexEntry? entry) =>
+    entry != null &&
+        module.error.isEmpty &&
+        isNewerModuleVersion(entry.version, module.version)
+    ? entry
+    : null;
+
+Map<String, String> _missingSources(
+  LocalStore store,
+  AppRepository repository,
+) {
+  final records = store.missingSourceRecords();
+  final downloads = repository.missingSourceDownloads();
+  final sources = {
+    ...records.follows.keys,
+    ...records.history.keys,
+    ...downloads.keys,
+  }.toList()..sort();
+  String describe(String source) => [
+    if (records.follows[source] case final count?) '追剧 $count 部',
+    if (records.history[source] case final count?) '观看记录 $count 条',
+    if (downloads[source] case final count?) '下载 $count 集',
+  ].join('，');
+  return {for (final source in sources) source: describe(source)};
+}
+
+class _ModulesViewState extends State<ModulesView> with _ModuleActions {
+  List<SourceModule>? _modules;
+  String? _error;
+  ModuleStore? _index;
+
+  @override
+  LocalStore get _store => widget.store;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _refresh();
+      _loadIndex();
+    });
+  }
+
+  Future<void> _loadIndex() async {
+    final index = await _repository.moduleIndex().then<ModuleStore?>(
+      (index) => index,
+      onError: (_) => null,
+    );
+    if (mounted) setState(() => _index = index);
+  }
+
+  @override
+  Future<void> _refresh() async {
+    try {
+      final modules = await _repository.modules();
+      if (mounted) {
+        setState(() {
+          _modules = modules;
+          _error = null;
+        });
+      }
+    } catch (failure) {
+      if (mounted) setState(() => _error = '$failure');
+    }
+  }
+
+  Future<void> _openCatalog({required bool bundled}) async {
+    await openPage<void>(
+      context,
+      (_) => _CatalogPage(store: widget.store, bundled: bundled),
+    );
+    if (!mounted) return;
+    await _refresh();
+    unawaited(_loadIndex());
   }
 
   Future<void> _installFile() => _run(() async {
@@ -119,35 +194,6 @@ class _ModulesViewState extends State<ModulesView> {
     await _run(
       () async => _install(await _repository.prepareModule(url: address)),
     );
-  }
-
-  Future<void> _installIndexed(ModuleIndexEntry entry) => _run(
-    () async => _install(await _repository.prepareModule(indexed: entry.id)),
-  );
-
-  Future<void> _install(SourceModule module) async {
-    if (!mounted) return;
-    final accepted = await showDialog<bool>(
-      context: context,
-      builder: (_) => _InstallDialog(module: module),
-    );
-    if (accepted != true) return;
-    final id = await _repository.installModule(module.token);
-    if (!module.installed) {
-      await widget.store.setSourceEnabled(id, true);
-    }
-    final site = SourceSite.byId(id);
-    if (site.devices && !await _repository.sourceDevices(id)) {
-      try {
-        if (!await _repository.sourceDevices(id, register: true)) {
-          throw AppFailure('设备注册未完成');
-        }
-      } catch (failure) {
-        _show('${module.name} 已安装，但$failure；下次打开应用时会再次注册');
-        return;
-      }
-    }
-    _show('${module.name} 已安装');
   }
 
   Future<void> _uninstall(SourceModule module) async {
@@ -189,28 +235,17 @@ class _ModulesViewState extends State<ModulesView> {
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: widget.store,
     builder: (context, _) {
-      final admin = widget.store.profile.admin && !widget.store.locked;
+      final enabled = _canInstall;
       final modules = _modules;
-      final missing = _missingSources();
-      final index = _index?.entries;
-      final latest = {for (final entry in index ?? const []) entry.id: entry};
-      final installed = {for (final module in modules ?? const []) module.id};
-      final available =
-          [
-            for (final entry in index ?? const <ModuleIndexEntry>[])
-              if (!installed.contains(entry.id)) entry,
-          ]..sort(
-            (a, b) => (missing.containsKey(a.id) ? 0 : 1).compareTo(
-              missing.containsKey(b.id) ? 0 : 1,
-            ),
-          );
+      final latest = {
+        for (final entry in _index?.entries ?? const <ModuleIndexEntry>[])
+          entry.id: entry,
+      };
       return ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [
-          if (_error case final error?) ...[
-            _Note(error),
-            const SizedBox(height: 12),
-          ],
+          if (_error case final error?) _Note(error),
+          const SectionHeader(title: '已安装站源', padding: _headerPadding),
           if (modules == null && _error == null)
             const Padding(
               padding: EdgeInsets.all(24),
@@ -224,71 +259,38 @@ class _ModulesViewState extends State<ModulesView> {
                 for (final module in modules)
                   _ModuleTile(
                     module: module,
-                    update: switch (latest[module.id]) {
-                      final entry?
-                          when module.error.isEmpty &&
-                              isNewerModuleVersion(
-                                entry.version,
-                                module.version,
-                              ) =>
-                        entry,
-                      _ => null,
-                    },
-                    onUpdate: admin && !_busy
+                    update: _updateFor(module, latest[module.id]),
+                    onUpdate: enabled
                         ? () => _installIndexed(latest[module.id]!)
                         : null,
-                    onUninstall: admin && !_busy
-                        ? () => _uninstall(module)
-                        : null,
+                    onUninstall: enabled ? () => _uninstall(module) : null,
                   ),
               ],
             ),
-          SectionHeader(
-            title: '模块商店',
-            action: '刷新',
-            onAction: index == null && _indexError == null
-                ? null
-                : _reloadIndex,
-            padding: const EdgeInsets.fromLTRB(16, 12, 0, 0),
-          ),
-          if (_index case ModuleStore(:final warning) when warning.isNotEmpty)
-            _Note('$warning；下面只列出安装包内置的模块。'),
-          if (_indexError case final error?)
-            _Note(error)
-          else if (index == null)
-            const Padding(
-              padding: EdgeInsets.all(24),
-              child: Center(child: CircularProgressIndicator()),
-            )
-          else if (available.isEmpty)
-            _Note(index.isEmpty ? '商店里还没有模块。' : '商店里的模块都已安装。')
-          else
-            SettingsCard(
-              children: [
-                for (final entry in available)
-                  _IndexTile(
-                    entry: entry,
-                    records: missing[entry.id],
-                    onInstall: admin && !_busy
-                        ? () => _installIndexed(entry)
-                        : null,
-                  ),
-              ],
-            ),
-          const SizedBox(height: 12),
+          const SectionHeader(title: '添加新站源', padding: _headerPadding),
           SettingsCard(
             children: [
               SettingsTile(
+                title: '从商店安装',
+                subtitle: '浏览模块商店里的站源模块',
+                onTap: () => _openCatalog(bundled: false),
+              ),
+              SettingsTile(
+                title: '从内置安装',
+                subtitle: '安装包自带的模块，卸载后可在这里装回',
+                onTap: () => _openCatalog(bundled: true),
+              ),
+              SettingsTile(
                 title: '从文件安装',
                 subtitle: '选择模块的 zip 安装包',
-                enabled: admin && !_busy,
-                onTap: admin && !_busy ? _installFile : null,
+                enabled: enabled,
+                onTap: enabled ? _installFile : null,
               ),
               SettingsTile(
                 title: '从地址安装',
                 subtitle: '填写 zip 安装包的下载地址',
-                enabled: admin && !_busy,
-                onTap: admin && !_busy ? _installAddress : null,
+                enabled: enabled,
+                onTap: enabled ? _installAddress : null,
               ),
             ],
           ),
@@ -296,33 +298,140 @@ class _ModulesViewState extends State<ModulesView> {
             const SizedBox(height: 12),
             const LinearProgressIndicator(),
           ],
-          const SizedBox(height: 12),
-          const _Note('安装同一标识的模块会覆盖旧版本。只安装来源可信的模块：模块能访问它声明的域名，并在本机保存自己的数据。'),
-          if (missing.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            _Note(
-              '以下站源未安装，相关记录已隐藏，安装对应模块后恢复显示：\n${[for (final MapEntry(:key, :value) in missing.entries) '$key：$value'].join('\n')}',
-            ),
-          ],
         ],
       );
     },
   );
+}
 
-  Map<String, String> _missingSources() {
-    final records = widget.store.missingSourceRecords();
-    final downloads = _repository.missingSourceDownloads();
-    final sources = {
-      ...records.follows.keys,
-      ...records.history.keys,
-      ...downloads.keys,
-    }.toList()..sort();
-    String describe(String source) => [
-      if (records.follows[source] case final count?) '追剧 $count 部',
-      if (records.history[source] case final count?) '观看记录 $count 条',
-      if (downloads[source] case final count?) '下载 $count 集',
-    ].join('，');
-    return {for (final source in sources) source: describe(source)};
+const _headerPadding = EdgeInsets.fromLTRB(4, 12, 0, 6);
+
+class _CatalogPage extends StatefulWidget {
+  const _CatalogPage({required this.store, required this.bundled});
+  final LocalStore store;
+  final bool bundled;
+
+  @override
+  State<_CatalogPage> createState() => _CatalogPageState();
+}
+
+class _CatalogPageState extends State<_CatalogPage> with _ModuleActions {
+  Map<String, SourceModule>? _installed;
+  String? _error;
+  ModuleStore? _index;
+  String? _indexError;
+
+  @override
+  LocalStore get _store => widget.store;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _refresh();
+      _reloadIndex();
+    });
+  }
+
+  Future<void> _reloadIndex() async {
+    setState(() {
+      _index = null;
+      _indexError = null;
+    });
+    try {
+      final index = await _repository.moduleIndex();
+      if (mounted) setState(() => _index = index);
+    } catch (failure) {
+      if (mounted) setState(() => _indexError = '$failure');
+    }
+  }
+
+  @override
+  Future<void> _refresh() async {
+    try {
+      final modules = await _repository.modules();
+      if (mounted) {
+        setState(() {
+          _installed = {for (final module in modules) module.id: module};
+          _error = null;
+        });
+      }
+    } catch (failure) {
+      if (mounted) setState(() => _error = '$failure');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bundled = widget.bundled;
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(bundled ? '内置模块' : '模块商店'),
+        actions: [
+          if (!bundled)
+            BarButton(
+              icon: Icons.refresh_rounded,
+              tooltip: '刷新',
+              onPressed: _index == null && _indexError == null
+                  ? null
+                  : _reloadIndex,
+            ),
+          const SizedBox(width: 8),
+        ],
+      ),
+      body: ListenableBuilder(
+        listenable: widget.store,
+        builder: (context, _) {
+          final enabled = _canInstall;
+          final installed = _installed;
+          final missing = _missingSources(widget.store, _repository);
+          final warning = bundled ? '' : _index?.warning ?? '';
+          final entries =
+              [
+                for (final entry
+                    in _index?.entries ?? const <ModuleIndexEntry>[])
+                  if (entry.bundled == bundled) entry,
+              ]..sort(
+                (a, b) => (missing.containsKey(a.id) ? 0 : 1).compareTo(
+                  missing.containsKey(b.id) ? 0 : 1,
+                ),
+              );
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+            children: [
+              if (warning.isNotEmpty) _Note(warning),
+              if (_indexError ?? _error case final error?)
+                _Note(error)
+              else if (_index == null || installed == null)
+                const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else if (entries.isEmpty && warning.isEmpty)
+                _Note(bundled ? '这个安装包没有内置模块。' : '商店里还没有模块。')
+              else if (entries.isNotEmpty)
+                SettingsCard(
+                  children: [
+                    for (final entry in entries)
+                      _IndexTile(
+                        entry: entry,
+                        records: missing[entry.id],
+                        installed: installed[entry.id],
+                        onInstall: enabled
+                            ? () => _installIndexed(entry)
+                            : null,
+                      ),
+                  ],
+                ),
+              if (_busy) ...[
+                const SizedBox(height: 12),
+                const LinearProgressIndicator(),
+              ],
+            ],
+          );
+        },
+      ),
+    );
   }
 }
 
@@ -387,33 +496,48 @@ class _IndexTile extends StatelessWidget {
   const _IndexTile({
     required this.entry,
     required this.records,
+    required this.installed,
     required this.onInstall,
   });
   final ModuleIndexEntry entry;
   final String? records;
+  final SourceModule? installed;
   final VoidCallback? onInstall;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final module = installed;
+    final update = module != null && _updateFor(module, entry) != null;
     return MergeSemantics(
       child: ListTile(
         minTileHeight: 68,
         contentPadding: const EdgeInsets.fromLTRB(20, 4, 8, 4),
-        title: Text(
-          '${entry.name} · ${entry.version}${entry.bundled ? ' · 内置' : ''}',
-        ),
+        title: Text('${entry.name} · ${entry.version}'),
         subtitle: Text(
           records != null
               ? '待恢复：$records'
+              : update
+              ? '已安装 ${module.version}，可更新'
               : entry.description.isEmpty
               ? entry.id
               : entry.description,
-          style: records == null ? null : TextStyle(color: colors.primary),
+          style: records != null || update
+              ? TextStyle(color: colors.primary)
+              : null,
         ),
         trailing: FocusRing(
           radius: 20,
-          child: TextButton(onPressed: onInstall, child: const Text('安装')),
+          child: TextButton(
+            onPressed: module == null || update ? onInstall : null,
+            child: Text(
+              module == null
+                  ? '安装'
+                  : update
+                  ? '更新'
+                  : '已安装',
+            ),
+          ),
         ),
       ),
     );

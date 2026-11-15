@@ -15,6 +15,7 @@ import '../explore/source_actions.dart';
 import '../follow/follow_page.dart';
 import '../history/history_page.dart';
 import '../mine/mine_page.dart';
+import '../modules/modules_page.dart';
 import '../update_prompt.dart';
 import '../widgets/bar_button.dart';
 import '../theme/motion.dart';
@@ -26,6 +27,7 @@ enum AppTab {
   explore('发现', Icons.explore_outlined, Icons.explore),
   follow('追剧', Icons.bookmark_border_rounded, Icons.bookmark_rounded),
   history('历史', Icons.history_rounded, Icons.history_rounded),
+  modules('模块', Icons.extension_outlined, Icons.extension_rounded),
   mine('我的', Icons.person_outline_rounded, Icons.person_rounded);
 
   const AppTab(this.label, this.icon, this.selectedIcon);
@@ -148,8 +150,12 @@ class _AppShellState extends State<AppShell> {
 
   List<AppTab> get _tabs => [
     for (final tab in AppTab.values)
-      if (tab != AppTab.history ||
-          widget.store.historyTab && !AppScope.of(context).television)
+      if (switch (tab) {
+        AppTab.history =>
+          widget.store.historyTab && !AppScope.of(context).television,
+        AppTab.modules => widget.store.profile.admin,
+        AppTab.explore || AppTab.follow || AppTab.mine => true,
+      })
         tab,
   ];
 
@@ -235,6 +241,7 @@ class _AppShellState extends State<AppShell> {
       onExitUp: _tabFocus[AppTab.follow.index].requestFocus,
     ),
     AppTab.history => HistoryPage(store: widget.store, root: true),
+    AppTab.modules => ModulesPage(store: widget.store),
     AppTab.mine => MinePage(
       store: widget.store,
       downloads: _downloads!,
@@ -338,7 +345,9 @@ class _AppShellState extends State<AppShell> {
                         final entry = switch (_tab) {
                           AppTab.follow => _followEntry,
                           AppTab.mine => _mineEntry,
-                          AppTab.explore || AppTab.history => null,
+                          AppTab.explore ||
+                          AppTab.history ||
+                          AppTab.modules => null,
                         };
                         if (event is KeyUpEvent ||
                             event.logicalKey != LogicalKeyboardKey.arrowDown ||

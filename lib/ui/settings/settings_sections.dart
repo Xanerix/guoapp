@@ -26,7 +26,6 @@ import 'diary_view.dart';
 import 'settings_rows.dart';
 import 'sorani_account_view.dart';
 import 'sources_view.dart';
-import 'modules_view.dart';
 import 'storage_view.dart';
 
 enum SettingsGroup {
@@ -399,12 +398,6 @@ class SettingsSection extends StatelessWidget {
     final settings = editor.settings;
     final editable = settings != null && !editor.saving;
     final entries = [
-      if (store.profile.admin)
-        SettingsTile(
-          title: '模块管理',
-          subtitle: '安装、更新或卸载站源模块',
-          onTap: () => open('模块管理', (_) => ModulesView(store: store)),
-        ),
       if (SourceSite.values.length > 1)
         SettingsTile(
           title: '站源管理',
