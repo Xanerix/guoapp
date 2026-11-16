@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
@@ -39,6 +40,7 @@ class PlayerSurface extends StatefulWidget {
     required this.wide,
     required this.onFullscreen,
     required this.onWide,
+    required this.onVolume,
     this.onMiniWindow,
     required this.onSurface,
   });
@@ -49,6 +51,7 @@ class PlayerSurface extends StatefulWidget {
   final bool wide;
   final VoidCallback onFullscreen;
   final VoidCallback onWide;
+  final ValueChanged<double> onVolume;
   final VoidCallback? onMiniWindow;
   final VoidCallback onSurface;
 
@@ -232,6 +235,14 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
     _tapTimer = Timer(const Duration(milliseconds: 300), _toggleControls);
   }
 
+  void _wheel(PointerSignalEvent event) {
+    if (event is! PointerScrollEvent || event.scrollDelta.dy == 0) return;
+    GestureBinding.instance.pointerSignalResolver.register(
+      event,
+      (_) => widget.onVolume(event.scrollDelta.dy < 0 ? 5 : -5),
+    );
+  }
+
   void _startStreak(int side) {
     final duration = _session.player.state.duration;
     if (!_session.ready || duration <= Duration.zero) return;
@@ -343,13 +354,17 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
                 ),
               )
             else
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () {
-                  widget.onSurface();
-                  _session.togglePlayback();
-                },
-                onDoubleTap: widget.onFullscreen,
+              Listener(
+                onPointerSignal: _wheel,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    widget.onSurface();
+                    _session.togglePlayback();
+                  },
+                  onDoubleTap: widget.onFullscreen,
+                  onSecondaryTap: widget.fullscreen ? null : widget.onWide,
+                ),
               ),
             FadePresence(
               duration: Motion.medium,
