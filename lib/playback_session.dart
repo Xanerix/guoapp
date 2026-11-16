@@ -378,9 +378,7 @@ class PlaybackSession extends ChangeNotifier {
         !_usable ||
         !_engaged ||
         store.locked ||
-        !hasNext ||
-        !player.state.playing ||
-        !_playIntent) {
+        !hasNext) {
       _preloader.clear();
       return;
     }
