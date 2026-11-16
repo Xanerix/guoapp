@@ -250,6 +250,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
             wide: _wide,
             onFullscreen: () => unawaited(_toggleFullscreen()),
             onWide: _toggleWide,
+            onVolume: (delta) => _volume(_playback.changeVolume(delta)),
             onMiniWindow: widget.onMiniWindow,
             onSurface: _focus.requestFocus,
           ),

@@ -5,14 +5,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
-import '../../app_device.dart';
-import '../../core_bridge.dart';
 import '../../local_store.dart';
 import '../app_scope.dart';
 import '../widgets/focus_ring.dart';
 import '../widgets/group_card.dart';
 import '../widgets/motion/motion_widgets.dart';
 import '../widgets/status_view.dart';
+import 'data_card.dart';
 import 'settings_rows.dart';
 
 String storageSize(int bytes) {
@@ -44,6 +43,7 @@ class _StorageViewState extends State<StorageView> {
   }
 
   Future<void> _refresh() async {
+    if (!widget.store.canDownload) return;
     try {
       final info = await AppScope.of(context).repository.storage();
       if (mounted) {
@@ -90,13 +90,6 @@ class _StorageViewState extends State<StorageView> {
   }
 
   Future<void> _restore() => _migrate('', '应用默认目录');
-
-  Future<void> _setAutoExport(bool value) => saveSetting(context, () async {
-    if (value && !await AppDevice.requestVideoExport()) {
-      throw AppFailure('未获得存储权限，无法自动导出');
-    }
-    await widget.store.setAutoExport(value);
-  });
 
   Future<void> _migrate(String parent, String destination) async {
     final confirmed = await showDialog<bool>(
@@ -169,12 +162,20 @@ class _StorageViewState extends State<StorageView> {
   }
 
   @override
-  Widget build(BuildContext context) => FadeSwitcher(
-    alignment: Alignment.topCenter,
-    child: KeyedSubtree(
-      key: ValueKey(_info != null ? 'content' : _error ?? 'loading'),
-      child: _body(context),
-    ),
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    spacing: 12,
+    children: [
+      if (widget.store.canDownload)
+        FadeSwitcher(
+          alignment: Alignment.topCenter,
+          child: KeyedSubtree(
+            key: ValueKey(_info != null ? 'content' : _error ?? 'loading'),
+            child: _body(context),
+          ),
+        ),
+      DataCard(store: widget.store, onCleared: _refresh),
+    ],
   );
 
   Widget _body(BuildContext context) {
@@ -195,8 +196,9 @@ class _StorageViewState extends State<StorageView> {
     final directory = info['directory'] as String? ?? '';
     final admin = widget.store.profile.admin;
     final isDefault = info['default'] == true;
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      spacing: 12,
       children: [
         GroupCard(
           children: [
@@ -211,7 +213,7 @@ class _StorageViewState extends State<StorageView> {
                     style: text.headlineSmall,
                   ),
                   Text(
-                    '剩余 ${storageSize((info['free'] as num?)?.toInt() ?? -1)} · ${info['files'] ?? 0} 个文件',
+                    '剩余 ${storageSize((info['free'] as num?)?.toInt() ?? -1)} · ${info['files'] ?? 0} 个下载文件',
                     style: text.bodyMedium?.copyWith(
                       color: colors.onSurfaceVariant,
                     ),
@@ -255,51 +257,14 @@ class _StorageViewState extends State<StorageView> {
             SettingsTile(title: '刷新用量', onTap: _refresh),
           ],
         ),
-        if (Platform.isAndroid) ...[
-          const SizedBox(height: 16),
-          ListenableBuilder(
-            listenable: widget.store,
-            builder: (context, _) => GroupCard(
-              children: [
-                SwitchTile(
-                  title: '下载完成后自动导出',
-                  subtitle: '导出到 Movies/剧名/，相册和文件管理器可见，卸载后保留',
-                  value: widget.store.autoExport,
-                  onChanged: _setAutoExport,
-                ),
-                const Divider(indent: 16, endIndent: 16),
-                SwitchTile(
-                  title: '自动导出后删除 App 内副本',
-                  subtitle: '删除后 App 内不能再离线播放',
-                  value: widget.store.deleteAfterAutoExport,
-                  onChanged: (value) => saveSetting(
-                    context,
-                    () => widget.store.setDeleteAfterAutoExport(value),
-                  ),
-                ),
-                const Divider(indent: 16, endIndent: 16),
-                SwitchTile(
-                  title: '手动导出后删除 App 内副本',
-                  subtitle: '在已下载剧页「编辑」里点「导出」后删除',
-                  value: widget.store.deleteAfterManualExport,
-                  onChanged: (value) => saveSetting(
-                    context,
-                    () => widget.store.setDeleteAfterManualExport(value),
-                  ),
-                ),
-              ],
+        if (_error case final error?)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              error,
+              style: text.bodyMedium?.copyWith(color: colors.error),
             ),
           ),
-        ],
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-          child: Text(
-            _error ?? '在下载页删除不需要的分集，在本地媒体页删除合并成品，可释放空间。',
-            style: text.bodyMedium?.copyWith(
-              color: _error == null ? colors.onSurfaceVariant : colors.error,
-            ),
-          ),
-        ),
       ],
     );
   }

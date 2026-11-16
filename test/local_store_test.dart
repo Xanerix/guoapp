@@ -682,4 +682,16 @@ void main() {
     final restarted = await restartStore(store);
     expect(restarted.recentSearches, ['丙', '甲']);
   });
+
+  test('erasing all data clears preferences and blocks later writes', () async {
+    final store = await _open({'plugin_secret': 'gone'});
+    final leftover = await store.eraseAll(() async {
+      await store.files.root.delete(recursive: true);
+      return ['locked.log'];
+    });
+    expect(leftover, ['locked.log']);
+    expect(store.preferences.getKeys(), isEmpty);
+    await store.setCheckUpdates(false);
+    expect(store.files.root.existsSync(), isFalse);
+  });
 }

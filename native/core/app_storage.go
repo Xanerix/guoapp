@@ -42,6 +42,9 @@ func (engine *nativeEngine) storage() (nativeStorageInfo, error) {
 	if err != nil {
 		return info, errors.New("无法读取下载目录，请检查存储设备")
 	}
+	if !nativePathInside(root, engine.cacheDirectory) {
+		info.Bytes += engine.cacheBytes()
+	}
 	info.Free = nativeFreeSpace(root)
 	return info, nil
 }
@@ -235,12 +238,13 @@ func (engine *nativeEngine) moveDownloads(ctx context.Context, parent string) (s
 	return "", "", nil
 }
 
+func nativePathInside(base, path string) bool {
+	relative, err := filepath.Rel(base, path)
+	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(os.PathSeparator))
+}
+
 func nativePathsOverlap(first, second string) bool {
-	inside := func(base, path string) bool {
-		relative, err := filepath.Rel(base, path)
-		return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(os.PathSeparator))
-	}
-	return inside(first, second) || inside(second, first)
+	return nativePathInside(first, second) || nativePathInside(second, first)
 }
 
 func (engine *nativeEngine) workLease(id, command string) (int, error) {

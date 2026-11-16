@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"golang.org/x/text/encoding/simplifiedchinese"
 )
 
 const castTestDescription = `<?xml version="1.0"?>
@@ -133,5 +135,37 @@ func TestCastStreamServesLanAddresses(t *testing.T) {
 		if response.StatusCode != http.StatusOK || !strings.HasPrefix(lines[2], prefix+"/"+token+"/") {
 			t.Fatalf("从 %s 取到的播放列表是 %d %s", address, response.StatusCode, body)
 		}
+	}
+}
+
+func TestCastLocationToleratesLooseResponses(t *testing.T) {
+	for packet, want := range map[string]string{
+		"HTTP/1.1 200 OK\r\nST: upnp:rootdevice\r\nLOCATION: http://192.168.1.5:49152/description.xml\r\n\r\n": "http://192.168.1.5:49152/description.xml",
+		"HTTP/1.1 200 OK\r\nlocation:http://192.168.1.6:1234/dmr.xml":                                          "http://192.168.1.6:1234/dmr.xml",
+		"HTTP/1.1 200 OK\nLocation: http://192.168.1.7/desc.xml\n":                                             "http://192.168.1.7/desc.xml",
+		"HTTP/1.1 200 OK\r\nLOCATION: rtsp://192.168.1.8/\r\n\r\n":                                             "",
+	} {
+		if got := castLocation([]byte(packet)); got != want {
+			t.Errorf("%q 解析出 %q，应为 %q", packet, got, want)
+		}
+	}
+}
+
+func TestCastDescribeReadsGBKDescription(t *testing.T) {
+	description := strings.Replace(castTestDescription, `<?xml version="1.0"?>`, `<?xml version="1.0" encoding="GBK"?>`, 1)
+	encoded, err := simplifiedchinese.GBK.NewEncoder().String(description)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		_, _ = io.WriteString(writer, encoded)
+	}))
+	defer server.Close()
+	device, err := castDescribe(context.Background(), server.URL+"/description.xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if device.Name != "客厅电视" || device.control != server.URL+"/transport" {
+		t.Fatalf("设备描述解析成了 %+v", device)
 	}
 }

@@ -341,7 +341,7 @@ func nativeDispatch(input nativeInput) (any, error) {
 		return nil, errors.New("应用核心尚未就绪，请重新打开应用")
 	}
 	duration := 60 * time.Second
-	if input.Action == "moveDownloads" {
+	if input.Action == "moveDownloads" || input.Action == "deleteAllData" {
 		duration = 10 * time.Minute
 	} else if input.Action == "danmaku" {
 		duration = 10 * time.Second
@@ -413,6 +413,13 @@ func nativeDispatch(input nativeInput) (any, error) {
 		return map[string]string{"directory": root}, nil
 	case "storage":
 		return engine.storage()
+	case "cache":
+		return map[string]int64{"bytes": engine.cacheBytes()}, nil
+	case "clearCache":
+		return true, engine.clearCache()
+	case "deleteAllData":
+		leftover, err := engine.deleteAllData()
+		return map[string]any{"leftover": leftover}, err
 	case "moveDownloads":
 		leftover, reason, err := engine.moveDownloads(ctx, input.Directory)
 		return map[string]string{"leftover": leftover, "leftoverReason": reason}, err
