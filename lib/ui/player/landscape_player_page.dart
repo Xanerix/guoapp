@@ -23,6 +23,7 @@ import 'episode_grid.dart';
 import 'mini_player.dart';
 import 'playback_handle.dart';
 import 'playback_sheets.dart';
+import 'player_lock.dart';
 import 'player_status.dart';
 import 'fade_presence.dart';
 import 'player_surface.dart';
@@ -67,6 +68,8 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
   Timer? _streakTimer;
   Timer? _clockTimer;
   Timer? _seekTimer;
+  Timer? _hintTimer;
+  String _hint = '';
   bool? _full;
   bool _visible = true;
   bool _selecting = false;
@@ -136,6 +139,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
     _streakTimer?.cancel();
     _clockTimer?.cancel();
     _seekTimer?.cancel();
+    _hintTimer?.cancel();
     _tabs.dispose();
     if (_holding) _session.endBoost();
     if (widget.onFullscreen == null) {
@@ -233,7 +237,38 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
     }
   }
 
+  void _say(String text) {
+    _hintTimer?.cancel();
+    setState(() => _hint = text);
+    _hintTimer = Timer(const Duration(milliseconds: 1600), () {
+      if (mounted) setState(() => _hint = '');
+    });
+  }
+
+  void _lock() {
+    if (_holding) _pressEnd();
+    _hideTimer?.cancel();
+    _tapTimer?.cancel();
+    _streakTimer?.cancel();
+    _streak = 0;
+    unawaited(HapticFeedback.selectionClick());
+    setState(() => _panel = null);
+    _session.setLocked(true);
+    _say('已锁定，点屏幕显示锁图标');
+  }
+
+  void _unlock() {
+    unawaited(HapticFeedback.selectionClick());
+    _session.setLocked(false);
+    _show();
+    _say('已解锁');
+  }
+
   void _tapUp(TapUpDetails details, double width, bool full) {
+    if (_session.locked) {
+      _say('已锁定，点屏幕显示锁图标');
+      return;
+    }
     final x = details.localPosition.dx;
     final side =
         !full && widget.onFullscreen == null ||
@@ -302,7 +337,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
   }
 
   void _pressStart() {
-    if (!_session.ready) return;
+    if (!_session.ready || _session.locked) return;
     _session.holdBoost();
     unawaited(HapticFeedback.selectionClick());
     setState(() => _holding = true);
@@ -323,6 +358,10 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
   );
 
   void _back(bool full) {
+    if (_session.locked) {
+      _say('已锁定，点屏幕显示锁图标');
+      return;
+    }
     if (_panel != null) {
       setState(() => _panel = null);
       _scheduleHide();
@@ -397,7 +436,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
       child: Builder(builder: (context) => _video(context, full)),
     );
     return PopScope(
-      canPop: !full && !_selecting && _panel == null,
+      canPop: !full && !_selecting && _panel == null && !_session.locked,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) _back(full);
       },
@@ -432,7 +471,8 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
 
   Widget _video(BuildContext context, bool full) {
     final session = _session;
-    final visible = _visible || _pinned;
+    final locked = session.locked;
+    final visible = !locked && (_visible || _pinned);
     final sidePanel = switch (_panel) {
       final panel? when full && _sidePanel(panel) => _panelBody(context, panel),
       _ => null,
@@ -456,16 +496,18 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
         ),
         SwipeControls(
           session: session,
-          enabled: full,
+          enabled: full && !locked,
           levels: session.store.playbackPreferences.swipeLevels,
           episodes: session.store.playbackPreferences.swipeEpisodes,
           child: LayoutBuilder(
             builder: (context, constraints) => GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTapUp: (details) => _tapUp(details, constraints.maxWidth, full),
-              onLongPressStart: (_) => _pressStart(),
-              onLongPressEnd: (_) => _pressEnd(),
-              onLongPressCancel: _pressEnd,
+              onTapUp: locked
+                  ? null
+                  : (details) => _tapUp(details, constraints.maxWidth, full),
+              onLongPressStart: locked ? null : (_) => _pressStart(),
+              onLongPressEnd: locked ? null : (_) => _pressEnd(),
+              onLongPressCancel: locked ? null : _pressEnd,
             ),
           ),
         ),
@@ -571,6 +613,42 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
                 child: _popup(context, panel),
               ),
             ),
+        FadePresence(
+          duration: Motion.medium,
+          child: _hint.isEmpty
+              ? null
+              : IgnorePointer(
+                  child: Align(
+                    alignment: const Alignment(0, -.5),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: .72),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        _hint,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+        ),
+        PlayerLockOverlay(
+          locked: locked,
+          top: full
+              ? math.max(MediaQuery.viewPaddingOf(context).top, 20) + 6
+              : 6,
+          right: math.max(MediaQuery.viewPaddingOf(context).right, 20),
+          onUnlock: _unlock,
+          onBlocked: () => _say('已锁定，点击锁图标解锁'),
+        ),
       ],
     );
   }
@@ -610,6 +688,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
               const Spacer(),
               if (widget.onMiniWindow case final onMiniWindow?)
                 _icon(Icons.picture_in_picture_alt_rounded, '小窗', onMiniWindow),
+              _icon(Icons.lock_open_rounded, '锁定', _lock, size: 40),
               _icon(Icons.settings_rounded, '播放设置', _openSettings),
             ],
           ),
@@ -753,6 +832,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
               if (session.danmakuSupported) _danmakuButton(context),
               if (widget.onMiniWindow case final onMiniWindow?)
                 _icon(Icons.picture_in_picture_alt_rounded, '小窗', onMiniWindow),
+              _icon(Icons.lock_open_rounded, '锁定', _lock),
               _icon(
                 Icons.settings_rounded,
                 '播放设置',

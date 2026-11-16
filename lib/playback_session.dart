@@ -74,6 +74,10 @@ class PlaybackSession extends ChangeNotifier {
         foreground: _foreground,
         now: DateTime.now(),
       )) {
+        DiaryService.add(
+          '[Play] 停滞检测 位置=${player.state.position.inSeconds}s '
+          '播放=${player.state.playing} 缓冲=${player.state.buffering}',
+        );
         unawaited(_recover('position_stalled_20s'));
       }
     });
@@ -188,6 +192,7 @@ class PlaybackSession extends ChangeNotifier {
   Timer? _sleepTimer;
   Timer? _standbyIdleTimer;
   Timer? _resumeTimer;
+  Timer? _seekWatchdog;
   DateTime? _pausedSince;
   DateTime? _sleepAt;
   int _sleepMinutes = 0;
@@ -210,6 +215,7 @@ class PlaybackSession extends ChangeNotifier {
   bool _pendingError = false;
   bool _boosting = false;
   bool _boostLocked = false;
+  bool _locked = false;
   bool _engaged;
   bool _staleAudio = false;
   bool _stalled = false;
@@ -251,6 +257,7 @@ class PlaybackSession extends ChangeNotifier {
   bool get paused => !_playIntent;
   bool get boosting => _boosting;
   bool get boostLocked => _boostLocked;
+  bool get locked => _locked;
   Size? get videoSize => _videoSize;
   double get aspectRatio => switch (_videoSize) {
     final size? => size.width / size.height,
@@ -671,6 +678,7 @@ class PlaybackSession extends ChangeNotifier {
     _preloader.clear();
     final ticket = ++_generation;
     _seekSequence++;
+    _seekWatchdog?.cancel();
     danmaku.setPlan(null);
     _acceptErrors = false;
     _pendingError = false;
@@ -792,6 +800,7 @@ class PlaybackSession extends ChangeNotifier {
     _preloader.clear();
     final ticket = ++_generation;
     _seekSequence++;
+    _seekWatchdog?.cancel();
     _pendingError = false;
     _errorTimer?.cancel();
     _health.reset();
@@ -1033,9 +1042,12 @@ class PlaybackSession extends ChangeNotifier {
     _resumeTimer = null;
   }
 
-  Future<void> _reviveCurrent() async {
+  Future<void> _reviveCurrent() =>
+      _reopen(Duration(milliseconds: (_resumePosition * 1000).round()));
+
+  Future<void> _reopen(Duration target) async {
+    final position = target.inMilliseconds / 1000;
     final plan = _plan;
-    final position = _resumePosition;
     if (plan == null || plan.local || plan.url.isEmpty) {
       if (!local) await play(_index, position: position);
       return;
@@ -1085,14 +1097,46 @@ class PlaybackSession extends ChangeNotifier {
     try {
       await player.seek(target);
       succeeded = true;
-    } catch (_) {
+    } catch (error) {
+      DiaryService.add('[Play] 跳转失败 目标=${target.inSeconds}s：$error');
     } finally {
       if (!_closed && ticket == _seekSequence && generation == _generation) {
         danmaku.endSeek(succeeded ? target : player.state.position);
       }
     }
+    if (succeeded && ticket == _seekSequence) _watchSeek(target);
     return succeeded;
   }
+
+  void _watchSeek(Duration target) {
+    _seekWatchdog?.cancel();
+    final ticket = _seekSequence;
+    Duration? settled;
+    _seekWatchdog = Timer(const Duration(milliseconds: 2500), () {
+      if (!_seekWatchStillValid(ticket)) return;
+      settled = player.state.position;
+      _seekWatchdog = Timer(const Duration(milliseconds: 2500), () {
+        _seekWatchdog = null;
+        if (!_seekWatchStillValid(ticket)) return;
+        final position = player.state.position;
+        if ((position - target).abs() <= const Duration(seconds: 2)) return;
+        if (position > settled! + const Duration(milliseconds: 800)) return;
+        DiaryService.add(
+          '[Play] 跳转未生效 目标=${target.inSeconds}s '
+          '位置=${position.inSeconds}s，重新打开当前线路',
+        );
+        unawaited(_reopen(target));
+      });
+    });
+  }
+
+  bool _seekWatchStillValid(int ticket) =>
+      !_closed &&
+      ticket == _seekSequence &&
+      _playIntent &&
+      _foreground &&
+      !_loading &&
+      _error == null;
 
   Duration? seekBy(int seconds) {
     final duration = player.state.duration;
@@ -1148,6 +1192,12 @@ class PlaybackSession extends ChangeNotifier {
       endBoost();
       _notify();
     }
+  }
+
+  void setLocked(bool locked) {
+    if (_locked == locked) return;
+    _locked = locked;
+    _notify();
   }
 
   bool endBoost() {
@@ -1370,6 +1420,7 @@ class PlaybackSession extends ChangeNotifier {
     _errorTimer?.cancel();
     _boostTimer?.cancel();
     _stallTimer?.cancel();
+    _seekWatchdog?.cancel();
     _volumeTimer?.cancel();
     _sleepTimer?.cancel();
     _standbyIdleTimer?.cancel();
