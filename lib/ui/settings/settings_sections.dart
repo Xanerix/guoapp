@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../app_build.dart';
 import '../../app_device.dart';
+import '../../core_bridge.dart';
 import '../../download_preferences.dart';
 import '../../local_store.dart';
 import '../../playback_preferences.dart';
@@ -30,6 +31,7 @@ enum SettingsGroup {
   playback('播放', Icons.play_arrow_rounded),
   danmaku('弹幕', Icons.subtitles_outlined),
   download('下载', Icons.download_rounded),
+  storage('存储', Icons.folder_outlined),
   proxy('代理', Icons.language_rounded),
   users('用户', Icons.manage_accounts_outlined),
   about('关于', Icons.info_outline_rounded),
@@ -90,6 +92,7 @@ class SettingsSection extends StatelessWidget {
               SettingsGroup.playback => _playback(context),
               SettingsGroup.danmaku => _danmaku(context),
               SettingsGroup.download => _download(context),
+              SettingsGroup.storage => _storage(),
               SettingsGroup.proxy => _proxy(context),
               SettingsGroup.users => [UsersView(store: store, open: open)],
               SettingsGroup.about => _about(context),
@@ -348,12 +351,6 @@ class SettingsSection extends StatelessWidget {
                       savePreferences(preferences.copyWith(includeVip: value))
                 : null,
           ),
-          SettingsTile(
-            title: '目录与空间',
-            subtitle: canDownload ? '查看存储用量、迁移已下载文件' : _noDownload,
-            enabled: canDownload,
-            onTap: () => open('目录与空间', (_) => StorageView(store: store)),
-          ),
         ],
       ),
       SettingsCard(
@@ -384,9 +381,59 @@ class SettingsSection extends StatelessWidget {
           ),
         ],
       ),
+      if (Platform.isAndroid)
+        SettingsCard(
+          children: [
+            SwitchTile(
+              title: '下载完成后自动导出',
+              subtitle: canDownload
+                  ? '导出到 Movies/剧名/，相册和文件管理器可见，卸载后保留'
+                  : _noDownload,
+              value: store.autoExport,
+              onChanged: canDownload
+                  ? (value) => _setAutoExport(context, value)
+                  : null,
+            ),
+            SwitchTile(
+              title: '自动导出后删除 App 内副本',
+              subtitle: canDownload ? '删除后 App 内不能再离线播放' : _noDownload,
+              value: store.deleteAfterAutoExport,
+              onChanged: canDownload
+                  ? (value) => saveSetting(
+                      context,
+                      () => store.setDeleteAfterAutoExport(value),
+                    )
+                  : null,
+            ),
+            SwitchTile(
+              title: '手动导出后删除 App 内副本',
+              subtitle: canDownload ? '在已下载剧页「编辑」里点「导出」后删除' : _noDownload,
+              value: store.deleteAfterManualExport,
+              onChanged: canDownload
+                  ? (value) => saveSetting(
+                      context,
+                      () => store.setDeleteAfterManualExport(value),
+                    )
+                  : null,
+            ),
+          ],
+        ),
       if (Platform.isIOS) const _Note('iOS 下载和媒体处理需要保持应用在前台；切到后台会暂停，回到前台后可继续。'),
     ];
   }
+
+  Future<void> _setAutoExport(BuildContext context, bool value) =>
+      saveSetting(context, () async {
+        if (value && !await AppDevice.requestVideoExport()) {
+          throw AppFailure('未获得存储权限，无法自动导出');
+        }
+        await store.setAutoExport(value);
+      });
+
+  List<Widget> _storage() => [
+    if (!store.canDownload) const _Note(_noDownload),
+    StorageView(store: store),
+  ];
 
   List<Widget> _proxy(BuildContext context) {
     final admin = store.profile.admin;

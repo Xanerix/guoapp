@@ -83,6 +83,7 @@ class LocalStore extends ChangeNotifier {
   bool? _forceLogin;
   bool _locked = false;
   bool _disposed = false;
+  bool _erased = false;
   String? _configurationError;
   int _epoch = 0;
   int _failures = 0;
@@ -342,6 +343,24 @@ class LocalStore extends ChangeNotifier {
   }
 
   bool get canDownload => !locked && (profile.admin || profile.download);
+  bool get adminProtected =>
+      _profiles.firstWhere((profile) => profile.admin).protected;
+
+  Future<void> verifyAdmin(String pin) => _queue(
+    () => _checkPin(_profiles.firstWhere((profile) => profile.admin), pin),
+  );
+
+  Future<List<String>> eraseAll(Future<List<String>> Function() wipe) async {
+    var leftover = const <String>[];
+    await _queue(() async {
+      _requireAdmin();
+      leftover = await wipe();
+      _erased = true;
+      await preferences.clear();
+    });
+    return leftover;
+  }
+
   bool allowsSource(String source) =>
       !locked &&
       SourceSite.isAvailable(source) &&
@@ -1251,7 +1270,9 @@ class LocalStore extends ChangeNotifier {
   });
 
   Future<void> _queue(Future<void> Function() action) {
-    _writes = _writes.catchError((Object _) {}).then((_) => action());
+    _writes = _writes
+        .catchError((Object _) {})
+        .then((_) => _erased ? null : action());
     return _writes;
   }
 
