@@ -74,6 +74,10 @@ class PlaybackSession extends ChangeNotifier {
         foreground: _foreground,
         now: DateTime.now(),
       )) {
+        DiaryService.add(
+          '[Play] 停滞检测 位置=${player.state.position.inSeconds}s '
+          '播放=${player.state.playing} 缓冲=${player.state.buffering}',
+        );
         unawaited(_recover('position_stalled_20s'));
       }
     });
@@ -95,11 +99,17 @@ class PlaybackSession extends ChangeNotifier {
       stream.position.listen((position) {
         if (!_closed && _openedIndex == _index && position > Duration.zero) {
           _resumePosition = position.inMilliseconds / 1000;
+          if (position >= const Duration(seconds: 2)) {
+            unawaited(_logVideoOutput(player.state.videoParams));
+          }
         }
         _sync();
       }),
       stream.playing.listen((playing) {
-        if (!playing) endBoost();
+        if (!playing) {
+          endBoost();
+          _networkSpeed = 0;
+        }
         _sync();
       }),
       stream.buffering.listen((buffering) {
@@ -118,11 +128,29 @@ class PlaybackSession extends ChangeNotifier {
     ]);
   }
 
+  int? _networkSpeed;
+  bool _speedReading = false;
+  Duration? _speedResumeAt;
+  DateTime? _speedResumeDeadline;
+
+  void _holdNetworkSpeed() {
+    _speedResumeAt = player.state.position;
+    _speedResumeDeadline = DateTime.now().add(const Duration(seconds: 15));
+  }
+
   String _videoOutput = '';
+  String _videoOutputSession = '';
 
   Future<void> _logVideoOutput(VideoParams parameters) async {
     final platform = player.platform;
     if (parameters.pixelformat == null || platform is! NativePlayer) return;
+    if (!player.state.playing ||
+        player.state.buffering ||
+        player.state.position < const Duration(seconds: 2)) {
+      return;
+    }
+    final session = _plan?.session ?? '';
+    if (session.isEmpty || session == _videoOutputSession) return;
     try {
       final values = [
         for (final name in [
@@ -133,9 +161,11 @@ class PlaybackSession extends ChangeNotifier {
         ])
           await platform.getProperty(name),
       ];
+      if (_closed) return;
+      _videoOutputSession = session;
       final line =
           '[Video] decoder=${store.playbackPreferences.televisionDecoder.name} hwdec=${values[0]} vo=${values[1]} codec=${values[2]} fps=${values[3]} format=${parameters.pixelformat} hw_format=${parameters.hwPixelformat} size=${parameters.w}x${parameters.h}';
-      if (_closed || line == _videoOutput) return;
+      if (line == _videoOutput) return;
       _videoOutput = line;
       DiaryService.add(line);
     } catch (_) {}
@@ -160,6 +190,10 @@ class PlaybackSession extends ChangeNotifier {
   Timer? _stallTimer;
   Timer? _volumeTimer;
   Timer? _sleepTimer;
+  Timer? _standbyIdleTimer;
+  Timer? _resumeTimer;
+  Timer? _seekWatchdog;
+  DateTime? _pausedSince;
   DateTime? _sleepAt;
   int _sleepMinutes = 0;
   bool _sleepAtEpisodeEnd = false;
@@ -181,6 +215,7 @@ class PlaybackSession extends ChangeNotifier {
   bool _pendingError = false;
   bool _boosting = false;
   bool _boostLocked = false;
+  bool _locked = false;
   bool _engaged;
   bool _staleAudio = false;
   bool _stalled = false;
@@ -222,6 +257,7 @@ class PlaybackSession extends ChangeNotifier {
   bool get paused => !_playIntent;
   bool get boosting => _boosting;
   bool get boostLocked => _boostLocked;
+  bool get locked => _locked;
   Size? get videoSize => _videoSize;
   double get aspectRatio => switch (_videoSize) {
     final size? => size.width / size.height,
@@ -619,6 +655,7 @@ class PlaybackSession extends ChangeNotifier {
     if (!_usable || index < 0 || index >= detail.episodes.length) return;
     endBoost();
     _staleAudio = false;
+    _cancelResumeWatchdog();
     if (index != _index) _online = false;
     if (recovery == null &&
         position == 0 &&
@@ -639,6 +676,7 @@ class PlaybackSession extends ChangeNotifier {
     _preloader.clear();
     final ticket = ++_generation;
     _seekSequence++;
+    _seekWatchdog?.cancel();
     danmaku.setPlan(null);
     _acceptErrors = false;
     _pendingError = false;
@@ -760,6 +798,7 @@ class PlaybackSession extends ChangeNotifier {
     _preloader.clear();
     final ticket = ++_generation;
     _seekSequence++;
+    _seekWatchdog?.cancel();
     _pendingError = false;
     _errorTimer?.cancel();
     _health.reset();
@@ -843,6 +882,7 @@ class PlaybackSession extends ChangeNotifier {
   }
 
   void _dropStandby() {
+    _cancelStandbyIdle();
     final plan = _standbyPlan;
     final opened = _standbyOpen || plan != null;
     _standbyPlan = null;
@@ -864,11 +904,30 @@ class PlaybackSession extends ChangeNotifier {
   Future<int?> networkSpeed() async {
     final platform = player.platform;
     if (_closed || local || platform is! NativePlayer) return null;
+    if (_speedReading || _loading || !_foreground || !player.state.playing) {
+      return _networkSpeed;
+    }
+    final resumeAt = _speedResumeAt;
+    if (resumeAt != null) {
+      final progressed =
+          player.state.position > resumeAt + const Duration(milliseconds: 500);
+      if (!progressed && DateTime.now().isBefore(_speedResumeDeadline!)) {
+        return _networkSpeed;
+      }
+      _speedResumeAt = null;
+      _speedResumeDeadline = null;
+    }
+    if (player.state.buffering) return _networkSpeed;
+    _speedReading = true;
     try {
       final value = await platform.getProperty('cache-speed');
-      return double.tryParse(value)?.round();
+      final speed = double.tryParse(value)?.round();
+      if (speed != null) _networkSpeed = speed;
+      return _networkSpeed;
     } catch (_) {
-      return null;
+      return _networkSpeed;
+    } finally {
+      _speedReading = false;
     }
   }
 
@@ -918,13 +977,38 @@ class PlaybackSession extends ChangeNotifier {
     endBoost();
     _playIntent = !player.state.playing;
     _health.reset();
+    if (_playIntent) {
+      _cancelStandbyIdle();
+      final paused = _takePausedSeconds();
+      if (paused >= 5) DiaryService.add('[Play] 恢复播放，已暂停 $paused 秒');
+      if (!local && paused >= 5) _armResumeWatchdog();
+      _holdNetworkSpeed();
+    } else {
+      _cancelResumeWatchdog();
+      _pausedSince = DateTime.now();
+      _scheduleStandbyIdle();
+    }
     if (_playIntent && player.state.completed) {
       unawaited(play(_index));
       return;
     }
     if (_playIntent && _staleAudio) {
       _staleAudio = false;
-      unawaited(player.seek(player.state.position).then((_) => player.play()));
+      final position = player.state.position;
+      if (player.state.duration > Duration.zero && position > Duration.zero) {
+        unawaited(
+          player
+              .seek(position)
+              .then(
+                (_) => player.state.playing
+                    ? Future<void>.value()
+                    : player.playOrPause(),
+              )
+              .catchError((Object _) {}),
+        );
+      } else {
+        unawaited(player.playOrPause());
+      }
     } else {
       unawaited(player.playOrPause());
     }
@@ -932,8 +1016,78 @@ class PlaybackSession extends ChangeNotifier {
     _syncDanmaku();
   }
 
+  int _takePausedSeconds() {
+    final since = _pausedSince;
+    _pausedSince = null;
+    if (since == null) return 0;
+    return DateTime.now().difference(since).inSeconds;
+  }
+
+  void _armResumeWatchdog() {
+    _cancelResumeWatchdog();
+    final position = player.state.position;
+    _resumeTimer = Timer(const Duration(seconds: 5), () {
+      _resumeTimer = null;
+      if (_closed || !_playIntent) return;
+      if (player.state.position > position) return;
+      DiaryService.add('[Play] 恢复后 5 秒没有进展，重新加载当前集');
+      unawaited(_reviveCurrent());
+    });
+  }
+
+  void _cancelResumeWatchdog() {
+    _resumeTimer?.cancel();
+    _resumeTimer = null;
+  }
+
+  Future<void> _reviveCurrent() =>
+      _reopen(Duration(milliseconds: (_resumePosition * 1000).round()));
+
+  Future<void> _reopen(Duration target) async {
+    final position = target.inMilliseconds / 1000;
+    final plan = _plan;
+    if (plan == null || plan.local || plan.url.isEmpty) {
+      if (!local) await play(_index, position: position);
+      return;
+    }
+    try {
+      _health.reset();
+      _staleAudio = false;
+      await player.open(
+        Media(
+          plan.url,
+          httpHeaders: plan.headers,
+          start: position > 0
+              ? Duration(milliseconds: (position * 1000).round())
+              : null,
+        ),
+        play: _foreground && _playIntent,
+      );
+      _openedIndex = _index;
+    } catch (_) {
+      if (_closed) return;
+      await play(_index, position: position);
+    }
+  }
+
+  void _scheduleStandbyIdle() {
+    _cancelStandbyIdle();
+    if (_standby == null) return;
+    _standbyIdleTimer = Timer(const Duration(minutes: 1), () {
+      _standbyIdleTimer = null;
+      if (_closed || _playIntent || _standbyIndex < 0) return;
+      _dropStandby();
+    });
+  }
+
+  void _cancelStandbyIdle() {
+    _standbyIdleTimer?.cancel();
+    _standbyIdleTimer = null;
+  }
+
   Future<bool> seekTo(Duration target) async {
     if (!_usable || !ready) return false;
+    _cancelResumeWatchdog();
     final ticket = ++_seekSequence;
     final generation = _generation;
     danmaku.beginSeek();
@@ -941,14 +1095,46 @@ class PlaybackSession extends ChangeNotifier {
     try {
       await player.seek(target);
       succeeded = true;
-    } catch (_) {
+    } catch (error) {
+      DiaryService.add('[Play] 跳转失败 目标=${target.inSeconds}s：$error');
     } finally {
       if (!_closed && ticket == _seekSequence && generation == _generation) {
         danmaku.endSeek(succeeded ? target : player.state.position);
       }
     }
+    if (succeeded && ticket == _seekSequence) _watchSeek(target);
     return succeeded;
   }
+
+  void _watchSeek(Duration target) {
+    _seekWatchdog?.cancel();
+    final ticket = _seekSequence;
+    Duration? settled;
+    _seekWatchdog = Timer(const Duration(milliseconds: 2500), () {
+      if (!_seekWatchStillValid(ticket)) return;
+      settled = player.state.position;
+      _seekWatchdog = Timer(const Duration(milliseconds: 2500), () {
+        _seekWatchdog = null;
+        if (!_seekWatchStillValid(ticket)) return;
+        final position = player.state.position;
+        if ((position - target).abs() <= const Duration(seconds: 2)) return;
+        if (position > settled! + const Duration(milliseconds: 800)) return;
+        DiaryService.add(
+          '[Play] 跳转未生效 目标=${target.inSeconds}s '
+          '位置=${position.inSeconds}s，重新打开当前线路',
+        );
+        unawaited(_reopen(target));
+      });
+    });
+  }
+
+  bool _seekWatchStillValid(int ticket) =>
+      !_closed &&
+      ticket == _seekSequence &&
+      _playIntent &&
+      _foreground &&
+      !_loading &&
+      _error == null;
 
   Duration? seekBy(int seconds) {
     final duration = player.state.duration;
@@ -1004,6 +1190,12 @@ class PlaybackSession extends ChangeNotifier {
       endBoost();
       _notify();
     }
+  }
+
+  void setLocked(bool locked) {
+    if (_locked == locked) return;
+    _locked = locked;
+    _notify();
   }
 
   bool endBoost() {
@@ -1167,10 +1359,16 @@ class PlaybackSession extends ChangeNotifier {
     if (!visible) {
       endBoost();
       _playIntent = false;
+      _pausedSince = DateTime.now();
+      _cancelResumeWatchdog();
+      _cancelStandbyIdle();
+      _dropStandby();
+      _preloader.clear();
       unawaited(player.pause());
       unawaited(saveProgress());
-    } else if (_pendingError) {
-      _queueRecovery('foreground_pending_error');
+    } else {
+      _holdNetworkSpeed();
+      if (_pendingError) _queueRecovery('foreground_pending_error');
     }
   }
 
@@ -1220,8 +1418,11 @@ class PlaybackSession extends ChangeNotifier {
     _errorTimer?.cancel();
     _boostTimer?.cancel();
     _stallTimer?.cancel();
+    _seekWatchdog?.cancel();
     _volumeTimer?.cancel();
     _sleepTimer?.cancel();
+    _standbyIdleTimer?.cancel();
+    _resumeTimer?.cancel();
     if (_volumeTimer != null) _saveVolume();
     for (final subscription in _subscriptions) {
       unawaited(subscription.cancel());

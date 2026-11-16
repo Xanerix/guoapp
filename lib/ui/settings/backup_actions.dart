@@ -6,11 +6,17 @@ import 'package:flutter/services.dart';
 
 import '../../app_build.dart';
 import '../../local_store.dart';
+import '../app_scope.dart';
 import '../users/password_dialog.dart';
 import '../widgets/focus_ring.dart';
 
-Future<String?> exportBackupFile(LocalStore store) async {
-  final content = await store.exportBackup();
+Future<String?> exportBackupFile(BuildContext context, LocalStore store) async {
+  var installed = const <String>[];
+  try {
+    final modules = await AppScope.of(context).repository.modules();
+    installed = [for (final module in modules) module.id];
+  } catch (_) {}
+  final content = await store.exportBackup(installedSources: installed);
   final saved = await FilePicker.saveFile(
     fileName:
         '$appSlug-backup-${DateTime.now().toIso8601String().substring(0, 10)}.json',

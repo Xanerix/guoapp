@@ -1,6 +1,6 @@
 name: media_kit_video
 description: media_kit_video with ordered Windows video output disposal for GuoApp.
-version: 2.0.1+duanju.1
+version: 2.0.1+duanju.2
 publish_to: none
 homepage: https://github.com/media-kit/media-kit
 

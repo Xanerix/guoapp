@@ -137,6 +137,7 @@ class _PlaybackPageState extends State<PlaybackPage> {
 
   Future<void> _enterMini() async {
     _closeRoutesAbove();
+    _session.setLocked(false);
     await _pip.enter(_session.aspectRatio, frame: widget.store.miniWindow);
   }
 
