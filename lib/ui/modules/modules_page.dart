@@ -153,6 +153,7 @@ class _ModulesPageState extends State<ModulesPage>
     if (!module.installed) {
       await _store.setSourceEnabled(id, true);
     }
+    await _store.rememberInstalledSource(id);
     final site = SourceSite.byId(id);
     if (site.devices && !await _repository.sourceDevices(id)) {
       try {
@@ -166,10 +167,13 @@ class _ModulesPageState extends State<ModulesPage>
     return null;
   }
 
-  Future<void> _installPending(List<ModuleIndexEntry> entries) async {
+  Future<void> _installBatch(
+    List<ModuleIndexEntry> entries, {
+    bool pending = true,
+  }) async {
     final accepted = await showDialog<bool>(
       context: context,
-      builder: (_) => _BatchInstallDialog(entries: entries),
+      builder: (_) => _BatchInstallDialog(entries: entries, pending: pending),
     );
     if (accepted != true) return;
     await _run(() async {
@@ -259,6 +263,7 @@ class _ModulesPageState extends State<ModulesPage>
         await _repository.controlDownloads('pauseSource', id: module.id);
       }
       await _repository.uninstallModule(module.id);
+      await _store.forgetInstalledSource(module.id);
       _show('${module.name} 已卸载');
     });
   }
@@ -342,21 +347,49 @@ class _ModulesPageState extends State<ModulesPage>
       for (final entry in entries)
         if (missing.containsKey(entry.id)) entry,
     ];
-    final pendingNames = pending.length <= 3
-        ? pending.map((entry) => entry.name).join('、')
-        : '${pending.take(3).map((entry) => entry.name).join('、')} 等';
+    final restored = [
+      for (final entry in entries)
+        if (!missing.containsKey(entry.id) &&
+            _store.installedSources.contains(entry.id))
+          entry,
+    ];
+    String names(List<ModuleIndexEntry> items) => items.length <= 3
+        ? items.map((entry) => entry.name).join('、')
+        : '${items.take(3).map((entry) => entry.name).join('、')} 等';
     return _list([
       if (warning.isNotEmpty) _Note(warning),
-      if (!bundled && pending.isNotEmpty)
-        GroupCard(
+      if (!bundled &&
+          (pending.isNotEmpty || restored.isNotEmpty || entries.isNotEmpty))
+        SettingsCard(
           children: [
-            SettingsTile(
-              icon: Icons.playlist_add_check_rounded,
-              title: '一键安装待恢复的站源',
-              subtitle: '${pending.length} 个：$pendingNames',
-              enabled: enabled,
-              onTap: enabled ? () => _installPending(pending) : null,
-            ),
+            if (pending.isNotEmpty)
+              SettingsTile(
+                icon: Icons.playlist_add_check_rounded,
+                title: '一键安装待恢复的站源',
+                subtitle: '${pending.length} 个：${names(pending)}',
+                enabled: enabled,
+                onTap: enabled ? () => _installBatch(pending) : null,
+              ),
+            if (restored.isNotEmpty)
+              SettingsTile(
+                icon: Icons.restore_rounded,
+                title: '恢复上次安装的站源',
+                subtitle: '${restored.length} 个：${names(restored)}',
+                enabled: enabled,
+                onTap: enabled
+                    ? () => _installBatch(restored, pending: false)
+                    : null,
+              ),
+            if (entries.length > pending.length)
+              SettingsTile(
+                icon: Icons.download_rounded,
+                title: '安装全部站源',
+                subtitle: '在线仓库里还有 ${entries.length} 个未安装',
+                enabled: enabled,
+                onTap: enabled
+                    ? () => _installBatch(entries, pending: false)
+                    : null,
+              ),
           ],
         ),
       if (_indexError ?? _error case final error?)
@@ -804,8 +837,9 @@ class _ModuleDialog extends StatelessWidget {
 }
 
 class _BatchInstallDialog extends StatelessWidget {
-  const _BatchInstallDialog({required this.entries});
+  const _BatchInstallDialog({required this.entries, this.pending = true});
   final List<ModuleIndexEntry> entries;
+  final bool pending;
 
   @override
   Widget build(BuildContext context) {
@@ -819,7 +853,11 @@ class _BatchInstallDialog extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           spacing: 8,
           children: [
-            const Text('这些站源有未恢复的追剧、观看记录或下载，安装后会逐个启用。'),
+            Text(
+              pending
+                  ? '这些站源有未恢复的追剧、观看记录或下载，安装后会逐个启用。'
+                  : '这些站源会逐个安装并启用，已安装的会跳过。',
+            ),
             const Text('各站源可访问的域名和功能，安装后可在「已安装」里查看。'),
             for (final entry in entries)
               Row(
