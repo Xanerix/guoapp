@@ -15,7 +15,11 @@ $Presets = [ordered]@{
     tv     = 960, 540
     window = 1280, 720
 }
-$Title = -join [char[]](0x771F, 0x679C, 0x9274)
+$Branding = Join-Path $PSScriptRoot '..\windows\runner\app_branding.cmake'
+$Title = [regex]::Match([IO.File]::ReadAllText($Branding), 'APP_DISPLAY_NAME\s+"([^"]+)"').Groups[1].Value
+if (-not $Title) {
+    throw "APP_DISPLAY_NAME not found in $Branding."
+}
 
 Add-Type -TypeDefinition @'
 using System;
