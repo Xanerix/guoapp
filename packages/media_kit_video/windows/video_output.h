@@ -13,7 +13,7 @@
 
 #include <client.h>
 #include <render.h>
-#include <render_gl.h>
+#include <render_d3d11.h>
 
 #include <future>
 #include <memory>
@@ -22,7 +22,7 @@
 #include <flutter/plugin_registrar_windows.h>
 #include <flutter/standard_method_codec.h>
 
-#include "angle_surface_manager.h"
+#include "d3d11_surface_manager.h"
 #include "thread_pool.h"
 
 typedef struct _VideoOutputConfiguration {
@@ -110,7 +110,7 @@ class VideoOutput {
 
   // H/W rendering.
 
-  std::unique_ptr<ANGLESurfaceManager> surface_manager_ = nullptr;
+  std::unique_ptr<D3D11SurfaceManager> surface_manager_ = nullptr;
   std::unordered_map<int64_t,
                      std::unique_ptr<FlutterDesktopGpuSurfaceDescriptor>>
       textures_ = {};
