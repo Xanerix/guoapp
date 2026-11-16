@@ -145,6 +145,10 @@ class _ModulesPageState extends State<ModulesPage>
       builder: (_) => _ModuleDialog(module: module, install: true),
     );
     if (accepted != true) return;
+    _show(await _applyInstall(module) ?? '${module.name} 已安装');
+  }
+
+  Future<String?> _applyInstall(SourceModule module) async {
     final id = await _repository.installModule(module.token);
     if (!module.installed) {
       await _store.setSourceEnabled(id, true);
@@ -156,11 +160,40 @@ class _ModulesPageState extends State<ModulesPage>
           throw AppFailure('设备注册未完成');
         }
       } catch (failure) {
-        _show('${module.name} 已安装，但$failure；下次打开应用时会再次注册');
-        return;
+        return '${module.name} 已安装，但$failure；下次打开应用时会再次注册';
       }
     }
-    _show('${module.name} 已安装');
+    return null;
+  }
+
+  Future<void> _installPending(List<ModuleIndexEntry> entries) async {
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (_) => _BatchInstallDialog(entries: entries),
+    );
+    if (accepted != true) return;
+    await _run(() async {
+      final failures = <String>[];
+      final notices = <String>[];
+      for (final entry in entries) {
+        try {
+          final warning = await _applyInstall(
+            await _repository.prepareModule(indexed: entry.id),
+          );
+          if (warning != null) notices.add(warning);
+        } catch (failure) {
+          failures.add('${entry.name}：$failure');
+        }
+      }
+      _show(
+        [
+          '已安装 ${entries.length - failures.length} 个站源',
+          if (failures.isNotEmpty)
+            '${failures.length} 个失败：${failures.join('；')}',
+          ...notices,
+        ].join('，'),
+      );
+    });
   }
 
   Future<void> _installFile() => _run(() async {
@@ -305,8 +338,27 @@ class _ModulesPageState extends State<ModulesPage>
             missing.containsKey(b.id) ? 0 : 1,
           ),
         );
+    final pending = [
+      for (final entry in entries)
+        if (missing.containsKey(entry.id)) entry,
+    ];
+    final pendingNames = pending.length <= 3
+        ? pending.map((entry) => entry.name).join('、')
+        : '${pending.take(3).map((entry) => entry.name).join('、')} 等';
     return _list([
       if (warning.isNotEmpty) _Note(warning),
+      if (!bundled && pending.isNotEmpty)
+        GroupCard(
+          children: [
+            SettingsTile(
+              icon: Icons.playlist_add_check_rounded,
+              title: '一键安装待恢复的站源',
+              subtitle: '${pending.length} 个：$pendingNames',
+              enabled: enabled,
+              onTap: enabled ? () => _installPending(pending) : null,
+            ),
+          ],
+        ),
       if (_indexError ?? _error case final error?)
         _Note(error)
       else if (_index == null || _modules == null)
@@ -746,6 +798,60 @@ class _ModuleDialog extends StatelessWidget {
               child: const Text('关闭'),
             ),
           ),
+      ],
+    );
+  }
+}
+
+class _BatchInstallDialog extends StatelessWidget {
+  const _BatchInstallDialog({required this.entries});
+  final List<ModuleIndexEntry> entries;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final adult = entries.where((entry) => entry.adult).length;
+    return AlertDialog(
+      title: Text('安装 ${entries.length} 个站源？'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          spacing: 8,
+          children: [
+            const Text('这些站源有未恢复的追剧、观看记录或下载，安装后会逐个启用。'),
+            const Text('各站源可访问的域名和功能，安装后可在「已安装」里查看。'),
+            for (final entry in entries)
+              Row(
+                spacing: 8,
+                children: [
+                  Expanded(child: Text('${entry.name} · ${entry.version}')),
+                  if (entry.adult)
+                    Text('限制级', style: TextStyle(color: colors.error)),
+                ],
+              ),
+            if (adult > 0)
+              Text('包含 $adult 个限制级站源。', style: TextStyle(color: colors.error)),
+            const Text('安装失败的会跳过，完成后提示结果。'),
+          ],
+        ),
+      ),
+      actions: [
+        FocusRing(
+          radius: 20,
+          child: TextButton(
+            autofocus: true,
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+        ),
+        FocusRing(
+          radius: 20,
+          child: FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('全部安装'),
+          ),
+        ),
       ],
     );
   }
