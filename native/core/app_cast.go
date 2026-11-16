@@ -1,7 +1,6 @@
 package core
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/xml"
@@ -16,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/net/html/charset"
 )
 
 type castDevice struct {
@@ -49,7 +50,29 @@ type castDescription struct {
 
 var castClient = &http.Client{Timeout: 6 * time.Second, Transport: &http.Transport{}}
 
-const castSearch = "M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: \"ssdp:discover\"\r\nMX: 2\r\nST: urn:schemas-upnp-org:service:AVTransport:1\r\n\r\n"
+var castSearchTargets = []string{
+	"urn:schemas-upnp-org:service:AVTransport:1",
+	"urn:schemas-upnp-org:device:MediaRenderer:1",
+	"upnp:rootdevice",
+	"ssdp:all",
+}
+
+func castSearch(target string) []byte {
+	return []byte("M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: \"ssdp:discover\"\r\nMX: 2\r\nST: " + target + "\r\n\r\n")
+}
+
+func castLocation(packet []byte) string {
+	for line := range strings.Lines(string(packet)) {
+		name, value, found := strings.Cut(line, ":")
+		if found && strings.EqualFold(strings.TrimSpace(name), "location") {
+			value = strings.TrimSpace(value)
+			if parsed, err := url.Parse(value); err == nil && parsed.Scheme == "http" && parsed.Host != "" {
+				return value
+			}
+		}
+	}
+	return ""
+}
 
 func castSearchLocations(ctx context.Context) []string {
 	bind := []net.IP{nil}
@@ -80,7 +103,9 @@ func castSearchLocations(ctx context.Context) []string {
 			defer stop()
 			_ = conn.SetReadDeadline(deadline)
 			for range 2 {
-				_, _ = conn.WriteToUDP([]byte(castSearch), target)
+				for _, search := range castSearchTargets {
+					_, _ = conn.WriteToUDP(castSearch(search), target)
+				}
 			}
 			buffer := make([]byte, 4096)
 			for {
@@ -88,13 +113,7 @@ func castSearchLocations(ctx context.Context) []string {
 				if err != nil {
 					return
 				}
-				response, err := http.ReadResponse(bufio.NewReader(bytes.NewReader(buffer[:size])), nil)
-				if err != nil {
-					continue
-				}
-				location := response.Header.Get("Location")
-				_ = response.Body.Close()
-				if parsed, err := url.Parse(location); err == nil && parsed.Scheme == "http" && parsed.Host != "" {
+				if location := castLocation(buffer[:size]); location != "" {
 					mu.Lock()
 					found[location] = true
 					mu.Unlock()
@@ -135,7 +154,9 @@ func castDescribe(ctx context.Context, location string) (castDevice, error) {
 	}
 	defer response.Body.Close()
 	var description castDescription
-	if err := xml.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&description); err != nil {
+	decoder := xml.NewDecoder(io.LimitReader(response.Body, 1<<20))
+	decoder.CharsetReader = charset.NewReaderLabel
+	if err := decoder.Decode(&description); err != nil {
 		return castDevice{}, err
 	}
 	service, control, found := castTransportService(description.Device)
