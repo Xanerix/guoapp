@@ -16,6 +16,7 @@ import '../follow/follow_page.dart';
 import '../history/history_page.dart';
 import '../mine/mine_page.dart';
 import '../update_prompt.dart';
+import '../modules/module_install.dart';
 import '../widgets/bar_button.dart';
 import '../theme/motion.dart';
 import '../widgets/focus_ring.dart';
@@ -100,7 +101,9 @@ class _AppShellState extends State<AppShell> {
     super.initState();
     FocusManager.instance.addListener(_followFocus);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) runStartupChecks(context, widget.store);
+      if (!mounted) return;
+      unawaited(offerRestoredModules(context, widget.store));
+      runStartupChecks(context, widget.store);
     });
   }
 

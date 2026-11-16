@@ -79,6 +79,8 @@ class MainActivity : FlutterActivity() {
     private var deviceChannel: MethodChannel? = null
     private var televisionMode = false
     private var orientationListener: OrientationEventListener? = null
+    private var orientationMode = "auto"
+    private var heldOrientationMode: String? = null
 
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(scaleLargeCanvas(newBase))
@@ -151,8 +153,29 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun setPlayerOrientation(mode: String) {
+        when (mode) {
+            "hold" -> {
+                if (heldOrientationMode == null) heldOrientationMode = orientationMode
+                orientationListener?.disable()
+                orientationListener = null
+                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LOCKED
+            }
+            "release" -> {
+                val held = heldOrientationMode ?: return
+                heldOrientationMode = null
+                applyPlayerOrientation(held)
+            }
+            else -> {
+                heldOrientationMode = null
+                applyPlayerOrientation(mode)
+            }
+        }
+    }
+
+    private fun applyPlayerOrientation(mode: String) {
         orientationListener?.disable()
         orientationListener = null
+        orientationMode = mode
         val landscape = mode == "landscape"
         requestedOrientation = when (mode) {
             "landscape", "lockedLandscape" -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
@@ -180,6 +203,7 @@ class MainActivity : FlutterActivity() {
                 if (now - reachedAt < ORIENTATION_SETTLE_MS) return
                 disable()
                 orientationListener = null
+                orientationMode = "auto"
                 requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
             }
         }

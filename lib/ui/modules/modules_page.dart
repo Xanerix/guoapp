@@ -11,6 +11,7 @@ import '../../models.dart';
 import '../../source_modules.dart';
 import '../app_scope.dart';
 import '../settings/settings_rows.dart';
+import 'module_install.dart';
 import '../settings/sorani_account_view.dart';
 import '../widgets/bar_button.dart';
 import '../widgets/focus_ring.dart';
@@ -153,56 +154,23 @@ class _ModulesPageState extends State<ModulesPage>
     _show(await _applyInstall(module) ?? '${module.name} 已安装');
   }
 
-  Future<String?> _applyInstall(SourceModule module) async {
-    final id = await _repository.installModule(module.token);
-    if (!module.installed) {
-      await _store.setSourceEnabled(id, true);
-    }
-    await _store.rememberInstalledSource(id);
-    final site = SourceSite.byId(id);
-    if (site.devices && !await _repository.sourceDevices(id)) {
-      try {
-        if (!await _repository.sourceDevices(id, register: true)) {
-          throw AppFailure('设备注册未完成');
-        }
-      } catch (failure) {
-        return '${module.name} 已安装，但$failure；下次打开应用时会再次注册';
-      }
-    }
-    return null;
-  }
+  Future<String?> _applyInstall(SourceModule module) =>
+      applyModuleInstall(_repository, _store, module);
 
-  Future<void> _installBatch(
-    List<ModuleIndexEntry> entries, {
-    bool pending = true,
-  }) async {
+  Future<void> _installAll(List<ModuleIndexEntry> entries) async {
     final accepted = await showDialog<bool>(
       context: context,
-      builder: (_) => _BatchInstallDialog(entries: entries, pending: pending),
+      builder: (_) => BatchInstallDialog(
+        entries: entries,
+        title: '安装 ${entries.length} 个站源？',
+        message: '这些站源会逐个安装并启用。',
+      ),
     );
     if (accepted != true) return;
-    await _run(() async {
-      final failures = <String>[];
-      final notices = <String>[];
-      for (final entry in entries) {
-        try {
-          final warning = await _applyInstall(
-            await _repository.prepareModule(indexed: entry.id),
-          );
-          if (warning != null) notices.add(warning);
-        } catch (failure) {
-          failures.add('${entry.name}：$failure');
-        }
-      }
-      _show(
-        [
-          '已安装 ${entries.length - failures.length} 个站源',
-          if (failures.isNotEmpty)
-            '${failures.length} 个失败：${failures.join('；')}',
-          ...notices,
-        ].join('，'),
-      );
-    });
+    await _run(
+      () async =>
+          _show(await installIndexedModules(_repository, _store, entries)),
+    );
   }
 
   Future<void> _installFile() => _run(() async {
@@ -268,7 +236,6 @@ class _ModulesPageState extends State<ModulesPage>
         await _repository.controlDownloads('pauseSource', id: module.id);
       }
       await _repository.uninstallModule(module.id);
-      await _store.forgetInstalledSource(module.id);
       _show('${module.name} 已卸载');
     });
   }
@@ -352,53 +319,18 @@ class _ModulesPageState extends State<ModulesPage>
             missing.containsKey(b.id) ? 0 : 1,
           ),
         );
-    final pending = [
-      for (final entry in entries)
-        if (missing.containsKey(entry.id)) entry,
-    ];
-    final restored = [
-      for (final entry in entries)
-        if (!missing.containsKey(entry.id) &&
-            _store.installedSources.contains(entry.id))
-          entry,
-    ];
-    String names(List<ModuleIndexEntry> items) => items.length <= 3
-        ? items.map((entry) => entry.name).join('、')
-        : '${items.take(3).map((entry) => entry.name).join('、')} 等';
     return _list([
       if (warning.isNotEmpty) _Note(warning),
-      if (!bundled &&
-          (pending.isNotEmpty || restored.isNotEmpty || entries.isNotEmpty))
+      if (!bundled && entries.isNotEmpty)
         SettingsCard(
           children: [
-            if (pending.isNotEmpty)
-              SettingsTile(
-                icon: Icons.playlist_add_check_rounded,
-                title: '一键安装待恢复的站源',
-                subtitle: '${pending.length} 个：${names(pending)}',
-                enabled: enabled,
-                onTap: enabled ? () => _installBatch(pending) : null,
-              ),
-            if (restored.isNotEmpty)
-              SettingsTile(
-                icon: Icons.restore_rounded,
-                title: '恢复上次安装的站源',
-                subtitle: '${restored.length} 个：${names(restored)}',
-                enabled: enabled,
-                onTap: enabled
-                    ? () => _installBatch(restored, pending: false)
-                    : null,
-              ),
-            if (entries.length > pending.length)
-              SettingsTile(
-                icon: Icons.download_rounded,
-                title: '安装全部站源',
-                subtitle: '在线仓库里还有 ${entries.length} 个未安装',
-                enabled: enabled,
-                onTap: enabled
-                    ? () => _installBatch(entries, pending: false)
-                    : null,
-              ),
+            SettingsTile(
+              icon: Icons.download_rounded,
+              title: '安装全部站源',
+              subtitle: '在线仓库里还有 ${entries.length} 个未安装',
+              enabled: enabled,
+              onTap: enabled ? () => _installAll(entries) : null,
+            ),
           ],
         ),
       if (_indexError ?? _error case final error?)
@@ -840,65 +772,6 @@ class _ModuleDialog extends StatelessWidget {
               child: const Text('关闭'),
             ),
           ),
-      ],
-    );
-  }
-}
-
-class _BatchInstallDialog extends StatelessWidget {
-  const _BatchInstallDialog({required this.entries, this.pending = true});
-  final List<ModuleIndexEntry> entries;
-  final bool pending;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final adult = entries.where((entry) => entry.adult).length;
-    return AlertDialog(
-      title: Text('安装 ${entries.length} 个站源？'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          spacing: 8,
-          children: [
-            Text(
-              pending
-                  ? '这些站源有未恢复的追剧、观看记录或下载，安装后会逐个启用。'
-                  : '这些站源会逐个安装并启用，已安装的会跳过。',
-            ),
-            const Text('各站源可访问的域名和功能，安装后可在「已安装」里查看。'),
-            for (final entry in entries)
-              Row(
-                spacing: 8,
-                children: [
-                  Expanded(child: Text('${entry.name} · ${entry.version}')),
-                  if (entry.adult)
-                    Text('限制级', style: TextStyle(color: colors.error)),
-                ],
-              ),
-            if (adult > 0)
-              Text('包含 $adult 个限制级站源。', style: TextStyle(color: colors.error)),
-            const Text('安装失败的会跳过，完成后提示结果。'),
-          ],
-        ),
-      ),
-      actions: [
-        FocusRing(
-          radius: 20,
-          child: TextButton(
-            autofocus: true,
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-        ),
-        FocusRing(
-          radius: 20,
-          child: FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('全部安装'),
-          ),
-        ),
       ],
     );
   }

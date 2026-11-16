@@ -628,13 +628,15 @@ class _BackupCardState extends State<_BackupCard> {
       children: [
         SettingsTile(
           title: '导出备份',
-          subtitle: admin ? '包含本地用户、追剧、历史和设置，不含视频文件' : adminOnly,
+          subtitle: admin ? '包含本地用户、追剧、观看记录、设置、站源开关和已安装模块，不含视频文件' : adminOnly,
           enabled: admin && !_busy,
           onTap: () => _run(() => exportBackupFile(context, widget.store)),
         ),
         SettingsTile(
           title: '恢复备份',
-          subtitle: admin ? '替换本机的用户、追剧、观看记录和偏好设置，已下载视频保留' : adminOnly,
+          subtitle: admin
+              ? '替换本机的用户、追剧、观看记录、设置和站源开关，已下载视频保留，完成后可安装备份里的模块'
+              : adminOnly,
           enabled: admin && !_busy,
           onTap: () => _run(() => restoreBackupFile(context, widget.store)),
         ),

@@ -392,42 +392,12 @@ class LocalStore extends ChangeNotifier {
     });
   }
 
-  List<String> get installedSources => switch (_settings['installedSources']) {
-    final List sources => [
-      for (final source in sources)
-        if (source is String && validSourceId(source)) source,
-    ],
-    _ => const [],
-  };
+  List<String> _restoredModules = const [];
 
-  Future<void> rememberInstalledSource(String source) {
-    if (!validSourceId(source)) return Future.value();
-    final epoch = _epoch;
-    return _queue(() async {
-      if (epoch != _epoch) throw StateError('当前用户已变更，请重试');
-      final sources = installedSources;
-      if (sources.contains(source)) return;
-      await _saveSettings({
-        ..._settings,
-        'installedSources': [...sources, source],
-      });
-    });
-  }
-
-  Future<void> forgetInstalledSource(String source) {
-    final epoch = _epoch;
-    return _queue(() async {
-      if (epoch != _epoch) throw StateError('当前用户已变更，请重试');
-      final sources = installedSources;
-      if (!sources.contains(source)) return;
-      await _saveSettings({
-        ..._settings,
-        'installedSources': [
-          for (final id in sources)
-            if (id != source) id,
-        ],
-      });
-    });
+  List<String> takeRestoredModules() {
+    final modules = _restoredModules;
+    _restoredModules = const [];
+    return modules;
   }
 
   Map<String, FollowCheck> get followChecks => Map.of(_followChecks);
@@ -1047,15 +1017,9 @@ class LocalStore extends ChangeNotifier {
     _notify();
   });
 
-  Future<String> exportBackup({
-    Iterable<String> installedSources = const [],
-  }) async {
+  Future<String> exportBackup({Iterable<String> modules = const []}) async {
     await _writes.catchError((Object _) {});
     _requireAdmin();
-    final sources = {
-      ...this.installedSources,
-      ...installedSources.where(validSourceId),
-    }.toList();
     final libraries = <String, Object?>{};
     for (final profile in _profiles) {
       Future<Object?> read(String name) =>
@@ -1096,8 +1060,8 @@ class LocalStore extends ChangeNotifier {
       'deleteAfterAutoExport': deleteAfterAutoExport,
       'deleteAfterManualExport': deleteAfterManualExport,
       'televisionKeyboard': televisionKeyboard,
-      'installedSources': sources,
       'sourceSwitches': _map(_settings['sourceSwitches']),
+      'modules': modules.where(validSourceId).toSet().toList(),
       'libraries': libraries,
     });
     if (utf8.encode(content).length > 8 * 1024 * 1024) {
@@ -1138,13 +1102,6 @@ class LocalStore extends ChangeNotifier {
     )) {
       throw const FormatException('备份设置无效');
     }
-    if (data['installedSources'] case final Object sources) {
-      if (sources is! List ||
-          sources.length > 100 ||
-          sources.any((id) => id is! String || !validSourceId(id))) {
-        throw const FormatException('备份站源记录无效');
-      }
-    }
     if (data['sourceSwitches'] case final Object switches) {
       if (switches is! Map ||
           switches.length > 100 ||
@@ -1155,6 +1112,13 @@ class LocalStore extends ChangeNotifier {
                 entry.value is! bool,
           )) {
         throw const FormatException('备份站源设置无效');
+      }
+    }
+    if (data['modules'] case final Object modules) {
+      if (modules is! List ||
+          modules.length > 100 ||
+          modules.any((id) => id is! String || !validSourceId(id))) {
+        throw const FormatException('备份模块列表无效');
       }
     }
     final libraries = data['libraries'] as Map;
@@ -1216,8 +1180,6 @@ class LocalStore extends ChangeNotifier {
           'themeColor': color.name,
         for (final key in _backupFlags)
           if (data[key] case final bool value) key: value,
-        if (data['installedSources'] case final List sources)
-          'installedSources': sources,
         if (data['sourceSwitches'] case final Map switches)
           'sourceSwitches': switches,
         if (data['blurCoversLaunch'] case final String mode)
@@ -1253,6 +1215,9 @@ class LocalStore extends ChangeNotifier {
     }
     await _removeLegacy();
     await _initialize();
+    _restoredModules = [
+      if (data['modules'] case final List modules) ...modules.cast<String>(),
+    ];
     _epoch++;
     _notify();
   }

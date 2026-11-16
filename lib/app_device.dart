@@ -13,6 +13,8 @@ class AppDevice {
   static const channel = MethodChannel('duanju/device');
   static var _televisionMode = false;
   static var _phoneMode = false;
+  static var _orientation = PlayerOrientation.auto;
+  static PlayerOrientation? _heldOrientation;
 
   static Future<AppDevice> detect({
     AppDevice fallback = const AppDevice(),
@@ -90,17 +92,41 @@ class AppDevice {
     _phoneMode ? PlayerOrientation.lockedPortrait : PlayerOrientation.auto,
   );
 
-  static Future<void> setPlayerOrientation(
-    PlayerOrientation orientation,
-  ) async {
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      try {
-        await channel.invokeMethod<void>('setPlayerOrientation', {
-          'mode': orientation.name,
-        });
-      } catch (_) {}
-      return;
-    }
+  static Future<void> setPlayerOrientation(PlayerOrientation orientation) {
+    _orientation = orientation;
+    _heldOrientation = null;
+    return defaultTargetPlatform == TargetPlatform.android
+        ? _sendOrientation(orientation.name)
+        : _preferOrientation(orientation);
+  }
+
+  static Future<void> holdOrientation({required bool landscape}) {
+    _heldOrientation ??= _orientation;
+    return defaultTargetPlatform == TargetPlatform.android
+        ? _sendOrientation('hold')
+        : _preferOrientation(
+            landscape
+                ? PlayerOrientation.lockedLandscape
+                : PlayerOrientation.lockedPortrait,
+          );
+  }
+
+  static Future<void> releaseHeldOrientation() async {
+    final held = _heldOrientation;
+    if (held == null) return;
+    _heldOrientation = null;
+    return defaultTargetPlatform == TargetPlatform.android
+        ? _sendOrientation('release')
+        : _preferOrientation(held);
+  }
+
+  static Future<void> _sendOrientation(String mode) async {
+    try {
+      await channel.invokeMethod<void>('setPlayerOrientation', {'mode': mode});
+    } catch (_) {}
+  }
+
+  static Future<void> _preferOrientation(PlayerOrientation orientation) async {
     try {
       await SystemChrome.setPreferredOrientations(switch (_televisionMode
           ? PlayerOrientation.landscape

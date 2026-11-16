@@ -50,14 +50,14 @@ class PlayerLockOverlay extends StatefulWidget {
     required this.locked,
     required this.onUnlock,
     required this.onBlocked,
-    this.top = 12,
-    this.right = 12,
+    required this.alignment,
+    required this.padding,
   });
   final bool locked;
   final VoidCallback onUnlock;
   final VoidCallback onBlocked;
-  final double top;
-  final double right;
+  final Alignment alignment;
+  final EdgeInsets padding;
 
   @override
   State<PlayerLockOverlay> createState() => _PlayerLockOverlayState();
@@ -117,16 +117,21 @@ class _PlayerLockOverlayState extends State<PlayerLockOverlay> {
       fit: StackFit.expand,
       children: [
         GestureDetector(behavior: HitTestBehavior.opaque, onTap: _tap),
-        Positioned(
-          top: widget.top,
-          right: widget.right,
-          child: IgnorePointer(
-            ignoring: !_shown,
-            child: AnimatedOpacity(
-              opacity: _shown ? 1 : 0,
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOut,
-              child: PlayerLockButton(locked: true, onPressed: widget.onUnlock),
+        Padding(
+          padding: widget.padding,
+          child: Align(
+            alignment: widget.alignment,
+            child: IgnorePointer(
+              ignoring: !_shown,
+              child: AnimatedOpacity(
+                opacity: _shown ? 1 : 0,
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOut,
+                child: PlayerLockButton(
+                  locked: true,
+                  onPressed: widget.onUnlock,
+                ),
+              ),
             ),
           ),
         ),

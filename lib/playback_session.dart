@@ -391,7 +391,12 @@ class PlaybackSession extends ChangeNotifier {
           DateTime.now().difference(_standbyAt) > const Duration(minutes: 8)) {
         _dropStandby();
       }
-      if (_standbyIndex >= 0 || duration <= 0 || ahead < 3000) return;
+      if (_standbyIndex >= 0 ||
+          duration <= 0 ||
+          duration - position > 45000 ||
+          ahead < 3000) {
+        return;
+      }
     } else {
       if (!state.playing || state.buffering || !_playIntent) {
         _preloader.pause();

@@ -34,6 +34,7 @@ class _PlaybackPageState extends State<PlaybackPage> {
   late bool _wideVideo = _measure();
   MediaQueryData? _media;
   bool _shown = false;
+  bool _locked = false;
   Player? _bound;
   StreamSubscription<bool>? _playing;
 
@@ -76,6 +77,21 @@ class _PlaybackPageState extends State<PlaybackPage> {
     _sync();
     final wide = _measure();
     if (wide != _wideVideo) setState(() => _wideVideo = wide);
+    if (_session.locked != _locked) {
+      _locked = _session.locked;
+      _holdOrientation(_locked);
+    }
+  }
+
+  void _holdOrientation(bool locked) {
+    if (desktopPlatform) return;
+    if (!locked) {
+      unawaited(AppDevice.releaseHeldOrientation());
+      return;
+    }
+    final landscape =
+        (_media ?? MediaQuery.of(context)).orientation == Orientation.landscape;
+    unawaited(AppDevice.holdOrientation(landscape: landscape));
   }
 
   void _bind() {

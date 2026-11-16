@@ -642,10 +642,12 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
         ),
         PlayerLockOverlay(
           locked: locked,
-          top: full
-              ? math.max(MediaQuery.viewPaddingOf(context).top, 20) + 6
-              : 6,
-          right: math.max(MediaQuery.viewPaddingOf(context).right, 20),
+          alignment: Alignment.centerLeft,
+          padding: EdgeInsets.only(
+            left: full
+                ? math.max(MediaQuery.viewPaddingOf(context).left, 20)
+                : 6,
+          ),
           onUnlock: _unlock,
           onBlocked: () => _say('已锁定，点击锁图标解锁'),
         ),
@@ -688,7 +690,6 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
               const Spacer(),
               if (widget.onMiniWindow case final onMiniWindow?)
                 _icon(Icons.picture_in_picture_alt_rounded, '小窗', onMiniWindow),
-              _icon(Icons.lock_open_rounded, '锁定', _lock, size: 40),
               _icon(Icons.settings_rounded, '播放设置', _openSettings),
             ],
           ),
@@ -758,6 +759,14 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
             child: _Shade(height: 150, top: false),
           ),
         ),
+        if (!desktopPlatform)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Padding(
+              padding: EdgeInsets.only(left: left),
+              child: PlayerLockButton(locked: false, onPressed: _lock),
+            ),
+          ),
         Positioned(
           left: left,
           right: right,
@@ -832,7 +841,6 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
               if (session.danmakuSupported) _danmakuButton(context),
               if (widget.onMiniWindow case final onMiniWindow?)
                 _icon(Icons.picture_in_picture_alt_rounded, '小窗', onMiniWindow),
-              _icon(Icons.lock_open_rounded, '锁定', _lock),
               _icon(
                 Icons.settings_rounded,
                 '播放设置',
