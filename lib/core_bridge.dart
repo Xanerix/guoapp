@@ -127,6 +127,7 @@ abstract class AppRepository {
     String file = '',
     String url = '',
     String indexed = '',
+    bool bundled = false,
   }) async => throw AppFailure('当前环境不支持安装模块');
   Future<String> installModule(String token) async =>
       throw AppFailure('当前环境不支持安装模块');
@@ -835,6 +836,7 @@ class NativeRepository extends AppRepository {
     String file = '',
     String url = '',
     String indexed = '',
+    bool bundled = false,
   }) async {
     _adminPermission();
     return SourceModule.fromJson(
@@ -843,6 +845,7 @@ class NativeRepository extends AppRepository {
         'file': file,
         'url': url,
         'source': indexed,
+        'bundled': bundled,
       }),
     );
   }

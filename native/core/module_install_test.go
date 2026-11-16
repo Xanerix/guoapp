@@ -51,14 +51,14 @@ func TestModuleInstallUpdateAndUninstall(t *testing.T) {
 		}
 	})
 
-	if _, err := engine.prepareModule(ctx, testModulePackage(t, "", map[string]string{moduleManifest: string(manifest)}), "", ""); err == nil || !strings.Contains(err.Error(), moduleEntry) {
+	if _, err := engine.prepareModule(ctx, testModulePackage(t, "", map[string]string{moduleManifest: string(manifest)}), "", "", false); err == nil || !strings.Contains(err.Error(), moduleEntry) {
 		t.Fatalf("package without entry error = %v", err)
 	}
-	if _, err := engine.prepareModule(ctx, testModulePackage(t, "a/b/", map[string]string{moduleManifest: string(manifest), moduleEntry: string(code)}), "", ""); err == nil {
+	if _, err := engine.prepareModule(ctx, testModulePackage(t, "a/b/", map[string]string{moduleManifest: string(manifest), moduleEntry: string(code)}), "", "", false); err == nil {
 		t.Fatal("deeply nested package was accepted")
 	}
 
-	first, err := engine.prepareModule(ctx, testModulePackage(t, "jsexample/", map[string]string{moduleManifest: string(manifest), moduleEntry: string(code), "README.md": "x"}), "", "")
+	first, err := engine.prepareModule(ctx, testModulePackage(t, "jsexample/", map[string]string{moduleManifest: string(manifest), moduleEntry: string(code), "README.md": "x"}), "", "", false)
 	if err != nil || first.ID != "jsexample" || first.Installed || first.Token == "" {
 		t.Fatalf("prepare = %+v, %v", first, err)
 	}
@@ -78,7 +78,7 @@ func TestModuleInstallUpdateAndUninstall(t *testing.T) {
 	before, _ := engine.downloader.provider("jsexample")
 
 	updated := strings.Replace(string(manifest), `"id"`, `"aliases": ["jsexample-old"], "id"`, 1)
-	second, err := engine.prepareModule(ctx, testModulePackage(t, "", map[string]string{moduleManifest: updated, moduleEntry: string(code)}), "", "")
+	second, err := engine.prepareModule(ctx, testModulePackage(t, "", map[string]string{moduleManifest: updated, moduleEntry: string(code)}), "", "", false)
 	if err != nil || !second.Installed {
 		t.Fatalf("update prepare = %+v, %v", second, err)
 	}
@@ -93,7 +93,7 @@ func TestModuleInstallUpdateAndUninstall(t *testing.T) {
 	if clash == string(manifest) {
 		t.Fatal("example manifest format changed")
 	}
-	if _, err := engine.prepareModule(ctx, testModulePackage(t, "", map[string]string{moduleManifest: clash, moduleEntry: string(code)}), "", ""); err == nil || !strings.Contains(err.Error(), "重复") {
+	if _, err := engine.prepareModule(ctx, testModulePackage(t, "", map[string]string{moduleManifest: clash, moduleEntry: string(code)}), "", "", false); err == nil || !strings.Contains(err.Error(), "重复") {
 		t.Fatalf("alias conflict error = %v", err)
 	}
 

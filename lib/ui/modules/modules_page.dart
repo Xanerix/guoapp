@@ -135,7 +135,12 @@ class _ModulesPageState extends State<ModulesPage>
   }
 
   Future<void> _installIndexed(ModuleIndexEntry entry) => _run(
-    () async => _install(await _repository.prepareModule(indexed: entry.id)),
+    () async => _install(
+      await _repository.prepareModule(
+        indexed: entry.id,
+        bundled: entry.bundled,
+      ),
+    ),
   );
 
   Future<void> _install(SourceModule module) async {
@@ -255,10 +260,14 @@ class _ModulesPageState extends State<ModulesPage>
   Widget _installedTab() {
     final modules = _modules;
     final enabled = _canInstall;
-    final latest = {
-      for (final entry in _index?.entries ?? const <ModuleIndexEntry>[])
-        entry.id: entry,
-    };
+    final latest = <String, ModuleIndexEntry>{};
+    for (final entry in _index?.entries ?? const <ModuleIndexEntry>[]) {
+      final current = latest[entry.id];
+      if (current == null ||
+          isNewerModuleVersion(entry.version, current.version)) {
+        latest[entry.id] = entry;
+      }
+    }
     return _list([
       if (_error case final error?) _Note(error),
       if (modules == null && _error == null)

@@ -90,6 +90,7 @@ type nativeInput struct {
 	Session         string                  `json:"session"`
 	Sequence        int64                   `json:"sequence"`
 	Force           bool                    `json:"force"`
+	Bundled         bool                    `json:"bundled"`
 	Version         string                  `json:"version"`
 	Since           string                  `json:"since"`
 	Account         json.RawMessage         `json:"account"`
@@ -384,7 +385,7 @@ func nativeDispatch(input nativeInput) (any, error) {
 	case "moduleIndex":
 		return engine.moduleStore(ctx)
 	case "prepareModule":
-		return engine.prepareModule(ctx, input.File, input.URL, input.Source)
+		return engine.prepareModule(ctx, input.File, input.URL, input.Source, input.Bundled)
 	case "installModule":
 		return engine.installModule(input.Token)
 	case "uninstallModule":

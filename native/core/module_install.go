@@ -72,12 +72,12 @@ func (engine *nativeEngine) modules() ([]nativeModuleInfo, error) {
 	return items, nil
 }
 
-func (engine *nativeEngine) prepareModule(ctx context.Context, file, address, indexed string) (nativeModuleInfo, error) {
+func (engine *nativeEngine) prepareModule(ctx context.Context, file, address, indexed string, bundled bool) (nativeModuleInfo, error) {
 	var raw []byte
 	var err error
 	switch {
 	case indexed != "":
-		raw, err = engine.indexedModulePackage(ctx, indexed)
+		raw, err = engine.indexedModulePackage(ctx, indexed, bundled)
 	case address != "":
 		raw, err = engine.downloadModulePackage(ctx, address)
 	default:

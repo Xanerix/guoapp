@@ -75,7 +75,7 @@ func TestBundledModulesInstallRespectRemovalAndVersions(t *testing.T) {
 	if err != nil || len(items) != 1 || !items[0].Bundled || items[0].Version != "1.2.0" || store["warning"] == nil {
 		t.Fatalf("store = %+v, %v", store, err)
 	}
-	prepared, err := engine.prepareModule(context.Background(), "", "", "jsexample")
+	prepared, err := engine.prepareModule(context.Background(), "", "", "jsexample", true)
 	if err != nil || prepared.Version != "1.2.0" {
 		t.Fatalf("prepare bundled = %+v, %v", prepared, err)
 	}
