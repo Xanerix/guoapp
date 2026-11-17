@@ -518,12 +518,8 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
                 IgnorePointer(ignoring: _scrolling, child: _controls(context)),
                 PlayerLockOverlay(
                   locked: _session.locked,
-                  alignments: [Alignment.topRight, Alignment.topLeft],
-                  padding: EdgeInsets.only(
-                    top: MediaQuery.paddingOf(context).top + 6,
-                    left: 12,
-                    right: 12,
-                  ),
+                  alignments: const [Alignment.topRight],
+                  padding: EdgeInsets.only(top: _bars.top + 6, right: 12),
                   onUnlock: _unlock,
                   onBlocked: () => _say('已锁定，点击锁图标解锁'),
                 ),
@@ -922,13 +918,13 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
             ],
           ),
         ),
-        if (!desktopPlatform) PlayerLockButton(locked: false, onPressed: _lock),
         FollowIcon(
           store: widget.store,
           drama: session.detail.drama,
           color: Colors.white,
           activeColor: Theme.of(context).colorScheme.primaryFixedDim,
         ),
+        if (!desktopPlatform) PlayerLockButton(locked: false, onPressed: _lock),
       ],
     );
   }
