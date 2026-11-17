@@ -94,6 +94,8 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
+  media_controls_ = std::make_unique<MediaControls>(
+      GetHandle(), flutter_controller_->engine()->messenger());
   device_channel_ =
       std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
           flutter_controller_->engine()->messenger(), "duanju/device",
@@ -373,6 +375,7 @@ bool FlutterWindow::SetBossKey(const flutter::EncodableMap* args) {
 void FlutterWindow::ToggleHidden() {
   HWND window = GetHandle();
   if (IsWindowVisible(window)) {
+    if (device_channel_) device_channel_->InvokeMethod("bossKeyHidden", nullptr);
     ShowWindow(window, SW_HIDE);
     return;
   }
@@ -408,6 +411,7 @@ void FlutterWindow::KeepMiniAspect(WPARAM edge, RECT* frame) {
 
 void FlutterWindow::OnDestroy() {
   UnregisterHotKey(GetHandle(), kBossKeyId);
+  media_controls_.reset();
   device_channel_.reset();
   taskbar_.Reset();
   if (flutter_controller_) {
@@ -457,6 +461,9 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
     case WM_FONTCHANGE:
       flutter_controller_->engine()->ReloadSystemFonts();
       break;
+    case MediaControls::kCommandMessage:
+      if (media_controls_) media_controls_->HandleCommand(wparam, lparam);
+      return 0;
   }
 
   return Win32Window::MessageHandler(hwnd, message, wparam, lparam);

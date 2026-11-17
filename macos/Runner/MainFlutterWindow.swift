@@ -2,6 +2,7 @@ import CFNetwork
 import Carbon
 import Cocoa
 import FlutterMacOS
+import MediaPlayer
 
 #if arch(x86_64)
 private func useSkiaRendering() {
@@ -27,12 +28,15 @@ private let bossKeyCodes: [String: Int] = [
 
 private var bossKeyRef: EventHotKeyRef?
 private var bossKeyHandler: EventHandlerRef?
+private var deviceChannel: FlutterMethodChannel?
+private var mediaControls: MediaControls?
 
 private func toggleHidden() {
   if NSApp.isHidden {
     NSApp.unhide(nil)
     NSApp.activate(ignoringOtherApps: true)
   } else {
+    deviceChannel?.invokeMethod("bossKeyHidden", arguments: nil)
     NSApp.hide(nil)
   }
 }
@@ -73,8 +77,10 @@ class MainFlutterWindow: NSWindow {
     self.setFrame(windowFrame, display: true)
 
     RegisterGeneratedPlugins(registry: flutterViewController)
+    mediaControls = MediaControls(messenger: flutterViewController.engine.binaryMessenger)
     let channel = FlutterMethodChannel(
       name: "duanju/device", binaryMessenger: flutterViewController.engine.binaryMessenger)
+    deviceChannel = channel
     channel.setMethodCallHandler { [weak self] call, result in
       if call.method == "windowFrame" {
         guard let window = self, !window.styleMask.contains(.fullScreen),
@@ -132,5 +138,92 @@ class MainFlutterWindow: NSWindow {
     }
 
     super.awakeFromNib()
+  }
+}
+
+final class MediaControls {
+  private let channel: FlutterMethodChannel
+  private var targets: [(MPRemoteCommand, Any)] = []
+  private var artworkPath = ""
+  private var artwork: MPMediaItemArtwork?
+  private var playing = false
+
+  init(messenger: FlutterBinaryMessenger) {
+    channel = FlutterMethodChannel(name: "duanju/media", binaryMessenger: messenger)
+    channel.setMethodCallHandler { [weak self] call, result in
+      switch call.method {
+      case "update":
+        self?.update(call.arguments as? [String: Any] ?? [:])
+      case "clear":
+        self?.clear()
+      default:
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      result(nil)
+    }
+  }
+
+  private func send(_ command: String, positionMs: Double? = nil) {
+    var arguments: [String: Any] = ["command": command]
+    if let positionMs { arguments["positionMs"] = positionMs }
+    channel.invokeMethod("command", arguments: arguments)
+  }
+
+  private func bind(_ command: MPRemoteCommand, _ handler: @escaping (MPRemoteCommandEvent) -> Void) {
+    let token = command.addTarget { event in
+      handler(event)
+      return .success
+    }
+    targets.append((command, token))
+  }
+
+  private func update(_ args: [String: Any]) {
+    let commands = MPRemoteCommandCenter.shared()
+    if targets.isEmpty {
+      bind(commands.playCommand) { [weak self] _ in self?.send("play") }
+      bind(commands.pauseCommand) { [weak self] _ in self?.send("pause") }
+      bind(commands.togglePlayPauseCommand) { [weak self] _ in self?.send("toggle") }
+      bind(commands.nextTrackCommand) { [weak self] _ in self?.send("next") }
+      bind(commands.previousTrackCommand) { [weak self] _ in self?.send("previous") }
+      bind(commands.changePlaybackPositionCommand) { [weak self] event in
+        guard let event = event as? MPChangePlaybackPositionCommandEvent else { return }
+        self?.send("seek", positionMs: event.positionTime * 1000)
+      }
+    }
+    playing = args["playing"] as? Bool ?? false
+    commands.previousTrackCommand.isEnabled = args["hasPrevious"] as? Bool ?? false
+    commands.nextTrackCommand.isEnabled = args["hasNext"] as? Bool ?? false
+    let path = args["artwork"] as? String ?? ""
+    if path != artworkPath {
+      artworkPath = path
+      artwork = path.isEmpty ? nil : NSImage(contentsOfFile: path).map { image in
+        MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+      }
+    }
+    let rate = (args["rate"] as? NSNumber)?.doubleValue ?? 1
+    let duration = ((args["durationMs"] as? NSNumber)?.doubleValue ?? 0) / 1000
+    var info: [String: Any] = [
+      MPMediaItemPropertyTitle: args["title"] as? String ?? "",
+      MPMediaItemPropertyArtist: args["subtitle"] as? String ?? "",
+      MPNowPlayingInfoPropertyElapsedPlaybackTime: ((args["positionMs"] as? NSNumber)?.doubleValue ?? 0) / 1000,
+      MPNowPlayingInfoPropertyPlaybackRate: playing ? rate : 0,
+      MPNowPlayingInfoPropertyDefaultPlaybackRate: rate,
+      MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.video.rawValue,
+    ]
+    if duration > 0 { info[MPMediaItemPropertyPlaybackDuration] = duration }
+    if let artwork { info[MPMediaItemPropertyArtwork] = artwork }
+    let center = MPNowPlayingInfoCenter.default()
+    center.nowPlayingInfo = info
+    center.playbackState = playing ? .playing : .paused
+  }
+
+  private func clear() {
+    for (command, token) in targets { command.removeTarget(token) }
+    targets.removeAll()
+    playing = false
+    let center = MPNowPlayingInfoCenter.default()
+    center.nowPlayingInfo = nil
+    center.playbackState = .stopped
   }
 }

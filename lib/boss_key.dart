@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'app_device.dart';
 import 'core_bridge.dart';
 import 'diary_service.dart';
+import 'media_controls.dart';
 
 const _preferenceKey = 'bossKey';
 final _keyPattern = RegExp(r'^([A-Z0-9]|F([1-9]|1[0-2]))$');
@@ -96,7 +97,12 @@ Future<bool> _register(BossKey? value) async {
   }
 }
 
+Future<void> _handle(MethodCall call) async {
+  if (call.method == 'bossKeyHidden') MediaControls.instance.pause();
+}
+
 Future<void> restoreBossKey() async {
+  AppDevice.channel.setMethodCallHandler(_handle);
   final preferences = await SharedPreferences.getInstance();
   final value = BossKey.parse(preferences.getString(_preferenceKey));
   bossKey.value = value;

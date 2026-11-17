@@ -5,6 +5,7 @@
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28"/>
     <uses-feature android:name="android.software.leanback" android:required="false"/>
@@ -39,6 +40,8 @@
         </activity>
         <service android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
             android:foregroundServiceType="dataSync" android:exported="false" android:stopWithTask="false"/>
+        <service android:name=".PlaybackService"
+            android:foregroundServiceType="mediaPlayback" android:exported="false"/>
         <meta-data android:name="flutterEmbedding" android:value="2"/>
     </application>
     <queries>
