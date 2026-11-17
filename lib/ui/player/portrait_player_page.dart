@@ -59,6 +59,7 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
   bool _scrolling = false;
   bool _edgeHinted = false;
   bool _holding = false;
+  int _sheets = 0;
   bool _lockArmed = false;
   int _heldIndex = -1;
   bool _dragging = false;
@@ -411,8 +412,21 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
     });
   }
 
-  Future<void> _openSettings() => showPlayerSheet(
-    context,
+  Future<void> _sheet(WidgetBuilder builder, {bool fitContent = false}) async {
+    setState(() => _sheets++);
+    try {
+      await showPlayerSheet(
+        context,
+        builder,
+        fitContent: fitContent,
+        barrierColor: Colors.transparent,
+      );
+    } finally {
+      if (mounted) setState(() => _sheets--);
+    }
+  }
+
+  Future<void> _openSettings() => _sheet(
     (_) => PlaybackSettings(
       session: _session,
       onFailure: _saveFailed,
@@ -420,10 +434,10 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
     ),
   );
 
-  Future<void> _openEpisodes() => showPlayerSheet(
-    context,
+  Future<void> _openEpisodes() => _sheet(
     (_) => _EpisodeSheet(
       session: _session,
+      onSeasons: () => unawaited(_openSeasons()),
       canDownload:
           AppScope.of(context).repository.supportsDownloads &&
           widget.store.canDownload,
@@ -434,6 +448,30 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
       ),
     ),
   );
+
+  Future<void> _openSeasons() async {
+    DramaSeason? picked;
+    await _sheet(
+      fitContent: true,
+      (_) => _SeasonSheet(
+        session: _session,
+        onSeason: (season) => picked = season,
+      ),
+    );
+    if (!mounted) return;
+    if (picked case final season?) {
+      await _playSeason(season);
+    } else {
+      await _openEpisodes();
+    }
+  }
+
+  Future<void> _playSeason(DramaSeason season) async {
+    if (_session.switchingSeason) return;
+    if (!await _session.playSeason(season) && mounted) {
+      _say('${season.label}切换失败，请稍后重试');
+    }
+  }
 
   void _saveFailed() {
     if (!mounted) return;
@@ -487,6 +525,13 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
                   ),
                   onUnlock: _unlock,
                   onBlocked: () => _say('已锁定，点击锁图标解锁'),
+                ),
+                IgnorePointer(
+                  child: AnimatedOpacity(
+                    opacity: _sheets > 0 ? 1 : 0,
+                    duration: Motion.of(context, Motion.medium),
+                    child: const ColoredBox(color: Colors.black54),
+                  ),
                 ),
               ],
             ),
@@ -1102,10 +1147,12 @@ class _Shade extends StatelessWidget {
 class _EpisodeSheet extends StatefulWidget {
   const _EpisodeSheet({
     required this.session,
+    required this.onSeasons,
     required this.canDownload,
     required this.onDownload,
   });
   final PlaybackSession session;
+  final VoidCallback onSeasons;
   final bool canDownload;
   final ValueChanged<List<int>> onDownload;
 
@@ -1127,8 +1174,6 @@ class _EpisodeSheetState extends State<_EpisodeSheet> {
   @override
   Widget build(BuildContext context) {
     final episodes = _session.detail.episodes;
-    final drama = _session.detail.drama;
-    final colors = Theme.of(context).colorScheme;
     final all = _selected.length == episodes.length;
     return PopScope(
       canPop: !_selecting,
@@ -1173,18 +1218,7 @@ class _EpisodeSheetState extends State<_EpisodeSheet> {
                     ),
                   ]
                 : [
-                    const Text('选集', style: sheetTitle),
-                    Expanded(
-                      child: Text(
-                        '${_status(drama)}共 ${episodes.length} 集',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: colors.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
+                    const Expanded(child: Text('选集', style: sheetTitle)),
                     if (widget.canDownload)
                       IconButton(
                         onPressed: () => _select(true),
@@ -1202,6 +1236,9 @@ class _EpisodeSheetState extends State<_EpisodeSheet> {
             child: ListenableBuilder(
               listenable: _session,
               builder: (context, _) => EpisodeGrid(
+                header: !_selecting && _session.detail.seasons.isNotEmpty
+                    ? _seasonBar(context)
+                    : null,
                 episodes: episodes,
                 current: _session.index,
                 selecting: _selecting,
@@ -1219,6 +1256,138 @@ class _EpisodeSheetState extends State<_EpisodeSheet> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _seasonBar(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final seasons = _session.detail.seasons;
+    final current = seasons
+        .where((season) => season.drama.id == _session.detail.drama.id)
+        .firstOrNull;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+      child: Material(
+        color: colors.surfaceContainerHighest.withValues(alpha: .55),
+        borderRadius: BorderRadius.circular(12),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () {
+            Navigator.pop(context);
+            widget.onSeasons();
+          },
+          child: SizedBox(
+            height: 44,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 8, 0),
+              child: Row(
+                spacing: 8,
+                children: [
+                  Icon(Icons.layers_rounded, size: 18, color: colors.primary),
+                  Text(
+                    current?.label ?? '系列多季',
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      '共 ${seasons.length} 季',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: colors.onSurfaceVariant,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SeasonSheet extends StatelessWidget {
+  const _SeasonSheet({required this.session, required this.onSeason});
+  final PlaybackSession session;
+  final ValueChanged<DramaSeason> onSeason;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final seasons = session.detail.seasons;
+    final playing = session.detail.drama.id;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SheetHeader(
+          children: [
+            const Expanded(child: Text('选择季', style: sheetTitle)),
+            IconButton(
+              onPressed: () => Navigator.pop(context),
+              icon: const Icon(Icons.close_rounded),
+              tooltip: '关闭',
+            ),
+          ],
+        ),
+        Flexible(
+          child: SafeArea(
+            top: false,
+            child: GridView.builder(
+              shrinkWrap: true,
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+              itemCount: seasons.length,
+              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 120,
+                mainAxisExtent: 48,
+                mainAxisSpacing: 8,
+                crossAxisSpacing: 8,
+              ),
+              itemBuilder: (context, index) {
+                final season = seasons[index];
+                final current = season.drama.id == playing;
+                return Material(
+                  color: current
+                      ? colors.primaryContainer
+                      : colors.surfaceContainerHighest.withValues(alpha: .55),
+                  borderRadius: BorderRadius.circular(14),
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    onTap: current
+                        ? null
+                        : () {
+                            onSeason(season);
+                            Navigator.pop(context);
+                          },
+                    child: Center(
+                      child: Text(
+                        season.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: current
+                              ? colors.onPrimaryContainer
+                              : colors.onSurface,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

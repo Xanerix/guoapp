@@ -26,20 +26,41 @@ Future<void> showPlayerSheet(
   BuildContext context,
   WidgetBuilder builder, {
   bool dark = true,
+  bool fitContent = false,
+  Color? barrierColor,
 }) {
   final theme = dark ? playerTheme(context) : Theme.of(context);
   final height = MediaQuery.sizeOf(context).height * .6;
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    showDragHandle: true,
+    barrierColor: barrierColor,
     backgroundColor: theme.colorScheme.surfaceContainerLow,
-    constraints: BoxConstraints.tightFor(height: height),
+    constraints: fitContent
+        ? BoxConstraints(maxHeight: height)
+        : BoxConstraints.tightFor(height: height),
     builder: (context) => Theme(
       data: theme,
       child: DefaultTextStyle.merge(
         style: TextStyle(color: theme.colorScheme.onSurface),
-        child: Builder(builder: builder),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 32,
+                height: 4,
+                margin: const EdgeInsets.only(top: 10),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            Flexible(child: Builder(builder: builder)),
+          ],
+        ),
       ),
     ),
   );
