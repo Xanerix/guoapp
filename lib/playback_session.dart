@@ -641,9 +641,12 @@ class PlaybackSession extends ChangeNotifier {
   Future<void> _configure(Player target, PlaybackPlan plan) async {
     final platform = target.platform;
     if (platform is! NativePlayer) return;
-    final hwdec = switch (store.playbackPreferences.televisionDecoder) {
+    final decoder = store.playbackPreferences.televisionDecoder;
+    final hwdec = switch (decoder) {
       TelevisionDecoder.software => 'no',
-      TelevisionDecoder.hardware when Platform.isAndroid => 'mediacodec-copy',
+      TelevisionDecoder.hardware ||
+      TelevisionDecoder.hardwareSwapUv when Platform.isAndroid =>
+        'mediacodec-copy',
       TelevisionDecoder.hardware when Platform.isIOS || Platform.isMacOS =>
         'videotoolbox-copy',
       _ when Platform.isWindows => 'd3d11va-copy',
@@ -659,6 +662,10 @@ class PlaybackSession extends ChangeNotifier {
       await platform.setProperty('vd-lavc-fast', 'yes');
       await platform.setProperty('video-sync', 'audio');
       await platform.setProperty('framedrop', 'vo');
+      await platform.setProperty(
+        'vf',
+        decoder == TelevisionDecoder.hardwareSwapUv ? 'lavfi=[swapuv]' : '',
+      );
     }
     await platform.setProperty(
       'demuxer-lavf-o',

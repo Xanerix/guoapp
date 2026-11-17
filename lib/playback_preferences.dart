@@ -13,7 +13,7 @@ const danmakuColors = [
   0xFF8CF08C,
 ];
 
-enum TelevisionDecoder { optimized, hardware, software }
+enum TelevisionDecoder { optimized, hardware, software, hardwareSwapUv }
 
 enum DanmakuCoverage {
   quarter(.25, '顶部四分之一'),

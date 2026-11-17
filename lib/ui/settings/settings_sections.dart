@@ -53,6 +53,10 @@ const _decoders = {
   TelevisionDecoder.hardware: '硬解（兼容）',
   TelevisionDecoder.software: '软解（兼容）',
 };
+const _androidDecoders = {
+  ..._decoders,
+  TelevisionDecoder.hardwareSwapUv: '硬解（修正偏蓝）',
+};
 const _links = [
   [
     ('GitHub · 重建版', String.fromEnvironment('PROJECT_URL')),
@@ -187,7 +191,7 @@ class SettingsSection extends StatelessWidget {
           ValueTile<TelevisionDecoder>(
             title: '解码方式',
             subtitle: '有声音没画面或卡顿时可换兼容方式，下次打开视频时生效',
-            options: _decoders,
+            options: Platform.isAndroid ? _androidDecoders : _decoders,
             value: preferences.televisionDecoder,
             onChanged: (decoder) => savePreferences(
               preferences.copyWith(televisionDecoder: decoder),
