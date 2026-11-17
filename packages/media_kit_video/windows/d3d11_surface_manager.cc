@@ -41,6 +41,7 @@ void D3D11SurfaceManager::Read() {
   if (d3d_11_device_context_ != nullptr) {
     d3d_11_device_context_->CopyResource(d3d_11_texture_2D_.Get(),
                                          internal_d3d_11_texture_2D_.Get());
+    d3d_11_device_context_->Flush();
   }
   ::ReleaseMutex(mutex_);
 }

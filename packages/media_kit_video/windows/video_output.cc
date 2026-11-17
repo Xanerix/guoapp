@@ -41,10 +41,6 @@ VideoOutput::VideoOutput(int64_t handle,
     // Attempt to use H/W rendering.
     if (configuration.enable_hardware_acceleration) {
       try {
-        // D3D11 后端在 |mpv_render_context_create| 时只需要 |ID3D11Device*|；
-        // render target 是 |mpv_render_context_render| 时通过
-        // |MPV_RENDER_PARAM_D3D11_FBO| 传入的，所以这里先不要注册 Flutter
-        // texture —— 必须等 render context 确认创建成功。
         surface_manager_ = std::make_unique<D3D11SurfaceManager>(
             static_cast<int32_t>(width_.value_or(1)),
             static_cast<int32_t>(height_.value_or(1)));
@@ -69,7 +65,6 @@ VideoOutput::VideoOutput(int64_t handle,
                 that->NotifyRender();
               },
               reinterpret_cast<void*>(this));
-          // D3D11 上下文可用后再注册 GpuSurfaceTexture 并通知 Dart 侧。
           Resize(width_.value_or(1), height_.value_or(1));
           is_hardware_acceleration_enabled = true;
           std::cout << "media_kit: VideoOutput: Using H/W rendering."
@@ -87,9 +82,6 @@ VideoOutput::VideoOutput(int64_t handle,
                      "falling back to S/W rendering."
                   << std::endl;
       }
-      // 创建失败或抛异常时必须释放 H/W manager：否则下面的 S/W 分支会同时
-      // 注册 GpuSurfaceTexture 与 PixelBufferTexture，且 |Render| 会把
-      // |MPV_RENDER_PARAM_D3D11_FBO| 传给 SW render context（非法参数）。
       if (!is_hardware_acceleration_enabled) {
         surface_manager_.reset(nullptr);
         render_context_ = nullptr;
@@ -142,8 +134,8 @@ VideoOutput::~VideoOutput() {
       }
       render_context_ = nullptr;
     }).wait();
+  auto promise = std::promise<void>();
   if (texture_id_) {
-    auto promise = std::promise<void>();
     registrar_->texture_registrar()->UnregisterTexture(
         texture_id_, [&, texture_id = texture_id_]() {
           // Add one more task into the thread pool queue & exit the destructor
@@ -190,7 +182,7 @@ void VideoOutput::NotifyRender() {
 }
 
 void VideoOutput::Render() {
-  if (!texture_id_) || render_context_ == nullptr) {
+  if (destroyed_ || !texture_id_ || render_context_ == nullptr) {
     return;
   }
   auto rendered = false;
@@ -370,8 +362,6 @@ void VideoOutput::Resize(int64_t required_width, int64_t required_height) {
     texture->release_context = nullptr;
     texture->release_callback = [](void*) {};
     texture->format = kFlutterDesktopPixelFormatBGRA8888;
-    // 用共享槽绑定「本 texture_variant 自己的 id」，不要在运行期读
-    // |texture_id_|：resize 后它可能已经指向另一张纹理，导致取错 descriptor。
     auto bound_texture_id = std::make_shared<int64_t>(0);
     auto texture_variant =
         std::make_unique<flutter::TextureVariant>(flutter::GpuSurfaceTexture(
@@ -399,7 +389,7 @@ void VideoOutput::Resize(int64_t required_width, int64_t required_height) {
       texture_variants_.emplace(
           std::make_pair(id, std::move(texture_variant)));
     }
-    // Notify public texture update callback（放在锁外，避免回调重入时持锁）。
+    // Notify public texture update callback.
     texture_update_callback_(id, required_width, required_height);
   }
   // S/W
