@@ -141,6 +141,7 @@ type nativeEngine struct {
 	catalogs            map[string][]LibraryDrama
 	catalogStates       map[string]nativeCatalogState
 	categoryOptions     map[string][]Category
+	categoryVersions    map[string]string
 	providerStates      map[string]json.RawMessage
 	providerStatesSaved []byte
 	recommendations     map[string]nativeRecommendationState

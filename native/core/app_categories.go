@@ -35,16 +35,17 @@ func ValidNativeCategory(source, category string) bool {
 func (engine *nativeEngine) nativeCategories(ctx context.Context, source string, force bool) ([]Category, error) {
 	source = canonicalProviderSource(source)
 	all := []Category{{Name: "全部"}}
-	engine.mu.Lock()
-	cached := append([]Category{}, engine.categoryOptions[source]...)
-	engine.mu.Unlock()
-	if len(cached) > 1 && !force {
-		return cached, nil
-	}
-	d := engine.downloader
-	p, ok := d.provider(source)
+	p, ok := engine.downloader.provider(source)
 	if !ok {
 		return nil, errors.New("请选择有效站源")
+	}
+	version := providerModuleVersion(p)
+	engine.mu.Lock()
+	cached := append([]Category{}, engine.categoryOptions[source]...)
+	current := engine.categoryVersions[source] == version
+	engine.mu.Unlock()
+	if len(cached) > 1 && current && !force {
+		return cached, nil
 	}
 	categories, err := p.Categories(ctx, force)
 	all = append(all, categories...)
@@ -57,16 +58,27 @@ func (engine *nativeEngine) nativeCategories(ctx context.Context, source string,
 	if len(all) == 1 {
 		return nil, errors.New("站源暂未返回内容分类，请稍后重试")
 	}
-	engine.rememberCategories(source, all)
+	engine.rememberCategories(source, version, all)
 	return all, nil
 }
 
-func (engine *nativeEngine) rememberCategories(source string, all []Category) {
+func (engine *nativeEngine) rememberCategories(source, version string, all []Category) {
 	engine.mu.Lock()
 	defer engine.mu.Unlock()
 	if engine.categoryOptions == nil {
 		engine.categoryOptions = map[string][]Category{}
 	}
+	if engine.categoryVersions == nil {
+		engine.categoryVersions = map[string]string{}
+	}
 	engine.categoryOptions[source] = all
+	engine.categoryVersions[source] = version
 	engine.writeCatalogDiskLocked()
+}
+
+func providerModuleVersion(p Provider) string {
+	if module, ok := p.(*jsProvider); ok {
+		return module.module.manifest.Version
+	}
+	return ""
 }

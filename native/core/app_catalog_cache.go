@@ -22,13 +22,14 @@ type nativeCatalogState struct {
 }
 
 type nativeCatalogDisk struct {
-	Version         int                                  `json:"version"`
-	Catalogs        map[string][]LibraryDrama            `json:"catalogs"`
-	States          map[string]nativeCatalogState        `json:"states"`
-	Categories      map[string][]Category                `json:"categories,omitempty"`
-	HongguoApp      json.RawMessage                      `json:"hongguoApp,omitempty"`
-	ProviderStates  map[string]json.RawMessage           `json:"providerStates,omitempty"`
-	Recommendations map[string]nativeRecommendationState `json:"recommendations,omitempty"`
+	Version          int                                  `json:"version"`
+	Catalogs         map[string][]LibraryDrama            `json:"catalogs"`
+	States           map[string]nativeCatalogState        `json:"states"`
+	Categories       map[string][]Category                `json:"categories,omitempty"`
+	CategoryVersions map[string]string                    `json:"categoryVersions,omitempty"`
+	HongguoApp       json.RawMessage                      `json:"hongguoApp,omitempty"`
+	ProviderStates   map[string]json.RawMessage           `json:"providerStates,omitempty"`
+	Recommendations  map[string]nativeRecommendationState `json:"recommendations,omitempty"`
 }
 
 func (engine *nativeEngine) commitProviderStateLocked(source string) {
@@ -117,6 +118,7 @@ func (engine *nativeEngine) loadCatalogCache() {
 			engine.catalogStates = disk.States
 		}
 		engine.categoryOptions = disk.Categories
+		engine.categoryVersions = disk.CategoryVersions
 		engine.recommendations = make(map[string]nativeRecommendationState)
 		for key, state := range disk.Recommendations {
 			source, genre, current := strings.Cut(key, "|recommendation:")
@@ -324,7 +326,7 @@ func (engine *nativeEngine) saveCatalogCache(source string, result *nativeCatalo
 
 func (engine *nativeEngine) writeCatalogDiskLocked() error {
 	trimNativeCatalogs(engine.catalogs)
-	body, err := json.Marshal(nativeCatalogDisk{Version: 3, Catalogs: engine.catalogs, States: engine.catalogStates, Categories: engine.categoryOptions, Recommendations: engine.recommendations})
+	body, err := json.Marshal(nativeCatalogDisk{Version: 3, Catalogs: engine.catalogs, States: engine.catalogStates, Categories: engine.categoryOptions, CategoryVersions: engine.categoryVersions, Recommendations: engine.recommendations})
 	if err == nil && len(body) > nativeCatalogMaxBytes {
 		err = errNativeCatalogLimit
 	}
