@@ -643,10 +643,13 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
         ),
         PlayerLockOverlay(
           locked: locked,
-          alignment: Alignment.centerLeft,
+          alignments: [Alignment.centerLeft, Alignment.centerRight],
           padding: EdgeInsets.only(
             left: full
                 ? math.max(MediaQuery.viewPaddingOf(context).left, 20)
+                : 6,
+            right: full
+                ? math.max(MediaQuery.viewPaddingOf(context).right, 20)
                 : 6,
           ),
           onUnlock: _unlock,

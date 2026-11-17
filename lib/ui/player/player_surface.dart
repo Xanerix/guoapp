@@ -480,8 +480,8 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
             ),
             PlayerLockOverlay(
               locked: locked,
-              alignment: Alignment.centerLeft,
-              padding: const EdgeInsets.only(left: 20),
+              alignments: [Alignment.centerLeft, Alignment.centerRight],
+              padding: const EdgeInsets.only(left: 20, right: 20),
               onUnlock: _unlock,
               onBlocked: () => widget.onSay('已锁定，点击锁图标解锁'),
             ),
