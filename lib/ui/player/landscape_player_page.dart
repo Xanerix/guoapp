@@ -11,6 +11,7 @@ import '../../models.dart';
 import '../../playback_preferences.dart';
 import '../../playback_session.dart';
 import '../app_scope.dart';
+import '../detail/season_strip.dart';
 import '../downloads/download_actions.dart';
 import '../theme/app_theme.dart';
 import '../theme/motion.dart';
@@ -1507,8 +1508,30 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
                 : colors.onSurface,
           ),
         ),
+        if (session.detail.seasons.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 16),
+            child: SeasonStrip(
+              seasons: session.detail.seasons,
+              current: drama.id,
+              store: widget.store,
+              metaSize: 13,
+              tagSize: 12,
+              sectionSize: 15,
+              collapsed: false,
+              currentStatus: '正在播放',
+              onSelected: (season) => unawaited(_playSeason(season)),
+            ),
+          ),
       ],
     );
+  }
+
+  Future<void> _playSeason(DramaSeason season) async {
+    if (_session.switchingSeason) return;
+    if (!await _session.playSeason(season) && mounted) {
+      _say('${season.label}切换失败，请稍后重试');
+    }
   }
 
   Widget _episodes(BuildContext context) {
