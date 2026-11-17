@@ -121,6 +121,7 @@ class DanmakuSettings extends StatelessWidget {
     bool? bold,
     DanmakuCoverage? coverage,
     double? speed,
+    DanmakuMerge? merge,
     List<String>? words,
   }) async {
     _save(
@@ -133,6 +134,7 @@ class DanmakuSettings extends StatelessWidget {
         danmakuBold: bold,
         danmakuCoverage: coverage,
         danmakuSpeed: speed,
+        danmakuMerge: merge,
         danmakuWords: words,
       ),
     );
@@ -195,6 +197,34 @@ class DanmakuSettings extends StatelessWidget {
         _shadowTile(),
         _section(context, '滚动'),
         _speedTile(),
+        _section(context, '合并重复'),
+        Text(
+          preferences.danmakuMerge == DanmakuMerge.off
+              ? '关闭时每条弹幕单独滚动。'
+              : '时间相近、文字完全相同的弹幕并成一条，后面标上出现的次数。',
+          style: TextStyle(fontSize: 13, height: 1.4, color: label.color),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(0, 8, 0, 8),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final merge in DanmakuMerge.values)
+                ChoiceChip(
+                  label: Text(merge.label),
+                  selected: preferences.danmakuMerge == merge,
+                  showCheckmark: false,
+                  shape: const StadiumBorder(),
+                  onSelected: (_) => _apply(
+                    () =>
+                        session?.setDanmakuMerge(merge) ??
+                        _asyncSave(merge: merge),
+                  ),
+                ),
+            ],
+          ),
+        ),
         _section(context, '显示区域'),
         Padding(
           padding: const EdgeInsets.fromLTRB(0, 4, 0, 8),

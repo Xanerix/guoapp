@@ -18,6 +18,7 @@ void main() {
     expect(preferences.danmakuShadow, 3);
     expect(preferences.danmakuCoverage, DanmakuCoverage.half);
     expect(preferences.danmakuSpeed, 1);
+    expect(preferences.danmakuMerge, DanmakuMerge.ten);
     expect(preferences.danmakuWords, isEmpty);
   });
 
@@ -31,12 +32,14 @@ void main() {
       danmakuShadow: 6,
       danmakuCoverage: DanmakuCoverage.full,
       danmakuSpeed: 1.5,
+      danmakuMerge: DanmakuMerge.thirty,
       danmakuWords: ['剧透', '广告'],
     );
     final restored = PlaybackPreferences.fromJson(preferences.toJson());
     expect(restored.toJson(), preferences.toJson());
     expect(restored.danmakuColor, 0xFFFFE066);
     expect(restored.danmakuCoverage, DanmakuCoverage.full);
+    expect(restored.danmakuMerge, DanmakuMerge.thirty);
     expect(restored.danmakuWords, ['剧透', '广告']);
   });
 
@@ -48,6 +51,7 @@ void main() {
       'danmakuShadow': 99,
       'danmakuSpeed': 9,
       'danmakuCoverage': 'unknown',
+      'danmakuMerge': 'weekly',
       'danmakuColor': 0xFF123456,
     });
     expect(preferences.danmakuScale, danmakuScaleMax);
@@ -56,6 +60,7 @@ void main() {
     expect(preferences.danmakuShadow, danmakuShadowMax);
     expect(preferences.danmakuSpeed, danmakuSpeedMax);
     expect(preferences.danmakuCoverage, DanmakuCoverage.half);
+    expect(preferences.danmakuMerge, DanmakuMerge.ten);
     expect(preferences.danmakuColor, 0xFFFFFFFF);
   });
 

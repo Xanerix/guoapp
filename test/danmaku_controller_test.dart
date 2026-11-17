@@ -5,6 +5,7 @@ import 'package:duanju_app/core_bridge.dart';
 import 'package:duanju_app/danmaku_controller.dart';
 import 'package:duanju_app/danmaku_models.dart';
 import 'package:duanju_app/models.dart';
+import 'package:duanju_app/playback_preferences.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fakes.dart';
@@ -363,6 +364,59 @@ void main() {
     expect(controller.items, hasLength(1));
     expect(controller.blockedCount, 0);
     expect(controller.status, '已载入 1 条弹幕');
+  });
+
+  test('repeated text within the merge window collapses into one entry',
+      () async {
+    final repository = _DanmakuRepository()
+      ..response = (request) => DanmakuPage(
+        episodeId: request.plan.danmakuId,
+        startMs: request.startMs,
+        nextMs: request.startMs + danmakuWindowMs,
+        items: [
+          DanmakuItem(id: 'a', text: '爷青回', timeMs: request.startMs),
+          DanmakuItem(id: 'b', text: '爷青回', timeMs: request.startMs + 3000),
+          DanmakuItem(id: 'c', text: '前排放板凳', timeMs: request.startMs + 4000),
+          DanmakuItem(id: 'd', text: '爷青回', timeMs: request.startMs + 8000),
+          DanmakuItem(id: 'e', text: '爷青回', timeMs: request.startMs + 12000),
+        ],
+      );
+    final controller = _open(repository)..setMergeWindow(DanmakuMerge.ten);
+    _update(controller);
+    await _flush();
+    expect(controller.items.map((item) => item.text), ['爷青回', '前排放板凳', '爷青回']);
+    expect(controller.items.map((item) => item.count), [3, 1, 1]);
+    expect(controller.items.first.timeMs, 0);
+    expect(controller.items.first.id, 'a#3');
+    expect(controller.itemCount, 5);
+    expect(controller.status, '已载入 5 条弹幕');
+  });
+
+  test('the merge window applies to the whole span and can be switched off',
+      () async {
+    final repository = _DanmakuRepository()
+      ..response = (request) => DanmakuPage(
+        episodeId: request.plan.danmakuId,
+        startMs: request.startMs,
+        nextMs: request.startMs + danmakuWindowMs,
+        items: [
+          DanmakuItem(id: 'a', text: '好家伙', timeMs: request.startMs),
+          DanmakuItem(id: 'b', text: '好家伙', timeMs: request.startMs + 6000),
+          DanmakuItem(id: 'c', text: '好家伙', timeMs: request.startMs + 26000),
+        ],
+      );
+    final controller = _open(repository)..setMergeWindow(DanmakuMerge.thirty);
+    _update(controller);
+    await _flush();
+    expect(controller.items.map((item) => item.count), [3]);
+
+    controller.setMergeWindow(DanmakuMerge.ten);
+    expect(controller.items.map((item) => item.count), [2, 1]);
+    expect(controller.items.map((item) => item.text), ['好家伙', '好家伙']);
+
+    controller.setMergeWindow(DanmakuMerge.off);
+    expect(controller.items, hasLength(3));
+    expect(controller.items.map((item) => item.id), ['a', 'b', 'c']);
   });
 
   test('identical blocked words do not reload the layout', () async {
