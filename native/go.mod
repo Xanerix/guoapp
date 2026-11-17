@@ -1,6 +1,6 @@
 module duanjuapp/native
 
-go 1.26.0
+go 1.26.10
 
 require (
 	github.com/bogdanfinn/fhttp v0.6.9
