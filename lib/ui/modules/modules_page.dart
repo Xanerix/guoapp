@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 
@@ -52,15 +53,27 @@ Map<String, String> _missingSources(
   return {for (final source in sources) source: describe(source)};
 }
 
+const _tabLabels = ['已安装', '在线仓库', '内置', '手动'];
+
 class _ModulesPageState extends State<ModulesPage>
     with SingleTickerProviderStateMixin {
-  late final _tabs = TabController(length: 4, vsync: this)
+  late final _tabs = TabController(length: _tabLabels.length, vsync: this)
     ..addListener(_tabChanged);
   List<SourceModule>? _modules;
   String? _error;
   ModuleStore? _index;
   String? _indexError;
   bool _busy = false;
+  final _groupsScope = FocusScopeNode(
+    debugLabel: 'modules-groups',
+    traversalEdgeBehavior: TraversalEdgeBehavior.parentScope,
+  );
+  final _detailScope = FocusScopeNode(
+    debugLabel: 'modules-detail',
+    traversalEdgeBehavior: TraversalEdgeBehavior.parentScope,
+  );
+  final _groupFocus = [for (final _ in _tabLabels) FocusNode()];
+  var _detailFocused = false;
 
   LocalStore get _store => widget.store;
 
@@ -80,6 +93,11 @@ class _ModulesPageState extends State<ModulesPage>
   @override
   void dispose() {
     _tabs.dispose();
+    _groupsScope.dispose();
+    _detailScope.dispose();
+    for (final node in _groupFocus) {
+      node.dispose();
+    }
     super.dispose();
   }
 
@@ -206,6 +224,10 @@ class _ModulesPageState extends State<ModulesPage>
   }
 
   Future<void> _uninstall(SourceModule module) async {
+    if (await _confirmUninstall(module)) await _remove(module);
+  }
+
+  Future<bool> _confirmUninstall(SourceModule module) async {
     final accepted = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -230,15 +252,16 @@ class _ModulesPageState extends State<ModulesPage>
         ],
       ),
     );
-    if (accepted != true) return;
-    await _run(() async {
-      if (_repository.supportsDownloads && SourceSite.isAvailable(module.id)) {
-        await _repository.controlDownloads('pauseSource', id: module.id);
-      }
-      await _repository.uninstallModule(module.id);
-      _show('${module.name} 已卸载');
-    });
+    return accepted == true;
   }
+
+  Future<void> _remove(SourceModule module) => _run(() async {
+    if (_repository.supportsDownloads && SourceSite.isAvailable(module.id)) {
+      await _repository.controlDownloads('pauseSource', id: module.id);
+    }
+    await _repository.uninstallModule(module.id);
+    _show('${module.name} 已卸载');
+  });
 
   Future<void> _toggle(SourceModule module, bool value) {
     final repository = _repository;
@@ -250,13 +273,55 @@ class _ModulesPageState extends State<ModulesPage>
     });
   }
 
+  ValueChanged<bool>? _toggleFor(SourceModule module) =>
+      _store.profile.admin &&
+          module.error.isEmpty &&
+          SourceSite.isAvailable(module.id)
+      ? (value) => _toggle(module, value)
+      : null;
+
   Future<void> _details(SourceModule module) => showDialog<void>(
     context: context,
     builder: (_) => _ModuleDialog(module: module, install: false),
   );
 
+  Future<void> _menu(SourceModule module, ModuleIndexEntry? update) =>
+      showDialog<void>(
+        context: context,
+        builder: (menu) => ListenableBuilder(
+          listenable: _store,
+          builder: (menu, _) {
+            final enabled = _canInstall;
+            return _ModuleMenu(
+              module: module,
+              update: update,
+              enabled: _store.sourceEnabled(module.id),
+              onToggle: _toggleFor(module),
+              admin: _store.profile.admin,
+              onUpdate: update != null && enabled
+                  ? () {
+                      Navigator.pop(menu);
+                      _installIndexed(update);
+                    }
+                  : null,
+              onUninstall: enabled
+                  ? () async {
+                      if (!await _confirmUninstall(module) || !menu.mounted) {
+                        return;
+                      }
+                      Navigator.pop(menu);
+                      await _remove(module);
+                    }
+                  : null,
+            );
+          },
+        ),
+      );
+
   Widget _list(List<Widget> children) => ListView.separated(
-    padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+    padding: AppScope.of(context).television
+        ? const EdgeInsets.fromLTRB(24, 8, televisionInset, 27)
+        : const EdgeInsets.fromLTRB(16, 8, 16, 24),
     itemCount: children.length,
     itemBuilder: (_, index) => children[index],
     separatorBuilder: (_, _) => const SizedBox(height: 12),
@@ -285,14 +350,11 @@ class _ModulesPageState extends State<ModulesPage>
             module: module,
             update: _updateFor(module, latest[module.id]),
             enabled: _store.sourceEnabled(module.id),
-            onToggle:
-                _store.profile.admin &&
-                    module.error.isEmpty &&
-                    SourceSite.isAvailable(module.id)
-                ? (value) => _toggle(module, value)
-                : null,
+            onToggle: _toggleFor(module),
             admin: _store.profile.admin,
-            onDetails: () => _details(module),
+            onDetails: AppScope.of(context).television
+                ? () => _menu(module, _updateFor(module, latest[module.id]))
+                : () => _details(module),
             onUpdate: enabled
                 ? () => _installIndexed(latest[module.id]!)
                 : null,
@@ -375,66 +437,221 @@ class _ModulesPageState extends State<ModulesPage>
     ]);
   }
 
-  @override
-  Widget build(BuildContext context) => ListenableBuilder(
-    listenable: _store,
-    builder: (context, _) => Scaffold(
-      appBar: AppBar(
-        title: const Text('模块'),
-        actions: [
-          if (_tabs.index == 1)
-            BarButton(
-              icon: Icons.refresh_rounded,
-              tooltip: '刷新',
-              onPressed: _index == null && _indexError == null
-                  ? null
-                  : _loadIndex,
-            ),
-          const SizedBox(width: 8),
-        ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(48),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: TabBar(
-              controller: _tabs,
-              isScrollable: true,
-              tabAlignment: TabAlignment.start,
-              labelStyle: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
+  Widget? _refreshButton() => _tabs.index == 1
+      ? BarButton(
+          icon: Icons.refresh_rounded,
+          tooltip: '刷新',
+          onPressed: _index == null && _indexError == null ? null : _loadIndex,
+        )
+      : null;
+
+  Widget _tabBar() => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 4),
+    child: TabBar(
+      controller: _tabs,
+      isScrollable: true,
+      tabAlignment: TabAlignment.start,
+      labelStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+      unselectedLabelStyle: const TextStyle(
+        fontSize: 15,
+        fontWeight: FontWeight.w500,
+      ),
+      tabs: [for (final label in _tabLabels) Tab(text: label)],
+    ),
+  );
+
+  Widget _body() => Column(
+    children: [
+      if (_busy) const LinearProgressIndicator(),
+      Expanded(
+        child: TabBarView(
+          controller: _tabs,
+          children: [
+            _installedTab(),
+            _catalogTab(bundled: false),
+            _catalogTab(bundled: true),
+            _manualTab(),
+          ],
+        ),
+      ),
+    ],
+  );
+
+  Widget _content() => switch (_tabs.index) {
+    0 => _installedTab(),
+    1 => _catalogTab(bundled: false),
+    2 => _catalogTab(bundled: true),
+    _ => _manualTab(),
+  };
+
+  void _select(int index) => _tabs.index = index;
+
+  FocusNode? _detailTarget({required bool resume}) {
+    final last = _detailScope.focusedChild;
+    if (resume && last != null && last.canRequestFocus) return last;
+    final first = FocusTraversalGroup.of(
+      context,
+    ).findFirstFocus(_detailScope, ignoreCurrentFocus: true);
+    return first == _detailScope ? null : first;
+  }
+
+  KeyEventResult _onGroupsKey(KeyEvent event) {
+    if (event is KeyUpEvent ||
+        event.logicalKey != LogicalKeyboardKey.arrowRight) {
+      return KeyEventResult.ignored;
+    }
+    final target = _detailTarget(resume: true);
+    if (target == null) return KeyEventResult.ignored;
+    revealFocus(target);
+    return KeyEventResult.handled;
+  }
+
+  KeyEventResult _onDetailKey(KeyEvent event) {
+    if (event is KeyUpEvent ||
+        event.logicalKey != LogicalKeyboardKey.arrowLeft) {
+      return KeyEventResult.ignored;
+    }
+    final focus = FocusManager.instance.primaryFocus;
+    if (focus != null && focus.focusInDirection(TraversalDirection.left)) {
+      return KeyEventResult.handled;
+    }
+    revealFocus(_groupFocus[_tabs.index]);
+    return KeyEventResult.handled;
+  }
+
+  Widget _groupList() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(televisionInset, 27, 12, 0),
+        child: SizedBox(
+          height: 48,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: Text(
+                '模块',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
-              unselectedLabelStyle: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
-              ),
-              tabs: const [
-                Tab(text: '已安装'),
-                Tab(text: '在线仓库'),
-                Tab(text: '内置'),
-                Tab(text: '手动'),
-              ],
             ),
           ),
         ),
       ),
-      body: Column(
-        children: [
-          if (_busy) const LinearProgressIndicator(),
-          Expanded(
-            child: TabBarView(
-              controller: _tabs,
-              children: [
-                _installedTab(),
-                _catalogTab(bundled: false),
-                _catalogTab(bundled: true),
-                _manualTab(),
-              ],
-            ),
+      Expanded(
+        child: ScrollConfiguration(
+          behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(televisionInset, 4, 16, 27),
+            children: [
+              for (final (index, label) in _tabLabels.indexed)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: SettingsGroupItem(
+                    label: label,
+                    selected: index == _tabs.index,
+                    focusNode: _groupFocus[index],
+                    autofocus: index == _tabs.index,
+                    onTap: () => _select(index),
+                    onFocus: () => _select(index),
+                  ),
+                ),
+            ],
           ),
-        ],
+        ),
+      ),
+    ],
+  );
+
+  Widget _detail() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(24, 27, televisionInset, 0),
+        child: SizedBox(
+          height: 48,
+          child: Row(
+            children: [
+              Expanded(
+                child: Semantics(
+                  header: true,
+                  child: Text(
+                    _tabLabels[_tabs.index],
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+              ?_refreshButton(),
+            ],
+          ),
+        ),
+      ),
+      if (_busy) const LinearProgressIndicator(),
+      Expanded(
+        child: KeyedSubtree(key: ValueKey(_tabs.index), child: _content()),
+      ),
+    ],
+  );
+
+  Widget _television() => PopScope(
+    canPop: !_detailFocused,
+    onPopInvokedWithResult: (didPop, _) {
+      if (!didPop) revealFocus(_groupFocus[_tabs.index]);
+    },
+    child: Scaffold(
+      body: SafeArea(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              width: 280,
+              child: Focus(
+                canRequestFocus: false,
+                skipTraversal: true,
+                onKeyEvent: (_, event) => _onGroupsKey(event),
+                child: FocusScope(node: _groupsScope, child: _groupList()),
+              ),
+            ),
+            Expanded(
+              child: Focus(
+                canRequestFocus: false,
+                skipTraversal: true,
+                onFocusChange: (focused) =>
+                    setState(() => _detailFocused = focused),
+                onKeyEvent: (_, event) => _onDetailKey(event),
+                child: FocusScope(node: _detailScope, child: _detail()),
+              ),
+            ),
+          ],
+        ),
       ),
     ),
+  );
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: _store,
+    builder: (context, _) => AppScope.of(context).television
+        ? _television()
+        : Scaffold(
+            appBar: AppBar(
+              title: const Text('模块'),
+              actions: [?_refreshButton(), const SizedBox(width: 8)],
+              bottom: PreferredSize(
+                preferredSize: const Size.fromHeight(48),
+                child: _tabBar(),
+              ),
+            ),
+            body: _body(),
+          ),
   );
 }
 
@@ -460,73 +677,106 @@ class _ModuleCard extends StatelessWidget {
   final List<Widget> actions;
   final VoidCallback? onTap;
 
+  void _reveal(BuildContext context) {
+    final box = context.findRenderObject();
+    if (box is RenderBox && box.hasSize) {
+      box.showOnScreen(rect: (Offset.zero & box.size).inflate(16));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final television = AppScope.of(context).television;
     final meta = theme.textTheme.bodySmall?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,
       height: 1.35,
     );
     final footer = leading.isNotEmpty || actions.isNotEmpty;
-    return GroupCard(
+    final bottom = footer ? 10.0 : 14.0;
+    final details = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        InkWell(
-          onTap: onTap,
-          child: Column(
-            children: [
-              Padding(
-                padding: EdgeInsets.fromLTRB(18, 14, 12, footer ? 10 : 14),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          DefaultTextStyle.merge(
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontSize: 18,
-                            ),
-                            child: _ModuleTitle(name, adult: adult),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            '版本：${version.isEmpty ? '未标注' : version}',
-                            style: meta,
-                          ),
-                          Text('标识：$id', style: meta),
-                          if (body.isNotEmpty) ...[
-                            const SizedBox(height: 6),
-                            ...body,
-                          ],
-                        ],
-                      ),
-                    ),
-                    ?trailing,
-                  ],
-                ),
-              ),
-              if (footer) ...[
-                Divider(
-                  height: 1,
-                  indent: 18,
-                  endIndent: 18,
-                  color: theme.colorScheme.outlineVariant.withValues(
-                    alpha: 0.6,
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
-                  child: Row(
-                    spacing: 8,
-                    children: [...leading, const Spacer(), ...actions],
-                  ),
-                ),
-              ],
-            ],
-          ),
+        DefaultTextStyle.merge(
+          style: theme.textTheme.titleMedium?.copyWith(fontSize: 18),
+          child: _ModuleTitle(name, adult: adult),
         ),
+        const SizedBox(height: 2),
+        Text('版本：${version.isEmpty ? '未标注' : version}', style: meta),
+        Text('标识：$id', style: meta),
+        if (body.isNotEmpty) ...[const SizedBox(height: 6), ...body],
       ],
+    );
+    final header = television
+        ? Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: _televisionDetails(details, bottom)),
+              if (trailing case final trailing?)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(0, 14, 12, 0),
+                  child: trailing,
+                ),
+            ],
+          )
+        : Padding(
+            padding: EdgeInsets.fromLTRB(18, 14, 12, bottom),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: details),
+                ?trailing,
+              ],
+            ),
+          );
+    return Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      onFocusChange: (focused) {
+        if (focused && television) _reveal(context);
+      },
+      child: GroupCard(
+        children: [
+          InkWell(
+            onTap: television ? null : onTap,
+            child: Column(
+              children: [
+                header,
+                if (footer) ...[
+                  Divider(
+                    height: 1,
+                    indent: 18,
+                    endIndent: 18,
+                    color: theme.colorScheme.outlineVariant.withValues(
+                      alpha: 0.6,
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+                    child: Row(
+                      spacing: 8,
+                      children: [...leading, const Spacer(), ...actions],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _televisionDetails(Widget details, double bottom) {
+    final padded = Padding(
+      padding: EdgeInsets.fromLTRB(18, 14, 12, bottom),
+      child: details,
+    );
+    final tap = onTap;
+    if (tap == null) return padded;
+    return TileFocus(
+      builder: (focusNode) =>
+          InkWell(focusNode: focusNode, onTap: tap, child: padded),
     );
   }
 }
@@ -562,7 +812,8 @@ class _InstalledCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return _ModuleCard(
+    final television = AppScope.of(context).television;
+    final card = _ModuleCard(
       name: module.name,
       adult: module.adult,
       version: module.version,
@@ -579,47 +830,52 @@ class _InstalledCard extends StatelessWidget {
             ),
         ],
       ],
-      trailing: FocusRing(
-        radius: 20,
-        child: Switch(value: enabled, onChanged: onToggle),
-      ),
+      trailing: television
+          ? null
+          : FocusRing(
+              radius: 20,
+              child: Switch(value: enabled, onChanged: onToggle),
+            ),
       onTap: onDetails,
       leading: [
-        if (module.id == 'sorani' && soraniAccountAvailable())
+        if (!television && module.id == 'sorani' && soraniAccountAvailable())
           SoraniAccountButton(admin: admin, style: _cardButton(colors)),
       ],
-      actions: [
-        if (update != null) ...[
-          FocusRing(
-            radius: 20,
-            child: FilledButton.tonalIcon(
-              style: _cardButton(colors, primary: true),
-              onPressed: onUpdate,
-              icon: const Icon(Icons.cloud_upload_outlined),
-              label: const Text('更新'),
-            ),
-          ),
-          FocusRing(
-            radius: 20,
-            child: IconButton.filledTonal(
-              visualDensity: VisualDensity.compact,
-              tooltip: '卸载',
-              onPressed: onUninstall,
-              icon: const Icon(Icons.delete_outline_rounded),
-            ),
-          ),
-        ] else
-          FocusRing(
-            radius: 20,
-            child: FilledButton.tonalIcon(
-              style: _cardButton(colors),
-              onPressed: onUninstall,
-              icon: const Icon(Icons.delete_outline_rounded),
-              label: const Text('卸载'),
-            ),
-          ),
-      ],
+      actions: television
+          ? const []
+          : [
+              if (update != null) ...[
+                FocusRing(
+                  radius: 20,
+                  child: FilledButton.tonalIcon(
+                    style: _cardButton(colors, primary: true),
+                    onPressed: onUpdate,
+                    icon: const Icon(Icons.cloud_upload_outlined),
+                    label: const Text('更新'),
+                  ),
+                ),
+                FocusRing(
+                  radius: 20,
+                  child: IconButton.filledTonal(
+                    visualDensity: VisualDensity.compact,
+                    tooltip: '卸载',
+                    onPressed: onUninstall,
+                    icon: const Icon(Icons.delete_outline_rounded),
+                  ),
+                ),
+              ] else
+                FocusRing(
+                  radius: 20,
+                  child: FilledButton.tonalIcon(
+                    style: _cardButton(colors),
+                    onPressed: onUninstall,
+                    icon: const Icon(Icons.delete_outline_rounded),
+                    label: const Text('卸载'),
+                  ),
+                ),
+            ],
     );
+    return television && !enabled ? Opacity(opacity: 0.4, child: card) : card;
   }
 }
 
@@ -692,86 +948,335 @@ class _ModuleTitle extends StatelessWidget {
   }
 }
 
+List<(String, String, int)> _moduleFacts(
+  SourceModule module, {
+  required bool install,
+}) {
+  final version = module.version.isEmpty ? '未标注' : module.version;
+  return [
+    (
+      '版本',
+      install && module.installed
+          ? '${module.previous.isEmpty ? '未标注' : module.previous} → $version'
+          : version,
+      1,
+    ),
+    ('标识', module.id, 1),
+    ('内容分级', module.adult ? '限制级' : '非限制级', 1),
+    ('可访问的域名', module.hosts.isEmpty ? '无' : module.hosts.join('\n'), 1),
+    (
+      '提供的功能',
+      [
+        '目录、详情和播放',
+        for (final name in module.capabilities)
+          moduleCapabilityNames[name] ?? name,
+      ].join('、'),
+      2,
+    ),
+  ];
+}
+
+class _ModuleFact extends StatelessWidget {
+  const _ModuleFact(this.title, this.body);
+  final String title;
+  final String body;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(top: 12),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      spacing: 4,
+      children: [
+        Text(title, style: Theme.of(context).textTheme.labelLarge),
+        Text(body),
+      ],
+    ),
+  );
+}
+
+class _ModuleDetails extends StatelessWidget {
+  const _ModuleDetails({
+    required this.module,
+    required this.install,
+    this.notes = const [],
+  });
+  final SourceModule module;
+  final bool install;
+  final List<Widget> notes;
+
+  @override
+  Widget build(BuildContext context) {
+    final television = AppScope.of(context).television;
+    final label = Theme.of(context).textTheme.labelLarge;
+    final facts = _moduleFacts(module, install: install);
+    final content = SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        spacing: television ? 4 : 0,
+        children: [
+          ...notes,
+          if (module.description.isNotEmpty)
+            television
+                ? _FoldedText(module.description, maxLines: 3)
+                : Text(module.description),
+          if (television)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Table(
+                columnWidths: const {0: IntrinsicColumnWidth()},
+                defaultVerticalAlignment: TableCellVerticalAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  for (final (title, body, lines) in facts)
+                    TableRow(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(right: 24, bottom: 12),
+                          child: Text(title, style: label),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: _FoldedText(
+                            body,
+                            maxLines: lines,
+                            list: body.contains('\n'),
+                          ),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+            )
+          else
+            for (final (title, body, _) in facts) _ModuleFact(title, body),
+        ],
+      ),
+    );
+    return television ? SizedBox(width: 600, child: content) : content;
+  }
+}
+
+class _FoldedText extends StatelessWidget {
+  const _FoldedText(this.text, {required this.maxLines, this.list = false});
+  final String text;
+  final int maxLines;
+  final bool list;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final items = list ? text.split('\n') : [text];
+      final shown = items.first;
+      final suffix = items.length > 1 ? ' +${items.length - 1}' : null;
+      final painter = TextPainter(
+        text: TextSpan(text: shown, style: DefaultTextStyle.of(context).style),
+        maxLines: maxLines,
+        textDirection: Directionality.of(context),
+        textScaler: MediaQuery.textScalerOf(context),
+      )..layout(maxWidth: constraints.maxWidth);
+      final folded = suffix != null || painter.didExceedMaxLines;
+      painter.dispose();
+      final label = Text(
+        shown,
+        maxLines: maxLines,
+        overflow: TextOverflow.ellipsis,
+      );
+      final content = suffix == null
+          ? label
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(child: label),
+                Text(suffix),
+              ],
+            );
+      if (!folded) return content;
+      return FocusRing(
+        radius: 8,
+        scale: 1,
+        child: InkWell(
+          focusColor: Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          onTap: () => showDialog<void>(
+            context: context,
+            builder: (_) => _FullTextDialog(text),
+          ),
+          child: content,
+        ),
+      );
+    },
+  );
+}
+
+class _FullTextDialog extends StatefulWidget {
+  const _FullTextDialog(this.text);
+  final String text;
+
+  @override
+  State<_FullTextDialog> createState() => _FullTextDialogState();
+}
+
+class _FullTextDialogState extends State<_FullTextDialog> {
+  final _scroll = ScrollController();
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  KeyEventResult _onKey(KeyEvent event) {
+    final step = switch (event.logicalKey) {
+      LogicalKeyboardKey.arrowUp => -120.0,
+      LogicalKeyboardKey.arrowDown => 120.0,
+      _ => null,
+    };
+    if (event is KeyUpEvent || step == null || !_scroll.hasClients) {
+      return KeyEventResult.ignored;
+    }
+    final position = _scroll.position;
+    _scroll.animateTo(
+      (position.pixels + step).clamp(0, position.maxScrollExtent),
+      duration: const Duration(milliseconds: 150),
+      curve: Curves.easeOut,
+    );
+    return KeyEventResult.handled;
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    content: SizedBox(
+      width: 600,
+      child: Focus(
+        autofocus: true,
+        onKeyEvent: (_, event) => _onKey(event),
+        child: SingleChildScrollView(
+          controller: _scroll,
+          child: Text(widget.text),
+        ),
+      ),
+    ),
+  );
+}
+
 class _ModuleDialog extends StatelessWidget {
   const _ModuleDialog({required this.module, required this.install});
   final SourceModule module;
   final bool install;
 
   @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text(
+      !install
+          ? module.name
+          : module.installed
+          ? '更新 ${module.name}？'
+          : '安装 ${module.name}？',
+    ),
+    content: _ModuleDetails(module: module, install: install),
+    actions: [
+      if (install) ...[
+        FocusRing(
+          radius: 20,
+          child: TextButton(
+            autofocus: true,
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+        ),
+        FocusRing(
+          radius: 20,
+          child: FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(module.installed ? '更新' : '安装'),
+          ),
+        ),
+      ] else
+        FocusRing(
+          radius: 20,
+          child: TextButton(
+            autofocus: true,
+            onPressed: () => Navigator.pop(context),
+            child: const Text('关闭'),
+          ),
+        ),
+    ],
+  );
+}
+
+class _ModuleMenu extends StatelessWidget {
+  const _ModuleMenu({
+    required this.module,
+    required this.update,
+    required this.enabled,
+    required this.onToggle,
+    required this.admin,
+    required this.onUpdate,
+    required this.onUninstall,
+  });
+  final SourceModule module;
+  final ModuleIndexEntry? update;
+  final bool enabled;
+  final ValueChanged<bool>? onToggle;
+  final bool admin;
+  final VoidCallback? onUpdate;
+  final VoidCallback? onUninstall;
+
+  @override
   Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-    final version = module.version.isEmpty ? '未标注' : module.version;
-    final capabilities = [
-      for (final name in module.capabilities)
-        moduleCapabilityNames[name] ?? name,
-    ];
-    Widget section(String title, String body) => Padding(
-      padding: const EdgeInsets.only(top: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        spacing: 4,
-        children: [
-          Text(title, style: text.labelLarge),
-          Text(body),
+    final colors = Theme.of(context).colorScheme;
+    final toggle = onToggle;
+    return AlertDialog(
+      title: Text(module.name),
+      content: _ModuleDetails(
+        module: module,
+        install: false,
+        notes: [
+          if (module.error.isNotEmpty)
+            Text(module.error, style: TextStyle(color: colors.error)),
+          if (update case final update?)
+            Text(
+              '可更新到 ${update.version}',
+              style: TextStyle(color: colors.primary),
+            ),
         ],
       ),
-    );
-    return AlertDialog(
-      title: Text(
-        !install
-            ? module.name
-            : module.installed
-            ? '更新 ${module.name}？'
-            : '安装 ${module.name}？',
-      ),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (module.description.isNotEmpty) Text(module.description),
-            section(
-              '版本',
-              install && module.installed
-                  ? '${module.previous.isEmpty ? '未标注' : module.previous} → $version'
-                  : version,
-            ),
-            section('标识', module.id),
-            section('内容分级', module.adult ? '限制级' : '非限制级'),
-            section(
-              '可访问的域名',
-              module.hosts.isEmpty ? '无' : module.hosts.join('\n'),
-            ),
-            section('提供的功能', ['目录、详情和播放', ...capabilities].join('、')),
-          ],
-        ),
-      ),
       actions: [
-        if (install) ...[
+        if (module.id == 'sorani' && soraniAccountAvailable())
+          SoraniAccountButton(admin: admin),
+        if (update != null)
           FocusRing(
             radius: 20,
-            child: TextButton(
-              autofocus: true,
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('取消'),
+            child: FilledButton.tonalIcon(
+              onPressed: onUpdate,
+              icon: const Icon(Icons.cloud_upload_outlined),
+              label: const Text('更新'),
             ),
           ),
-          FocusRing(
-            radius: 20,
-            child: FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: Text(module.installed ? '更新' : '安装'),
-            ),
+        FocusRing(
+          radius: 20,
+          child: FilledButton.tonalIcon(
+            autofocus: toggle == null,
+            onPressed: onUninstall,
+            icon: const Icon(Icons.delete_outline_rounded),
+            label: const Text('卸载'),
           ),
-        ] else
-          FocusRing(
-            radius: 20,
-            child: TextButton(
-              autofocus: true,
-              onPressed: () => Navigator.pop(context),
-              child: const Text('关闭'),
+        ),
+        FocusRing(
+          radius: 20,
+          child: FilledButton.tonalIcon(
+            autofocus: true,
+            onPressed: toggle == null ? null : () => toggle(!enabled),
+            icon: Icon(
+              enabled
+                  ? Icons.block_rounded
+                  : Icons.check_circle_outline_rounded,
             ),
+            label: Text(enabled ? '禁用' : '启用'),
           ),
+        ),
       ],
     );
   }

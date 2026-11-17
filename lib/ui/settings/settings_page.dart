@@ -380,7 +380,7 @@ class _SettingsPageState extends State<SettingsPage> {
     for (final group in SettingsGroup.values)
       Padding(
         padding: const EdgeInsets.only(top: 4),
-        child: _GroupItem(
+        child: SettingsGroupItem(
           key: ValueKey('settings-${group.name}'),
           label: group.label,
           selected: group == _group,
@@ -546,56 +546,4 @@ class _DetailHeader extends StatelessWidget {
       ),
     ),
   );
-}
-
-class _GroupItem extends StatelessWidget {
-  const _GroupItem({
-    super.key,
-    required this.label,
-    required this.selected,
-    required this.focusNode,
-    required this.autofocus,
-    required this.onTap,
-    required this.onFocus,
-  });
-  final String label;
-  final bool selected;
-  final FocusNode focusNode;
-  final bool autofocus;
-  final VoidCallback onTap;
-  final VoidCallback? onFocus;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final television = AppScope.of(context).television;
-    final item = FocusPill(
-      focusNode: focusNode,
-      selected: selected,
-      textStyle: theme.textTheme.titleSmall?.copyWith(
-        fontSize: 15,
-        fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-        color: theme.colorScheme.onSurface,
-      ),
-      child: InkWell(
-        focusNode: focusNode,
-        autofocus: autofocus,
-        focusColor: television ? Colors.transparent : null,
-        onTap: onTap,
-        onFocusChange: (focused) {
-          if (focused) onFocus?.call();
-        },
-        child: Container(
-          height: 48,
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          alignment: Alignment.centerLeft,
-          child: Text(label),
-        ),
-      ),
-    );
-    return Semantics(
-      selected: selected,
-      child: television ? item : FocusRing(radius: 24, scale: 1, child: item),
-    );
-  }
 }
