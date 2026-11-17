@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'app_device.dart';
+import 'boss_key.dart';
 import 'core_bridge.dart';
 import 'diary_service.dart';
 import 'local_files.dart';
@@ -50,7 +51,10 @@ Future<void> main() async {
       );
     } catch (_) {}
   }
-  if (Platform.isWindows || Platform.isMacOS) await restoreWindowOnTop();
+  if (Platform.isWindows || Platform.isMacOS) {
+    await restoreWindowOnTop();
+    await restoreBossKey();
+  }
   MediaKit.ensureInitialized();
   final device = await AppDevice.detect();
   final rendering = Platform.isAndroid

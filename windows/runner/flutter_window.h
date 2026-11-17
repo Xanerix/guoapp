@@ -34,6 +34,8 @@ class FlutterWindow : public Win32Window {
   void KeepMiniAspect(WPARAM edge, RECT* frame);
   flutter::EncodableValue WindowFrame();
   bool SetWindowFrame(const flutter::EncodableMap& args);
+  bool SetBossKey(const flutter::EncodableMap* args);
+  void ToggleHidden();
 
   // The project to run.
   flutter::DartProject project_;

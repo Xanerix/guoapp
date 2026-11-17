@@ -22,6 +22,7 @@ import '../widgets/form_text_field.dart';
 import '../widgets/group_card.dart';
 import 'appearance_settings.dart';
 import 'backup_actions.dart';
+import 'boss_key_tile.dart';
 import 'diary_view.dart';
 import 'settings_rows.dart';
 import 'storage_view.dart';
@@ -320,6 +321,7 @@ class SettingsSection extends StatelessWidget {
                     saveSetting(context, () => setWindowOnTop(value)),
               ),
             ),
+            const BossKeyTile(),
           ],
         ),
     ];
