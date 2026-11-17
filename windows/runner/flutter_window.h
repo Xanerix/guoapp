@@ -43,7 +43,7 @@ class FlutterWindow : public Win32Window {
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> device_channel_;
   Microsoft::WRL::ComPtr<ITaskbarList2> taskbar_;
   bool fullscreen_ = false;
-  RECT frame_before_fullscreen_{};
+  WINDOWPLACEMENT placement_before_fullscreen_{};
   bool mini_ = false;
   bool fullscreen_before_mini_ = false;
   double mini_aspect_ = 16.0 / 9.0;

@@ -1,6 +1,7 @@
 #include "flutter_window.h"
 
 #include <commctrl.h>
+#include <dwmapi.h>
 
 #include <algorithm>
 #include <cmath>
@@ -173,7 +174,6 @@ void FlutterWindow::SetFullScreen(bool enabled) {
     return;
   }
   HWND window = GetHandle();
-  RECT target = frame_before_fullscreen_;
   if (enabled) {
     MONITORINFO monitor{};
     monitor.cbSize = sizeof(monitor);
@@ -181,13 +181,28 @@ void FlutterWindow::SetFullScreen(bool enabled) {
                         &monitor)) {
       return;
     }
-    GetWindowRect(window, &frame_before_fullscreen_);
-    target = monitor.rcMonitor;
+    placement_before_fullscreen_.length = sizeof(WINDOWPLACEMENT);
+    GetWindowPlacement(window, &placement_before_fullscreen_);
+    SetWindowLong(window, GWL_STYLE,
+                  GetWindowLong(window, GWL_STYLE) & ~WS_MAXIMIZE);
+    fullscreen_ = true;
+    const RECT target = monitor.rcMonitor;
+    SetWindowPos(window, nullptr, target.left, target.top,
+                 target.right - target.left, target.bottom - target.top,
+                 SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+  } else {
+    fullscreen_ = false;
+    SetWindowPos(window, nullptr, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE |
+                     SWP_FRAMECHANGED);
+    BOOL transitions_disabled = TRUE;
+    DwmSetWindowAttribute(window, DWMWA_TRANSITIONS_FORCEDISABLED,
+                          &transitions_disabled, sizeof(transitions_disabled));
+    SetWindowPlacement(window, &placement_before_fullscreen_);
+    transitions_disabled = FALSE;
+    DwmSetWindowAttribute(window, DWMWA_TRANSITIONS_FORCEDISABLED,
+                          &transitions_disabled, sizeof(transitions_disabled));
   }
-  fullscreen_ = enabled;
-  SetWindowPos(window, nullptr, target.left, target.top,
-               target.right - target.left, target.bottom - target.top,
-               SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
   if (taskbar_) {
     taskbar_->MarkFullscreenWindow(window, enabled);
   }
