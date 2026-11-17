@@ -518,9 +518,10 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
                 IgnorePointer(ignoring: _scrolling, child: _controls(context)),
                 PlayerLockOverlay(
                   locked: _session.locked,
-                  alignment: Alignment.topRight,
+                  alignments: [Alignment.topRight, Alignment.topLeft],
                   padding: EdgeInsets.only(
                     top: MediaQuery.paddingOf(context).top + 6,
+                    left: 12,
                     right: 12,
                   ),
                   onUnlock: _unlock,
