@@ -205,6 +205,17 @@ class SettingsSection extends StatelessWidget {
             onChanged: (value) =>
                 savePreferences(preferences.copyWith(preopen: value)),
           ),
+          if (!television)
+            SwitchTile(
+              title: '横屏视频也使用竖屏样式',
+              subtitle: Platform.isAndroid || Platform.isIOS
+                  ? '竖屏观看横屏视频时画面居中，上下滑动切集，点选集右边的按钮进入全屏'
+                  : '窗口竖长时横屏视频画面居中，滚轮切集，点选集右边的按钮进入全屏',
+              value: preferences.portraitStyleForWide,
+              onChanged: (value) => savePreferences(
+                preferences.copyWith(portraitStyleForWide: value),
+              ),
+            ),
         ],
       ),
       if ((Platform.isAndroid || Platform.isIOS) && !television)
@@ -255,14 +266,6 @@ class SettingsSection extends StatelessWidget {
                       preferences.copyWith(hideSystemBars: value),
                     )
                   : null,
-            ),
-            SwitchTile(
-              title: '横屏视频也使用竖屏样式',
-              subtitle: '竖屏观看横屏视频时画面居中，上下滑动切集，点选集右边的按钮进入全屏',
-              value: preferences.portraitStyleForWide,
-              onChanged: (value) => savePreferences(
-                preferences.copyWith(portraitStyleForWide: value),
-              ),
             ),
             SwitchTile(
               title: '横屏底部进度线',

@@ -120,11 +120,13 @@ class DanmakuOverlay extends StatelessWidget {
     required this.video,
     this.fit = VideoFit.auto,
     this.style = const DanmakuStyle(),
+    this.topLimit,
   });
   final DanmakuController controller;
   final Size? video;
   final VideoFit fit;
   final DanmakuStyle style;
+  final double? topLimit;
 
   @override
   Widget build(BuildContext context) => IgnorePointer(
@@ -144,15 +146,23 @@ class DanmakuOverlay extends StatelessWidget {
             MediaQuery.devicePixelRatioOf(context),
           );
           final width = math.min(box.width, shown.width);
-          final height = math.min(box.height, shown.height);
+          final videoHeight = math.min(box.height, shown.height);
+          final videoTop = (box.height - videoHeight) / 2;
+          final top = switch (topLimit) {
+            final limit? => math.min(limit, videoTop),
+            null => videoTop,
+          };
+          final height = videoTop + videoHeight - top;
           final fontSize = (width < 600 ? 16.0 : 20.0) * style.scale;
           final scaler = MediaQuery.textScalerOf(context);
           final rowHeight = scaler.scale(fontSize) * 1.5;
           final rows = ((height * style.coverage.fraction - 8) / rowHeight)
               .floor()
               .clamp(0, danmakuMaxRows);
-          return Center(
-            child: SizedBox(
+          return Align(
+            alignment: Alignment.topCenter,
+            child: Container(
+              margin: EdgeInsets.only(top: top),
               width: width,
               height: height,
               child: ClipRect(

@@ -597,6 +597,9 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
               video: session.videoSize,
               fit: session.videoFit,
               style: session.danmakuStyle,
+              topLimit: (session.videoSize?.aspectRatio ?? 0) > 1
+                  ? math.max(_bars.top, MediaQuery.paddingOf(context).top) + 56
+                  : null,
             ),
             SwipeControls(
               key: const ValueKey('gestures'),
