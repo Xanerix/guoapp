@@ -210,6 +210,7 @@ abstract class AppRepository {
   Future<CatalogPage> cached(String source, {String category = ''});
   Future<String> cover(Drama drama, {bool force = false});
   bool coverCached(Drama drama) => false;
+  String? knownCover(Drama drama) => null;
   Future<DramaDetail> detail(Drama drama);
   Future<PlaybackPlan> resolve(Drama drama, Episode episode, {int quality = 0});
   Future<PlaybackPlan> fallback(PlaybackPlan current);
@@ -946,6 +947,10 @@ class NativeRepository extends AppRepository {
   @override
   bool coverCached(Drama drama) =>
       _coverPaths.containsKey('${drama.id}\u0000${drama.cover}');
+
+  @override
+  String? knownCover(Drama drama) =>
+      _coverPaths['${drama.id}\u0000${drama.cover}'];
 
   @override
   Future<String> cover(Drama drama, {bool force = false}) async {

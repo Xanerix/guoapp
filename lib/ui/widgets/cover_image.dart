@@ -214,6 +214,7 @@ class _CoverImageState extends State<CoverImage> {
   static const _decodeWidth = 440;
   CoverRequest? _request;
   Future<String>? _file;
+  String? _known;
   int _revision = 0;
   bool _failed = false;
   bool _retryOnFailure = false;
@@ -256,6 +257,7 @@ class _CoverImageState extends State<CoverImage> {
   void _load() {
     _request?.cancel();
     _request = null;
+    _known = widget.repository.knownCover(widget.drama);
     _file = CoverLoader.cached(widget.repository, widget.drama);
     if (_file != null) return;
     final request = _request = CoverLoader.request(
@@ -299,6 +301,7 @@ class _CoverImageState extends State<CoverImage> {
     _request?.cancel();
     setState(() {
       _request = null;
+      _known = null;
       _failed = _retryOnFailure = false;
       _failedPath = null;
       _file = widget.repository.cover(
@@ -330,17 +333,20 @@ class _CoverImageState extends State<CoverImage> {
     future: _file,
     builder: (context, snapshot) {
       if (snapshot.connectionState != ConnectionState.done) {
-        return widget.placeholder;
+        final known = _known;
+        return known == null ? widget.placeholder : _image(known);
       }
       if (snapshot.hasError || !snapshot.hasData) return _failure(null);
-      return Image.file(
-        File(snapshot.data!),
-        fit: BoxFit.cover,
-        cacheWidth: _decodeWidth,
-        excludeFromSemantics: true,
-        frameBuilder: fadeInFrameBuilder,
-        errorBuilder: (_, _, _) => _failure(snapshot.data),
-      );
+      return _image(snapshot.data!);
     },
+  );
+
+  Widget _image(String path) => Image.file(
+    File(path),
+    fit: BoxFit.cover,
+    cacheWidth: _decodeWidth,
+    excludeFromSemantics: true,
+    frameBuilder: fadeInFrameBuilder,
+    errorBuilder: (_, _, _) => _failure(path),
   );
 }

@@ -183,8 +183,9 @@ class _DetailPageState extends State<DetailPage> {
   final _televisionDetail = GlobalKey<TelevisionDetailState>();
   bool _entered = false;
   PlaybackHandle? _watched;
-  late bool _autoplayPending = widget.autoplay;
-  late bool _curtain = widget.autoplay;
+  late final bool _direct = AppScope.formFactorOf(context) == FormFactor.phone;
+  late bool _autoplayPending = widget.autoplay || _direct;
+  late bool _curtain = widget.autoplay || _direct;
 
   @override
   void didChangeDependencies() {
@@ -266,14 +267,40 @@ class _DetailPageState extends State<DetailPage> {
     if (!_autoplayPending || !mounted || details.loading) return;
     _autoplayPending = false;
     if (_ready && details.allowed) {
-      await _play(details.resumeIndex, resume: true);
+      if (_direct) await _awaitVideoSize();
       if (!mounted) return;
+      final watched = await _play(details.resumeIndex, resume: true);
+      if (!mounted) return;
+      if (_direct && watched) {
+        Navigator.pop(context);
+        return;
+      }
     }
     if (_curtain) {
       setState(() => _curtain = false);
     } else if (AppScope.of(context).television &&
         details.currentIndex == null) {
       _televisionDetail.currentState?.focusPlay();
+    }
+  }
+
+  Future<void> _awaitVideoSize() async {
+    final session = _handle?.session;
+    if (session == null) return;
+    final known = Completer<void>();
+    void check() {
+      if ((session.aspectKnown || session.error != null) &&
+          !known.isCompleted) {
+        known.complete();
+      }
+    }
+
+    session.addListener(check);
+    check();
+    try {
+      await known.future.timeout(const Duration(seconds: 3), onTimeout: () {});
+    } finally {
+      session.removeListener(check);
     }
   }
 
@@ -307,7 +334,7 @@ class _DetailPageState extends State<DetailPage> {
     );
   }
 
-  Future<void> _play(int index, {bool resume = false}) async {
+  Future<bool> _play(int index, {bool resume = false}) async {
     final details = _details!;
     final episode = details.episodes[index];
     if (episode.vip &&
@@ -330,9 +357,9 @@ class _DetailPageState extends State<DetailPage> {
               ),
             ) !=
             true) {
-      return;
+      return false;
     }
-    if (!mounted || !details.allowed) return;
+    if (!mounted || !details.allowed) return false;
     final position = _startAt(index, resume: resume);
     final handle = _handle ?? _open(index, position: position);
     _handle = null;
@@ -344,20 +371,21 @@ class _DetailPageState extends State<DetailPage> {
       builder: (_) => PlaybackPage(store: widget.store, handle: handle),
     );
     final closed = Navigator.of(context, rootNavigator: true).push(route);
-    if (_curtain) _liftCurtainAfter(route.animation!);
+    if (_curtain && !_direct) _liftCurtainAfter(route.animation!);
     await closed;
     _watching = false;
     _watched = null;
-    if (!mounted) return;
+    if (!mounted || _curtain) return true;
     final played = handle.session.detail.drama.id;
     if (played != details.drama.id) {
       final season = details.seasons
           .where((season) => season.drama.id == played)
           .firstOrNull;
       if (season != null) await details.selectSeason(season);
-      if (!mounted) return;
+      if (!mounted) return true;
     }
     if (AppScope.of(context).television) _focusWatched(details);
+    return true;
   }
 
   void _focusWatched(DramaDetails details) {
@@ -403,12 +431,7 @@ class _DetailPageState extends State<DetailPage> {
           ),
         );
       }
-      if (_curtain) {
-        return const Scaffold(
-          backgroundColor: Colors.black,
-          body: Center(child: CircularProgressIndicator()),
-        );
-      }
+      if (_curtain) return _transition(widget.drama);
       final form = AppScope.formFactorOf(context);
       if (form == FormFactor.television) return _televisionPage(details);
       if (form == FormFactor.phone || MediaQuery.sizeOf(context).width < 840) {
@@ -762,7 +785,58 @@ class _DetailPageState extends State<DetailPage> {
     );
   }
 
-  Widget _cover(Drama drama, _Metrics m) => DecoratedBox(
+  Widget _transition(Drama drama) {
+    final theme = Theme.of(context);
+    final surface = theme.colorScheme.surface;
+    return Scaffold(
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(backgroundColor: Colors.transparent),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          CoverBackdrop(
+            drama: drama,
+            sigma: 36,
+            opacity: theme.brightness == Brightness.dark ? 0.55 : 0.45,
+            overlay: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [surface.withValues(alpha: .2), surface],
+            ),
+          ),
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _cover(drama, _phone, hero: false),
+                  const SizedBox(height: 20),
+                  Text(
+                    drama.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  const SizedBox.square(
+                    dimension: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2.5),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _cover(Drama drama, _Metrics m, {bool hero = true}) => DecoratedBox(
     decoration: BoxDecoration(
       borderRadius: BorderRadius.circular(m.coverRadius),
       boxShadow: const [
@@ -778,7 +852,7 @@ class _DetailPageState extends State<DetailPage> {
       child: DramaCover(
         drama: drama,
         radius: m.coverRadius,
-        heroScope: 'drama',
+        heroScope: hero ? 'drama' : null,
       ),
     ),
   );
