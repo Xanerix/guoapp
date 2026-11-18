@@ -90,6 +90,9 @@ func (stream *nativeStreamServer) lanClose() {
 }
 
 func (stream *nativeStreamServer) lanPlaylist(request *http.Request, body string) string {
+	if request.Context().Value(webMediaRequest{}) != nil {
+		return strings.ReplaceAll(body, stream.address+"/", WebMediaPrefix)
+	}
 	if origin := "http://" + request.Host; origin != stream.address {
 		return strings.ReplaceAll(body, stream.address+"/", origin+"/")
 	}

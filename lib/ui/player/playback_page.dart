@@ -35,6 +35,7 @@ class _PlaybackPageState extends State<PlaybackPage> {
   MediaQueryData? _media;
   bool _shown = false;
   bool _locked = false;
+  bool? _phoneAutoRotation;
   Player? _bound;
   StreamSubscription<bool>? _playing;
 
@@ -65,6 +66,7 @@ class _PlaybackPageState extends State<PlaybackPage> {
     if (_pip.window) unawaited(_restore());
     unawaited(_playing?.cancel());
     _pageScope.dispose();
+    if (_phoneAutoRotation != null) unawaited(AppDevice.releaseOrientation());
     if (_padFullscreen.value) _applyPadFullscreen(false);
     _padFullscreen.dispose();
     unawaited(AppDevice.resetBrightness());
@@ -76,11 +78,35 @@ class _PlaybackPageState extends State<PlaybackPage> {
     _bind();
     _sync();
     final wide = _measure();
-    if (wide != _wideVideo) setState(() => _wideVideo = wide);
+    if (wide != _wideVideo) {
+      setState(() => _wideVideo = wide);
+      _syncPhoneOrientation();
+    }
     if (_session.locked != _locked) {
       _locked = _session.locked;
       _holdOrientation(_locked);
     }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncPhoneOrientation();
+  }
+
+  void _syncPhoneOrientation() {
+    if (desktopPlatform || AppScope.formFactorOf(context) != FormFactor.phone) {
+      return;
+    }
+    final auto =
+        _wideVideo && !widget.store.playbackPreferences.portraitStyleForWide;
+    if (auto == _phoneAutoRotation) return;
+    _phoneAutoRotation = auto;
+    unawaited(
+      auto
+          ? AppDevice.setPlayerOrientation(PlayerOrientation.auto)
+          : AppDevice.releaseOrientation(),
+    );
   }
 
   void _holdOrientation(bool locked) {
@@ -274,22 +300,21 @@ class _PlaybackPageState extends State<PlaybackPage> {
         FormFactor.television => TelevisionPlayerPage(handle: widget.handle),
       };
     }
-    final portraitStyle = widget.store.playbackPreferences.portraitStyleForWide;
     return switch (form) {
       FormFactor.pad || FormFactor.window => _padPage(context, mini),
       FormFactor.phone
           when _wideVideo &&
-              !(portraitStyle &&
-                  MediaQuery.orientationOf(context) == Orientation.portrait) =>
+              MediaQuery.orientationOf(context) == Orientation.landscape =>
         LandscapePlayerPage(
           store: widget.store,
           handle: widget.handle,
-          followSensor: !portraitStyle,
+          followSensor: false,
           onMiniWindow: mini,
         ),
       FormFactor.phone => PortraitPlayerPage(
         store: widget.store,
         handle: widget.handle,
+        wideControls: _wideVideo,
         onFullscreen: _wideVideo
             ? () => unawaited(
                 AppDevice.setPlayerOrientation(PlayerOrientation.landscape),

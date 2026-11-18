@@ -1,0 +1,12 @@
+*
+!native/
+!native/go.mod
+!native/go.sum
+!native/core/
+!native/core/**
+native/core/bundled/*
+!native/core/bundled/.gitkeep
+!native/cmd/
+!native/cmd/guoapp-web/
+!native/cmd/guoapp-web/**
+!Dockerfile

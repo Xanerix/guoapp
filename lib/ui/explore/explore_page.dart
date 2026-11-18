@@ -365,7 +365,9 @@ class ExplorePageState extends State<ExplorePage> {
                 inset,
                 8,
                 inset,
-                television ? 27 : 16,
+                television
+                    ? 27
+                    : 16 + ShellForeground.bottomNavigationInsetOf(context),
               ),
               sliver: SliverToBoxAdapter(child: FeedFooter(feed: feed)),
             ),

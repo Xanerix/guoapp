@@ -76,6 +76,7 @@ Flutter 多端独立影视应用，手机、平板、电脑和电视分别适配
 | Windows 10/11 x64 | 安装包 `*-setup.exe`，默认安装到当前用户、无需管理员权限；或便携 ZIP，解压后运行 `guoapp.exe`，保留所有 DLL 与 `data` 目录；便携版的设置、记录、缓存和默认下载都存在程序旁的 `userdata` 目录，删掉该目录则改回存到系统用户目录 |
 | iOS 15.1+ | 未签名 IPA，需自行签名或用 iloader 等工具侧载 |
 | macOS 12+ | 通用 dmg（Apple 芯片与 Intel），打开后拖入「应用程序」；未经公证，首次打开前需解除隔离（见下方） |
+| 手机浏览器 | 用 Docker Compose 自托管，支持密码登录、站源分类、搜索、选集和 Safari 播放。见 [Web 部署](#web-部署) |
 
 > [!TIP]
 > Android 安装提示 `INSTALL_FAILED_NO_MATCHING_ABIS` 表示 APK 与设备架构不匹配，请换对应架构的安装包。
@@ -88,6 +89,19 @@ Flutter 多端独立影视应用，手机、平板、电脑和电视分别适配
 > ```
 
 ## 使用说明
+
+### Web 部署
+
+复制 `.env.example` 为 `.env`，设置至少 12 位的访问密码。把已有站源模块放到自行管理的目录，每个模块用站源 ID 作为子目录，里面包含 `manifest.json` 和 `main.js`。将 `GUOAPP_WEB_MODULES_DIR` 指向这个目录，默认配置加载仓库里的离线演示站源。默认绑定 `127.0.0.1:8000`，同一局域网的手机访问时，把 `GUOAPP_WEB_HOST` 改为 Docker 宿主机的局域网 IP。
+
+```sh
+docker compose up -d --build --wait
+docker compose ps
+```
+
+手机 Safari 打开 `http://<宿主机局域网 IP>:8000`，输入访问密码，进入剧集详情后选集，再点播放器的播放按钮。Web 端支持 Safari 兼容的 HLS 和 MP4，能否播放取决于站源提供的线路和编码。
+
+默认 HTTP 供可信局域网使用。外网访问请通过 HTTPS 反向代理，保留原始 `Host` 请求头，并设置 `GUOAPP_WEB_SECURE_COOKIE=true`。更换站源模块后重启容器即可重新加载。
 
 ### 首次打开
 

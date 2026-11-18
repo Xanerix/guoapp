@@ -51,5 +51,7 @@ flutter:
   config:
     enable-swift-package-manager: false
   uses-material-design: true
+  shaders:
+    - assets/shaders/navigation_glass.frag
   assets:
     - assets/danmaku_emoji/

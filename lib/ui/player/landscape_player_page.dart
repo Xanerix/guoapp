@@ -147,7 +147,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
       if (_full == true && desktopPlatform) {
         unawaited(setWindowFullScreen(false));
       }
-      unawaited(AppDevice.releaseOrientation());
+      if (widget.followSensor) unawaited(AppDevice.releaseOrientation());
       unawaited(
         SystemChrome.setEnabledSystemUIMode(
           SystemUiMode.edgeToEdge,

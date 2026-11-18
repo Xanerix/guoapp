@@ -1284,6 +1284,11 @@ class PlaybackFailure extends StatelessWidget {
                       onPressed: session.retry,
                       child: Text(session.localFailure ? '重试本地播放' : '重试'),
                     ),
+                  if (!session.loginRequired && session.currentPosition > 0)
+                    TextButton(
+                      onPressed: session.retryFromStart,
+                      child: const Text('从头播放'),
+                    ),
                   if (session.localFailure)
                     TextButton(
                       onPressed: session.switchOnline,

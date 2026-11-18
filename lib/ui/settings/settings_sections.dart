@@ -209,9 +209,11 @@ class SettingsSection extends StatelessWidget {
           ),
           if (!television)
             SwitchTile(
-              title: '横屏视频也使用竖屏样式',
+              title: Platform.isAndroid || Platform.isIOS
+                  ? '横屏视频默认保持竖屏'
+                  : '横屏视频也使用竖屏样式',
               subtitle: Platform.isAndroid || Platform.isIOS
-                  ? '竖屏观看横屏视频时画面居中，上下滑动切集，点选集右边的按钮进入全屏'
+                  ? '开启后不随设备转动切换，仍可点播放器底部的「横屏」手动切换'
                   : '窗口竖长时横屏视频画面居中，滚轮切集，点选集右边的按钮进入全屏',
               value: preferences.portraitStyleForWide,
               onChanged: (value) => savePreferences(

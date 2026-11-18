@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -22,6 +23,7 @@ import '../theme/motion.dart';
 import '../widgets/focus_ring.dart';
 import '../widgets/motion/motion_widgets.dart';
 import '../widgets/source_bar.dart';
+import 'liquid_glass_navigation.dart';
 
 enum AppTab {
   explore('发现', Icons.explore_outlined, Icons.explore),
@@ -48,19 +50,26 @@ class ShellForeground extends InheritedWidget {
   const ShellForeground({
     super.key,
     required this.foreground,
+    this.floatingNavigation = false,
     required super.child,
   });
   final bool foreground;
+  final bool floatingNavigation;
 
-  static bool of(BuildContext context) =>
-      context
-          .dependOnInheritedWidgetOfExactType<ShellForeground>()
-          ?.foreground ??
-      true;
+  static ShellForeground? _of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<ShellForeground>();
+
+  static bool of(BuildContext context) => _of(context)?.foreground ?? true;
+
+  static double bottomNavigationInsetOf(BuildContext context) =>
+      _of(context)?.floatingNavigation == true
+      ? MediaQuery.paddingOf(context).bottom
+      : 0;
 
   @override
   bool updateShouldNotify(ShellForeground oldWidget) =>
-      foreground != oldWidget.foreground;
+      foreground != oldWidget.foreground ||
+      floatingNavigation != oldWidget.floatingNavigation;
 }
 
 class AppShell extends StatefulWidget {
@@ -285,14 +294,23 @@ class _AppShellState extends State<AppShell> {
         ],
       ),
     );
-    final pages = ShellForeground(
-      foreground: ModalRoute.of(context)?.isCurrent ?? true,
-      child: stack,
-    );
     final television = AppScope.of(context).television;
     final tabs = _tabs;
     if (!tabs.contains(_tab)) _tab = AppTab.explore;
     final covered = _navigator?.canPop() ?? false;
+    final form = AppScope.formFactorOf(context);
+    final iosPhone =
+        !kIsWeb &&
+        defaultTargetPlatform == TargetPlatform.iOS &&
+        form == FormFactor.phone;
+    final showNavigation =
+        !covered && (!iosPhone || MediaQuery.viewInsetsOf(context).bottom == 0);
+    final floatingNavigation = iosPhone && showNavigation;
+    final pages = ShellForeground(
+      foreground: ModalRoute.of(context)?.isCurrent ?? true,
+      floatingNavigation: floatingNavigation,
+      child: stack,
+    );
     return PopScope(
       canPop:
           _exitWindow != null &&
@@ -302,24 +320,13 @@ class _AppShellState extends State<AppShell> {
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) _back();
       },
-      child: switch (AppScope.formFactorOf(context)) {
+      child: switch (form) {
         FormFactor.phone => Scaffold(
+          extendBody: floatingNavigation,
           body: pages,
-          bottomNavigationBar: covered
-              ? null
-              : NavigationBar(
-                  selectedIndex: tabs.indexOf(_tab),
-                  onDestinationSelected: (index) => _tap(tabs[index]),
-                  destinations: [
-                    for (final tab in tabs)
-                      NavigationDestination(
-                        key: ValueKey('nav-${tab.name}'),
-                        icon: _badged(tab, Icon(tab.icon)),
-                        selectedIcon: _badged(tab, Icon(tab.selectedIcon)),
-                        label: tab.label,
-                      ),
-                  ],
-                ),
+          bottomNavigationBar: showNavigation
+              ? _phoneNavigation(tabs, floating: floatingNavigation)
+              : null,
         ),
         FormFactor.pad || FormFactor.window => _wide(pages),
         FormFactor.television => Scaffold(
@@ -364,6 +371,26 @@ class _AppShellState extends State<AppShell> {
         ),
       },
     );
+  }
+
+  Widget _phoneNavigation(List<AppTab> tabs, {required bool floating}) {
+    final bar = NavigationBar(
+      height: floating ? LiquidGlassNavigation.height : null,
+      backgroundColor: floating ? Colors.transparent : null,
+      elevation: floating ? 0 : null,
+      selectedIndex: tabs.indexOf(_tab),
+      onDestinationSelected: (index) => _tap(tabs[index]),
+      destinations: [
+        for (final tab in tabs)
+          NavigationDestination(
+            key: ValueKey('nav-${tab.name}'),
+            icon: _badged(tab, Icon(tab.icon)),
+            selectedIcon: _badged(tab, Icon(tab.selectedIcon)),
+            label: tab.label,
+          ),
+      ],
+    );
+    return floating ? LiquidGlassNavigation(child: bar) : bar;
   }
 
   Widget _badged(AppTab tab, Widget icon) => tab == AppTab.mine

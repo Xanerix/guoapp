@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1{{if eq .View "watch"}},viewport-fit=cover{{end}}">
+  <title>{{.Heading}} · 小果影视</title>
+  <link rel="stylesheet" href="/static/app.css">
+  {{if eq .View "watch"}}<script defer src="/static/player.js"></script>{{end}}
+</head>
+<body{{if eq .View "watch"}} class="watch-page"{{end}}>
+  {{if eq .View "watch"}}
+  <main class="watch-layout" data-watch data-id="{{.Drama.ID}}" data-episode="{{.Playing}}">
+    <header class="watch-heading">
+      <a href="/title?id={{.Drama.ID}}" aria-label="返回剧集详情">‹</a>
+      <div><h1>{{.Heading}}</h1><p data-playing-label>{{range .Episodes}}{{if eq .Index $.Playing}}{{.Label}}{{end}}{{end}}</p></div>
+    </header>
+    <div class="watch-stage">
+      {{if .Playback.URL}}
+        <video data-player src="{{.Playback.URL}}" controls playsinline preload="metadata" aria-label="{{.Heading}}"></video>
+        <p data-player-error hidden class="watch-message" role="alert">视频加载失败，请重新选集或切换画质后重试。</p>
+      {{else}}
+        <p class="watch-message" role="alert">{{.Message}}</p>
+      {{end}}
+    </div>
+    <p class="watch-toast" data-watch-toast hidden role="status"></p>
+    <nav class="watch-toolbar" aria-label="播放选项">
+      <button type="button" data-open="speed" {{if not .Playback.URL}}disabled{{end}}>倍速</button>
+      <button type="button" data-open="quality" {{if not .Playback.URL}}disabled{{end}}>画质</button>
+      <button type="button" data-open="subtitles" {{if not .Playback.URL}}disabled{{end}}>字幕</button>
+      <button type="button" data-fullscreen {{if not .Playback.URL}}disabled{{end}}>横屏</button>
+      <button type="button" data-open="episodes">选集</button>
+    </nav>
+    <dialog class="watch-sheet" data-watch-sheet aria-labelledby="watch-sheet-heading">
+      <header class="sheet-heading">
+        <h2 id="watch-sheet-heading"></h2>
+        <form method="dialog"><button aria-label="关闭面板">关闭</button></form>
+      </header>
+      <div class="sheet-content">
+        <section data-panel="speed" hidden class="sheet-options">
+          <button type="button" data-rate="0.5">0.5×</button><button type="button" data-rate="0.75">0.75×</button>
+          <button type="button" data-rate="1">1×</button><button type="button" data-rate="1.25">1.25×</button>
+          <button type="button" data-rate="1.5">1.5×</button><button type="button" data-rate="2">2×</button>
+        </section>
+        <section data-panel="quality" hidden>
+          <p data-quality-status class="sheet-note">{{if .Playback.Quality}}当前 {{.Playback.Quality}}P{{end}}</p>
+          <div data-quality-options class="sheet-options">
+            <button type="button" data-quality="0" aria-pressed="true">自动</button>
+            {{range .Playback.Qualities}}<button type="button" data-quality="{{.}}" aria-pressed="false">{{.}}P</button>{{end}}
+          </div>
+        </section>
+        <section data-panel="subtitles" hidden>
+          <p data-subtitle-status hidden class="sheet-note">当前线路没有可切换的字幕轨。</p>
+          <div data-subtitle-options class="sheet-options"></div>
+        </section>
+        <section data-panel="episodes" hidden>
+          <div data-season-options class="sheet-options" aria-label="选择季"></div>
+          <p data-episode-status hidden class="sheet-note" role="status"></p>
+          {{template "episodes" .}}
+        </section>
+      </div>
+    </dialog>
+    <noscript><p class="watch-message">请启用 JavaScript 后使用播放选项。</p></noscript>
+  </main>
+  {{else}}
+  <header class="top"><div class="container masthead">
+    <a href="/" class="brand"><span aria-hidden="true">▶</span>小果影视</a>
+    {{if ne .View "login"}}<form method="post" action="/logout"><button class="quiet">退出登录</button></form>{{end}}
+  </div></header>
+  <main class="container">
+  {{if eq .View "login"}}
+    <section class="login">
+      <h1>{{.Heading}}</h1>
+      {{if .Message}}<p class="notice" role="alert">{{.Message}}</p>{{end}}
+      <form method="post" action="/login">
+        <label for="password">访问密码</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+        <button class="accent">登录</button>
+      </form>
+    </section>
+  {{else if eq .View "catalog"}}
+    <section class="browse">
+      <div class="heading">
+        <h1>{{.Heading}}</h1>
+        {{if gt (len .Sources) 1}}
+          <form action="/" class="source-picker">
+            <select name="source" aria-label="站源">
+              {{range .Sources}}<option value="{{.ID}}" {{if eq $.Source .ID}}selected{{end}}>{{.Name}}</option>{{end}}
+            </select>
+            <button class="quiet">切换</button>
+          </form>
+        {{end}}
+      </div>
+      {{if .ShowSearch}}
+        <form action="/" class="search" role="search">
+          <input type="hidden" name="source" value="{{.Source}}">
+          <input name="q" type="search" value="{{.Query}}" placeholder="搜索剧集" aria-label="搜索剧集" maxlength="120" enterkeyhint="search" required>
+          <button class="accent">搜索</button>
+        </form>
+      {{end}}
+      {{if .Query}}<a class="back" href="/?source={{.Source}}">返回发现</a>{{end}}
+      {{if .Categories}}
+        <nav class="categories" aria-label="剧集分类">
+          {{range .Categories}}<a href="{{.URL}}" {{if .Current}}aria-current="page"{{end}}>{{.Name}}</a>{{end}}
+        </nav>
+      {{end}}
+      {{if .Message}}<p class="notice" role="status">{{.Message}}</p>{{end}}
+      {{if .Items}}
+        <ul class="grid">
+          {{range .Items}}
+            <li><a class="card" href="/title?id={{.ID}}">
+              <div class="poster">
+                {{if .Cover}}<img loading="lazy" decoding="async" referrerpolicy="no-referrer" src="{{.Cover}}" alt="">{{end}}
+                {{if .Episodes}}<span>{{.Episodes}} 集</span>{{end}}
+              </div>
+              <strong>{{.Title}}</strong>
+              {{if .Category}}<small>{{.Category}}</small>{{end}}
+            </a></li>
+          {{end}}
+        </ul>
+      {{end}}
+      {{if or .Previous .Next}}
+        <nav class="pagination" aria-label="分页">
+          {{if .Previous}}<a href="{{.Previous}}" rel="prev">上一页</a>{{end}}
+          {{if .Next}}<a href="{{.Next}}" rel="next">下一页</a>{{end}}
+        </nav>
+      {{end}}
+    </section>
+  {{else if eq .View "title"}}
+    <a class="back" href="/?source={{.Drama.Source}}">‹ 返回发现</a>
+    <section class="details">
+      {{if .Drama.Cover}}<img class="detail-poster" referrerpolicy="no-referrer" src="{{.Drama.Cover}}" alt="">{{end}}
+      <div>
+        <h1>{{.Heading}}</h1>
+        {{if .Drama.Description}}<p class="synopsis">{{.Drama.Description}}</p>{{end}}
+      </div>
+    </section>
+    {{if .Message}}<p class="notice" role="alert">{{.Message}}</p>{{end}}
+    <section class="episode-list">
+      <h2>选集</h2>
+      {{template "episodes" .}}
+    </section>
+  {{else}}
+    <a class="back" href="/">‹ 返回发现</a>
+    <h1>{{.Heading}}</h1>
+    <p class="notice">{{.Message}}</p>
+  {{end}}
+  </main>
+  {{end}}
+</body>
+</html>
+{{define "episodes"}}
+<form method="post" action="/watch" class="episodes" data-episode-form>
+  <input type="hidden" name="id" value="{{.Drama.ID}}">
+  <div class="episode-options">
+    {{range .Episodes}}<button name="episode" value="{{.Index}}" {{if eq .Index $.Playing}}aria-current="true"{{end}}>{{.Label}}</button>{{end}}
+  </div>
+</form>
+{{end}}

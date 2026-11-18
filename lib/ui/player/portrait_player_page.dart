@@ -37,11 +37,13 @@ class PortraitPlayerPage extends StatefulWidget {
     super.key,
     required this.store,
     required this.handle,
+    this.wideControls = false,
     this.onFullscreen,
     this.onMiniWindow,
   });
   final LocalStore store;
   final PlaybackHandle handle;
+  final bool wideControls;
   final VoidCallback? onFullscreen;
   final VoidCallback? onMiniWindow;
 
@@ -312,7 +314,7 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
   }
 
   void _pointerDown(PointerDownEvent event) {
-    if (_session.locked) return;
+    if (_session.locked || widget.wideControls) return;
     _pointers[event.pointer] = event.position;
     if (_pointers.length != 2) return;
     if (_holding) _pressEnd();
@@ -459,9 +461,8 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
       ),
     );
     if (!mounted) return;
-    if (picked case final season?) {
-      await _playSeason(season);
-    } else {
+    if (picked case final season?) await _playSeason(season);
+    if (mounted && (picked == null || widget.wideControls)) {
       await _openEpisodes();
     }
   }
@@ -540,6 +541,7 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
 
   Widget _page(BuildContext context, int index) {
     final session = _session;
+    final fit = widget.wideControls ? VideoFit.auto : session.videoFit;
     final current = index == session.index;
     final player = current
         ? session.player
@@ -555,7 +557,7 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
           if (!waiting)
             ClipRect(
               child: AnimatedScale(
-                scale: _zoom,
+                scale: widget.wideControls ? 1 : _zoom,
                 duration: _pinching || _snapping
                     ? Duration.zero
                     : Motion.of(context, Motion.medium),
@@ -564,7 +566,7 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
                   key: ValueKey(player),
                   handle: widget.handle,
                   player: player,
-                  fit: session.videoFit,
+                  fit: fit,
                 ),
               ),
             ),
@@ -595,7 +597,7 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
               key: const ValueKey('danmaku'),
               controller: session.danmaku,
               video: session.videoSize,
-              fit: session.videoFit,
+              fit: fit,
               style: session.danmakuStyle,
               topLimit: (session.videoSize?.aspectRatio ?? 0) > 1
                   ? math.max(_bars.top, MediaQuery.paddingOf(context).top) + 56
@@ -742,12 +744,14 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
         Positioned(
           key: const ValueKey('episodes'),
           left: 16,
-          right: widget.onFullscreen == null ? 16 : 68,
+          right: widget.wideControls || widget.onFullscreen == null ? 16 : 68,
           bottom: bottom + 16,
           height: 44,
-          child: _chrome(_episodeStrip()),
+          child: _chrome(
+            widget.wideControls ? _wideOptions() : _episodeStrip(),
+          ),
         ),
-        if (widget.onFullscreen case final onFullscreen?)
+        if (!widget.wideControls && widget.onFullscreen != null)
           Positioned(
             key: const ValueKey('fullscreen'),
             right: 16,
@@ -758,7 +762,7 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
               IconButton(
                 onPressed: () {
                   setState(_wake);
-                  onFullscreen();
+                  widget.onFullscreen!();
                 },
                 icon: const Icon(Icons.fullscreen_rounded),
                 color: Colors.white,
@@ -1082,6 +1086,142 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
       ),
     );
   }
+
+  Widget _wideOptions() {
+    final session = _session;
+    final speed = (
+      label: '倍速',
+      action: () => _pickOption(
+        title: '倍速',
+        selected: session.speed,
+        options: {for (final rate in playbackSpeeds) rate: '${rate}x'},
+        apply: session.setSpeed,
+      ),
+    );
+    final quality = (
+      label: '画质',
+      action: !session.loading && !session.local
+          ? () => _pickOption(
+              title: '画质',
+              selected: session.quality,
+              options: {0: '自动', for (final q in session.qualities) q: '${q}P'},
+              apply: session.setQuality,
+            )
+          : null,
+    );
+    final options = <({String label, VoidCallback? action})>[
+      speed,
+      quality,
+      (label: '字幕', action: session.ready ? _openSubtitles : null),
+      (label: '横屏', action: widget.onFullscreen),
+      (label: '选集', action: _openEpisodes),
+    ];
+    return Row(
+      children: [
+        for (final option in options)
+          Expanded(
+            child: TextButton(
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.white,
+                padding: EdgeInsets.zero,
+              ),
+              onPressed: option.action == null
+                  ? null
+                  : () {
+                      setState(_wake);
+                      option.action!();
+                    },
+              child: Text(option.label, maxLines: 1),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Future<void> _openSubtitles() {
+    final player = _session.player;
+    final tracks = player.state.tracks.subtitle.where(
+      (track) => track.id != 'auto' && track.id != 'no',
+    );
+    return _pickOption(
+      title: '字幕',
+      selected: player.state.track.subtitle,
+      options: {
+        if (tracks.isNotEmpty) SubtitleTrack.auto(): '自动',
+        SubtitleTrack.no(): '关闭',
+        for (final track in tracks)
+          track:
+              [track.title, track.language]
+                  .whereType<String>()
+                  .where((text) => text.trim().isNotEmpty)
+                  .firstOrNull ??
+              '字幕 ${track.id}',
+      },
+      emptyMessage: tracks.isEmpty ? '当前视频没有可切换的字幕轨。' : null,
+      apply: (track) async {
+        if (identical(player, _session.player) && _session.ready) {
+          await player.setSubtitleTrack(track);
+        }
+      },
+    );
+  }
+
+  Future<void> _pickOption<T>({
+    required String title,
+    required T selected,
+    required Map<T, String> options,
+    required Future<void> Function(T) apply,
+    String? emptyMessage,
+  }) => _sheet(
+    fitContent: true,
+    (context) => Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SheetHeader(
+          children: [
+            Expanded(child: Text(title, style: sheetTitle)),
+            IconButton(
+              onPressed: () => Navigator.pop(context),
+              icon: const Icon(Icons.close_rounded),
+              tooltip: '关闭',
+            ),
+          ],
+        ),
+        Flexible(
+          child: SafeArea(
+            top: false,
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                if (emptyMessage != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                    child: Text(emptyMessage),
+                  ),
+                for (final entry in options.entries)
+                  ListTile(
+                    title: Text(entry.value),
+                    selected: entry.key == selected,
+                    trailing: entry.key == selected
+                        ? const Icon(Icons.check_rounded)
+                        : null,
+                    onTap: () async {
+                      Navigator.pop(context);
+                      try {
+                        await apply(entry.key);
+                      } catch (_) {
+                        if (mounted) _say('$title切换失败，请重试');
+                      }
+                    },
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 
   Widget _boostBadge() => Container(
     height: 32,

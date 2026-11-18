@@ -396,7 +396,7 @@ void main() {
       await store.saveWatch(watching(first, episode: 2, position: 11));
       await store.setThemeMode('dark');
       await store.setFollowSystemColor(false);
-      await store.setThemeColor(ThemeColor.violet);
+      await store.setThemeColor(ThemeColor.white);
       await store.setAutoExport(true);
       await store.setShareUsage(false);
       final backup = await store.exportBackup();
@@ -416,7 +416,7 @@ void main() {
       expect(restarted.watched(first.id)?.position, 11);
       expect(restarted.themeMode, 'dark');
       expect(restarted.followSystemColor, isFalse);
-      expect(restarted.themeColor, ThemeColor.violet);
+      expect(restarted.themeColor, ThemeColor.white);
       expect(restarted.autoExport, isTrue);
       expect(restarted.shareUsage, isFalse);
       expect(restarted.preferences.getString('plugin_secret'), 'stays-local');

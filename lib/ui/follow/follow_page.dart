@@ -317,7 +317,12 @@ class _FollowPageState extends State<FollowPage> {
       bottomNavigationBar: selection == null
           ? null
           : Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              padding: EdgeInsets.fromLTRB(
+                16,
+                8,
+                16,
+                12 + ShellForeground.bottomNavigationInsetOf(context),
+              ),
               child: SizedBox(height: 48, child: _unfollowButton(view)),
             ),
     );
@@ -603,7 +608,9 @@ class _FollowPageState extends State<FollowPage> {
             ],
           SliverPadding(
             padding: EdgeInsets.only(
-              bottom: AppScope.of(context).television ? 27 : 32,
+              bottom: AppScope.of(context).television
+                  ? 27
+                  : 32 + ShellForeground.bottomNavigationInsetOf(context),
             ),
           ),
         ],

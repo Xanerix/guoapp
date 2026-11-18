@@ -1,0 +1,34 @@
+name: guoapp-web
+
+services:
+  guoapp-web:
+    image: guoapp-web:local
+    build:
+      context: .
+    container_name: guoapp-web
+    restart: unless-stopped
+    ports:
+      - "${GUOAPP_WEB_HOST:-127.0.0.1}:${GUOAPP_WEB_PORT:-8000}:8080"
+    environment:
+      GUOAPP_WEB_PASSWORD: "${GUOAPP_WEB_PASSWORD:?Set GUOAPP_WEB_PASSWORD in .env}"
+      GUOAPP_WEB_SECURE_COOKIE: "${GUOAPP_WEB_SECURE_COOKIE:-false}"
+    volumes:
+      - guoapp-web-data:/data
+      - type: bind
+        source: "${GUOAPP_WEB_MODULES_DIR:-./native/module_example}"
+        target: /data/modules
+        read_only: true
+        bind:
+          create_host_path: false
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "guoapp-web", "healthcheck"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  guoapp-web-data:
