@@ -35,6 +35,8 @@ venv/
 .pytest_cache/
 
 .idea/
+.vscode/
+packages/*/pubspec.lock
 *.iml
 *.log
 .DS_Store
@@ -47,3 +49,5 @@ desktop.ini
 /native/core/bundled/*
 !/native/core/bundled/.gitkeep
 /bundled-modules/
+# Widget Preview related
+.widget_preview/
