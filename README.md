@@ -92,11 +92,13 @@ Flutter 多端独立影视应用，手机、平板、电脑和电视分别适配
 
 ### Web 部署
 
-复制 `.env.example` 为 `.env`，设置至少 12 位的访问密码。把已有站源模块放到自行管理的目录，每个模块用站源 ID 作为子目录，里面包含 `manifest.json` 和 `main.js`。将 `GUOAPP_WEB_MODULES_DIR` 指向这个目录，默认配置加载仓库里的离线演示站源。默认绑定 `127.0.0.1:8000`，同一局域网的手机访问时，把 `GUOAPP_WEB_HOST` 改为 Docker 宿主机的局域网 IP。
+仓库的 `.env` 提供部署默认值。复制 `.env.example` 为本地的 `.env.local`，在其中设置至少 12 位的访问密码，以及本机的端口、地址和站源路径。把已有站源模块放到自行管理的目录，每个模块用站源 ID 作为子目录，里面包含 `manifest.json` 和 `main.js`。将 `GUOAPP_WEB_MODULES_DIR` 指向这个目录，默认配置加载仓库里的离线演示站源。默认绑定 `127.0.0.1:8000`，同一局域网的手机访问时，把 `GUOAPP_WEB_HOST` 改为 Docker 宿主机的局域网 IP。
 
 ```sh
-docker compose up -d --build --wait
-docker compose ps
+cp .env.example .env.local
+# 编辑 .env.local，填入部署密码和本机配置
+docker compose --env-file .env --env-file .env.local up -d --build --wait
+docker compose --env-file .env --env-file .env.local ps
 ```
 
 手机 Safari 打开 `http://<宿主机局域网 IP>:8000`，输入访问密码，进入剧集详情后选集，再点播放器的播放按钮。Web 端支持 Safari 兼容的 HLS 和 MP4，能否播放取决于站源提供的线路和编码。

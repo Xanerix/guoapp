@@ -10,7 +10,7 @@ services:
     ports:
       - "${GUOAPP_WEB_HOST:-127.0.0.1}:${GUOAPP_WEB_PORT:-8000}:8080"
     environment:
-      GUOAPP_WEB_PASSWORD: "${GUOAPP_WEB_PASSWORD:?Set GUOAPP_WEB_PASSWORD in .env}"
+      GUOAPP_WEB_PASSWORD: "${GUOAPP_WEB_PASSWORD:?Set GUOAPP_WEB_PASSWORD in .env.local or the shell environment}"
       GUOAPP_WEB_SECURE_COOKIE: "${GUOAPP_WEB_SECURE_COOKIE:-false}"
     volumes:
       - guoapp-web-data:/data
