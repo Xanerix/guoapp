@@ -255,6 +255,7 @@ func newNativeEngine(directory, cache, downloads string) (*nativeEngine, error) 
 	router := &proxyRouter{}
 	d := &Downloader{cfg: cfg, providerHosts: map[string]string{}, proxyRouter: router,
 		limiter: newRequestLimiter(3, 0), diagnostics: newDiagnosticLog(directory)}
+	router.record = d.recordDiagnostic
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12}
 	transport.MaxIdleConnsPerHost = 8

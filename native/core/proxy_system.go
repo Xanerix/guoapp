@@ -19,12 +19,39 @@ type nativeSystemProxy struct {
 	PACURL string   `json:"-"`
 }
 
-func (proxy nativeSystemProxy) resolve(request *http.Request) (*url.URL, error) {
-	if proxy.PACURL != "" {
-		if address, err := platformPACProxy(proxy.PACURL, request.URL); err == nil {
+func (router *proxyRouter) resolveSystem(request *http.Request) (*url.URL, error) {
+	system := router.systemSettings()
+	if system.PACURL != "" {
+		address, err := platformPACProxy(system.PACURL, request.URL)
+		if err == nil {
 			return address, nil
 		}
+		router.reportPACFailure(request.URL.Hostname(), err)
 	}
+	return system.resolve(request)
+}
+
+func (router *proxyRouter) reportPACFailure(host string, err error) {
+	message := err.Error()
+	router.mu.Lock()
+	if router.pacFailures == nil || len(router.pacFailures) >= 64 {
+		router.pacFailures = map[string]time.Time{}
+	}
+	last, seen := router.pacFailures[message]
+	if seen && time.Since(last) < 5*time.Minute {
+		router.mu.Unlock()
+		return
+	}
+	router.pacFailures[message] = time.Now()
+	record := router.record
+	router.mu.Unlock()
+	if record != nil {
+		record(diagnosticEvent{Event: "proxy.pac_failed", Level: "warning", Host: host,
+			Message: "自动代理脚本解析失败，已改用系统静态代理、环境变量或直连：" + message})
+	}
+}
+
+func (proxy nativeSystemProxy) resolve(request *http.Request) (*url.URL, error) {
 	host := strings.ToLower(request.URL.Hostname())
 	for _, exception := range proxy.Bypass {
 		exception = strings.ToLower(strings.TrimSpace(exception))

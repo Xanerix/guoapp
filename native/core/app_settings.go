@@ -62,6 +62,8 @@ type proxyRouter struct {
 	system         nativeSystemProxy
 	systemRead     time.Time
 	systemOverride bool
+	record         func(diagnosticEvent)
+	pacFailures    map[string]time.Time
 }
 
 func (router *proxyRouter) proxy(request *http.Request) (*url.URL, error) {
@@ -77,7 +79,7 @@ func (router *proxyRouter) proxy(request *http.Request) (*url.URL, error) {
 	case "manual":
 		return manual, nil
 	}
-	return router.systemSettings().resolve(request)
+	return router.resolveSystem(request)
 }
 
 func (engine *nativeEngine) loadResourceSettings() {
