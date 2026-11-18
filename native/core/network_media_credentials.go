@@ -15,6 +15,8 @@ type MediaCredentials struct {
 	Referer   string
 	UserAgent string
 	Expires   time.Time
+
+	OmitFetchMetadata bool
 }
 
 type MediaCredentialsKey struct{}
@@ -37,6 +39,10 @@ func ProviderMediaOrigin(address *url.URL) string {
 
 func (credentials *MediaCredentials) apply(request *http.Request) error {
 	request.Header.Del("Cookie")
+	if credentials.OmitFetchMetadata {
+		request.Header.Del("Sec-Fetch-Mode")
+		request.Header.Del("Sec-Fetch-Dest")
+	}
 	if credentials.UserAgent != "" {
 		request.Header.Set("User-Agent", credentials.UserAgent)
 	}

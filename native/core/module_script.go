@@ -126,6 +126,8 @@ type jsCredentials struct {
 	Referer   string `json:"referer"`
 	UserAgent string `json:"userAgent"`
 	ExpiresMS int64  `json:"expiresMs"`
+
+	OmitFetchMetadata bool `json:"omitFetchMetadata"`
 }
 
 type jsMedia struct {
@@ -145,7 +147,7 @@ func (media jsMedia) providerMedia() ProviderMedia {
 		HLSKey: media.HLSKey, CENCKey: media.CENCKey, Duration: time.Duration(media.DurationMS) * time.Millisecond}
 	if credentials := media.Credentials; credentials != nil {
 		converted.Credentials = &MediaCredentials{Cookie: credentials.Cookie, Origin: credentials.Origin,
-			Referer: credentials.Referer, UserAgent: credentials.UserAgent}
+			Referer: credentials.Referer, UserAgent: credentials.UserAgent, OmitFetchMetadata: credentials.OmitFetchMetadata}
 		if credentials.ExpiresMS > 0 {
 			converted.Credentials.Expires = time.UnixMilli(credentials.ExpiresMS)
 		}
@@ -161,7 +163,7 @@ func moduleMedia(media ProviderMedia) jsMedia {
 		HLSKey: media.HLSKey, CENCKey: media.CENCKey, DurationMS: media.Duration.Milliseconds()}
 	if credentials := media.Credentials; credentials != nil {
 		converted.Credentials = &jsCredentials{Cookie: credentials.Cookie, Origin: credentials.Origin,
-			Referer: credentials.Referer, UserAgent: credentials.UserAgent}
+			Referer: credentials.Referer, UserAgent: credentials.UserAgent, OmitFetchMetadata: credentials.OmitFetchMetadata}
 		if !credentials.Expires.IsZero() {
 			converted.Credentials.ExpiresMS = credentials.Expires.UnixMilli()
 		}
