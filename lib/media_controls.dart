@@ -14,6 +14,7 @@ class MediaState {
     required this.title,
     required this.subtitle,
     required this.artwork,
+    required this.active,
     required this.playing,
     required this.position,
     required this.duration,
@@ -25,6 +26,7 @@ class MediaState {
   final String title;
   final String subtitle;
   final String artwork;
+  final bool active;
   final bool playing;
   final Duration position;
   final Duration duration;
@@ -36,6 +38,7 @@ class MediaState {
     'title': title,
     'subtitle': subtitle,
     'artwork': artwork,
+    'active': active,
     'playing': playing,
     'durationMs': duration.inMilliseconds ~/ 1000 * 1000,
     'rate': rate,

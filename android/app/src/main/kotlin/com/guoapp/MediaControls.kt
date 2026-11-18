@@ -53,7 +53,7 @@ class MediaControls(context: Context, messenger: BinaryMessenger) {
     private var subtitle = ""
     private var artworkPath = ""
     private var artwork: Bitmap? = null
-    private var playing = false
+    private var active = false
     private var hasPrevious = false
     private var hasNext = false
     private var shown = false
@@ -85,9 +85,10 @@ class MediaControls(context: Context, messenger: BinaryMessenger) {
                 focused = false
                 resumeOnFocus = false
                 send("pause")
+                if (!active && serviceStarted) detachService()
             }
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
-                resumeOnFocus = playing
+                resumeOnFocus = resumeOnFocus || active
                 send("pause")
             }
             AudioManager.AUDIOFOCUS_GAIN -> {
@@ -161,8 +162,9 @@ class MediaControls(context: Context, messenger: BinaryMessenger) {
     }
 
     private fun update(args: Map<*, *>) {
+        val nextActive = args["active"] == true
         val nextPlaying = args["playing"] == true
-        if (dismissed && !nextPlaying) return
+        if (dismissed && !nextActive) return
         dismissed = false
         title = args["title"] as? String ?: ""
         subtitle = args["subtitle"] as? String ?: ""
@@ -202,12 +204,12 @@ class MediaControls(context: Context, messenger: BinaryMessenger) {
                 .build()
         )
         session.isActive = true
-        setPlaying(nextPlaying)
+        setActive(nextActive)
         publish()
     }
 
-    private fun setPlaying(value: Boolean) {
-        playing = value
+    private fun setActive(value: Boolean) {
+        active = value
         if (value) {
             requestFocus()
             if (!noisyRegistered) {
@@ -225,7 +227,7 @@ class MediaControls(context: Context, messenger: BinaryMessenger) {
     private fun publish() {
         val built = buildNotification()
         notification = built
-        if (playing) {
+        if (active || resumeOnFocus) {
             if (!serviceStarted) {
                 val intent = Intent(context, PlaybackService::class.java)
                 serviceStarted = runCatching {
@@ -259,7 +261,7 @@ class MediaControls(context: Context, messenger: BinaryMessenger) {
 
     private fun dismiss() {
         dismissed = true
-        if (playing) send("pause")
+        if (active) send("pause")
         hide()
     }
 
@@ -270,7 +272,7 @@ class MediaControls(context: Context, messenger: BinaryMessenger) {
 
     private fun hide() {
         session.isActive = false
-        setPlaying(false)
+        setActive(false)
         abandonFocus()
         resumeOnFocus = false
         if (serviceStarted) stopService()
@@ -289,7 +291,7 @@ class MediaControls(context: Context, messenger: BinaryMessenger) {
         val actions = buildList {
             if (hasPrevious) add(action(1, "previous", R.drawable.ic_pip_previous, "上一集"))
             add(
-                if (playing) action(2, "pause", R.drawable.ic_pip_pause, "暂停")
+                if (active) action(2, "pause", R.drawable.ic_pip_pause, "暂停")
                 else action(2, "play", R.drawable.ic_pip_play, "播放")
             )
             if (hasNext) add(action(3, "next", R.drawable.ic_pip_next, "下一集"))
@@ -304,7 +306,7 @@ class MediaControls(context: Context, messenger: BinaryMessenger) {
             .setDeleteIntent(commandIntent(4, "dismiss"))
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setCategory(Notification.CATEGORY_TRANSPORT)
-            .setOngoing(playing)
+            .setOngoing(active)
             .setShowWhen(false)
             .setOnlyAlertOnce(true)
             .setStyle(

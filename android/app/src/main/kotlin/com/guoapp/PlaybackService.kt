@@ -20,7 +20,7 @@ class PlaybackService : Service() {
         if (intent?.action == ACTION_DETACH) {
             if (foreground) stopForeground(STOP_FOREGROUND_DETACH)
             foreground = false
-            stopSelf()
+            stopSelf(startId)
             return START_NOT_STICKY
         }
         val notification = MediaControls.notification ?: placeholder()
@@ -35,7 +35,7 @@ class PlaybackService : Service() {
                 startForeground(MediaControls.NOTIFICATION_ID, notification)
             }
         }.isSuccess
-        if (!foreground || MediaControls.notification == null) stopSelf()
+        if (!foreground || MediaControls.notification == null) stopSelf(startId)
         return START_NOT_STICKY
     }
 

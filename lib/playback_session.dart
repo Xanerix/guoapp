@@ -380,6 +380,7 @@ class PlaybackSession extends ChangeNotifier {
         title: detail.drama.title,
         subtitle: episode.title,
         artwork: repository.knownCover(detail.drama) ?? '',
+        active: _playIntent && _error == null,
         playing: _playIntent && state.playing,
         position: opened ? state.position : Duration.zero,
         duration: opened ? state.duration : Duration.zero,
@@ -394,10 +395,15 @@ class PlaybackSession extends ChangeNotifier {
   void _mediaCommand(MediaCommand command, Duration? position) {
     if (_closed) return;
     switch (command) {
-      case MediaCommand.play || MediaCommand.pause || MediaCommand.toggle:
-        if (command == MediaCommand.toggle ||
-            paused == (command == MediaCommand.play)) {
+      case MediaCommand.play:
+        if (paused) togglePlayback();
+      case MediaCommand.pause:
+        _pause();
+      case MediaCommand.toggle:
+        if (paused) {
           togglePlayback();
+        } else {
+          _pause();
         }
       case MediaCommand.next:
         unawaited(next());
@@ -406,6 +412,19 @@ class PlaybackSession extends ChangeNotifier {
       case MediaCommand.seek:
         if (position != null) unawaited(seekTo(position));
     }
+  }
+
+  void _pause() {
+    if (!_usable || !_playIntent) return;
+    if (ready && player.state.playing) {
+      togglePlayback();
+      return;
+    }
+    _stop();
+    _cancelResumeWatchdog();
+    _pausedSince = DateTime.now();
+    _scheduleStandbyIdle();
+    _notify();
   }
 
   void _syncDanmaku() {
