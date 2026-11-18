@@ -433,9 +433,6 @@ func (engine *nativeEngine) nativeCast(ctx context.Context, input nativeInput) (
 	engine.cast.mu.Lock()
 	device, active := engine.cast.device, engine.cast.active
 	engine.cast.mu.Unlock()
-	if input.Command == "active" {
-		return map[string]bool{"active": active}, nil
-	}
 	if !active {
 		if input.Command == "stop" {
 			return true, nil

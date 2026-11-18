@@ -56,6 +56,7 @@ class MediaControls(context: Context, messenger: BinaryMessenger) {
     private var active = false
     private var hasPrevious = false
     private var hasNext = false
+    private var remote = false
     private var shown = false
     private var dismissed = false
     private var serviceStarted = false
@@ -170,6 +171,7 @@ class MediaControls(context: Context, messenger: BinaryMessenger) {
         subtitle = args["subtitle"] as? String ?: ""
         hasPrevious = args["hasPrevious"] == true
         hasNext = args["hasNext"] == true
+        remote = args["remote"] == true
         val path = args["artwork"] as? String ?: ""
         if (path != artworkPath) {
             artworkPath = path
@@ -210,16 +212,20 @@ class MediaControls(context: Context, messenger: BinaryMessenger) {
 
     private fun setActive(value: Boolean) {
         active = value
-        if (value) {
+        if (value && !remote) {
             requestFocus()
             if (!noisyRegistered) {
                 register(noisyReceiver, IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY))
                 noisyRegistered = true
             }
+        } else {
+            unregisterNoisy()
+        }
+        if (remote) abandonFocus()
+        if (value) {
             if (!wakeLock.isHeld) wakeLock.acquire()
             if (!wifiLock.isHeld) wifiLock.acquire()
         } else {
-            unregisterNoisy()
             releaseLocks()
         }
     }

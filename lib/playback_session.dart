@@ -414,6 +414,8 @@ class PlaybackSession extends ChangeNotifier {
     }
   }
 
+  void pause() => _pause();
+
   void _pause() {
     if (!_usable || !_playIntent) return;
     if (ready && player.state.playing) {

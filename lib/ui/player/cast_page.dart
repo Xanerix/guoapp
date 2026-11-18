@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../../core_bridge.dart';
+import '../../media_controls.dart';
 import '../../models.dart';
 import '../../playback_session.dart';
 import 'playback_sheets.dart';
@@ -12,7 +13,7 @@ import 'player_surface.dart' show formatClock;
 bool get castSupported => !Platform.isIOS;
 
 Future<void> startCast(BuildContext context, PlaybackSession session) async {
-  if (session.player.state.playing) session.togglePlayback();
+  session.pause();
   final navigator = Navigator.of(context);
   CastDevice? picked;
   await showPlayerSheet(
@@ -148,6 +149,7 @@ class _CastPageState extends State<CastPage> {
   bool _played = false;
   bool _polling = false;
   bool _leaving = false;
+  bool _intent = true;
 
   PlaybackSession get _session => widget.session;
   List<Episode> get _episodes => _session.detail.episodes;
@@ -162,6 +164,7 @@ class _CastPageState extends State<CastPage> {
   @override
   void dispose() {
     _timer?.cancel();
+    MediaControls.instance.release(this);
     if (!_leaving) {
       unawaited(
         _session.repository.castControl('stop').catchError((Object _) {}),
@@ -181,7 +184,9 @@ class _CastPageState extends State<CastPage> {
       _position = position;
       _duration = 0;
       _state = 'loading';
+      _intent = true;
     });
+    _syncMedia();
     _pending = () async {
       try {
         await _session.repository.castPlay(
@@ -196,8 +201,58 @@ class _CastPageState extends State<CastPage> {
         _error = '$error';
       }
       _busy = false;
-      if (mounted) setState(() {});
+      if (mounted) {
+        setState(() {});
+        _syncMedia();
+      }
     }();
+  }
+
+  void _syncMedia() {
+    final episode = _episodes[_index];
+    MediaControls.instance.update(
+      this,
+      MediaState(
+        title: _session.detail.drama.title,
+        subtitle: '${episode.title} · ${widget.device.name}',
+        artwork: _session.repository.knownCover(_session.detail.drama) ?? '',
+        active: _intent && !_leaving && (_busy || _started),
+        playing: !_busy && _state == 'playing',
+        position: Duration(milliseconds: (_position * 1000).round()),
+        duration: Duration(milliseconds: (_duration * 1000).round()),
+        rate: 1,
+        hasPrevious: _index > 0,
+        hasNext: _index + 1 < _episodes.length,
+        remote: true,
+      ),
+      _mediaCommand,
+    );
+  }
+
+  void _mediaCommand(MediaCommand command, Duration? position) {
+    if (!mounted || !_started || _busy || _leaving) return;
+    switch (command) {
+      case MediaCommand.play:
+        _setPlaying(true);
+      case MediaCommand.pause:
+        _setPlaying(false);
+      case MediaCommand.toggle:
+        _setPlaying(_state != 'playing');
+      case MediaCommand.next:
+        if (_index + 1 < _episodes.length) _play(_index + 1);
+      case MediaCommand.previous:
+        if (_index > 0) _play(_index - 1);
+      case MediaCommand.seek:
+        if (position == null || _duration <= 0) return;
+        setState(() => _position = position.inMilliseconds / 1000);
+        unawaited(_control('seek', position: _position));
+    }
+  }
+
+  void _setPlaying(bool playing) {
+    _intent = playing;
+    _syncMedia();
+    unawaited(_control(playing ? 'resume' : 'pause'));
   }
 
   Future<void> _poll() async {
@@ -210,6 +265,7 @@ class _CastPageState extends State<CastPage> {
       var ended = false;
       if (status.state == 'playing' || status.state == 'paused') {
         _played = true;
+        if (status.state == 'playing' && _state != 'playing') _intent = true;
         _position = status.position;
         if (status.duration > 0) _duration = status.duration;
         if (++_ticks % 5 == 0) _save();
@@ -223,7 +279,12 @@ class _CastPageState extends State<CastPage> {
         _state = status.state;
         _error = null;
       });
-      if (ended && _index + 1 < _episodes.length) _play(_index + 1);
+      if (ended && _index + 1 < _episodes.length) {
+        _play(_index + 1);
+      } else {
+        if (ended) _intent = false;
+        _syncMedia();
+      }
     } catch (error) {
       if (mounted && !_busy && ++_failures >= 3) {
         setState(() => _error = '$error');
@@ -375,13 +436,7 @@ class _CastPageState extends State<CastPage> {
                             if (_started || _busy)
                               IconButton.filled(
                                 onPressed: active
-                                    ? () => unawaited(
-                                        _control(
-                                          _state == 'playing'
-                                              ? 'pause'
-                                              : 'resume',
-                                        ),
-                                      )
+                                    ? () => _setPlaying(_state != 'playing')
                                     : null,
                                 icon: Icon(
                                   _state == 'playing'

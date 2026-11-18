@@ -91,7 +91,6 @@ abstract class AppRepository {
   }) async => throw AppFailure('当前环境不支持投屏');
   Future<CastStatus> castStatus() async => throw AppFailure('当前环境不支持投屏');
   Future<void> castControl(String command, {double position = 0}) async {}
-  Future<bool> castActive() async => false;
   Future<void> cancelDanmaku() async {}
   Future<DanmakuPage> danmaku(
     PlaybackPlan plan, {
@@ -351,11 +350,6 @@ class NativeRepository extends AppRepository {
     int quality = 0,
     double position = 0,
   }) async {
-    try {
-      await BackgroundDownloads.ensureStarted();
-    } on AppFailure {
-      DiaryService.add('[Cast] 后台服务未启动，应用退到后台后投屏可能中断');
-    }
     await _call({
       'action': 'cast',
       'command': 'play',
@@ -386,10 +380,6 @@ class NativeRepository extends AppRepository {
       'startMs': (position * 1000).round(),
     });
   }
-
-  @override
-  Future<bool> castActive() async =>
-      (await _call({'action': 'cast', 'command': 'active'}))['active'] == true;
 
   @override
   Future<void> cancelCatalog() => _cancelReads('catalog-');

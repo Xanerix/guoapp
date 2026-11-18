@@ -21,6 +21,7 @@ class MediaState {
     required this.rate,
     required this.hasPrevious,
     required this.hasNext,
+    this.remote = false,
   });
 
   final String title;
@@ -33,6 +34,7 @@ class MediaState {
   final double rate;
   final bool hasPrevious;
   final bool hasNext;
+  final bool remote;
 
   Map<String, Object> get _identity => {
     'title': title,
@@ -44,6 +46,7 @@ class MediaState {
     'rate': rate,
     'hasPrevious': hasPrevious,
     'hasNext': hasNext,
+    'remote': remote,
   };
 }
 
