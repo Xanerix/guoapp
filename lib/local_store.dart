@@ -108,6 +108,7 @@ class LocalStore extends ChangeNotifier {
       return;
     }
     _settings = await _readMap(_settingsFile);
+    SourceSite.arrange(sourceOrder);
     try {
       final users = await files.read(_usersFile);
       if (users is! Map) throw const FormatException('用户配置无效');
@@ -392,6 +393,22 @@ class LocalStore extends ChangeNotifier {
     });
   }
 
+  List<String> get sourceOrder =>
+      _list(_settings['sourceOrder']).whereType<String>().toList();
+
+  Future<void> setSourceOrder(List<String> order) {
+    if (order.any((id) => !validSourceId(id))) {
+      return Future.error(StateError('站源无效'));
+    }
+    final epoch = _epoch;
+    return _queue(() async {
+      _requireAdmin();
+      if (epoch != _epoch) throw StateError('当前用户已变更，请重试');
+      final merged = {...order, ...sourceOrder}.take(100).toList();
+      await _saveSettings({..._settings, 'sourceOrder': merged});
+    });
+  }
+
   List<String> _restoredModules = const [];
 
   List<String> takeRestoredModules() {
@@ -533,6 +550,7 @@ class LocalStore extends ChangeNotifier {
   Future<void> _saveSettings(Map<String, Object?> settings) async {
     await _write(_settingsFile, settings);
     _settings = settings;
+    SourceSite.arrange(sourceOrder);
     _notify();
   }
 
@@ -1061,6 +1079,7 @@ class LocalStore extends ChangeNotifier {
       'deleteAfterManualExport': deleteAfterManualExport,
       'televisionKeyboard': televisionKeyboard,
       'sourceSwitches': _map(_settings['sourceSwitches']),
+      'sourceOrder': sourceOrder,
       'modules': modules.where(validSourceId).toSet().toList(),
       'libraries': libraries,
     });
@@ -1112,6 +1131,13 @@ class LocalStore extends ChangeNotifier {
                 entry.value is! bool,
           )) {
         throw const FormatException('备份站源设置无效');
+      }
+    }
+    if (data['sourceOrder'] case final Object order) {
+      if (order is! List ||
+          order.length > 100 ||
+          order.any((id) => id is! String || !validSourceId(id))) {
+        throw const FormatException('备份站源顺序无效');
       }
     }
     if (data['modules'] case final Object modules) {
@@ -1182,6 +1208,7 @@ class LocalStore extends ChangeNotifier {
           if (data[key] case final bool value) key: value,
         if (data['sourceSwitches'] case final Map switches)
           'sourceSwitches': switches,
+        if (data['sourceOrder'] case final List order) 'sourceOrder': order,
         if (data['blurCoversLaunch'] case final String mode)
           'blurCoversLaunch': mode
         else if (data['blurCoversOnLaunch'] case final bool launch)

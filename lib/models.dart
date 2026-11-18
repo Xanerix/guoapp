@@ -62,11 +62,30 @@ class SourceSite {
   String get groupName => groupLabel.isEmpty ? name : groupLabel;
   String get entryName => entryLabel.isEmpty ? name : entryLabel;
 
+  static List<SourceSite> _installed = const [];
+  static List<String> _order = const [];
   static List<SourceSite> _all = const [];
   static List<SourceSite> _available = const [];
 
   static void install(Iterable<SourceSite> sites) {
-    _all = List.unmodifiable(sites.where((site) => site.id.isNotEmpty));
+    _installed = List.unmodifiable(sites.where((site) => site.id.isNotEmpty));
+    _arrange();
+  }
+
+  static void arrange(Iterable<String> order) {
+    _order = List.unmodifiable(order);
+    _arrange();
+  }
+
+  static void _arrange() {
+    int rank(SourceSite site) {
+      final index = _order.indexOf(site.id);
+      return index < 0 ? _order.length + _installed.indexOf(site) : index;
+    }
+
+    _all = List.unmodifiable(
+      [..._installed]..sort((a, b) => rank(a).compareTo(rank(b))),
+    );
     _available = List.unmodifiable(_all.where((site) => site.available));
   }
 

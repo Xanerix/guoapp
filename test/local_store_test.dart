@@ -436,6 +436,38 @@ void main() {
       expect(restarted.sourceEnabled('hongguo'), isFalse);
     });
 
+    test(
+      'the admin source order sorts sources and survives a round trip',
+      () async {
+        installSourceFixture();
+        final store = await _open();
+        final original = [for (final site in SourceSite.values) site.id];
+        await store.setSourceOrder(['guipian', 'hongguo']);
+        expect(
+          [for (final site in SourceSite.values) site.id],
+          [
+            'guipian',
+            'hongguo',
+            ...original.where((id) => id != 'guipian' && id != 'hongguo'),
+          ],
+        );
+        await store.setSourceOrder(['hongguo']);
+        expect(store.sourceOrder, ['hongguo', 'guipian']);
+        final backup = jsonDecode(await store.exportBackup()) as Map;
+        expect(backup['sourceOrder'], ['hongguo', 'guipian']);
+
+        await store.setSourceOrder(['guipian']);
+        await store.importBackup(jsonEncode(backup));
+
+        final restarted = await restartStore(store);
+        expect(restarted.sourceOrder, ['hongguo', 'guipian']);
+        expect(SourceSite.values.take(2).map((site) => site.id), [
+          'hongguo',
+          'guipian',
+        ]);
+      },
+    );
+
     test('the backed up module list is offered once after a restore', () async {
       final store = await _open();
       final backup =
@@ -541,6 +573,7 @@ void main() {
       ('an unknown theme color', (data) => data['themeColor'] = 'gold'),
       ('a non-boolean setting', (data) => data['checkUpdates'] = 'yes'),
       ('a malformed module list', (data) => data['modules'] = ['../x']),
+      ('a malformed source order', (data) => data['sourceOrder'] = ['../x']),
       (
         'a non-boolean source switch',
         (data) => data['sourceSwitches'] = {'hongguo': 'off'},

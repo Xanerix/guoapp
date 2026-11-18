@@ -72,6 +72,28 @@ func TestUnregisterDropsSourceAndCachedProvider(t *testing.T) {
 	}
 }
 
+func TestReregisteredSourceKeepsItsPlace(t *testing.T) {
+	ids := []string{"registryorder-a", "registryorder-b"}
+	for _, id := range ids {
+		descriptor := SourceDescriptor{ID: id}
+		Register(descriptor, func(Host) Provider { return &registryTestProvider{descriptor: descriptor} })
+		t.Cleanup(func() { Unregister(id) })
+	}
+	Unregister(ids[0])
+	descriptor := SourceDescriptor{ID: ids[0]}
+	Register(descriptor, func(Host) Provider { return &registryTestProvider{descriptor: descriptor} })
+
+	order := []string{}
+	for _, registered := range registeredDescriptors() {
+		if registered.ID == ids[0] || registered.ID == ids[1] {
+			order = append(order, registered.ID)
+		}
+	}
+	if !reflect.DeepEqual(order, ids) {
+		t.Fatalf("order after re-register = %v, want %v", order, ids)
+	}
+}
+
 func TestProviderAsHonoursCapabilityLimiter(t *testing.T) {
 	var p Provider = &registryTestProvider{provided: map[reflect.Type]bool{reflect.TypeFor[Searcher](): true}}
 	if _, ok := providerAs[Searcher](p); !ok {

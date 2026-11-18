@@ -78,6 +78,7 @@ void main() {
         store.setSourceEnabled('hongguo', false),
         throwsStateError,
       );
+      await expectLater(store.setSourceOrder(['hongguo']), throwsStateError);
 
       await expectLater(
         store.switchProfile('default', pin: 'wrong'),
