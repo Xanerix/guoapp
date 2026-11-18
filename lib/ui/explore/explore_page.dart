@@ -187,6 +187,10 @@ class ExplorePageState extends State<ExplorePage> {
                 SourceBar(
                   source: source.name,
                   searchController: _search,
+                  recentSearches: widget.store.recentSearches,
+                  onForgetSearch: (query) => widget.store
+                      .forgetSearch(query)
+                      .catchError((Object _) {}),
                   onSwitchSource: (anchor) => pickSource(anchor, widget.store),
                   onOpenSearch: () => openSearch(context, widget.store, source),
                   onSearchSubmitted: (query) => _searchSubmitted(source, query),
