@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
@@ -57,7 +58,8 @@ class _DuanjuAppState extends State<DuanjuApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     FocusManager.instance
       ..addEarlyKeyEventHandler(_blockKeyboardFocus)
-      ..addEarlyKeyEventHandler(_leaveTextField);
+      ..addEarlyKeyEventHandler(_leaveTextField)
+      ..addEarlyKeyEventHandler(_scrollPage);
     _loadSystemColor();
   }
 
@@ -65,7 +67,8 @@ class _DuanjuAppState extends State<DuanjuApp> with WidgetsBindingObserver {
   void dispose() {
     FocusManager.instance
       ..removeEarlyKeyEventHandler(_blockKeyboardFocus)
-      ..removeEarlyKeyEventHandler(_leaveTextField);
+      ..removeEarlyKeyEventHandler(_leaveTextField)
+      ..removeEarlyKeyEventHandler(_scrollPage);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -123,6 +126,59 @@ class _DuanjuAppState extends State<DuanjuApp> with WidgetsBindingObserver {
     return direction != null && focus.focusInDirection(direction)
         ? KeyEventResult.handled
         : KeyEventResult.ignored;
+  }
+
+  KeyEventResult _scrollPage(KeyEvent event) {
+    final key = event.logicalKey;
+    final keyboard = HardwareKeyboard.instance;
+    if (_television ||
+        event is KeyUpEvent ||
+        (key != LogicalKeyboardKey.pageUp &&
+            key != LogicalKeyboardKey.pageDown) ||
+        keyboard.isShiftPressed ||
+        keyboard.isControlPressed ||
+        keyboard.isAltPressed ||
+        keyboard.isMetaPressed ||
+        keyboardControlsFocused() ||
+        (focusedTextField()?.widget.maxLines ?? 1) != 1) {
+      return KeyEventResult.ignored;
+    }
+    final position = _centerScrollPosition();
+    if (position == null) return KeyEventResult.ignored;
+    final forward =
+        (key == LogicalKeyboardKey.pageDown) !=
+        (position.axisDirection == AxisDirection.up);
+    final step = 0.8 * position.viewportDimension * (forward ? 1 : -1);
+    position.moveTo(
+      (position.pixels + step).clamp(
+        position.minScrollExtent,
+        position.maxScrollExtent,
+      ),
+      duration: Motion.short,
+      curve: Motion.standard,
+    );
+    return KeyEventResult.handled;
+  }
+
+  static ScrollPosition? _centerScrollPosition() {
+    final view = WidgetsBinding.instance.platformDispatcher.implicitView;
+    if (view == null) return null;
+    final result = HitTestResult();
+    WidgetsBinding.instance.hitTestInView(
+      result,
+      view.physicalSize.center(Offset.zero) / view.devicePixelRatio,
+      view.viewId,
+    );
+    for (final entry in result.path) {
+      if (entry.target
+          case RenderViewportBase(offset: final ScrollPosition position)
+          when position.axis == Axis.vertical &&
+              position.hasContentDimensions &&
+              position.maxScrollExtent > position.minScrollExtent) {
+        return position;
+      }
+    }
+    return null;
   }
 
   KeyEventResult _escape(KeyEvent event) {
