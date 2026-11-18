@@ -417,10 +417,12 @@ class _AppShellState extends State<AppShell> {
           ),
           Expanded(
             child: RepaintBoundary(
-              child: MediaQuery.removePadding(
-                context: context,
-                removeLeft: true,
-                child: pages,
+              child: Builder(
+                builder: (body) => MediaQuery.removePadding(
+                  context: body,
+                  removeLeft: true,
+                  child: pages,
+                ),
               ),
             ),
           ),
