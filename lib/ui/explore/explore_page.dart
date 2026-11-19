@@ -18,6 +18,7 @@ import '../widgets/drama_grid.dart';
 import '../widgets/follow_button.dart';
 import '../widgets/motion/motion_widgets.dart';
 import '../widgets/page_header.dart';
+import '../widgets/pull_refresh.dart';
 import '../widgets/source_bar.dart';
 import '../widgets/status_view.dart';
 import '../widgets/swipe_switch.dart';
@@ -37,7 +38,7 @@ class ExplorePageState extends State<ExplorePage> {
   final _scroll = ScrollController();
   final _search = TextEditingController();
   final _tabsKey = GlobalKey();
-  final _refreshKey = GlobalKey<RefreshIndicatorState>();
+  final _refreshKey = GlobalKey<PullRefreshState>();
   String _shown = '';
 
   @override
@@ -389,7 +390,7 @@ class ExplorePageState extends State<ExplorePage> {
               feed: feed,
               child: television
                   ? scroll
-                  : RefreshIndicator(
+                  : PullRefresh(
                       key: _refreshKey,
                       onRefresh: explore.refresh,
                       child: scroll,
