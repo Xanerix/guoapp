@@ -117,6 +117,7 @@ class PlaybackPreferences {
     this.autoHideControls = true,
     this.hideSystemBars = true,
     this.portraitStyleForWide = false,
+    this.directPlay = false,
     this.autoPictureInPicture = false,
     this.backgroundPlayback = false,
     this.videoFit = VideoFit.auto,
@@ -152,6 +153,7 @@ class PlaybackPreferences {
   final bool autoHideControls;
   final bool hideSystemBars;
   final bool portraitStyleForWide;
+  final bool directPlay;
   final bool autoPictureInPicture;
   final bool backgroundPlayback;
   final VideoFit videoFit;
@@ -186,6 +188,7 @@ class PlaybackPreferences {
     bool? autoHideControls,
     bool? hideSystemBars,
     bool? portraitStyleForWide,
+    bool? directPlay,
     bool? autoPictureInPicture,
     bool? backgroundPlayback,
     VideoFit? videoFit,
@@ -217,6 +220,7 @@ class PlaybackPreferences {
     autoHideControls: autoHideControls ?? this.autoHideControls,
     hideSystemBars: hideSystemBars ?? this.hideSystemBars,
     portraitStyleForWide: portraitStyleForWide ?? this.portraitStyleForWide,
+    directPlay: directPlay ?? this.directPlay,
     autoPictureInPicture: autoPictureInPicture ?? this.autoPictureInPicture,
     backgroundPlayback: backgroundPlayback ?? this.backgroundPlayback,
     videoFit: videoFit ?? this.videoFit,
@@ -250,6 +254,7 @@ class PlaybackPreferences {
     'autoHideControls': autoHideControls,
     'hideSystemBars': hideSystemBars,
     'portraitStyleForWide': portraitStyleForWide,
+    'directPlay': directPlay,
     'autoPictureInPicture': autoPictureInPicture,
     'backgroundPlayback': backgroundPlayback,
     'videoFit': videoFit.name,
@@ -315,6 +320,7 @@ class PlaybackPreferences {
       autoHideControls: value['autoHideControls'] as bool? ?? true,
       hideSystemBars: value['hideSystemBars'] as bool? ?? true,
       portraitStyleForWide: value['portraitStyleForWide'] as bool? ?? false,
+      directPlay: value['directPlay'] as bool? ?? false,
       autoPictureInPicture: value['autoPictureInPicture'] as bool? ?? false,
       backgroundPlayback: value['backgroundPlayback'] as bool? ?? false,
       videoFit: VideoFit.values.asNameMap()[value['videoFit']] ?? VideoFit.auto,

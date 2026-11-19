@@ -184,7 +184,9 @@ class _DetailPageState extends State<DetailPage> {
   final _televisionDetail = GlobalKey<TelevisionDetailState>();
   bool _entered = false;
   PlaybackHandle? _watched;
-  late final bool _direct = AppScope.formFactorOf(context) == FormFactor.phone;
+  late final bool _direct =
+      !AppScope.of(context).television &&
+      widget.store.playbackPreferences.directPlay;
   late bool _autoplayPending = widget.autoplay || _direct;
   late bool _curtain = widget.autoplay || _direct;
 

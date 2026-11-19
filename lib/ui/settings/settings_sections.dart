@@ -218,6 +218,14 @@ class SettingsSection extends StatelessWidget {
                 preferences.copyWith(portraitStyleForWide: value),
               ),
             ),
+          if (!television)
+            SwitchTile(
+              title: '点开剧集直接播放',
+              subtitle: '跳过详情页直接进入播放，返回时回到列表',
+              value: preferences.directPlay,
+              onChanged: (value) =>
+                  savePreferences(preferences.copyWith(directPlay: value)),
+            ),
         ],
       ),
       if ((Platform.isAndroid || Platform.isIOS) && !television)
