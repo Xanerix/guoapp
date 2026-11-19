@@ -263,6 +263,25 @@ void main() {
     expect(player.opened, hasLength(1));
   });
 
+  test('restarting after a failure opens the same episode from zero', () async {
+    final repository = _PlaybackRepository()..resolveFailure = '播放地址暂不可用';
+    final store = await openStore();
+    final (session, player) = await _open(
+      repository,
+      store,
+      index: 1,
+      position: 35,
+    );
+    expect(session.currentPosition, 35);
+    expect(session.error, isNotNull);
+
+    repository.resolveFailure = '';
+    await session.retryFromStart();
+    expect(repository.resolved.last.episode, 2);
+    expect(player.opened.single.start, isNull);
+    expect(session.currentPosition, 0);
+  });
+
   test('switching users pauses and stops recording progress', () async {
     final repository = _PlaybackRepository();
     final store = await openStore(viewerPreferences);

@@ -1,4 +1,5 @@
 enum ThemeColor {
+  white('白色', 0xFFFFFFFF),
   orange('暖橙', 0xFFFF664F),
   rose('玫红', 0xFFC25485),
   amber('琥珀', 0xFFB37000),
