@@ -184,35 +184,43 @@ class ExplorePageState extends State<ExplorePage> {
           child: Column(
             children: [
               if (!television)
-                SourceBar(
-                  source: source.name,
-                  searchController: _search,
-                  recentSearches: widget.store.recentSearches,
-                  onForgetSearch: (query) => widget.store
-                      .forgetSearch(query)
-                      .catchError((Object _) {}),
-                  onSwitchSource: (anchor) => pickSource(anchor, widget.store),
-                  onOpenSearch: () => openSearch(context, widget.store, source),
-                  onSearchSubmitted: (query) => _searchSubmitted(source, query),
-                  leading: [
-                    if (widget.store.blurCoversButton)
-                      if (CoverBlurScope.of(context) case final blur?)
+                HideOnScroll(
+                  alignment: Alignment.bottomCenter,
+                  child: SourceBar(
+                    source: source.name,
+                    searchController: _search,
+                    recentSearches: widget.store.recentSearches,
+                    onForgetSearch: (query) => widget.store
+                        .forgetSearch(query)
+                        .catchError((Object _) {}),
+                    onSwitchSource: (anchor) =>
+                        pickSource(anchor, widget.store),
+                    onOpenSearch: () =>
+                        openSearch(context, widget.store, source),
+                    onSearchSubmitted: (query) =>
+                        _searchSubmitted(source, query),
+                    leading: [
+                      if (widget.store.blurCoversButton)
+                        if (CoverBlurScope.of(context) case final blur?)
+                          BarButton(
+                            icon: blur.mode != CoverBlur.off
+                                ? Icons.visibility_off_rounded
+                                : Icons.visibility_rounded,
+                            tooltip: blur.mode != CoverBlur.off
+                                ? '显示封面'
+                                : '模糊封面',
+                            onPressed: blur.onToggle,
+                          ),
+                    ],
+                    actions: [
+                      if (desktop)
                         BarButton(
-                          icon: blur.mode != CoverBlur.off
-                              ? Icons.visibility_off_rounded
-                              : Icons.visibility_rounded,
-                          tooltip: blur.mode != CoverBlur.off ? '显示封面' : '模糊封面',
-                          onPressed: blur.onToggle,
+                          icon: Icons.refresh_rounded,
+                          tooltip: '刷新',
+                          onPressed: explore.refresh,
                         ),
-                  ],
-                  actions: [
-                    if (desktop)
-                      BarButton(
-                        icon: Icons.refresh_rounded,
-                        tooltip: '刷新',
-                        onPressed: explore.refresh,
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               if (!television || explore.feed!.items.isEmpty) tabs,
               Expanded(

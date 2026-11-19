@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../app_scope.dart';
+
 class PageHeader extends StatelessWidget {
   const PageHeader({super.key, required this.title, this.actions = const []});
   final String title;
@@ -9,7 +11,7 @@ class PageHeader extends StatelessWidget {
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.fromLTRB(20, 0, 8, 0),
     child: SizedBox(
-      height: 64,
+      height: AppScope.formFactorOf(context) == FormFactor.phone ? 56 : 64,
       child: Row(
         children: [
           Expanded(
