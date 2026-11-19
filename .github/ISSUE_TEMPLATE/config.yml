@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 站源问题
+    url: https://github.com/orgs/guoapp-modules/repositories
+    about: 某个站源搜不到、播不了、分类不对，请到对应的模块仓库提
+  - name: 请求新站源或申请上架模块
+    url: https://github.com/guoapp-modules/index/issues/new/choose
+    about: 在 guoapp-modules/index 提

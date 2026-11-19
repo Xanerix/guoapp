@@ -1,0 +1,32 @@
+name: 功能建议
+description: 希望应用新增或改进的功能
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: 提交前请先看 [使用说明](https://github.com/Xanerix/guoapp#使用说明) 和设置，确认没有类似的功能或选项。想要新站源请到 [guoapp-modules/index](https://github.com/guoapp-modules/index/issues/new/choose) 提。
+  - type: textarea
+    id: description
+    attributes:
+      label: 建议内容
+      description: 想要什么功能，在什么场景下用
+    validations:
+      required: true
+  - type: dropdown
+    id: device
+    attributes:
+      label: 使用的设备
+      multiple: true
+      options:
+        - 安卓手机
+        - 安卓平板
+        - 安卓电视
+        - iPhone
+        - iPad
+        - Windows
+        - macOS
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: 截图或参考
+      description: 现在的界面截图，或其他应用的类似做法

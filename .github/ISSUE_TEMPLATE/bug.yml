@@ -1,0 +1,68 @@
+name: 问题反馈
+description: 应用闪退、功能异常、界面显示不对等
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: 某个站源搜不到、播不了、分类不对，请到 [guoapp-modules](https://github.com/orgs/guoapp-modules/repositories) 对应的模块仓库提。
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题描述
+      description: 做了什么操作，看到了什么，原本希望怎样
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 打开……
+        2. 点击……
+  - type: input
+    id: version
+    attributes:
+      label: 应用版本
+      description: 设置 › 关于
+      placeholder: 2.0.3
+    validations:
+      required: true
+  - type: dropdown
+    id: device
+    attributes:
+      label: 设备
+      options:
+        - 安卓手机
+        - 安卓平板
+        - 安卓电视
+        - iPhone
+        - iPad
+        - Windows
+        - macOS
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: 设备型号与系统版本
+      placeholder: 小米 14，HyperOS 2
+  - type: dropdown
+    id: orientation
+    attributes:
+      label: 屏幕方向
+      description: 与界面或播放页有关时填写
+      options:
+        - 竖屏
+        - 横屏
+        - 两种都有
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: 截图或录屏
+      description: 界面相关的问题请尽量附上
+  - type: textarea
+    id: log
+    attributes:
+      label: 日志
+      description: 设置 › 诊断 › 播放调试日记，复制后粘贴到这里。与播放有关的问题请尽量附上
+      render: text
