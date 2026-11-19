@@ -32,10 +32,17 @@ abstract final class AppTheme {
     required bool television,
     bool pureBlack = false,
   }) {
-    final seeded = ColorScheme.fromSeed(
+    final white = seed == Colors.white;
+    var seeded = ColorScheme.fromSeed(
       seedColor: seed,
       brightness: brightness,
+      dynamicSchemeVariant: white
+          ? DynamicSchemeVariant.monochrome
+          : DynamicSchemeVariant.tonalSpot,
     );
+    if (white && brightness == Brightness.light) {
+      seeded = seeded.copyWith(surface: Colors.white);
+    }
     final scheme = pureBlack && brightness == Brightness.dark
         ? seeded.copyWith(
             surface: Colors.black,

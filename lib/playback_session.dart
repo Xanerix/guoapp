@@ -1073,6 +1073,8 @@ class PlaybackSession extends ChangeNotifier {
   Future<void> retry() =>
       play(_index, position: currentPosition, playWhenReady: true);
 
+  Future<void> retryFromStart() => play(_index);
+
   Future<void> switchOnline() {
     _online = true;
     return retry();
