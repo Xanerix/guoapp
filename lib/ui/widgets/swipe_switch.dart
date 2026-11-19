@@ -151,6 +151,7 @@ class _SwipeSwitchState extends State<SwipeSwitch>
         if (constraints.hasBoundedWidth) _width = constraints.maxWidth;
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
+          supportedDevices: ScrollConfiguration.of(context).dragDevices,
           onHorizontalDragStart: enabled ? _start : null,
           onHorizontalDragUpdate: enabled ? _update : null,
           onHorizontalDragEnd: enabled ? _end : null,
