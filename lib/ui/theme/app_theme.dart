@@ -36,7 +36,7 @@ abstract final class AppTheme {
     var seeded = ColorScheme.fromSeed(
       seedColor: seed,
       brightness: brightness,
-      dynamicSchemeVariant: white
+      dynamicSchemeVariant: white || seed == Colors.black
           ? DynamicSchemeVariant.monochrome
           : DynamicSchemeVariant.tonalSpot,
     );

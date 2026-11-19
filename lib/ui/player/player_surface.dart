@@ -1226,9 +1226,7 @@ class PlaybackFailure extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final primary = Theme.of(context).colorScheme.primary;
-    final accent = primary == Colors.black ? Colors.white : primary;
-    final actionStyle = TextButton.styleFrom(foregroundColor: accent);
+    final colors = Theme.of(context).colorScheme;
     return ColoredBox(
       color: Colors.black.withValues(alpha: .9),
       child: Center(
@@ -1237,7 +1235,11 @@ class PlaybackFailure extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.play_disabled_rounded, size: 48, color: accent),
+              Icon(
+                Icons.play_disabled_rounded,
+                size: 48,
+                color: colors.primary,
+              ),
               const SizedBox(height: 16),
               const Text(
                 '暂时无法播放',
@@ -1284,13 +1286,11 @@ class PlaybackFailure extends StatelessWidget {
                     ),
                   if (!session.loginRequired && session.currentPosition > 0)
                     TextButton(
-                      style: actionStyle,
                       onPressed: session.retryFromStart,
                       child: const Text('从头播放'),
                     ),
                   if (session.localFailure)
                     TextButton(
-                      style: actionStyle,
                       onPressed: session.switchOnline,
                       child: const Text('改为在线播放'),
                     ),
