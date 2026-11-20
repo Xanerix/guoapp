@@ -86,6 +86,7 @@ Flutter 界面 + Go 原生核心。站源请求、解析、签名、缓存、下
 - 内置模块：`build_native.py` / `build_ios.py` 把 `--bundle <模块目录>`（可多次指定）和环境变量 `BUNDLED_MODULES`（逗号分隔）里的模块复制到 `native/core/bundled/`（相对路径以仓库根目录为准），由 Go 以 `go:embed` 打进核心；该目录除 `.gitkeep` 外不入库，每次出包前清空重建。应用启动时，未安装或内置版本更高的内置模块写入数据目录的 `modules/`，用户卸载过的不再自动安装（记在 `modules/.bundled-removed.json`），模块商店在「内置」里照常列出，从安装包内的副本安装，索引读不到时也能装；索引里也有同一模块时，「在线仓库」另列一项，从索引下载，已安装模块按两者中较高的版本提示更新。官方包内置红果，CI 把公开仓库 guoapp-modules/hongguo 检出到 `bundled-modules/hongguo`。
 - 清单：`id`（小写字母、数字、`_`、`-`，最长 32 个字符，须与文件夹同名）、`name`、`version`、`description`、`runtime`（只支持 `js`）、`api`（当前为 `1`）、`adult`（必填，是否限制级内容，`true` 或 `false`）、`hosts`（允许请求的域名，`*.example.com` 匹配子域名）、`capabilities`（可选能力，见下表）、`rankings`（榜单列表，每项 `id`、`name`、`description`）。`mediaAuthPaths`（声明 `mediaAuth` 时必填，见下表）。其余可选字段对应站源描述：`allowEmptyCatalog`、`group`、`groupName`、`entryName`、`skipVipPrompt`、`aliases`、`hostSuffixes`、`baseUrl`、`noHostRotation`、`keepDetailEpisodes`、`continuousFeed`、`browserFingerprint`。
 - 入口：`main.js` 是 CommonJS，用 `module.exports` 导出 `categories(force)`、`catalogPage(page, category)`、`detail(sourceId)`、`resolveMedia(task)`，以及可选的 `validCategory(category)`。`categories` 只取到部分分类时返回 `{ items, incomplete: true }`，应用稍后会重取；`catalogPage` 和 `search` 返回 `{ items, hasMore, warning }`，有剧集又有 `warning` 时作为提示显示。函数必须同步返回，不能是异步函数。需要用户登录时抛出带 `loginRequired = true` 属性的 `Error`。
+- 分集：`detail` 返回的分集可带 `mediaType: "audio"` 标明是音频，播放时显示封面并隐藏画面比例；未声明时，文件只有音轨也按音频处理。多数分集的 `title` 不是「第 N 集」这类序号时，选集改为单列显示标题。
 - 能力：声明后才会调用对应的函数。
 
   | 能力 | 导出函数 |

@@ -216,7 +216,9 @@ class _EpisodeGridState extends State<EpisodeGrid> {
     builder: (context, constraints) {
       _gridWidth = constraints.maxWidth;
       _gridHeight = constraints.maxHeight;
+      final named = episodesNamed(_episodes);
       _columns = switch (widget.minCellWidth) {
+        _ when named => 1,
         null => 5,
         final minimum => max(
           1,
@@ -251,6 +253,7 @@ class _EpisodeGridState extends State<EpisodeGrid> {
                     child: index < _episodes.length
                         ? _EpisodeCell(
                             episode: _episodes[index],
+                            named: named,
                             current: index == widget.current,
                             watched: index < widget.current,
                             selected: selecting
@@ -326,6 +329,7 @@ class _EpisodeGridState extends State<EpisodeGrid> {
 class _EpisodeCell extends StatelessWidget {
   const _EpisodeCell({
     required this.episode,
+    required this.named,
     required this.current,
     required this.watched,
     required this.selected,
@@ -333,6 +337,7 @@ class _EpisodeCell extends StatelessWidget {
     this.marker,
   });
   final Episode episode;
+  final bool named;
   final bool current;
   final bool watched;
   final bool? selected;
@@ -349,11 +354,18 @@ class _EpisodeCell extends StatelessWidget {
         ? colors.onSurfaceVariant
         : colors.onSurface;
     final radius = BorderRadius.circular(12);
+    final style = TextStyle(
+      fontSize: 15,
+      fontWeight: current ? FontWeight.w700 : FontWeight.w500,
+      color: foreground,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
     return Semantics(
       button: true,
       selected: selected ?? current,
       label:
-          '第 ${episode.number} 集${episode.vip ? '，VIP' : ''}'
+          '${named ? episode.label : '第 ${episode.number} 集'}'
+          '${episode.vip ? '，VIP' : ''}'
           '${marker == null
               ? ''
               : marker == Icons.check_rounded
@@ -393,26 +405,40 @@ class _EpisodeCell extends StatelessWidget {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  spacing: 4,
-                  children: [
-                    if (current)
-                      Icon(
-                        Icons.equalizer_rounded,
-                        size: 14,
-                        color: foreground,
-                      ),
-                    Text(
-                      '${episode.number}',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: current ? FontWeight.w700 : FontWeight.w500,
-                        color: foreground,
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      ),
-                    ),
-                  ],
+                Padding(
+                  padding: named
+                      ? EdgeInsets.fromLTRB(
+                          marker == null ? 14 : 24,
+                          0,
+                          episode.vip ? 34 : 14,
+                          0,
+                        )
+                      : EdgeInsets.zero,
+                  child: Row(
+                    mainAxisAlignment: named
+                        ? MainAxisAlignment.start
+                        : MainAxisAlignment.center,
+                    spacing: 4,
+                    children: [
+                      if (current)
+                        Icon(
+                          Icons.equalizer_rounded,
+                          size: 14,
+                          color: foreground,
+                        ),
+                      if (named)
+                        Expanded(
+                          child: Text(
+                            episode.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: style,
+                          ),
+                        )
+                      else
+                        Text('${episode.number}', style: style),
+                    ],
+                  ),
                 ),
                 if (marker case final marker?)
                   Positioned(

@@ -297,7 +297,7 @@ class _DetailPageState extends State<DetailPage> {
     if (session == null) return;
     final known = Completer<void>();
     void check() {
-      if ((session.aspectKnown || session.error != null) &&
+      if ((session.aspectKnown || session.audio || session.error != null) &&
           !known.isCompleted) {
         known.complete();
       }
@@ -1231,7 +1231,11 @@ class _DetailPageState extends State<DetailPage> {
     final extent = _cellExtent(m);
     return LayoutBuilder(
       builder: (context, constraints) {
-        final columns = m.columnsFor(constraints.maxWidth - gutter * 2);
+        final columns = _columnsFor(
+          details,
+          m,
+          constraints.maxWidth - gutter * 2,
+        );
         double heightOf(int group) {
           final rows = (details.episodesIn(group).length / columns).ceil();
           return rows * extent + math.max(0, rows - 1) * m.cellGap;
@@ -1355,6 +1359,9 @@ class _DetailPageState extends State<DetailPage> {
     });
   }
 
+  int _columnsFor(DramaDetails details, _Metrics m, double width) =>
+      episodesNamed(details.episodes) ? 1 : m.columnsFor(width);
+
   double _cellExtent(_Metrics m) =>
       math.max(m.cell, MediaQuery.textScalerOf(context).scale(m.cellText) + 28);
 
@@ -1373,7 +1380,7 @@ class _DetailPageState extends State<DetailPage> {
             details,
             m,
             details.group,
-            m.columnsFor(constraints.maxWidth),
+            _columnsFor(details, m, constraints.maxWidth),
             extent,
           ),
         );
@@ -1391,6 +1398,7 @@ class _DetailPageState extends State<DetailPage> {
     final current = details.currentIndex;
     final start = group * episodeGroupSize;
     final episodes = details.episodesIn(group);
+    final named = episodesNamed(details.episodes);
     Widget cell(int offset) {
       final index = start + offset;
       final episode = episodes[offset];
@@ -1399,6 +1407,7 @@ class _DetailPageState extends State<DetailPage> {
             ? _currentEpisode
             : ValueKey('episode-${episode.number}'),
         episode: episode,
+        named: named,
         metrics: m,
         current: index == current,
         watched: current != null && index < current,
@@ -1488,12 +1497,14 @@ class _EpisodeCell extends StatelessWidget {
   const _EpisodeCell({
     super.key,
     required this.episode,
+    required this.named,
     required this.metrics,
     required this.current,
     required this.watched,
     required this.onPressed,
   });
   final Episode episode;
+  final bool named;
   final _Metrics metrics;
   final bool current;
   final bool watched;
@@ -1505,11 +1516,26 @@ class _EpisodeCell extends StatelessWidget {
     final colors = theme.colorScheme;
     final dark = theme.brightness == Brightness.dark;
     final radius = BorderRadius.circular(metrics.cellRadius);
+    final style = TextStyle(
+      fontSize: metrics.cellText,
+      fontWeight: current
+          ? FontWeight.w800
+          : watched
+          ? FontWeight.w400
+          : FontWeight.w600,
+      color: current
+          ? colors.onPrimaryContainer
+          : watched
+          ? colors.onSurfaceVariant
+          : colors.onSurface,
+    );
     return FocusRing(
       radius: metrics.cellRadius,
       child: Semantics(
         button: true,
-        label: '第 ${episode.number} 集${episode.vip ? '，VIP' : ''}',
+        label:
+            '${named ? episode.label : '第 ${episode.number} 集'}'
+            '${episode.vip ? '，VIP' : ''}',
         excludeSemantics: true,
         child: Material(
           color: current ? colors.primaryContainer : colors.surfaceContainer,
@@ -1520,24 +1546,26 @@ class _EpisodeCell extends StatelessWidget {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                Center(
-                  child: Text(
-                    '${episode.number}',
-                    style: TextStyle(
-                      fontSize: metrics.cellText,
-                      fontWeight: current
-                          ? FontWeight.w800
-                          : watched
-                          ? FontWeight.w400
-                          : FontWeight.w600,
-                      color: current
-                          ? colors.onPrimaryContainer
-                          : watched
-                          ? colors.onSurfaceVariant
-                          : colors.onSurface,
+                if (named)
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      14,
+                      0,
+                      episode.vip ? 36 : 14,
+                      0,
                     ),
-                  ),
-                ),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        episode.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: style,
+                      ),
+                    ),
+                  )
+                else
+                  Center(child: Text('${episode.number}', style: style)),
                 if (episode.vip)
                   Positioned(
                     right: 5,

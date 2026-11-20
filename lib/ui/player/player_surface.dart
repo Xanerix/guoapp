@@ -746,7 +746,7 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
     final showWide = !widget.touch && !widget.fullscreen && fits(_iconSlot);
     final showDanmaku = _session.danmakuSupported && fits(_iconSlot + 4);
     final showVolume = !widget.touch && fits(_iconSlot);
-    final showFit = fits(_iconSlot);
+    final showFit = !_session.audio && fits(_iconSlot);
     final showMiniWindow = widget.onMiniWindow != null && fits(_iconSlot);
     final showSleep = fits(_iconSlot);
     final showCast = castSupported && fits(_iconSlot);

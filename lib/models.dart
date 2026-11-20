@@ -240,7 +240,9 @@ class Drama {
       sourceId: fresh.sourceId.isEmpty ? sourceId : fresh.sourceId,
       title: fresh.title.isEmpty || fresh.title == '短剧' ? title : fresh.title,
       description: fresh.description.isEmpty ? description : fresh.description,
-      cover: fresh.cover.isEmpty ? cover : fresh.cover,
+      cover: fresh.cover.isEmpty || _sameImage(cover, fresh.cover)
+          ? cover
+          : fresh.cover,
       episodes: fresh.episodes > 0 ? fresh.episodes : episodes,
       category:
           fresh.category.isEmpty ||
@@ -264,6 +266,17 @@ class Drama {
   }
 }
 
+bool _sameImage(String a, String b) {
+  if (a.isEmpty) return false;
+  final left = Uri.tryParse(a);
+  final right = Uri.tryParse(b);
+  return left != null &&
+      right != null &&
+      left.hasAuthority &&
+      left.host == right.host &&
+      left.path == right.path;
+}
+
 class Episode {
   Episode(this.raw, int fallback)
     : id = raw['id'] as String? ?? '',
@@ -272,14 +285,31 @@ class Episode {
           ? intValue(raw['currentEpisode'])
           : fallback,
       vip = raw['vip'] == true,
-      vertical = raw['vertical'] as bool?;
+      vertical = raw['vertical'] as bool?,
+      audio = raw['mediaType'] == 'audio';
   final Map<String, dynamic> raw;
   final String id;
   final String title;
   final int number;
   final bool vip;
   final bool? vertical;
+  final bool audio;
+
+  static final _numbered = RegExp(
+    r'^(第|ep|e)?\s*\d+\s*[集章话話回期节節]?$',
+    caseSensitive: false,
+  );
+
+  bool get named {
+    final text = title.trim();
+    return text.isNotEmpty && !_numbered.hasMatch(text);
+  }
+
+  String get label => named ? title.trim() : '第 $number 集';
 }
+
+bool episodesNamed(List<Episode> episodes) =>
+    episodes.where((episode) => episode.named).length * 2 > episodes.length;
 
 class DramaDetail {
   DramaDetail(

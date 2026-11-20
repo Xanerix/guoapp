@@ -797,7 +797,9 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
                       ),
                     ),
                     Text(
-                      '第 ${session.episode.number} 集',
+                      session.episode.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: .78),
                         fontSize: 12,

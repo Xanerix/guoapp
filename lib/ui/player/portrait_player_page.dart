@@ -296,7 +296,9 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
 
   (double, double) get _zoomRange {
     final video = _session.videoSize;
-    if (video == null || MediaQuery.sizeOf(context).isEmpty) return (1, 1);
+    if (video == null || _session.audio || MediaQuery.sizeOf(context).isEmpty) {
+      return (1, 1);
+    }
     final width = _fitWidth(_session.videoFit, video);
     return (
       _fitWidth(VideoFit.auto, video) / width,
@@ -435,7 +437,7 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
   );
 
   Future<void> _openEpisodes() => _sheet(
-    (_) => _EpisodeSheet(
+    (_) => EpisodeSheet(
       session: _session,
       onSeasons: () => unawaited(_openSeasons()),
       canDownload:
@@ -453,10 +455,8 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
     DramaSeason? picked;
     await _sheet(
       fitContent: true,
-      (_) => _SeasonSheet(
-        session: _session,
-        onSeason: (season) => picked = season,
-      ),
+      (_) =>
+          SeasonSheet(session: _session, onSeason: (season) => picked = season),
     );
     if (!mounted) return;
     if (picked case final season?) {
@@ -911,7 +911,9 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
                 ),
               ),
               Text(
-                '第 ${session.episode.number} 集',
+                session.episode.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: .78),
                   fontSize: 12,
@@ -1144,8 +1146,9 @@ class _Shade extends StatelessWidget {
   );
 }
 
-class _EpisodeSheet extends StatefulWidget {
-  const _EpisodeSheet({
+class EpisodeSheet extends StatefulWidget {
+  const EpisodeSheet({
+    super.key,
     required this.session,
     required this.onSeasons,
     required this.canDownload,
@@ -1157,10 +1160,10 @@ class _EpisodeSheet extends StatefulWidget {
   final ValueChanged<List<int>> onDownload;
 
   @override
-  State<_EpisodeSheet> createState() => _EpisodeSheetState();
+  State<EpisodeSheet> createState() => _EpisodeSheetState();
 }
 
-class _EpisodeSheetState extends State<_EpisodeSheet> {
+class _EpisodeSheetState extends State<EpisodeSheet> {
   final _selected = <int>{};
   bool _selecting = false;
 
@@ -1314,8 +1317,8 @@ class _EpisodeSheetState extends State<_EpisodeSheet> {
   }
 }
 
-class _SeasonSheet extends StatelessWidget {
-  const _SeasonSheet({required this.session, required this.onSeason});
+class SeasonSheet extends StatelessWidget {
+  const SeasonSheet({super.key, required this.session, required this.onSeason});
   final PlaybackSession session;
   final ValueChanged<DramaSeason> onSeason;
 
