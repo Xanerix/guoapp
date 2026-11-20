@@ -656,7 +656,8 @@ func (engine *nativeEngine) nativeResolve(ctx context.Context, input nativeInput
 		return nativePlan{}, err
 	}
 	choice := nativePlaybackChoices(media, input.Quality)
-	if p, ok := engine.downloader.provider(SourceFromDramaID(task.DramaID)); ok {
+	choice.source = SourceFromDramaID(task.DramaID)
+	if p, ok := engine.downloader.provider(choice.source); ok {
 		if danmaku, ok := providerAs[DanmakuProvider](p); ok {
 			if series, video, valid := danmaku.DanmakuIDs(task); valid {
 				choice.danmakuSource, choice.danmakuSeries, choice.danmakuVideo = p.Descriptor().ID, series, video

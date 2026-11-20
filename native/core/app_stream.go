@@ -33,6 +33,7 @@ type nativeStreamAsset struct {
 
 type nativeStreamSession struct {
 	credentials  *MediaCredentials
+	source       string
 	mu           sync.Mutex
 	assets       map[string]nativeStreamAsset
 	referer      string
@@ -54,6 +55,7 @@ type nativeStreamServer struct {
 	server     *http.Server
 	lan        *http.Server
 	lanPort    int
+	lanListen  string
 }
 
 func (stream *nativeStreamServer) lanOrigin(device string) (string, error) {
@@ -69,7 +71,7 @@ func (stream *nativeStreamServer) lanOrigin(device string) (string, error) {
 	stream.mu.Lock()
 	defer stream.mu.Unlock()
 	if stream.lan == nil {
-		listener, err := net.Listen("tcp4", ":0")
+		listener, err := net.Listen("tcp4", stream.lanListen)
 		if err != nil {
 			return "", fmt.Errorf("无法开启局域网投屏服务：%w", err)
 		}
@@ -123,21 +125,21 @@ func newNativeStreamServer(d *Downloader) (*nativeStreamServer, error) {
 	if err != nil {
 		return nil, errors.New("无法初始化本机播放器")
 	}
-	stream := &nativeStreamServer{downloader: d, address: "http://" + listener.Addr().String(), sessions: map[string]*nativeStreamSession{}}
+	stream := &nativeStreamServer{downloader: d, address: "http://" + listener.Addr().String(), lanListen: ":0", sessions: map[string]*nativeStreamSession{}}
 	server := &http.Server{Handler: http.HandlerFunc(stream.nativeServe), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16384}
 	stream.server = server
 	go func() { _ = server.Serve(listener) }()
 	return stream, nil
 }
 
-func (stream *nativeStreamServer) nativeOpen(media ProviderMedia) (string, string) {
+func (stream *nativeStreamServer) nativeOpen(source string, media ProviderMedia) (string, string) {
 	tokenBytes := make([]byte, 24)
 	if _, err := rand.Read(tokenBytes); err != nil {
 		panic(err)
 	}
 	token := hex.EncodeToString(tokenBytes)
 	ctx, cancel := context.WithCancel(providerMediaContext(context.Background(), media.Credentials))
-	session := &nativeStreamSession{assets: map[string]nativeStreamAsset{}, referer: media.Referer, key: media.HLSKey, ctx: ctx, cancel: cancel, lastUsed: time.Now(), credentials: media.Credentials, diagnosticID: nativeStreamID(token)}
+	session := &nativeStreamSession{assets: map[string]nativeStreamAsset{}, referer: media.Referer, key: media.HLSKey, ctx: ctx, cancel: cancel, lastUsed: time.Now(), credentials: media.Credentials, source: source, diagnosticID: nativeStreamID(token)}
 	stream.mu.Lock()
 	for id, old := range stream.sessions {
 		if time.Since(old.lastUsed) > 10*time.Minute {
@@ -323,7 +325,7 @@ func (stream *nativeStreamServer) nativeServe(writer http.ResponseWriter, reques
 		http.NotFound(writer, request)
 		return
 	}
-	ctx, cancel := context.WithCancel(providerMediaContext(request.Context(), session.credentials))
+	ctx, cancel := context.WithCancel(providerMediaContext(withProxySource(request.Context(), session.source), session.credentials))
 	defer cancel()
 	ctx = context.WithValue(ctx, nativeStreamDiagnosticKey{}, info)
 	stop := context.AfterFunc(session.ctx, cancel)

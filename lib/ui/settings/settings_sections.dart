@@ -10,6 +10,7 @@ import '../../core_bridge.dart';
 import '../../download_preferences.dart';
 import '../../local_store.dart';
 import '../../media_controls.dart';
+import '../../models.dart';
 import '../../playback_preferences.dart';
 import '../../resource_settings.dart';
 import '../../resource_settings_editor.dart';
@@ -49,6 +50,7 @@ typedef OpenSubpage = void Function(String title, WidgetBuilder body);
 const adminOnly = '需要管理员';
 const _noDownload = '当前用户没有下载权限';
 const _proxyModes = {'auto': '自动', 'direct': '直连', 'manual': '手动代理'};
+const _sourceProxyModes = {'follow': '跟随全局', ..._proxyModes};
 const _counts = {1: '1', 2: '2', 3: '3', 4: '4', 5: '5', 6: '6'};
 const _decoders = {
   TelevisionDecoder.optimized: '默认',
@@ -510,7 +512,70 @@ class SettingsSection extends StatelessWidget {
             ),
         ],
       ),
+      if (settings != null) ..._sourceProxies(context, settings, editable),
     ];
+  }
+
+  List<Widget> _sourceProxies(
+    BuildContext context,
+    ResourceSettings settings,
+    bool editable,
+  ) {
+    final groups = <String, String>{
+      for (final site in SourceSite.allValues) site.groupId: site.groupName,
+    };
+    if (groups.isEmpty) return const [];
+    return [
+      const _Note('站源单独设置后，该站源的请求、播放与下载优先使用这里的方式'),
+      SettingsCard(
+        children: [
+          for (final MapEntry(key: group, value: name) in groups.entries) ...[
+            ValueTile<String>(
+              title: name,
+              options: _sourceProxyModes,
+              value: settings.sourceProxies[group]?.mode ?? 'follow',
+              onChanged: editable
+                  ? (value) => switch (value) {
+                      'manual' => _editSourceProxy(context, settings, group),
+                      'follow' => _saveResource(
+                        context,
+                        settings.withSourceProxy(group, null),
+                      ),
+                      _ => _saveResource(
+                        context,
+                        settings.withSourceProxy(group, SourceProxy(value)),
+                      ),
+                    }
+                  : null,
+            ),
+            if (settings.sourceProxies[group]?.mode == 'manual')
+              SettingsTile(
+                title: '$name · 代理地址',
+                value: '已设置',
+                enabled: editable,
+                onTap: () => _editSourceProxy(context, settings, group),
+              ),
+          ],
+        ],
+      ),
+    ];
+  }
+
+  Future<void> _editSourceProxy(
+    BuildContext context,
+    ResourceSettings settings,
+    String group,
+  ) async {
+    final address = await showDialog<String>(
+      context: context,
+      builder: (_) =>
+          _ProxyDialog(initial: settings.sourceProxies[group]?.url ?? ''),
+    );
+    if (address == null || !context.mounted) return;
+    await _saveResource(
+      context,
+      settings.withSourceProxy(group, SourceProxy('manual', address)),
+    );
   }
 
   Future<void> _editProxy(

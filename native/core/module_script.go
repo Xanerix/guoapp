@@ -262,7 +262,7 @@ func (p *jsProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia
 }
 
 func (p *jsProvider) call(ctx context.Context, function string, result any, arguments ...any) error {
-	ctx, cancel := context.WithTimeout(ctx, moduleCallTimeout)
+	ctx, cancel := context.WithTimeout(withProxySource(ctx, p.module.manifest.ID), moduleCallTimeout)
 	defer cancel()
 	encoded, err := json.Marshal(arguments)
 	if err != nil {

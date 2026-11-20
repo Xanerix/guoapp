@@ -357,7 +357,7 @@ func (engine *nativeEngine) castPlay(ctx context.Context, input nativeInput) (an
 	if err != nil {
 		return nil, err
 	}
-	local, token := stream.nativeOpen(*media)
+	local, token := stream.nativeOpen(SourceFromDramaID(input.Drama.ID), *media)
 	if len(media.CENCKey) > 0 {
 		if err := stream.nativeDecrypt(ctx, token, *media); err != nil {
 			stream.nativeRelease(token)

@@ -438,7 +438,7 @@ func (manager *nativeDownloads) scheduleLocked() {
 		if next == nil {
 			return
 		}
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(withProxySource(context.Background(), next.Drama.Source))
 		next.State, next.Error = "downloading", ""
 		manager.active[next.ID] = cancel
 		if err := manager.saveLocked(); err != nil {

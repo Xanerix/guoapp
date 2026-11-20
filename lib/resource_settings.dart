@@ -15,10 +15,12 @@ class ResourceSettings {
     this.downloadBySource = false,
     this.warning = '',
     this.systemProxyStatus = '',
+    this.sourceProxies = const {},
   });
   final String proxyMode, proxyUrl, warning, systemProxyStatus;
   final int catalogConcurrency, downloadConcurrency;
   final bool downloadBySource;
+  final Map<String, SourceProxy> sourceProxies;
 
   factory ResourceSettings.fromJson(Map<String, dynamic> data) =>
       ResourceSettings(
@@ -29,6 +31,15 @@ class ResourceSettings {
         downloadBySource: data['downloadBySource'] == true,
         warning: data['warning'] as String? ?? '',
         systemProxyStatus: data['systemProxyStatus'] as String? ?? '',
+        sourceProxies: {
+          for (final MapEntry(:key, :value)
+              in (data['sourceProxies'] as Map? ?? const {}).entries)
+            if (key is String && value is Map)
+              key: SourceProxy(
+                value['mode'] as String? ?? 'auto',
+                value['url'] as String? ?? '',
+              ),
+        },
       );
 
   ResourceSettings copyWith({
@@ -37,6 +48,7 @@ class ResourceSettings {
     int? catalogConcurrency,
     int? downloadConcurrency,
     bool? downloadBySource,
+    Map<String, SourceProxy>? sourceProxies,
   }) => ResourceSettings(
     proxyMode: proxyMode ?? this.proxyMode,
     proxyUrl: proxyUrl ?? this.proxyUrl,
@@ -45,7 +57,17 @@ class ResourceSettings {
     downloadBySource: downloadBySource ?? this.downloadBySource,
     warning: warning,
     systemProxyStatus: systemProxyStatus,
+    sourceProxies: sourceProxies ?? this.sourceProxies,
   );
+
+  ResourceSettings withSourceProxy(String group, SourceProxy? proxy) =>
+      copyWith(
+        sourceProxies: {
+          for (final entry in sourceProxies.entries)
+            if (entry.key != group) entry.key: entry.value,
+          group: ?proxy,
+        },
+      );
 
   Map<String, dynamic> toJson() => {
     'proxyMode': proxyMode,
@@ -53,7 +75,16 @@ class ResourceSettings {
     'catalogConcurrency': catalogConcurrency,
     'downloadConcurrency': downloadConcurrency,
     'downloadBySource': downloadBySource,
+    'sourceProxies': {
+      for (final MapEntry(:key, :value) in sourceProxies.entries)
+        key: {'mode': value.mode, if (value.mode == 'manual') 'url': value.url},
+    },
   };
+}
+
+class SourceProxy {
+  const SourceProxy(this.mode, [this.url = '']);
+  final String mode, url;
 }
 
 class SystemProxyMonitor with WidgetsBindingObserver {

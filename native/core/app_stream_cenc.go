@@ -112,7 +112,7 @@ func (stream *nativeStreamServer) nativeDecrypt(ctx context.Context, token strin
 		return errors.New("播放已结束")
 	}
 	session.cencKey = media.CENCKey
-	_, err := stream.cencLayout(providerMediaContext(ctx, session.credentials), session, media.URL)
+	_, err := stream.cencLayout(providerMediaContext(withProxySource(ctx, session.source), session.credentials), session, media.URL)
 	return err
 }
 
