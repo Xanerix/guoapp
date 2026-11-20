@@ -51,7 +51,8 @@ type jsFetchRequest struct {
 	Method          string            `json:"method"`
 	URL             string            `json:"url"`
 	Headers         map[string]string `json:"headers"`
-	Body            string            `json:"body"`
+	Body            goja.Value        `json:"body"`
+	Binary          bool              `json:"binary"`
 	TimeoutMS       int64             `json:"timeoutMs"`
 	Limit           int64             `json:"limit"`
 	FollowRedirects bool              `json:"followRedirects"`
@@ -65,7 +66,7 @@ type jsFetchRequest struct {
 type jsFetchResponse struct {
 	Status    int                 `json:"status"`
 	Headers   map[string][]string `json:"headers"`
-	Body      string              `json:"body"`
+	Body      any                 `json:"body"`
 	Blocked   bool                `json:"blocked"`
 	Oversized bool                `json:"oversized"`
 }
@@ -370,11 +371,20 @@ func (p *jsProvider) hostObject(instance *jsInstance) *goja.Object {
 		"dramaId":   func(sourceID string) string { return ProviderDramaID(id, sourceID) },
 		"chapterId": func(sourceID, key string) string { return ProviderChapterID(id, sourceID, key) },
 		"fetch": func(request jsFetchRequest) jsFetchResponse {
-			response, err := p.fetch(instance.ctx, request)
-			if err != nil {
-				instance.failResponse(err, response)
+			var body []byte
+			if request.Body != nil && !goja.IsUndefined(request.Body) && !goja.IsNull(request.Body) {
+				body = instance.bytesOf(request.Body)
 			}
-			return response
+			response, err := p.fetch(instance.ctx, request, body)
+			result := jsFetchResponse{Status: response.Status, Body: string(response.Body), Blocked: response.Blocked, Oversized: response.Oversized}
+			if err != nil {
+				instance.failResponse(err, result)
+			}
+			result.Headers = response.Header
+			if request.Binary {
+				result.Body = instance.bytesValue(response.Body)
+			}
+			return result
 		},
 		"fetchText": func(request jsTextRequest) jsTextResponse {
 			response, err := p.fetchText(instance.ctx, request)
@@ -499,22 +509,17 @@ func (p *jsProvider) fetchText(ctx context.Context, request jsTextRequest) (jsTe
 	return jsTextResponse{Body: response.Body, URL: response.URL}, err
 }
 
-func (p *jsProvider) fetch(ctx context.Context, request jsFetchRequest) (jsFetchResponse, error) {
+func (p *jsProvider) fetch(ctx context.Context, request jsFetchRequest, body []byte) (HTTPResponse, error) {
 	if err := p.allowedAddress(request.URL); err != nil {
-		return jsFetchResponse{}, err
+		return HTTPResponse{}, err
 	}
 	if request.Background {
 		ctx = context.WithValue(ctx, BackgroundCatalogKey{}, true)
 	}
-	response, err := p.host.Fetch(ctx, HTTPRequest{
+	return p.host.Fetch(ctx, HTTPRequest{
 		Label: p.module.manifest.Name, Method: request.Method, URL: request.URL, Header: request.Headers,
-		Body: moduleBody(request.Body), Timeout: time.Duration(request.TimeoutMS) * time.Millisecond, Limit: request.Limit,
+		Body: body, Timeout: time.Duration(request.TimeoutMS) * time.Millisecond, Limit: request.Limit,
 		FollowRedirects: request.FollowRedirects, AnyStatus: request.AnyStatus, AcceptJSONStatus: request.AcceptStatus, Ticket: request.Ticket,
 		Direct: request.Direct,
 	})
-	if err != nil {
-		return jsFetchResponse{Status: response.Status, Body: string(response.Body), Blocked: response.Blocked, Oversized: response.Oversized}, err
-	}
-	return jsFetchResponse{Status: response.Status, Headers: response.Header, Body: string(response.Body),
-		Blocked: response.Blocked, Oversized: response.Oversized}, nil
 }
