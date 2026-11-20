@@ -9,6 +9,7 @@ import '../../local_store.dart';
 import '../../picture_in_picture.dart';
 import '../../playback_session.dart';
 import '../app_scope.dart';
+import 'audio_player_page.dart';
 import 'landscape_player_page.dart';
 import 'mini_player.dart';
 import 'playback_handle.dart';
@@ -32,6 +33,7 @@ class _PlaybackPageState extends State<PlaybackPage> {
   final _pageScope = FocusScopeNode(debugLabel: 'playbackPage');
   final _pip = PictureInPicture.instance;
   late bool _wideVideo = _measure();
+  late bool _audio = _session.audio;
   MediaQueryData? _media;
   bool _shown = false;
   bool _locked = false;
@@ -40,7 +42,8 @@ class _PlaybackPageState extends State<PlaybackPage> {
 
   PlaybackSession get _session => widget.handle.session;
 
-  bool _measure() => _session.aspectKnown && _session.aspectRatio >= 1;
+  bool _measure() =>
+      _session.aspectKnown && _session.aspectRatio >= 1 && !_session.audio;
 
   bool get _television =>
       AppScope.formFactorOf(context) == FormFactor.television;
@@ -76,7 +79,13 @@ class _PlaybackPageState extends State<PlaybackPage> {
     _bind();
     _sync();
     final wide = _measure();
-    if (wide != _wideVideo) setState(() => _wideVideo = wide);
+    final audio = _session.audio;
+    if (wide != _wideVideo || audio != _audio) {
+      setState(() {
+        _wideVideo = wide;
+        _audio = audio;
+      });
+    }
     if (_session.locked != _locked) {
       _locked = _session.locked;
       _holdOrientation(_locked);
@@ -114,6 +123,7 @@ class _PlaybackPageState extends State<PlaybackPage> {
       autoEnter:
           playing &&
           !_television &&
+          !_audio &&
           widget.store.playbackPreferences.autoPictureInPicture,
     );
     _pip.resize(session.aspectRatio);
@@ -244,6 +254,13 @@ class _PlaybackPageState extends State<PlaybackPage> {
   Widget _page(BuildContext context) {
     final form = AppScope.formFactorOf(context);
     final mini = _pip.available ? () => unawaited(_enterMini()) : null;
+    if (_audio && form != FormFactor.television) {
+      return AudioPlayerPage(
+        store: widget.store,
+        handle: widget.handle,
+        onMiniWindow: mini,
+      );
+    }
     if (desktopPlatform) {
       final size = MediaQuery.sizeOf(context);
       return switch (form) {

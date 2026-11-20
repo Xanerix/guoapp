@@ -326,7 +326,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
             ),
             Expanded(
               child: Text(
-                '${_drama.title} · 第 ${_playback.episode.number} 集',
+                '${_drama.title} · ${_playback.episode.label}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(

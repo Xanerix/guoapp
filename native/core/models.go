@@ -76,6 +76,7 @@ type Chapter struct {
 	PageURL        string          `json:"pageUrl,omitempty"`
 	Referer        string          `json:"referer,omitempty"`
 	Vertical       *bool           `json:"vertical,omitempty"`
+	MediaType      string          `json:"mediaType,omitempty"`
 }
 
 func (c Chapter) EpisodeString(fallback int) string {

@@ -79,6 +79,30 @@ func TestExampleModuleServesCatalog(t *testing.T) {
 	}
 }
 
+func TestModuleHostFetchKeepsBinaryBodies(t *testing.T) {
+	directory := writeTestModule(t, `{"id":"binarytest","name":"二进制测试","runtime":"js","api":1,"adult":false,"hosts":["api.example.invalid"]}`, `
+module.exports = {
+  categories() {
+    const response = host.fetch({ method: "POST", url: "https://api.example.invalid/raw", body: new Uint8Array([255, 0, 128]), binary: true });
+    const packed = host.gunzip(host.gzip(response.body));
+    return [{ id: host.hexEncode(response.body), name: host.hexEncode(packed) }];
+  },
+};`)
+	module, err := readModule(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	host := &moduleTestHost{state: map[string][]byte{}}
+	categories, err := module.provider(host).Categories(context.Background(), false)
+	want := "706f6e6720ff0080"
+	if err != nil || len(categories) != 1 || categories[0].ID != want || categories[0].Name != want {
+		t.Fatalf("categories = %v, %v", categories, err)
+	}
+	if len(host.requests) != 1 || string(host.requests[0].Body) != "\xff\x00\x80" {
+		t.Fatalf("requests = %+v", host.requests)
+	}
+}
+
 func TestModuleHostRestrictsFetchAndIsolatesState(t *testing.T) {
 	directory := writeTestModule(t, `{"id":"hosttest","name":"宿主测试","runtime":"js","api":1,"adult":false,"hosts":["api.example.invalid","*.cdn.example.invalid"]}`, `
 module.exports = {
@@ -251,7 +275,7 @@ module.exports = {
     const parsed = JSON.parse(host.preserveIntegers('{"id":7701280094358096920}'));
     return {
       items: [{ id: host.dramaId(parsed.id), title: [
-        host.hexEncode(host.md5("abc")), host.hexEncode(host.sha256(host.utf8Encode("abc"))), host.base64Encode(sealed),
+        host.hexEncode(host.md5("abc")), host.hexEncode(host.sha256(host.utf8Encode("abc"))), host.hexEncode(host.sha512(host.utf8Encode("abc"))), host.base64Encode(sealed),
         host.utf8Decode(host.base64Decode("57qi5p6c")), host.cacheGet("query"), String(host.cacheGet("missing")), String(host.randomBytes(5).length),
         host.resolveUrl("https://a.example/x/y.html", "../z?q=1"),
       ].join("|") }],
@@ -292,7 +316,7 @@ module.exports = {
 		t.Fatal("search capability does not expose warnings")
 	}
 	items, more, warning, err := searcher.SearchWithWarning(ctx, 1, "红果")
-	want := "900150983cd24fb0d6963f7d28e17f72|ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad|oYSMQruLXhpGrNlYzP7FTw==|红果|红果|null|5|https://a.example/z?q=1"
+	want := "900150983cd24fb0d6963f7d28e17f72|ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad|ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f|oYSMQruLXhpGrNlYzP7FTw==|红果|红果|null|5|https://a.example/z?q=1"
 	if err != nil || !more || warning != "注意" || len(items) != 1 || items[0].Title != want || items[0].ID != "utiltest:7701280094358096920" {
 		t.Fatalf("search = %+v, %v, %q, %v", items, more, warning, err)
 	}
