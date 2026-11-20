@@ -21,6 +21,7 @@ import '../modules/module_install.dart';
 import '../widgets/bar_button.dart';
 import '../theme/motion.dart';
 import '../widgets/focus_ring.dart';
+import '../widgets/material_surface.dart';
 import '../widgets/motion/motion_widgets.dart';
 import '../widgets/source_bar.dart';
 
@@ -369,6 +370,7 @@ class _AppShellState extends State<AppShell> {
         FormFactor.phone => ShellBars(
           notifier: _barsShown,
           child: Scaffold(
+            extendBody: MaterialSurface.glassEnabled(context),
             body: NotificationListener<ScrollNotification>(
               onNotification: _scrolled,
               child: pages,
@@ -377,20 +379,7 @@ class _AppShellState extends State<AppShell> {
                 ? null
                 : HideOnScroll(
                     alignment: Alignment.topCenter,
-                    child: NavigationBar(
-                      height: 72,
-                      selectedIndex: tabs.indexOf(_tab),
-                      onDestinationSelected: (index) => _tap(tabs[index]),
-                      destinations: [
-                        for (final tab in tabs)
-                          NavigationDestination(
-                            key: ValueKey('nav-${tab.name}'),
-                            icon: _badged(tab, Icon(tab.icon)),
-                            selectedIcon: _badged(tab, Icon(tab.selectedIcon)),
-                            label: tab.label,
-                          ),
-                      ],
-                    ),
+                    child: _phoneNavigation(context, tabs),
                   ),
           ),
         ),
@@ -469,6 +458,37 @@ class _AppShellState extends State<AppShell> {
       onOpenSearch: () => openSearch(context, store, source),
       onSearchSubmitted: (query) =>
           openSearch(context, store, source, query: query),
+    );
+  }
+
+  Widget _phoneNavigation(BuildContext context, List<AppTab> tabs) {
+    final glass = MaterialSurface.glassEnabled(context);
+    final navigation = NavigationBar(
+      height: 72,
+      backgroundColor: glass ? Colors.transparent : null,
+      surfaceTintColor: glass ? Colors.transparent : null,
+      elevation: glass ? 0 : null,
+      selectedIndex: tabs.indexOf(_tab),
+      onDestinationSelected: (index) => _tap(tabs[index]),
+      destinations: [
+        for (final tab in tabs)
+          NavigationDestination(
+            key: ValueKey('nav-${tab.name}'),
+            icon: _badged(tab, Icon(tab.icon)),
+            selectedIcon: _badged(tab, Icon(tab.selectedIcon)),
+            label: tab.label,
+          ),
+      ],
+    );
+    if (!glass) return navigation;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+      child: MaterialSurface(
+        mode: GlassSurfaceMode.realtime,
+        color: Theme.of(context).colorScheme.surfaceContainer,
+        borderRadius: BorderRadius.circular(28),
+        child: navigation,
+      ),
     );
   }
 
@@ -590,7 +610,7 @@ class _SideBarState extends State<_SideBar> {
     final expanded = widget.expanded;
     final onToggle = widget.onToggle;
     final metrics = _sideMetrics(desktop: desktop, expanded: expanded);
-    return Material(
+    return MaterialSurface(
       color: Theme.of(context).colorScheme.surfaceContainer,
       child: SafeArea(
         right: false,
@@ -692,7 +712,7 @@ class _SideItem extends StatelessWidget {
         shape: const StadiumBorder(),
         color: selected ? colors.secondaryContainer : Colors.transparent,
       ),
-      child: Material(
+      child: MaterialSurface(
         type: MaterialType.transparency,
         child: InkWell(
           key: ValueKey('nav-${tab.name}'),

@@ -3,6 +3,9 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../widgets/material_chrome.dart';
+import '../widgets/material_surface.dart';
+
 import '../../core_bridge.dart';
 import '../../media_controls.dart';
 import '../../models.dart';
@@ -364,7 +367,8 @@ class _CastPageState extends State<CastPage> {
             if (!didPop) unawaited(_exit());
           },
           child: Scaffold(
-            appBar: AppBar(
+            appBar: SurfaceAppBar(
+              glassMode: GlassSurfaceMode.tint,
               leading: BackButton(onPressed: _exit),
               title: const Text('投屏'),
             ),

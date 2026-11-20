@@ -1,6 +1,8 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+
+import '../widgets/material_chrome.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -17,6 +19,7 @@ import '../../resource_settings_editor.dart';
 import '../../window_on_top.dart';
 import '../app_scope.dart';
 import '../player/danmaku_settings.dart';
+import '../terms_page.dart';
 import '../update_prompt.dart';
 import '../users/users_view.dart';
 import '../widgets/focus_ring.dart';
@@ -603,6 +606,12 @@ class SettingsSection extends StatelessWidget {
             value: version.isEmpty ? '版本未知' : '版本 $version',
           ),
           const _UpdateCheckTile(),
+          SettingsTile(
+            title: '使用条款',
+            subtitle: '查看应用使用条款',
+            onTap: () =>
+                open('使用条款', (_) => TermsPage(store: store, readOnly: true)),
+          ),
           SwitchTile(
             title: '启动时检查更新',
             subtitle: '有新版本时每次启动都会提示，可在提示里忽略此版本',
@@ -764,7 +773,7 @@ class _RenderingTileState extends State<_RenderingTile> {
   Future<void> _switch(bool enabled) async {
     final accepted = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => SurfaceAlertDialog(
         title: Text(enabled ? '开启兼容渲染模式？' : '关闭兼容渲染模式？'),
         content: const Text('需要重启应用才能生效，正在进行的下载会中断。'),
         actions: [
@@ -842,7 +851,7 @@ class _ProxyDialogState extends State<_ProxyDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
+  Widget build(BuildContext context) => SurfaceAlertDialog(
     title: const Text('代理地址'),
     content: SizedBox(
       width: 420,

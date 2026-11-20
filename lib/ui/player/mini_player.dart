@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+
+import '../widgets/material_surface.dart';
 import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -129,7 +131,8 @@ class _MiniWindowViewState extends State<MiniWindowView> {
   Widget _body(BuildContext context, {required bool playing}) {
     final session = _session;
     final visible = _hover || !playing || _seekValue != null;
-    return Material(
+    return MaterialSurface(
+      mode: GlassSurfaceMode.tint,
       color: Colors.black,
       child: Stack(
         fit: StackFit.expand,

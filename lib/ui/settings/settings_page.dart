@@ -1,6 +1,8 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+
+import '../widgets/material_chrome.dart';
 import 'package:flutter/services.dart';
 
 import '../../local_store.dart';
@@ -23,7 +25,7 @@ void openUsers(BuildContext context, LocalStore store) => openPage<void>(
   (context) => settingsSplit(context)
       ? SettingsPage(store: store, initialGroup: SettingsGroup.users)
       : Scaffold(
-          appBar: AppBar(title: Text(SettingsGroup.users.label)),
+          appBar: SurfaceAppBar(title: Text(SettingsGroup.users.label)),
           body: ListView(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
             children: [
@@ -67,7 +69,7 @@ class _ProxySettingsPageState extends State<_ProxySettingsPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(SettingsGroup.proxy.label)),
+    appBar: SurfaceAppBar(title: Text(SettingsGroup.proxy.label)),
     body: ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       children: [
@@ -86,7 +88,7 @@ void _openFullPage(BuildContext context, String title, WidgetBuilder body) =>
     openPage<void>(
       context,
       (context) => Scaffold(
-        appBar: AppBar(title: Text(title)),
+        appBar: SurfaceAppBar(title: Text(title)),
         body: body(context),
       ),
     );
@@ -145,6 +147,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final scope = AppScope.of(context);
     return switch (group) {
       SettingsGroup.appearance => [
+        if (scope.liquidGlass) store.interfaceMaterial.label,
         themeModes[store.themeMode],
         scope.systemColorAvailable && store.followSystemColor
             ? '系统取色'
@@ -245,7 +248,7 @@ class _SettingsPageState extends State<SettingsPage> {
       settingsSplit(context) ? _split(context) : _phone(context);
 
   Widget _phone(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('设置')),
+    appBar: SurfaceAppBar(title: const Text('设置')),
     body: ListenableBuilder(
       listenable: widget.store,
       builder: (context, _) => ListView(
@@ -270,7 +273,7 @@ class _SettingsPageState extends State<SettingsPage> {
   void _openGroup(SettingsGroup group) => openPage<void>(
     context,
     (_) => Scaffold(
-      appBar: AppBar(title: Text(group.label)),
+      appBar: SurfaceAppBar(title: Text(group.label)),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [_section(group)],

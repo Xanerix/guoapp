@@ -2,12 +2,14 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'widgets/material_surface.dart';
+
 import '../app_build.dart';
 import '../local_store.dart';
 import 'app_scope.dart';
 import 'widgets/focus_ring.dart';
 
-const termsVersion = 2;
+const termsVersion = 3;
 const _clauses = [
   '$appName 是开源软件，框架与模块商店中的站源模块代码公开，仅供个人学习与技术研究，**不收费，不提供任何付费服务**。',
   '$appName 与红果短剧及其他各站源的运营方**无任何关联**，未获得其授权或认可；文中提到的名称和商标归各自权利人所有。',
@@ -23,8 +25,9 @@ const _clauses = [
 ];
 
 class TermsPage extends StatefulWidget {
-  const TermsPage({super.key, required this.store});
+  const TermsPage({super.key, required this.store, this.readOnly = false});
   final LocalStore store;
+  final bool readOnly;
 
   @override
   State<TermsPage> createState() => _TermsPageState();
@@ -32,13 +35,17 @@ class TermsPage extends StatefulWidget {
 
 class _TermsPageState extends State<TermsPage> {
   final _checked = List.filled(_clauses.length, false);
-  late final Timer _timer;
+  Timer? _timer;
   var _remaining = 15;
   var _busy = false;
 
   @override
   void initState() {
     super.initState();
+    if (widget.readOnly) {
+      _remaining = 0;
+      return;
+    }
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       setState(() => _remaining--);
       if (_remaining == 0) timer.cancel();
@@ -47,7 +54,7 @@ class _TermsPageState extends State<TermsPage> {
 
   @override
   void dispose() {
-    _timer.cancel();
+    _timer?.cancel();
     super.dispose();
   }
 
@@ -107,7 +114,7 @@ class _TermsPageState extends State<TermsPage> {
                     ),
                   ),
                   Text(
-                    '请逐条阅读并勾选，全部勾选后才能继续。',
+                    widget.readOnly ? '查看应用使用条款。' : '请逐条阅读并勾选，全部勾选后才能继续。',
                     textAlign: TextAlign.center,
                     style: body?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
@@ -118,25 +125,28 @@ class _TermsPageState extends State<TermsPage> {
                       child: FocusRing(
                         radius: 8,
                         scale: 1,
-                        child: Material(
+                        child: MaterialSurface(
                           type: MaterialType.transparency,
                           borderRadius: BorderRadius.circular(8),
                           clipBehavior: Clip.antiAlias,
                           child: InkWell(
                             autofocus: television && index == 0,
                             focusColor: television ? Colors.transparent : null,
-                            onTap: _busy ? null : () => _toggle(index),
+                            onTap: _busy || widget.readOnly
+                                ? null
+                                : () => _toggle(index),
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                ExcludeFocus(
-                                  child: Checkbox(
-                                    value: _checked[index],
-                                    onChanged: _busy
-                                        ? null
-                                        : (_) => _toggle(index),
+                                if (!widget.readOnly)
+                                  ExcludeFocus(
+                                    child: Checkbox(
+                                      value: _checked[index],
+                                      onChanged: _busy
+                                          ? null
+                                          : (_) => _toggle(index),
+                                    ),
                                   ),
-                                ),
                                 Expanded(
                                   child: Padding(
                                     padding: const EdgeInsets.fromLTRB(
@@ -169,21 +179,24 @@ class _TermsPageState extends State<TermsPage> {
                         ),
                       ),
                     ),
-                  const SizedBox(height: 8),
-                  FocusRing(
-                    radius: 24,
-                    child: FilledButton(
-                      style: const ButtonStyle(
-                        minimumSize: WidgetStatePropertyAll(
-                          Size.fromHeight(48),
+                  if (!widget.readOnly) const SizedBox(height: 8),
+                  if (!widget.readOnly)
+                    FocusRing(
+                      radius: 24,
+                      child: FilledButton(
+                        style: const ButtonStyle(
+                          minimumSize: WidgetStatePropertyAll(
+                            Size.fromHeight(48),
+                          ),
+                        ),
+                        onPressed: !_reading && _allChecked && !_busy
+                            ? _accept
+                            : null,
+                        child: Text(
+                          _reading ? '同意并继续（$_remaining 秒）' : '同意并继续',
                         ),
                       ),
-                      onPressed: !_reading && _allChecked && !_busy
-                          ? _accept
-                          : null,
-                      child: Text(_reading ? '同意并继续（$_remaining 秒）' : '同意并继续'),
                     ),
-                  ),
                 ],
               ),
             ),

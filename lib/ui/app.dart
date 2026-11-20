@@ -9,6 +9,7 @@ import '../app_build.dart';
 import '../app_device.dart';
 import '../core_bridge.dart';
 import '../local_store.dart';
+import '../interface_material.dart';
 import '../theme_color.dart';
 import 'app_scope.dart';
 import 'cover_blur.dart';
@@ -20,6 +21,7 @@ import 'theme/motion.dart';
 import 'theme/system_color.dart';
 import 'users/unlock_page.dart';
 import 'widgets/focus_ring.dart';
+import 'widgets/material_surface.dart';
 
 class DuanjuApp extends StatefulWidget {
   const DuanjuApp({
@@ -304,6 +306,8 @@ class _DuanjuAppState extends State<DuanjuApp> with WidgetsBindingObserver {
               repository: widget.repository,
               formFactor: formFactor,
               systemColorAvailable: _systemColor != null,
+              interfaceMaterial:
+                  store?.interfaceMaterial ?? InterfaceMaterial.standard,
               version: widget.version,
               child: CoverBlurScope(
                 mode: coverBlur,
@@ -328,7 +332,7 @@ class _DuanjuAppState extends State<DuanjuApp> with WidgetsBindingObserver {
                           policy: ReadingOrderTraversalPolicy(
                             requestFocusCallback: revealFocus,
                           ),
-                          child: child!,
+                          child: MaterialBackground(child: child!),
                         ),
                       ),
                     );

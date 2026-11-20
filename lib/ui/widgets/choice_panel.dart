@@ -2,6 +2,9 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import 'material_chrome.dart';
+import 'material_surface.dart';
+
 import '../app_scope.dart';
 import 'focus_ring.dart';
 
@@ -66,7 +69,7 @@ Future<T?> showChoicePanel<T>({
   );
   switch (form) {
     case FormFactor.phone:
-      return showModalBottomSheet<T>(
+      return showSurfaceModalBottomSheet<T>(
         context: context,
         isScrollControlled: true,
         showDragHandle: true,
@@ -92,7 +95,7 @@ Future<T?> showChoicePanel<T>({
         transitionDuration: const Duration(milliseconds: 220),
         pageBuilder: (context, _, _) => Align(
           alignment: Alignment.centerRight,
-          child: Material(
+          child: MaterialSurface(
             color: Theme.of(context).colorScheme.surfaceContainerLow,
             elevation: 8,
             child: SizedBox(
@@ -266,7 +269,7 @@ class _ChoiceCell<T> extends StatelessWidget {
     };
     return FocusRing(
       radius: radius,
-      child: Material(
+      child: MaterialSurface(
         color: selected ? colors.secondaryContainer : Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(radius),
@@ -330,7 +333,8 @@ class _AnchoredRoute<T> extends PopupRoute<T> {
     final colors = Theme.of(context).colorScheme;
     return CustomSingleChildLayout(
       delegate: _AnchoredLayout(anchor, width),
-      child: Material(
+      child: MaterialSurface(
+        mode: GlassSurfaceMode.realtime,
         color: colors.surfaceContainerHigh,
         elevation: 6,
         shape: RoundedRectangleBorder(

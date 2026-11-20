@@ -3,6 +3,9 @@ import 'dart:math' as math;
 import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/material.dart';
+
+import '../widgets/material_chrome.dart';
+import '../widgets/material_surface.dart';
 import 'package:flutter/services.dart';
 
 import '../../drama_details.dart';
@@ -349,7 +352,7 @@ class _DetailPageState extends State<DetailPage> {
         SourceSite.byId(details.drama.source).vipPrompt &&
         await showDialog<bool>(
               context: context,
-              builder: (context) => AlertDialog(
+              builder: (context) => SurfaceAlertDialog(
                 title: const Text('这是一集 VIP 内容'),
                 content: const Text('站源可能只提供试看或限制播放。'),
                 actions: [
@@ -445,7 +448,7 @@ class _DetailPageState extends State<DetailPage> {
       _renewKeys(details.drama.id);
       if (!details.allowed) {
         return Scaffold(
-          appBar: AppBar(),
+          appBar: SurfaceAppBar(),
           body: const StatusView(
             title: '当前用户无权访问',
             message: '请返回剧库后重新选择。',
@@ -465,7 +468,7 @@ class _DetailPageState extends State<DetailPage> {
 
   PreferredSizeWidget _appBar(DramaDetails details, double height) {
     final colors = Theme.of(context).colorScheme;
-    return AppBar(
+    return SurfaceAppBar(
       toolbarHeight: height,
       backgroundColor: WidgetStateColor.resolveWith(
         (states) => states.contains(WidgetState.scrolledUnder)
@@ -623,7 +626,7 @@ class _DetailPageState extends State<DetailPage> {
           ],
         ),
       ),
-      bottomNavigationBar: Material(
+      bottomNavigationBar: MaterialSurface(
         color: Theme.of(context).colorScheme.surfaceContainerLow,
         child: SafeArea(
           top: false,
@@ -814,7 +817,7 @@ class _DetailPageState extends State<DetailPage> {
     final surface = theme.colorScheme.surface;
     return Scaffold(
       extendBodyBehindAppBar: true,
-      appBar: AppBar(backgroundColor: Colors.transparent),
+      appBar: SurfaceAppBar(backgroundColor: Colors.transparent),
       body: Stack(
         fit: StackFit.expand,
         children: [
@@ -1511,7 +1514,7 @@ class _EpisodeCell extends StatelessWidget {
         button: true,
         label: '第 ${episode.number} 集${episode.vip ? '，VIP' : ''}',
         excludeSemantics: true,
-        child: Material(
+        child: MaterialSurface(
           color: current ? colors.primaryContainer : colors.surfaceContainer,
           borderRadius: radius,
           clipBehavior: Clip.antiAlias,
@@ -1600,7 +1603,7 @@ class _DescriptionDialogState extends State<_DescriptionDialog> {
     canRequestFocus: false,
     skipTraversal: true,
     onKeyEvent: (_, event) => _onKey(event),
-    child: AlertDialog(
+    child: SurfaceAlertDialog(
       title: Text(widget.drama.title),
       content: SizedBox(
         width: 560,

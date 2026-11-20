@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/material_chrome.dart';
+import '../widgets/material_surface.dart';
+
 import '../../local_profiles.dart';
 import '../../local_store.dart';
 import '../../models.dart';
@@ -83,7 +86,7 @@ class _UserEditorState extends State<UserEditor> {
     final profile = _profile!;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => SurfaceAlertDialog(
         title: Text('删除 ${profile.name}？'),
         content: const Text('会同时删除该用户的追剧和观看记录，下载文件保留。'),
         actions: [
@@ -398,7 +401,7 @@ class _SourceCheck extends StatelessWidget {
     child: FocusRing(
       radius: 24,
       scale: 1,
-      child: Material(
+      child: MaterialSurface(
         type: MaterialType.transparency,
         shape: const StadiumBorder(),
         clipBehavior: Clip.antiAlias,

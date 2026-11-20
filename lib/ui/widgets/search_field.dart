@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../native_text_input.dart';
 import '../app_scope.dart';
 import 'letter_keyboard.dart';
+import 'material_surface.dart';
 
 class SearchField extends StatelessWidget {
   const SearchField({
@@ -28,13 +29,13 @@ class SearchField extends StatelessWidget {
   final bool letterKeyboard;
   final TitleMatches? matches;
 
-  InputDecoration _decoration(ColorScheme colors) {
+  InputDecoration _decoration(ColorScheme colors, bool glass) {
     final radius = BorderRadius.circular(height / 2);
     return InputDecoration(
       hintText: hint,
       isDense: true,
       filled: true,
-      fillColor: colors.surfaceContainerHigh,
+      fillColor: glass ? Colors.transparent : colors.surfaceContainerHigh,
       contentPadding: EdgeInsets.zero,
       prefixIcon: Icon(
         Icons.search_rounded,
@@ -54,9 +55,10 @@ class SearchField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final decoration = _decoration(Theme.of(context).colorScheme);
+    final glass = MaterialSurface.glassEnabled(context);
+    final decoration = _decoration(Theme.of(context).colorScheme, glass);
     final television = AppScope.of(context).television;
-    return SizedBox(
+    final field = SizedBox(
       height: height,
       child:
           television &&
@@ -83,6 +85,13 @@ class SearchField extends StatelessWidget {
               decoration: decoration,
             ),
     );
+    return glass
+        ? MaterialSurface(
+            color: Theme.of(context).colorScheme.surfaceContainerHigh,
+            borderRadius: BorderRadius.circular(height / 2),
+            child: field,
+          )
+        : field;
   }
 }
 

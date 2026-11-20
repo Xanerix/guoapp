@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../widgets/material_surface.dart';
+
 import '../../local_store.dart';
 import '../../models.dart';
 import '../theme/motion.dart';
@@ -194,7 +196,7 @@ class _SeasonStripState extends State<SeasonStrip> {
       ],
     );
     if (widget.collapsed) {
-      return Material(
+      return MaterialSurface(
         color: background,
         borderRadius: BorderRadius.circular(16),
         clipBehavior: Clip.antiAlias,
@@ -232,7 +234,7 @@ class _SeasonStripState extends State<SeasonStrip> {
     final online = season.onlineLabel;
     return FocusRing(
       radius: 12,
-      child: Material(
+      child: MaterialSurface(
         color: selected ? colors.primaryContainer : colors.surfaceContainer,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(

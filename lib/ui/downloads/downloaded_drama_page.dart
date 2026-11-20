@@ -5,6 +5,9 @@ import 'dart:math';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
+import '../widgets/material_chrome.dart';
+import '../widgets/material_surface.dart';
+
 import '../../app_device.dart';
 import '../../core_bridge.dart';
 import '../../download_collections.dart';
@@ -144,7 +147,7 @@ class _DownloadedDramaPageState extends State<DownloadedDramaPage> {
       barrierDismissible: false,
       builder: (context) => PopScope(
         canPop: false,
-        child: AlertDialog(
+        child: SurfaceAlertDialog(
           title: const Text('导出到 Movies'),
           content: ValueListenableBuilder(
             valueListenable: exported,
@@ -331,7 +334,7 @@ class _DownloadedDramaPageState extends State<DownloadedDramaPage> {
     final drama = item?.drama ?? widget.drama;
     return Scaffold(
       appBar: selection == null || item == null
-          ? AppBar(
+          ? SurfaceAppBar(
               title: Text(drama.title),
               actions: [
                 _textButton('详情', () => _openDetail(drama)),
@@ -339,7 +342,7 @@ class _DownloadedDramaPageState extends State<DownloadedDramaPage> {
                 const SizedBox(width: 8),
               ],
             )
-          : AppBar(
+          : SurfaceAppBar(
               leading: IconButton(
                 tooltip: '退出编辑',
                 onPressed: () => setState(() => _selection = null),
@@ -508,7 +511,7 @@ class _DownloadedDramaPageState extends State<DownloadedDramaPage> {
       if (updater.busy)
         Padding(
           padding: EdgeInsets.fromLTRB(inset, 8, inset, 0),
-          child: Material(
+          child: MaterialSurface(
             color: colors.secondaryContainer,
             borderRadius: BorderRadius.circular(12),
             child: Padding(
@@ -909,7 +912,7 @@ class _FillDialog extends StatelessWidget {
               ];
       }
       final state = snapshot.hasError ? 2 : (plan == null ? 0 : 1);
-      return AlertDialog(
+      return SurfaceAlertDialog(
         title: const Text('补齐缺集'),
         content: AnimatedSize(
           duration: Motion.of(context, Motion.medium),
@@ -958,7 +961,7 @@ class _EpisodeCard extends StatelessWidget {
       excludeSemantics: true,
       child: FocusRing(
         radius: 14,
-        child: Material(
+        child: MaterialSurface(
           color: colors.surfaceContainer,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),

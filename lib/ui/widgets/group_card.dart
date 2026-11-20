@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 
 import 'focus_ring.dart';
+import 'material_surface.dart';
 
 class GroupCard extends StatelessWidget {
   const GroupCard({super.key, required this.children});
   final List<Widget> children;
 
   @override
-  Widget build(BuildContext context) => Material(
+  Widget build(BuildContext context) => MaterialSurface(
     color: Theme.of(context).colorScheme.surfaceContainer,
     borderRadius: BorderRadius.circular(20),
     clipBehavior: Clip.antiAlias,

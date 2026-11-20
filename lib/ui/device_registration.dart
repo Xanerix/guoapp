@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'widgets/material_chrome.dart';
+
 import '../core_bridge.dart';
 import '../local_store.dart';
 import '../models.dart';
@@ -119,7 +121,7 @@ class _RegistrationDialogState extends State<_RegistrationDialog> {
     final error = _error;
     return PopScope(
       canPop: false,
-      child: AlertDialog(
+      child: SurfaceAlertDialog(
         title: Text(error == null ? '正在注册设备...' : '设备注册失败'),
         content: error == null
             ? Row(

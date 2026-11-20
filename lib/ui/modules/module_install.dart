@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/material_chrome.dart';
+
 import '../../core_bridge.dart';
 import '../../local_store.dart';
 import '../../models.dart';
@@ -136,7 +138,7 @@ class BatchInstallDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final adult = entries.where((entry) => entry.adult).length;
-    return AlertDialog(
+    return SurfaceAlertDialog(
       title: Text(title),
       content: SingleChildScrollView(
         child: Column(

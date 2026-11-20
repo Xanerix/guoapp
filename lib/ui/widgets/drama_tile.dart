@@ -7,6 +7,7 @@ import '../theme/motion.dart';
 import 'cover_image.dart';
 import 'focus_ring.dart';
 import 'motion/motion_widgets.dart';
+import 'material_surface.dart';
 
 const _coverRadius = 12.0;
 
@@ -95,7 +96,13 @@ class _PosterButtonState extends State<_PosterButton> {
         child: AnimatedScale(
           scale: visible && AppScope.of(context).television ? 1.06 : 1,
           duration: const Duration(milliseconds: 120),
-          child: button,
+          child: MaterialSurface.glassEnabled(context)
+              ? MaterialSurface(
+                  color: Theme.of(context).colorScheme.surfaceContainer,
+                  borderRadius: BorderRadius.circular(18),
+                  child: button,
+                )
+              : button,
         ),
       ),
     );

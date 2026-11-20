@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/material_chrome.dart';
+
 import '../../download_collections.dart';
 import '../../local_store.dart';
 import '../../models.dart';
@@ -189,7 +191,7 @@ class _DownloadPickerPageState extends State<DownloadPickerPage> {
     final form = AppScope.formFactorOf(context);
     if (form == FormFactor.phone) {
       return Scaffold(
-        appBar: AppBar(
+        appBar: SurfaceAppBar(
           title: const Text('下载选集'),
           actions: [_selectAllButton(), const SizedBox(width: 8)],
         ),
