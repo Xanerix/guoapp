@@ -168,6 +168,12 @@ Flutter 多端独立影视应用，手机、平板、电脑和电视分别适配
 - 如不同意以上条款，**请立即停止使用并卸载本应用**。
 - 如认为本项目侵犯了你的合法权益，请通过 Issue 联系，核实后会及时处理。
 
+## 致谢
+
+感谢以下赞助者对本项目的支持：
+
+- [mnyyds](https://github.com/mnyyds)
+
 ## 许可
 
 本项目以 [GNU GPL v3.0](https://www.gnu.org/licenses/gpl-3.0.html) 发布，全文见 [LICENSE](LICENSE)。第三方依赖遵循各自的许可证。
