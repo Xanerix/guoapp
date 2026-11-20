@@ -1,5 +1,3 @@
-<img width="132" height="70" alt="QQ_2026-11-20_15-44-15" src="https://github.com/user-attachments/assets/da21b654-3e77-465c-8f23-0ca30810efb0" /># 更新日志
-
 每个版本一节，标题为 `pubspec.yaml` 中的完整版本号。发布工作流会把对应一节写入 GitHub Release 说明。
 
 ## 2.0.3+116
