@@ -10,6 +10,7 @@ import '../../core_bridge.dart';
 import '../../download_preferences.dart';
 import '../../local_store.dart';
 import '../../media_controls.dart';
+import '../../mini_edge_snap.dart';
 import '../../models.dart';
 import '../../playback_preferences.dart';
 import '../../resource_settings.dart';
@@ -347,6 +348,17 @@ class SettingsSection extends StatelessWidget {
                     saveSetting(context, () => setWindowOnTop(value)),
               ),
             ),
+            if (Platform.isWindows)
+              ValueListenableBuilder(
+                valueListenable: miniEdgeSnap,
+                builder: (context, enabled, _) => SwitchTile(
+                  title: '小窗贴边隐藏',
+                  subtitle: '小窗拖到屏幕边缘时自动收起，鼠标移到边缘展开',
+                  value: enabled,
+                  onChanged: (value) =>
+                      saveSetting(context, () => setMiniEdgeSnap(value)),
+                ),
+              ),
             const BossKeyTile(),
           ],
         ),

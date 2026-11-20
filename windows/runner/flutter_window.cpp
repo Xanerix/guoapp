@@ -11,6 +11,8 @@
 
 #include "flutter/generated_plugin_registrant.h"
 
+#include "mini_edge_snap.h"
+
 namespace {
 
 constexpr double kMiniExtent = 480;
@@ -158,6 +160,12 @@ bool FlutterWindow::OnCreate() {
               std::get_if<flutter::EncodableMap>(call.arguments()))));
           return;
         }
+        if (call.method_name() == "setMiniEdgeSnap") {
+          const auto* args = std::get_if<flutter::EncodableMap>(call.arguments());
+          edge_snap_.SetEnabled(args && BoolArgument(*args, "enabled"));
+          result->Success();
+          return;
+        }
         if (call.method_name() != "playbackPower") {
           result->NotImplemented();
           return;
@@ -181,6 +189,7 @@ bool FlutterWindow::OnCreate() {
       FAILED(taskbar_->HrInit())) {
     taskbar_.Reset();
   }
+  edge_snap_.Init(GetHandle());
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
   SetWindowSubclass(flutter_controller_->view()->GetNativeWindow(),
                     DeclineAccessibilityQueries, 0, 0);
@@ -241,7 +250,9 @@ void FlutterWindow::EnterMiniWindow(double aspect,
   HWND window = GetHandle();
   const double scale = WindowScale(window);
   mini_aspect_ = aspect;
+  edge_snap_.SetScale(scale);
   if (mini_) {
+    edge_snap_.Reset();
     RECT frame;
     GetWindowRect(window, &frame);
     const SIZE size = MiniSize(
@@ -284,9 +295,11 @@ void FlutterWindow::EnterMiniWindow(double aspect,
   style_before_mini_ = GetWindowLong(window, GWL_STYLE);
   SetWindowLong(window, GWL_STYLE, style_before_mini_ & ~WS_CAPTION);
   mini_ = true;
+  edge_snap_.Reset();
   SetWindowPos(window, HWND_TOPMOST, target.left, target.top,
                target.right - target.left, target.bottom - target.top,
                SWP_FRAMECHANGED);
+  edge_snap_.SetMiniActive(true);
 }
 
 flutter::EncodableValue FlutterWindow::ExitMiniWindow() {
@@ -294,6 +307,8 @@ flutter::EncodableValue FlutterWindow::ExitMiniWindow() {
     return flutter::EncodableValue();
   }
   HWND window = GetHandle();
+  edge_snap_.SetMiniActive(false);
+  edge_snap_.Reset();
   RECT frame;
   GetWindowRect(window, &frame);
   mini_ = false;
@@ -425,6 +440,13 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
+  if (message == WM_ENTERSIZEMOVE) {
+    edge_snap_.SetDragActive(true);
+  } else if (message == WM_EXITSIZEMOVE) {
+    edge_snap_.SetScale(WindowScale(hwnd));
+    edge_snap_.OnDragFinished();
+  }
+
   // Give Flutter, including plugins, an opportunity to handle window messages.
   if (flutter_controller_) {
     std::optional<LRESULT> result =
@@ -450,6 +472,15 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
       if (mini_) {
         KeepMiniAspect(wparam, reinterpret_cast<RECT*>(lparam));
         return TRUE;
+      }
+      break;
+    case WM_DPICHANGED:
+      edge_snap_.SetScale(WindowScale(hwnd));
+      break;
+    case WM_TIMER:
+      if (wparam == mini_edge_snap::kTimerId) {
+        edge_snap_.OnTimerTick();
+        return 0;
       }
       break;
     case WM_HOTKEY:

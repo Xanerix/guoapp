@@ -12,6 +12,7 @@
 #include <memory>
 
 #include "media_controls.h"
+#include "mini_edge_snap.h"
 #include "win32_window.h"
 
 // A window that does nothing but host a Flutter view.
@@ -53,6 +54,7 @@ class FlutterWindow : public Win32Window {
   double mini_aspect_ = 16.0 / 9.0;
   LONG style_before_mini_ = 0;
   WINDOWPLACEMENT placement_before_mini_{};
+  mini_edge_snap::Controller edge_snap_;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_
