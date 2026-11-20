@@ -25,7 +25,6 @@ class ExploreFeed extends ChangeNotifier {
   SourceCatalog? _catalog;
   CatalogCategory _tab = CatalogCategory.all;
   DramaFeed? _feed;
-  Map<String, int> _ranks = const {};
   final _feeds = <String, DramaFeed>{};
   final _rankings = <String, Map<String, int>>{};
   bool _disposed = false;
@@ -47,22 +46,31 @@ class ExploreFeed extends ChangeNotifier {
     ];
   }
 
-  int? rankOf(Drama drama) => _ranks[drama.id];
+  int? rankOf(Drama drama) => rankIn(_tab, drama);
+  WatchEntry? get resume => resumeIn(_tab);
+  Drama? get featured => featuredIn(_tab);
+  List<Drama> get items => itemsIn(_tab);
 
-  WatchEntry? get resume {
+  DramaFeed feedOf(CatalogCategory tab) => _feeds[tab.id] ?? _create(tab);
+
+  int? rankIn(CatalogCategory tab, Drama drama) => _rankings[tab.id]?[drama.id];
+
+  WatchEntry? resumeIn(CatalogCategory tab) {
     final source = this.source;
-    if (source == null || _tab.id != tabs.first.id) return null;
+    if (source == null || tab.id != tabs.first.id) return null;
     return store.history
         .where((entry) => entry.drama.source == source.id)
         .firstOrNull;
   }
 
-  Drama? get featured =>
-      recommending && resume == null ? _feed?.items.firstOrNull : null;
+  Drama? featuredIn(CatalogCategory tab) =>
+      tab.id == recommendTab.id && resumeIn(tab) == null
+      ? _feeds[tab.id]?.items.firstOrNull
+      : null;
 
-  List<Drama> get items {
-    final items = _feed?.items ?? const <Drama>[];
-    return featured == null ? items : items.skip(1).toList();
+  List<Drama> itemsIn(CatalogCategory tab) {
+    final items = _feeds[tab.id]?.items ?? const <Drama>[];
+    return featuredIn(tab) == null ? items : items.skip(1).toList();
   }
 
   void select(String id) {
@@ -103,25 +111,27 @@ class ExploreFeed extends ChangeNotifier {
       await catalog.loadCategories(force: force);
     } catch (_) {}
     if (_disposed || catalog != _catalog) return;
+    _prefetch();
     _notify();
   }
 
   void _select(CatalogCategory tab) {
-    final catalog = _catalog!;
     if (recommending) unawaited(repository.cancelRecommendations());
     _tab = tab;
-    if (_feeds[tab.id] case final kept?) {
-      _feed = kept;
-      _ranks = _rankings[tab.id] ?? const {};
-      if (kept.items.isEmpty && !kept.loading) unawaited(kept.reload());
-      _notify();
-      return;
-    }
+    final kept = _feeds[tab.id];
+    final feed = _feed = kept ?? _create(tab);
+    if (feed.items.isEmpty && !feed.loading) unawaited(feed.reload());
+    _prefetch();
+    _notify();
+  }
+
+  DramaFeed _create(CatalogCategory tab) {
+    final catalog = _catalog!;
     final board = catalog.boards
         .where((board) => rankingTab(board).id == tab.id)
         .firstOrNull;
-    final ranks = _ranks = _rankings[tab.id] = <String, int>{};
-    final feed = _feed = _feeds[tab.id] = tab.id == recommendTab.id
+    final ranks = _rankings[tab.id] = <String, int>{};
+    final feed = _feeds[tab.id] = tab.id == recommendTab.id
         ? DramaFeed(
             cumulative: true,
             load: (page, force) =>
@@ -134,12 +144,46 @@ class ExploreFeed extends ChangeNotifier {
           )
         : DramaFeed(
             cached: () => catalog.cached(tab),
-            load: (page, force) =>
-                _saved(catalog.fetch(tab, page: page, force: force)),
+            load: (page, force) => _saved(
+              catalog.fetch(tab, page: page, lane: _lane(tab), force: force),
+            ),
           );
-    feed.addListener(_notify);
     unawaited(feed.reload());
+    feed.addListener(_feedChanged);
+    return feed;
+  }
+
+  String _lane(CatalogCategory tab) {
+    if (tab.id == _tab.id) return '';
+    final tabs = this.tabs;
+    final index = tabs.indexWhere((item) => item.id == tab.id);
+    final current = tabs.indexWhere((item) => item.id == _tab.id);
+    return index < current ? 'behind' : 'ahead';
+  }
+
+  void _feedChanged() {
+    _prefetch();
     _notify();
+  }
+
+  void _prefetch() {
+    final feed = _feed;
+    if (feed == null ||
+        feed.loading ||
+        feed.loadingMore ||
+        feed.items.isEmpty ||
+        feed.error.isNotEmpty) {
+      return;
+    }
+    final tabs = this.tabs;
+    final index = tabs.indexWhere((tab) => tab.id == _tab.id);
+    if (index < 0) return;
+    for (final neighbor in [index - 1, index + 1]) {
+      if (neighbor < 0 || neighbor >= tabs.length) continue;
+      final tab = tabs[neighbor];
+      if (_feeds.containsKey(tab.id)) continue;
+      _create(tab);
+    }
   }
 
   Future<CatalogPage> _ranking(
@@ -189,7 +233,6 @@ class ExploreFeed extends ChangeNotifier {
     _feeds.clear();
     _rankings.clear();
     _feed = null;
-    _ranks = const {};
   }
 
   void _notify() {

@@ -40,6 +40,7 @@ const _backupFlags = {
   'televisionKeyboard',
   'historyTab',
   'pureBlack',
+  'slidePages',
   'blurCoversButton',
   'blurCoversOnLaunch',
   'blurAllCovers',
@@ -490,6 +491,7 @@ class LocalStore extends ChangeNotifier {
   bool get televisionKeyboard => _flag('televisionKeyboard', false);
   bool get historyTab => _flag('historyTab', true);
   bool get pureBlack => _flag('pureBlack', false);
+  bool get slidePages => _flag('slidePages', true);
   bool get blurCoversButton => _flag('blurCoversButton', false);
   String get blurCoversLaunch => switch (_settings['blurCoversLaunch']) {
     final String mode when coverBlurLaunchModes.containsKey(mode) => mode,
@@ -639,6 +641,7 @@ class LocalStore extends ChangeNotifier {
       _setting('televisionKeyboard', value);
   Future<void> setHistoryTab(bool value) => _setting('historyTab', value);
   Future<void> setPureBlack(bool value) => _setting('pureBlack', value);
+  Future<void> setSlidePages(bool value) => _setting('slidePages', value);
   Future<void> setBlurCoversButton(bool value) =>
       _setting('blurCoversButton', value);
   Future<void> setBlurCoversLaunch(String value) =>
@@ -1068,6 +1071,7 @@ class LocalStore extends ChangeNotifier {
       'followSystemColor': followSystemColor,
       'themeColor': themeColor.name,
       'pureBlack': pureBlack,
+      'slidePages': slidePages,
       'blurCoversButton': blurCoversButton,
       'blurCoversLaunch': blurCoversLaunch,
       'blurAllCovers': blurAllCovers,

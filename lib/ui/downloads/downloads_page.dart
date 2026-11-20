@@ -16,7 +16,6 @@ import '../widgets/drama_tile.dart';
 import '../widgets/focus_ring.dart';
 import '../widgets/motion/motion_widgets.dart';
 import '../widgets/status_view.dart';
-import '../widgets/swipe_switch.dart';
 import 'download_actions.dart';
 import 'downloaded_drama_page.dart';
 import 'merge_actions.dart';
@@ -129,6 +128,51 @@ class _DownloadsPageState extends State<DownloadsPage>
     if (mounted) setState(() => _selection = null);
   }
 
+  _View _viewFor(int index) {
+    final jobs = widget.downloads.jobs;
+    final sources = index == 2
+        ? const <SourceSite>[]
+        : downloadSources(
+            index == 0
+                ? pendingDownloads(jobs)
+                : [
+                    for (final job in jobs)
+                      if (job.completed) job,
+                  ],
+          );
+    final source = sources.any((site) => site.id == _sources[index])
+        ? _sources[index]
+        : '';
+    bool shown(Drama drama) => source.isEmpty || drama.source == source;
+    final pending = [
+      for (final job in pendingDownloads(jobs))
+        if (shown(job.drama)) job,
+    ];
+    final downloaded = [
+      for (final drama in downloadedDramas(jobs))
+        if (shown(drama.drama)) drama,
+    ];
+    return (
+      pending: pending,
+      downloaded: downloaded,
+      sources: sources,
+      source: source,
+      selection: index != _tabs.index
+          ? null
+          : _selection?.intersection(
+              index == 0
+                  ? {for (final job in pending) job.id}
+                  : {for (final item in downloaded) item.drama.id},
+            ),
+    );
+  }
+
+  Widget _page(BuildContext context, int index, _View view) => switch (index) {
+    0 => _pendingList(context, view),
+    1 => _downloadedGrid(context, view),
+    _ => _mergeList(context),
+  };
+
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: Listenable.merge([
@@ -139,62 +183,28 @@ class _DownloadsPageState extends State<DownloadsPage>
       _tabs,
     ]),
     builder: (context, _) {
-      final jobs = widget.downloads.jobs;
       final index = _tabs.index;
-      final sources = index == 2
-          ? const <SourceSite>[]
-          : downloadSources(
-              index == 0
-                  ? pendingDownloads(jobs)
-                  : [
-                      for (final job in jobs)
-                        if (job.completed) job,
-                    ],
-            );
-      final source = sources.any((site) => site.id == _sources[index])
-          ? _sources[index]
-          : '';
-      bool shown(Drama drama) => source.isEmpty || drama.source == source;
-      final pending = [
-        for (final job in pendingDownloads(jobs))
-          if (shown(job.drama)) job,
-      ];
-      final downloaded = [
-        for (final drama in downloadedDramas(jobs))
-          if (shown(drama.drama)) drama,
-      ];
-      final view = (
-        pending: pending,
-        downloaded: downloaded,
-        sources: sources,
-        source: source,
-        selection: _selection?.intersection(
-          index == 0
-              ? {for (final job in pending) job.id}
-              : {for (final item in downloaded) item.drama.id},
-        ),
-      );
+      final view = _viewFor(index);
       final body = !widget.downloads.available
           ? const StatusView(
               title: '当前用户没有下载权限',
               icon: Icons.lock_outline_rounded,
             )
-          : index == 0
-          ? _pendingList(context, view)
-          : index == 1
-          ? _downloadedGrid(context, view)
-          : _mergeList(context);
+          : _page(context, index, view);
       final touch = switch (AppScope.formFactorOf(context)) {
         FormFactor.phone || FormFactor.pad => true,
         FormFactor.window || FormFactor.television => false,
       };
-      final swiped = touch
-          ? SwipeSwitch(
-              index: index,
-              count: _tabs.length,
-              enabled: _selection == null,
-              onSwitch: _tabs.animateTo,
-              child: body,
+      final swiped = touch && widget.downloads.available
+          ? TabBarView(
+              controller: _tabs,
+              physics: _selection == null
+                  ? null
+                  : const NeverScrollableScrollPhysics(),
+              children: [
+                for (var page = 0; page < _tabs.length; page++)
+                  _page(context, page, page == index ? view : _viewFor(page)),
+              ],
             )
           : body;
       return PopScope(

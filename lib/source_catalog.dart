@@ -87,12 +87,14 @@ class SourceCatalog {
   Future<CatalogPage> fetch(
     CatalogCategory category, {
     int page = 1,
+    String lane = '',
     bool force = false,
   }) async {
     final result = await repository.catalog(
       source.id,
       category: _request(category),
       page: page,
+      lane: lane,
       force: force,
     );
     return _within(category, result);

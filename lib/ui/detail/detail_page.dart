@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -20,7 +21,6 @@ import '../theme/motion.dart';
 import '../widgets/motion/motion_widgets.dart';
 import '../widgets/pull_refresh.dart';
 import '../widgets/status_view.dart';
-import '../widgets/swipe_switch.dart';
 import 'season_strip.dart';
 import 'television_detail.dart';
 
@@ -181,6 +181,10 @@ class _DetailPageState extends State<DetailPage> {
   bool _expanded = false;
   final _played = <Object>{};
   final _groupKeys = <GlobalKey>[];
+  PageController? _groupPager;
+  String? _groupPagerDrama;
+  int? _groupTarget;
+  bool _groupDragging = false;
   final _televisionDetail = GlobalKey<TelevisionDetailState>();
   bool _entered = false;
   PlaybackHandle? _watched;
@@ -204,6 +208,7 @@ class _DetailPageState extends State<DetailPage> {
   void dispose() {
     _handle?.dispose();
     _details?.dispose();
+    _groupPager?.dispose();
     super.dispose();
   }
 
@@ -405,15 +410,29 @@ class _DetailPageState extends State<DetailPage> {
   );
 
   void _locate(int index) {
-    _details!.selectGroup(index ~/ episodeGroupSize);
+    final group = index ~/ episodeGroupSize;
+    _details!.selectGroup(group);
+    final pager = _groupPager;
+    if (pager != null && pager.hasClients) {
+      _groupTarget = null;
+      pager.jumpToPage(group);
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final target = _currentEpisode.currentContext;
       if (target == null || !target.mounted) return;
-      Scrollable.ensureVisible(
+      final box = target.findRenderObject();
+      final position = Scrollable.maybeOf(
         target,
-        alignment: 0.3,
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOut,
+        axis: Axis.vertical,
+      )?.position;
+      if (box == null || position == null) return;
+      unawaited(
+        position.ensureVisible(
+          box,
+          alignment: 0.3,
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+        ),
       );
     });
   }
@@ -595,8 +614,10 @@ class _DetailPageState extends State<DetailPage> {
                   ),
                 ),
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-                sliver: SliverToBoxAdapter(child: _swipeGroups(details, m)),
+                padding: const EdgeInsets.fromLTRB(0, 12, 0, 24),
+                sliver: SliverToBoxAdapter(
+                  child: _swipeGroups(details, m, gutter: 20),
+                ),
               ),
             ],
           ],
@@ -1190,12 +1211,111 @@ class _DetailPageState extends State<DetailPage> {
     onPressed: () => details.selectGroup(group),
   );
 
-  Widget _swipeGroups(DramaDetails details, _Metrics m) {
-    return SwipeSwitch(
-      index: details.group,
-      count: details.groupCount,
-      onSwitch: (group) => _swipeTo(details, group),
-      child: _grid(details, m),
+  PageController _groupPagerFor(DramaDetails details) {
+    final drama = details.drama.id;
+    final pager = _groupPager;
+    if (pager != null && drama == _groupPagerDrama) return pager;
+    if (pager != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => pager.dispose());
+    }
+    _groupPagerDrama = drama;
+    _groupTarget = null;
+    _groupDragging = false;
+    return _groupPager = PageController(initialPage: details.group);
+  }
+
+  Widget _swipeGroups(DramaDetails details, _Metrics m, {double gutter = 0}) {
+    final pager = _groupPagerFor(details);
+    final group = details.group;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _followGroup(group));
+    final extent = _cellExtent(m);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = m.columnsFor(constraints.maxWidth - gutter * 2);
+        double heightOf(int group) {
+          final rows = (details.episodesIn(group).length / columns).ceil();
+          return rows * extent + math.max(0, rows - 1) * m.cellGap;
+        }
+
+        return NotificationListener<ScrollNotification>(
+          onNotification: (notification) =>
+              _groupScrolled(notification, details),
+          child: AnimatedBuilder(
+            animation: pager,
+            builder: (context, child) {
+              final page =
+                  pager.hasClients &&
+                      pager.positions.length == 1 &&
+                      pager.position.hasContentDimensions
+                  ? pager.page ?? group.toDouble()
+                  : group.toDouble();
+              final last = details.groupCount - 1;
+              final low = page.floor().clamp(0, last);
+              final high = (low + 1).clamp(0, last);
+              return SizedBox(
+                height: lerpDouble(heightOf(low), heightOf(high), page - low),
+                child: child,
+              );
+            },
+            child: PageView.builder(
+              key: ValueKey(details.drama.id),
+              controller: pager,
+              itemCount: details.groupCount,
+              itemBuilder: (context, group) => OverflowBox(
+                alignment: Alignment.topCenter,
+                maxHeight: double.infinity,
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: gutter),
+                  child: _groupRows(details, m, group, columns, extent),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  bool _groupScrolled(ScrollNotification notification, DramaDetails details) {
+    if (notification.depth != 0 ||
+        notification.metrics.axis != Axis.horizontal) {
+      return false;
+    }
+    if (notification is ScrollStartNotification &&
+        notification.dragDetails != null) {
+      _groupDragging = true;
+      _groupTarget = null;
+    } else if (notification is ScrollEndNotification && _groupDragging) {
+      _groupDragging = false;
+      final page = _groupPager?.page?.round();
+      if (page != null && page != details.group) _swipeTo(details, page);
+    }
+    return false;
+  }
+
+  void _followGroup(int group) {
+    final pager = _groupPager;
+    if (!mounted || pager == null || !pager.hasClients || _groupDragging) {
+      return;
+    }
+    final page = pager.page;
+    if (page == null || _groupTarget == group) return;
+    if ((page - group).abs() < .01) return;
+    final from = page.round();
+    if ((group - from).abs() > 1) {
+      pager.jumpToPage(group > from ? group - 1 : group + 1);
+    }
+    _groupTarget = group;
+    unawaited(
+      pager
+          .animateToPage(
+            group,
+            duration: Motion.of(context, Motion.long),
+            curve: Motion.standard,
+          )
+          .whenComplete(() {
+            if (_groupTarget == group) _groupTarget = null;
+          }),
     );
   }
 
@@ -1235,14 +1355,42 @@ class _DetailPageState extends State<DetailPage> {
     });
   }
 
+  double _cellExtent(_Metrics m) =>
+      math.max(m.cell, MediaQuery.textScalerOf(context).scale(m.cellText) + 28);
+
   Widget _grid(DramaDetails details, _Metrics m) {
-    final extent = math.max(
-      m.cell,
-      MediaQuery.textScalerOf(context).scale(m.cellText) + 28,
+    final extent = _cellExtent(m);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final fade = Motion.of(context, Motion.medium);
+        return TweenAnimationBuilder<double>(
+          tween: Tween(begin: fade == Duration.zero ? 1 : 0, end: 1),
+          duration: fade,
+          curve: Motion.standard,
+          builder: (context, value, child) =>
+              Opacity(opacity: value, child: child),
+          child: _groupRows(
+            details,
+            m,
+            details.group,
+            m.columnsFor(constraints.maxWidth),
+            extent,
+          ),
+        );
+      },
     );
+  }
+
+  Widget _groupRows(
+    DramaDetails details,
+    _Metrics m,
+    int group,
+    int columns,
+    double extent,
+  ) {
     final current = details.currentIndex;
-    final start = details.group * episodeGroupSize;
-    final episodes = details.groupEpisodes;
+    final start = group * episodeGroupSize;
+    final episodes = details.episodesIn(group);
     Widget cell(int offset) {
       final index = start + offset;
       final episode = episodes[offset];
@@ -1258,39 +1406,26 @@ class _DetailPageState extends State<DetailPage> {
       );
     }
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final columns = m.columnsFor(constraints.maxWidth);
-        final fade = Motion.of(context, Motion.medium);
-        return TweenAnimationBuilder<double>(
-          tween: Tween(begin: fade == Duration.zero ? 1 : 0, end: 1),
-          duration: fade,
-          curve: Motion.standard,
-          builder: (context, value, child) =>
-              Opacity(opacity: value, child: child),
-          child: Column(
-            spacing: m.cellGap,
-            children: [
-              for (var row = 0; row < episodes.length; row += columns)
-                SizedBox(
-                  height: extent,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    spacing: m.cellGap,
-                    children: [
-                      for (var offset = row; offset < row + columns; offset++)
-                        Expanded(
-                          child: offset < episodes.length
-                              ? cell(offset)
-                              : const SizedBox.shrink(),
-                        ),
-                    ],
+    return Column(
+      spacing: m.cellGap,
+      children: [
+        for (var row = 0; row < episodes.length; row += columns)
+          SizedBox(
+            height: extent,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              spacing: m.cellGap,
+              children: [
+                for (var offset = row; offset < row + columns; offset++)
+                  Expanded(
+                    child: offset < episodes.length
+                        ? cell(offset)
+                        : const SizedBox.shrink(),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
-        );
-      },
+      ],
     );
   }
 }

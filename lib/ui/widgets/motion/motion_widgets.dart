@@ -109,6 +109,51 @@ Widget fadeInFrameBuilder(
 
 /// Plays a one-time fade and slight rise when first built. Items are
 /// remembered by [id] in [played] so recycled or rebuilt items stay still.
+class FadeIn extends StatefulWidget {
+  const FadeIn({super.key, this.enabled = true, required this.child});
+  final bool enabled;
+  final Widget child;
+
+  @override
+  State<FadeIn> createState() => _FadeInState();
+}
+
+class _FadeInState extends State<FadeIn> with SingleTickerProviderStateMixin {
+  late final _controller = AnimationController(vsync: this);
+  late final _opacity = CurvedAnimation(
+    parent: _controller,
+    curve: Motion.enter,
+  );
+  var _started = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started) return;
+    _started = true;
+    final duration = widget.enabled
+        ? Motion.of(context, Motion.medium)
+        : Duration.zero;
+    if (duration == Duration.zero) {
+      _controller.value = 1;
+      return;
+    }
+    _controller.duration = duration;
+    _controller.forward();
+  }
+
+  @override
+  void dispose() {
+    _opacity.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      FadeTransition(opacity: _opacity, child: widget.child);
+}
+
 class EnterOnce extends StatefulWidget {
   const EnterOnce({
     super.key,

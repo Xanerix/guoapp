@@ -47,8 +47,10 @@ class DramaDetails extends ChangeNotifier {
 
   int get groupCount => (_episodes.length / episodeGroupSize).ceil();
   int get group => _group;
-  List<Episode> get groupEpisodes =>
-      _episodes.skip(_group * episodeGroupSize).take(episodeGroupSize).toList();
+  List<Episode> get groupEpisodes => episodesIn(_group);
+
+  List<Episode> episodesIn(int group) =>
+      _episodes.skip(group * episodeGroupSize).take(episodeGroupSize).toList();
 
   String groupLabel(int group) {
     final start = group * episodeGroupSize;
