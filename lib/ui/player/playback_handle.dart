@@ -1,9 +1,12 @@
+import 'dart:io';
+
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../core_bridge.dart';
 import '../../local_store.dart';
 import '../../models.dart';
+import '../../playback_preferences.dart';
 import '../../playback_session.dart';
 
 Player _player() => Player(
@@ -12,6 +15,16 @@ Player _player() => Player(
     logLevel: MPVLogLevel.error,
   ),
 );
+
+VideoControllerConfiguration _videoConfiguration(LocalStore store) =>
+    Platform.isAndroid &&
+        store.playbackPreferences.televisionDecoder ==
+            TelevisionDecoder.hardwareDirect
+    ? const VideoControllerConfiguration(
+        vo: 'mediacodec_embed',
+        hwdec: 'mediacodec',
+      )
+    : const VideoControllerConfiguration();
 
 class PlaybackHandle {
   PlaybackHandle({
@@ -25,8 +38,11 @@ class PlaybackHandle {
   }) {
     final main = _player();
     final standby = preopen ? _player() : null;
-    _videos[main] = VideoController(main);
-    if (standby != null) _videos[standby] = VideoController(standby);
+    final configuration = _videoConfiguration(store);
+    _videos[main] = VideoController(main, configuration: configuration);
+    if (standby != null) {
+      _videos[standby] = VideoController(standby, configuration: configuration);
+    }
     session = PlaybackSession(
       repository: repository,
       store: store,

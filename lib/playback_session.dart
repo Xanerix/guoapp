@@ -756,6 +756,7 @@ class PlaybackSession extends ChangeNotifier {
     final decoder = store.playbackPreferences.televisionDecoder;
     final hwdec = switch (decoder) {
       TelevisionDecoder.software => 'no',
+      TelevisionDecoder.hardwareDirect when Platform.isAndroid => 'mediacodec',
       TelevisionDecoder.hardware ||
       TelevisionDecoder.hardwareSwapUv when Platform.isAndroid =>
         'mediacodec-copy',

@@ -65,6 +65,7 @@ const _decoders = {
 const _androidDecoders = {
   ..._decoders,
   TelevisionDecoder.hardwareSwapUv: '硬解（修正偏蓝）',
+  TelevisionDecoder.hardwareDirect: '硬解（直通）',
 };
 const _links = [
   [
