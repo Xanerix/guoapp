@@ -574,12 +574,7 @@ class TelevisionDetailState extends State<TelevisionDetail> {
           ),
           child: SizedBox(
             width: 150,
-            child: DramaCover(
-              drama: drama,
-              radius: 10,
-              details: false,
-              heroScope: 'drama',
-            ),
+            child: DramaCover(drama: drama, radius: 10, details: false),
           ),
         ),
         Expanded(

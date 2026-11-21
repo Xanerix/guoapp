@@ -42,7 +42,6 @@ class DramaCover extends StatelessWidget {
     this.radius = 12,
     this.details = true,
     this.rank,
-    this.heroScope,
     this.showScore = false,
     this.exploreBlur = false,
   });
@@ -52,7 +51,6 @@ class DramaCover extends StatelessWidget {
   final bool exploreBlur;
   final bool showScore;
   final int? rank;
-  final String? heroScope;
   static const imagesDisabled = bool.fromEnvironment('DISABLE_REMOTE_IMAGES');
 
   @override
@@ -81,28 +79,16 @@ class DramaCover extends StatelessWidget {
           ),
       ],
     );
-    // Always build the same wrapper so the CoverImage state is kept when the
-    // hero condition flips; HeroMode just turns the flight on or off.
-    final heroEnabled = heroScope != null && drama.id.isNotEmpty;
     final blurred =
         CoverBlurScope.of(context)?.blurs(drama, explore: exploreBlur) ?? false;
-    image = HeroMode(
-      enabled: heroEnabled,
-      child: Hero(
-        tag: coverHeroTag(drama.id, heroScope ?? ''),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(radius),
-          child: ImageFiltered(
-            enabled: blurred,
-            imageFilter: ImageFilter.blur(
-              sigmaX: 16,
-              sigmaY: 16,
-              tileMode: TileMode.clamp,
-            ),
-            child: image,
-          ),
-        ),
+    image = ImageFiltered(
+      enabled: blurred,
+      imageFilter: ImageFilter.blur(
+        sigmaX: 16,
+        sigmaY: 16,
+        tileMode: TileMode.clamp,
       ),
+      child: image,
     );
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),

@@ -224,26 +224,3 @@ class _EnterOnceState extends State<EnterOnce>
     );
   }
 }
-
-/// Hero tag for a drama cover, scoped by section to avoid duplicates.
-Object coverHeroTag(Object dramaId, String scope) =>
-    _CoverHeroTag(scope, dramaId);
-
-@immutable
-class _CoverHeroTag {
-  const _CoverHeroTag(this.scope, this.dramaId);
-  final String scope;
-  final Object dramaId;
-
-  @override
-  bool operator ==(Object other) =>
-      other is _CoverHeroTag &&
-      other.scope == scope &&
-      other.dramaId == dramaId;
-
-  @override
-  int get hashCode => Object.hash(scope, dramaId);
-
-  @override
-  String toString() => 'cover/$scope/$dramaId';
-}

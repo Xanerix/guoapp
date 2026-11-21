@@ -101,9 +101,6 @@ class AppShell extends StatefulWidget {
 }
 
 class _AppShellState extends State<AppShell> {
-  final _heroes = [
-    for (final _ in AppTab.values) MaterialApp.createMaterialHeroController(),
-  ];
   final _navigators = [
     for (final _ in AppTab.values) GlobalKey<NavigatorState>(),
   ];
@@ -167,9 +164,6 @@ class _AppShellState extends State<AppShell> {
     }
     for (final scroll in _tabScrolls) {
       scroll.dispose();
-    }
-    for (final hero in _heroes) {
-      hero.dispose();
     }
     _followEntry.dispose();
     _mineEntry.dispose();
@@ -327,22 +321,19 @@ class _AppShellState extends State<AppShell> {
           for (final tab in AppTab.values)
             _TabFade(
               selected: tab == _tab,
-              child: HeroControllerScope(
-                controller: _heroes[tab.index],
-                child: Navigator(
-                  key: _navigators[tab.index],
-                  routeTraversalEdgeBehavior: TraversalEdgeBehavior.parentScope,
-                  routeDirectionalTraversalEdgeBehavior:
-                      TraversalEdgeBehavior.parentScope,
-                  onGenerateInitialRoutes: (_, _) => [
-                    MaterialPageRoute<void>(
-                      builder: (_) => PrimaryScrollController(
-                        controller: _tabScrolls[tab.index],
-                        child: _root(tab),
-                      ),
+              child: Navigator(
+                key: _navigators[tab.index],
+                routeTraversalEdgeBehavior: TraversalEdgeBehavior.parentScope,
+                routeDirectionalTraversalEdgeBehavior:
+                    TraversalEdgeBehavior.parentScope,
+                onGenerateInitialRoutes: (_, _) => [
+                  MaterialPageRoute<void>(
+                    builder: (_) => PrimaryScrollController(
+                      controller: _tabScrolls[tab.index],
+                      child: _root(tab),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
         ],

@@ -489,7 +489,6 @@ class ExplorePageState extends State<ExplorePage> {
                 rankOf: (drama) => explore.rankIn(tab, drama),
                 autofocus:
                     television && hero == null && ShellForeground.of(context),
-                heroScope: 'drama',
                 showScore: tab.id != recommendTab.id,
                 exploreBlur: true,
                 onOpen: _open,

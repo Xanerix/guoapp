@@ -31,7 +31,6 @@ abstract final class AppTheme {
     Brightness brightness, {
     required bool television,
     bool pureBlack = false,
-    bool slidePages = true,
   }) {
     final white = seed == Colors.white;
     var seeded = ColorScheme.fromSeed(
@@ -59,10 +58,7 @@ abstract final class AppTheme {
       useMaterial3: true,
       colorScheme: scheme,
       scaffoldBackgroundColor: scheme.surface,
-      pageTransitionsTheme: pageTransitions(
-        television: television,
-        slide: slidePages,
-      ),
+      pageTransitionsTheme: pageTransitions(television: television),
       appBarTheme: AppBarTheme(
         backgroundColor: scheme.surface,
         foregroundColor: scheme.onSurface,

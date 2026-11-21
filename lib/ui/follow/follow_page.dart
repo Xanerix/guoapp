@@ -492,13 +492,6 @@ class _FollowPageState extends State<FollowPage> {
         if (updated.isNotEmpty) ('有更新', updated),
         if (rest.isNotEmpty) (updated.isEmpty ? null : '其他追剧', rest),
       ];
-      final heroOwner = {
-        for (final MapEntry(key: id, value: index) in firstIndexById(
-          view.shown,
-          (drama) => drama.id,
-        ).entries)
-          id: view.shown[index],
-      };
       final first = view.shown.isEmpty
           ? null
           : (updated.firstOrNull ?? rest.first);
@@ -593,7 +586,6 @@ class _FollowPageState extends State<FollowPage> {
                           tile,
                           view.selection,
                           focusNode: drama == first ? widget.entryFocus : null,
-                          hero: identical(heroOwner[drama.id], drama),
                         ),
                       ),
                     );
@@ -617,7 +609,6 @@ class _FollowPageState extends State<FollowPage> {
     double width,
     Set<String>? selection, {
     FocusNode? focusNode,
-    bool hero = false,
   }) {
     final watch = widget.store.watched(drama.id);
     final state = widget.store.following(drama.id);
@@ -640,7 +631,6 @@ class _FollowPageState extends State<FollowPage> {
       progress: watch != null && total > 0 ? watch.episode / total : 0,
       caption: caption,
       tag: SourceSite.byId(drama.source).name,
-      heroScope: hero ? 'drama' : null,
       badge: state != null && state.hasUpdates
           ? '${state.newEpisodes} 集更新'
           : null,

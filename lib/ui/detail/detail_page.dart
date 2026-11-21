@@ -834,7 +834,7 @@ class _DetailPageState extends State<DetailPage> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _cover(drama, _phone, hero: false),
+                  _cover(drama, _phone),
                   const SizedBox(height: 20),
                   Text(
                     drama.title,
@@ -860,7 +860,7 @@ class _DetailPageState extends State<DetailPage> {
     );
   }
 
-  Widget _cover(Drama drama, _Metrics m, {bool hero = true}) => DecoratedBox(
+  Widget _cover(Drama drama, _Metrics m) => DecoratedBox(
     decoration: BoxDecoration(
       borderRadius: BorderRadius.circular(m.coverRadius),
       boxShadow: const [
@@ -873,11 +873,7 @@ class _DetailPageState extends State<DetailPage> {
     ),
     child: SizedBox.fromSize(
       size: m.cover,
-      child: DramaCover(
-        drama: drama,
-        radius: m.coverRadius,
-        heroScope: hero ? 'drama' : null,
-      ),
+      child: DramaCover(drama: drama, radius: m.coverRadius),
     ),
   );
 

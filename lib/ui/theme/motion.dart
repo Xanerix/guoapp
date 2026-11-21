@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -68,138 +66,6 @@ class _FadeScalePageTransitionsBuilder extends PageTransitionsBuilder {
     }
     return _BackGesture(route: route, child: transition());
   }
-}
-
-class _SlidePageTransitionsBuilder extends PageTransitionsBuilder {
-  const _SlidePageTransitionsBuilder();
-
-  @override
-  Duration get transitionDuration => const Duration(milliseconds: 400);
-
-  @override
-  Duration get reverseTransitionDuration => const Duration(milliseconds: 350);
-
-  @override
-  Widget buildTransitions<T>(
-    PageRoute<T> route,
-    BuildContext context,
-    Animation<double> animation,
-    Animation<double> secondaryAnimation,
-    Widget child,
-  ) {
-    if (Motion.reduced(context)) return child;
-    final slide = _SlideTransition(
-      animation: animation,
-      secondary: secondaryAnimation,
-      child: child,
-    );
-    if (defaultTargetPlatform != TargetPlatform.android) return slide;
-    return _BackGesture(route: route, child: slide);
-  }
-}
-
-class _SlideTransition extends StatefulWidget {
-  const _SlideTransition({
-    required this.animation,
-    required this.secondary,
-    required this.child,
-  });
-  final Animation<double> animation;
-  final Animation<double> secondary;
-  final Widget child;
-
-  @override
-  State<_SlideTransition> createState() => _SlideTransitionState();
-}
-
-class _SlideTransitionState extends State<_SlideTransition> {
-  static const _curve = Curves.fastEaseInToSlowEaseOut;
-  static const _parallax = .3;
-  static const _radius = 28.0;
-
-  late CurvedAnimation _enter;
-  late CurvedAnimation _cover;
-
-  @override
-  void initState() {
-    super.initState();
-    _bind();
-  }
-
-  @override
-  void didUpdateWidget(_SlideTransition oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.animation != widget.animation ||
-        oldWidget.secondary != widget.secondary) {
-      _unbind();
-      _bind();
-    }
-  }
-
-  @override
-  void dispose() {
-    _unbind();
-    super.dispose();
-  }
-
-  void _bind() {
-    _enter = CurvedAnimation(
-      parent: widget.animation,
-      curve: _curve,
-      reverseCurve: _curve.flipped,
-    );
-    _cover = CurvedAnimation(
-      parent: widget.secondary,
-      curve: _curve,
-      reverseCurve: _curve.flipped,
-    );
-  }
-
-  void _unbind() {
-    _enter.dispose();
-    _cover.dispose();
-  }
-
-  static double _corner(double t) => (math.min(t, 1 - t) * 8).clamp(0.0, 1.0);
-
-  @override
-  Widget build(BuildContext context) => AnimatedBuilder(
-    animation: Listenable.merge([_enter, _cover]),
-    child: widget.child,
-    builder: (context, child) {
-      final enter = _enter.value;
-      final cover = _cover.value;
-      final width = MediaQuery.sizeOf(context).width;
-      final radius = _radius * math.max(_corner(enter), _corner(cover));
-      final shadow = enter < 1 ? (1 - enter) * enter * 4 : 0.0;
-      return Transform.translate(
-        offset: Offset(width * (1 - enter - _parallax * cover), 0),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(radius),
-            boxShadow: [
-              if (shadow > 0)
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: .16 * shadow),
-                  blurRadius: 24,
-                ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(radius),
-            clipBehavior: radius > 0 ? Clip.antiAlias : Clip.none,
-            child: DecoratedBox(
-              position: DecorationPosition.foreground,
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: .12 * cover),
-              ),
-              child: child,
-            ),
-          ),
-        ),
-      );
-    },
-  );
 }
 
 class _BackGesture extends StatefulWidget {
@@ -381,10 +247,7 @@ class _FadePageTransitionsBuilder extends PageTransitionsBuilder {
   }
 }
 
-PageTransitionsTheme pageTransitions({
-  required bool television,
-  required bool slide,
-}) {
+PageTransitionsTheme pageTransitions({required bool television}) {
   if (television) {
     const fade = _FadePageTransitionsBuilder();
     return const PageTransitionsTheme(
@@ -399,13 +262,11 @@ PageTransitionsTheme pageTransitions({
     );
   }
   const scale = _FadeScalePageTransitionsBuilder();
-  return PageTransitionsTheme(
+  return const PageTransitionsTheme(
     builders: {
-      TargetPlatform.android: slide
-          ? const _SlidePageTransitionsBuilder()
-          : scale,
-      TargetPlatform.iOS: const CupertinoPageTransitionsBuilder(),
-      TargetPlatform.macOS: const CupertinoPageTransitionsBuilder(),
+      TargetPlatform.android: scale,
+      TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+      TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
       TargetPlatform.windows: scale,
       TargetPlatform.linux: scale,
       TargetPlatform.fuchsia: scale,

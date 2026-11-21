@@ -60,14 +60,6 @@ KeyEventResult wrapGridRow(int index, int columns, int count, KeyEvent event) {
   }
 }
 
-Map<String, int> firstIndexById<T>(List<T> items, String Function(T) idOf) {
-  final first = <String, int>{};
-  for (final (index, item) in items.indexed) {
-    first.putIfAbsent(idOf(item), () => index);
-  }
-  return first;
-}
-
 class DramaSliverGrid extends StatelessWidget {
   const DramaSliverGrid({
     super.key,
@@ -78,7 +70,6 @@ class DramaSliverGrid extends StatelessWidget {
     this.rankOf,
     this.autofocus = false,
     this.entered,
-    this.heroScope,
     this.showScore = false,
     this.exploreBlur = false,
   });
@@ -90,15 +81,11 @@ class DramaSliverGrid extends StatelessWidget {
   final int? Function(Drama drama)? rankOf;
   final bool autofocus;
   final Set<Object>? entered;
-  final String? heroScope;
   final bool showScore;
 
   @override
   Widget build(BuildContext context) {
     final (columns, _, _) = _gridLayout(context, width);
-    final heroIndex = heroScope == null
-        ? const <String, int>{}
-        : firstIndexById(items, (drama) => drama.id);
     return SliverGrid.builder(
       gridDelegate: dramaGridDelegate(context, width),
       itemCount: items.length,
@@ -114,7 +101,6 @@ class DramaSliverGrid extends StatelessWidget {
             drama: drama,
             rank: rankOf?.call(drama),
             autofocus: autofocus && index == 0,
-            heroScope: heroIndex[drama.id] == index ? heroScope : null,
             showScore: showScore,
             exploreBlur: exploreBlur,
             onTap: () => onOpen(drama),

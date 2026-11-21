@@ -60,6 +60,54 @@ String _nativeRequest(String body) {
   }
 }
 
+abstract final class _NativeWorkers {
+  static const _maxIdle = 8;
+  static final _idle = <SendPort>[];
+
+  static Future<Map<String, dynamic>> request(String body) async {
+    final worker = _idle.isNotEmpty ? _idle.removeLast() : await _spawn();
+    final reply = ReceivePort();
+    worker.send((body, reply.sendPort));
+    final (result, error, stack) =
+        await reply.first as (Map<String, dynamic>?, Object?, StackTrace?);
+    if (_idle.length < _maxIdle) {
+      _idle.add(worker);
+    } else {
+      worker.send(null);
+    }
+    if (error != null) Error.throwWithStackTrace(error, stack!);
+    return result!;
+  }
+
+  static Future<SendPort> _spawn() async {
+    final ready = ReceivePort();
+    await Isolate.spawn(_serve, ready.sendPort);
+    return await ready.first as SendPort;
+  }
+
+  static void _serve(SendPort ready) {
+    final requests = ReceivePort();
+    ready.send(requests.sendPort);
+    requests.listen((message) {
+      if (message == null) return requests.close();
+      final (body, reply) = message as (String, SendPort);
+      try {
+        reply.send((
+          jsonDecode(_nativeRequest(body)) as Map<String, dynamic>,
+          null,
+          null,
+        ));
+      } catch (error, stack) {
+        try {
+          reply.send((null, error, stack));
+        } catch (_) {
+          reply.send((null, RemoteError('$error', '$stack'), stack));
+        }
+      }
+    });
+  }
+}
+
 class AppFailure implements Exception {
   AppFailure(this.message, {this.code = ''});
   final String message;
@@ -708,20 +756,17 @@ class NativeRepository extends AppRepository {
         input['force'] = true;
       }
       final body = jsonEncode(input);
-      final response =
-          await Isolate.run(
-            () => jsonDecode(_nativeRequest(body)) as Map<String, dynamic>,
-          ).timeout(
-            Duration(
-              seconds: action == 'moveDownloads' || action == 'deleteAllData'
-                  ? 620
-                  : action == 'danmaku'
-                  ? 15
-                  : action == 'preload'
-                  ? 20
-                  : 70,
-            ),
-          );
+      final response = await _NativeWorkers.request(body).timeout(
+        Duration(
+          seconds: action == 'moveDownloads' || action == 'deleteAllData'
+              ? 620
+              : action == 'danmaku'
+              ? 15
+              : action == 'preload'
+              ? 20
+              : 70,
+        ),
+      );
       if (response['ok'] != true) {
         throw AppFailure(
           response['error'] as String? ?? '读取失败，请重试',
