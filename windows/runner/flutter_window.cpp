@@ -447,6 +447,8 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               LPARAM const lparam) noexcept {
   if (message == WM_ENTERSIZEMOVE) {
     edge_snap_.SetDragActive(true);
+  } else if (message == WM_MOVING) {
+    edge_snap_.OnMoving(reinterpret_cast<RECT*>(lparam));
   } else if (message == WM_EXITSIZEMOVE) {
     edge_snap_.SetScale(WindowScale(hwnd));
     edge_snap_.OnDragFinished();

@@ -38,6 +38,7 @@ class Controller {
   void SetMiniActive(bool active);
   void SetDragActive(bool active);
   void OnDragFinished();
+  void OnMoving(RECT* rect) const;
   void OnTimerTick();
   void Reset();
 
@@ -50,6 +51,8 @@ class Controller {
   void StopTimer();
   Options options() const;
   Edge HideableEdge(const RECT& frame, const MONITORINFO& monitor) const;
+  bool IsOuterEdge(const RECT& frame, const MONITORINFO& monitor,
+                   Edge edge) const;
 
   HWND window_ = nullptr;
   bool enabled_ = false;
@@ -60,6 +63,9 @@ class Controller {
   double scale_ = 1.0;
   Edge edge_ = Edge::none;
   RECT restore_{};
+  RECT drag_origin_{};
+  POINT drag_cursor_{};
+  bool drag_cursor_valid_ = false;
   std::function<void(bool)> on_hidden_changed_;
 };
 

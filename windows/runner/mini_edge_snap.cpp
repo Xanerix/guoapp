@@ -206,9 +206,15 @@ Edge Controller::HideableEdge(const RECT& frame,
                               const MONITORINFO& monitor) const {
   const Edge edge = DetectEdge(frame, monitor.rcWork, options().threshold);
   if (edge == Edge::none) return edge;
+  return IsOuterEdge(frame, monitor, edge) ? edge : Edge::none;
+}
+
+bool Controller::IsOuterEdge(const RECT& frame,
+                             const MONITORINFO& monitor,
+                             Edge edge) const {
   const RECT hidden = HiddenRect(SnappedRect(frame, monitor.rcWork, edge),
                                  monitor.rcMonitor, edge, options().strip);
-  return OverlapsOtherMonitor(window_, hidden) ? Edge::none : edge;
+  return !OverlapsOtherMonitor(window_, hidden);
 }
 
 void Controller::Init(HWND window,
@@ -241,6 +247,9 @@ void Controller::SetMiniActive(bool active) {
 
 void Controller::SetDragActive(bool active) {
   dragging_ = active;
+  if (!active || !window_) return;
+  drag_origin_ = WindowFrame(window_);
+  drag_cursor_valid_ = GetCursorPos(&drag_cursor_) != FALSE;
 }
 
 void Controller::SyncActive() {
@@ -301,6 +310,39 @@ void Controller::OnDragFinished() {
   }
   if (hidden_ && edge_ == edge) return;
   Hide(edge, frame);
+}
+
+void Controller::OnMoving(RECT* rect) const {
+  if (!mini_active_ || !window_ || !drag_cursor_valid_) return;
+  POINT cursor{};
+  if (!GetCursorPos(&cursor)) return;
+  const LONG width = rect->right - rect->left;
+  const LONG height = rect->bottom - rect->top;
+  rect->left = drag_origin_.left + cursor.x - drag_cursor_.x;
+  rect->top = drag_origin_.top + cursor.y - drag_cursor_.y;
+  rect->right = rect->left + width;
+  rect->bottom = rect->top + height;
+  const MONITORINFO monitor = MonitorAreas(window_);
+  const RECT& work = monitor.rcWork;
+  const LONG limit = options().threshold;
+  if (rect->left - work.left <= limit &&
+      IsOuterEdge(*rect, monitor, Edge::left)) {
+    rect->left = work.left;
+    rect->right = work.left + width;
+  } else if (work.right - rect->right <= limit &&
+             IsOuterEdge(*rect, monitor, Edge::right)) {
+    rect->right = work.right;
+    rect->left = work.right - width;
+  }
+  if (rect->top - work.top <= limit &&
+      IsOuterEdge(*rect, monitor, Edge::top)) {
+    rect->top = work.top;
+    rect->bottom = work.top + height;
+  } else if (work.bottom - rect->bottom <= limit &&
+             IsOuterEdge(*rect, monitor, Edge::bottom)) {
+    rect->bottom = work.bottom;
+    rect->top = work.bottom - height;
+  }
 }
 
 void Controller::OnTimerTick() {
