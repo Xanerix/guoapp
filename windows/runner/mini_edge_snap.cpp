@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 namespace mini_edge_snap {
 namespace {
@@ -210,8 +211,16 @@ Edge Controller::HideableEdge(const RECT& frame,
   return OverlapsOtherMonitor(window_, hidden) ? Edge::none : edge;
 }
 
-void Controller::Init(HWND window) {
+void Controller::Init(HWND window,
+                      std::function<void(bool)> on_hidden_changed) {
   window_ = window;
+  on_hidden_changed_ = std::move(on_hidden_changed);
+}
+
+void Controller::SetHidden(bool hidden) {
+  if (hidden_ == hidden) return;
+  hidden_ = hidden;
+  if (on_hidden_changed_) on_hidden_changed_(hidden);
 }
 
 void Controller::SetScale(double scale) {
@@ -238,7 +247,7 @@ void Controller::SyncActive() {
   if (enabled_ && mini_active_ && window_) return;
   Reveal();
   StopTimer();
-  hidden_ = false;
+  SetHidden(false);
   revealed_ = false;
   edge_ = Edge::none;
 }
@@ -254,7 +263,7 @@ void Controller::StopTimer() {
 void Controller::Reveal() {
   if (!window_) return;
   if (hidden_) MoveWindowTo(window_, restore_);
-  hidden_ = false;
+  SetHidden(false);
   revealed_ = false;
   edge_ = Edge::none;
 }
@@ -266,7 +275,7 @@ void Controller::Hide(Edge edge, const RECT& frame) {
   const RECT target =
       HiddenRect(restore_, monitor.rcMonitor, edge, options().strip);
   MoveWindowTo(window_, target);
-  hidden_ = true;
+  SetHidden(true);
   revealed_ = false;
   edge_ = edge;
   StartTimer();
@@ -304,7 +313,7 @@ void Controller::OnTimerTick() {
     if (Contains(HotRect(frame, monitor.rcMonitor, options().hot_zone),
                  cursor)) {
       MoveWindowTo(window_, restore_);
-      hidden_ = false;
+      SetHidden(false);
       revealed_ = true;
     }
     return;
@@ -320,7 +329,7 @@ void Controller::OnTimerTick() {
 void Controller::Reset() {
   Reveal();
   StopTimer();
-  hidden_ = false;
+  SetHidden(false);
   revealed_ = false;
   dragging_ = false;
   edge_ = Edge::none;

@@ -3,6 +3,8 @@
 
 #include <windows.h>
 
+#include <functional>
+
 namespace mini_edge_snap {
 
 constexpr UINT_PTR kTimerId = 0x4D45;
@@ -30,7 +32,7 @@ class Controller {
  public:
   Controller() = default;
 
-  void Init(HWND window);
+  void Init(HWND window, std::function<void(bool)> on_hidden_changed);
   void SetScale(double scale);
   void SetEnabled(bool enabled);
   void SetMiniActive(bool active);
@@ -41,6 +43,7 @@ class Controller {
 
  private:
   void SyncActive();
+  void SetHidden(bool hidden);
   void Reveal();
   void Hide(Edge edge, const RECT& frame);
   void StartTimer();
@@ -57,6 +60,7 @@ class Controller {
   double scale_ = 1.0;
   Edge edge_ = Edge::none;
   RECT restore_{};
+  std::function<void(bool)> on_hidden_changed_;
 };
 
 }  // namespace mini_edge_snap

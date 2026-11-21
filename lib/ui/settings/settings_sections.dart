@@ -360,6 +360,19 @@ class SettingsSection extends StatelessWidget {
                       saveSetting(context, () => setMiniEdgeSnap(value)),
                 ),
               ),
+            if (Platform.isWindows)
+              ListenableBuilder(
+                listenable: Listenable.merge([miniEdgeSnap, miniEdgePause]),
+                builder: (context, _) => SwitchTile(
+                  title: '贴边自动暂停',
+                  subtitle: '小窗贴边收起时暂停播放，展开后继续',
+                  value: miniEdgePause.value,
+                  onChanged: miniEdgeSnap.value
+                      ? (value) =>
+                            saveSetting(context, () => setMiniEdgePause(value))
+                      : null,
+                ),
+              ),
             const BossKeyTile(),
           ],
         ),

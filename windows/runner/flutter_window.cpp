@@ -189,7 +189,12 @@ bool FlutterWindow::OnCreate() {
       FAILED(taskbar_->HrInit())) {
     taskbar_.Reset();
   }
-  edge_snap_.Init(GetHandle());
+  edge_snap_.Init(GetHandle(), [this](bool hidden) {
+    if (device_channel_) {
+      device_channel_->InvokeMethod(
+          "miniEdgeHidden", std::make_unique<flutter::EncodableValue>(hidden));
+    }
+  });
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
   SetWindowSubclass(flutter_controller_->view()->GetNativeWindow(),
                     DeclineAccessibilityQueries, 0, 0);

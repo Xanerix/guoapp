@@ -8,6 +8,7 @@ import 'app_device.dart';
 import 'core_bridge.dart';
 import 'diary_service.dart';
 import 'media_controls.dart';
+import 'mini_edge_snap.dart';
 
 const _preferenceKey = 'bossKey';
 final _keyPattern = RegExp(r'^([A-Z0-9]|F([1-9]|1[0-2]))$');
@@ -99,6 +100,7 @@ Future<bool> _register(BossKey? value) async {
 
 Future<void> _handle(MethodCall call) async {
   if (call.method == 'bossKeyHidden') MediaControls.instance.pause();
+  handleMiniEdgeCall(call);
 }
 
 Future<void> restoreBossKey() async {

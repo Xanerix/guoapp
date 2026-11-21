@@ -116,6 +116,10 @@ class MediaControls {
     unawaited(_channel.invokeMethod<void>('clear').catchError((Object _) {}));
   }
 
+  bool get playing => _sent?.playing ?? false;
+
+  void play() => _handler?.call(MediaCommand.play, null);
+
   void pause() => _handler?.call(MediaCommand.pause, null);
 
   Future<void> _handle(MethodCall call) async {
