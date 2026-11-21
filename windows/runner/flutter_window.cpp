@@ -474,6 +474,16 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
         return TRUE;
       }
       break;
+    case WM_SYSCOMMAND:
+      if (mini_ && (wparam & 0xFFF0) == SC_MOVE) {
+        const LONG style = GetWindowLong(hwnd, GWL_STYLE);
+        SetWindowLong(hwnd, GWL_STYLE,
+                      style & ~(WS_THICKFRAME | WS_MAXIMIZEBOX));
+        const LRESULT moved = DefWindowProc(hwnd, message, wparam, lparam);
+        SetWindowLong(hwnd, GWL_STYLE, style);
+        return moved;
+      }
+      break;
     case WM_DPICHANGED:
       edge_snap_.SetScale(WindowScale(hwnd));
       break;

@@ -21,14 +21,16 @@ RECT WindowFrame(HWND window) {
   return frame;
 }
 
-RECT MonitorWorkArea(HWND window) {
+MONITORINFO MonitorAreas(HWND window) {
   MONITORINFO info{};
   info.cbSize = sizeof(info);
-  if (GetMonitorInfo(MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST),
-                     &info)) {
-    return info.rcWork;
+  if (!GetMonitorInfo(MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST),
+                      &info)) {
+    info.rcMonitor = {0, 0, GetSystemMetrics(SM_CXSCREEN),
+                      GetSystemMetrics(SM_CYSCREEN)};
+    info.rcWork = info.rcMonitor;
   }
-  return {0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN)};
+  return info;
 }
 
 void MoveWindowTo(HWND window, const RECT& target) {
@@ -77,26 +79,26 @@ Edge DetectEdge(const RECT& frame, const RECT& work, LONG threshold) {
   return Edge::none;
 }
 
-RECT HiddenRect(const RECT& frame, const RECT& work, Edge edge, LONG strip) {
+RECT HiddenRect(const RECT& frame, const RECT& screen, Edge edge, LONG strip) {
   const LONG width = frame.right - frame.left;
   const LONG height = frame.bottom - frame.top;
   const LONG safe_strip = std::clamp(strip, LONG{1}, std::max(LONG{1}, std::min(width, height) / 2));
   RECT target = frame;
   switch (edge) {
     case Edge::left:
-      target.right = work.left + safe_strip;
+      target.right = screen.left + safe_strip;
       target.left = target.right - width;
       break;
     case Edge::right:
-      target.left = work.right - safe_strip;
+      target.left = screen.right - safe_strip;
       target.right = target.left + width;
       break;
     case Edge::top:
-      target.bottom = work.top + safe_strip;
+      target.bottom = screen.top + safe_strip;
       target.top = target.bottom - height;
       break;
     case Edge::bottom:
-      target.top = work.bottom - safe_strip;
+      target.top = screen.bottom - safe_strip;
       target.bottom = target.top + height;
       break;
     case Edge::none:
@@ -115,9 +117,30 @@ RECT Enlarged(const RECT& value, LONG margin) {
           value.bottom + margin};
 }
 
-RECT HotRect(const RECT& frame, const RECT& work, LONG hot_zone) {
-  const RECT visible = Intersect(frame, work);
-  return Intersect(Enlarged(visible, hot_zone), work);
+RECT ExtendedToEdge(const RECT& rect, const RECT& screen, Edge edge) {
+  RECT result = rect;
+  switch (edge) {
+    case Edge::left:
+      result.left = std::min(result.left, screen.left);
+      break;
+    case Edge::right:
+      result.right = std::max(result.right, screen.right);
+      break;
+    case Edge::top:
+      result.top = std::min(result.top, screen.top);
+      break;
+    case Edge::bottom:
+      result.bottom = std::max(result.bottom, screen.bottom);
+      break;
+    case Edge::none:
+      break;
+  }
+  return result;
+}
+
+RECT HotRect(const RECT& frame, const RECT& screen, LONG hot_zone) {
+  const RECT visible = Intersect(frame, screen);
+  return Intersect(Enlarged(visible, hot_zone), screen);
 }
 
 bool Contains(const RECT& rect, const POINT& point) {
@@ -178,11 +201,12 @@ Options Controller::options() const {
           Round(kRevealMarginDip * scale_), Round(kHotZoneDip * scale_)};
 }
 
-Edge Controller::HideableEdge(const RECT& frame, const RECT& work) const {
-  const Edge edge = DetectEdge(frame, work, options().threshold);
+Edge Controller::HideableEdge(const RECT& frame,
+                              const MONITORINFO& monitor) const {
+  const Edge edge = DetectEdge(frame, monitor.rcWork, options().threshold);
   if (edge == Edge::none) return edge;
-  const RECT hidden =
-      HiddenRect(SnappedRect(frame, work, edge), work, edge, options().strip);
+  const RECT hidden = HiddenRect(SnappedRect(frame, monitor.rcWork, edge),
+                                 monitor.rcMonitor, edge, options().strip);
   return OverlapsOtherMonitor(window_, hidden) ? Edge::none : edge;
 }
 
@@ -237,9 +261,10 @@ void Controller::Reveal() {
 
 void Controller::Hide(Edge edge, const RECT& frame) {
   if (!window_ || edge == Edge::none) return;
-  const RECT work = MonitorWorkArea(window_);
-  restore_ = SnappedRect(frame, work, edge);
-  const RECT target = HiddenRect(restore_, work, edge, options().strip);
+  const MONITORINFO monitor = MonitorAreas(window_);
+  restore_ = SnappedRect(frame, monitor.rcWork, edge);
+  const RECT target =
+      HiddenRect(restore_, monitor.rcMonitor, edge, options().strip);
   MoveWindowTo(window_, target);
   hidden_ = true;
   revealed_ = false;
@@ -251,8 +276,9 @@ void Controller::OnDragFinished() {
   dragging_ = false;
   if (!enabled_ || !mini_active_ || !window_) return;
   const RECT frame = WindowFrame(window_);
-  const RECT work = MonitorWorkArea(window_);
-  const Edge edge = HideableEdge(frame, work);
+  const MONITORINFO monitor = MonitorAreas(window_);
+  const RECT& work = monitor.rcWork;
+  const Edge edge = HideableEdge(frame, monitor);
   if (edge == Edge::none) {
     if (hidden_) {
       Reveal();
@@ -273,21 +299,22 @@ void Controller::OnTimerTick() {
   POINT cursor{};
   if (!GetCursorPos(&cursor)) return;
   const RECT frame = WindowFrame(window_);
-  const RECT work = MonitorWorkArea(window_);
+  const MONITORINFO monitor = MonitorAreas(window_);
   if (hidden_) {
-    if (Contains(HotRect(frame, work, options().hot_zone), cursor)) {
+    if (Contains(HotRect(frame, monitor.rcMonitor, options().hot_zone),
+                 cursor)) {
       MoveWindowTo(window_, restore_);
       hidden_ = false;
       revealed_ = true;
     }
     return;
   }
-  if (revealed_ && !Contains(Enlarged(frame, options().reveal_margin), cursor)) {
-    const Edge edge = edge_ != Edge::none
-                          ? edge_
-                          : HideableEdge(frame, work);
-    Hide(edge, frame);
-  }
+  if (!revealed_) return;
+  const Edge edge =
+      edge_ != Edge::none ? edge_ : HideableEdge(frame, monitor);
+  const RECT keep = ExtendedToEdge(Enlarged(frame, options().reveal_margin),
+                                   monitor.rcMonitor, edge);
+  if (!Contains(keep, cursor)) Hide(edge, frame);
 }
 
 void Controller::Reset() {

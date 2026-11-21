@@ -17,10 +17,11 @@ struct Options {
 };
 
 Edge DetectEdge(const RECT& frame, const RECT& work, LONG threshold);
-RECT HiddenRect(const RECT& frame, const RECT& work, Edge edge, LONG strip);
+RECT HiddenRect(const RECT& frame, const RECT& screen, Edge edge, LONG strip);
 RECT Intersect(const RECT& a, const RECT& b);
 RECT Enlarged(const RECT& value, LONG margin);
-RECT HotRect(const RECT& frame, const RECT& work, LONG hot_zone);
+RECT ExtendedToEdge(const RECT& rect, const RECT& screen, Edge edge);
+RECT HotRect(const RECT& frame, const RECT& screen, LONG hot_zone);
 bool Contains(const RECT& rect, const POINT& point);
 RECT ClampInside(const RECT& frame, const RECT& work);
 RECT SnappedRect(const RECT& frame, const RECT& work, Edge edge);
@@ -45,7 +46,7 @@ class Controller {
   void StartTimer();
   void StopTimer();
   Options options() const;
-  Edge HideableEdge(const RECT& frame, const RECT& work) const;
+  Edge HideableEdge(const RECT& frame, const MONITORINFO& monitor) const;
 
   HWND window_ = nullptr;
   bool enabled_ = false;
