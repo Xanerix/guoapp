@@ -15,6 +15,7 @@ import 'core_bridge.dart';
 import 'diary_service.dart';
 import 'local_files.dart';
 import 'local_store.dart';
+import 'mini_edge_snap.dart';
 import 'picture_in_picture.dart';
 import 'portable_data.dart';
 import 'ui/app.dart';
@@ -54,6 +55,7 @@ Future<void> main() async {
   if (Platform.isWindows || Platform.isMacOS) {
     await restoreWindowOnTop();
     await restoreBossKey();
+    if (Platform.isWindows) await restoreMiniEdgeSnap();
   }
   MediaKit.ensureInitialized();
   final device = await AppDevice.detect();
