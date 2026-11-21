@@ -45,6 +45,7 @@ class Controller {
   void StartTimer();
   void StopTimer();
   Options options() const;
+  Edge HideableEdge(const RECT& frame, const RECT& work) const;
 
   HWND window_ = nullptr;
   bool enabled_ = false;

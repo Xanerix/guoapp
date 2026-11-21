@@ -36,6 +36,23 @@ void MoveWindowTo(HWND window, const RECT& target) {
                SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
+bool OverlapsOtherMonitor(HWND window, const RECT& rect) {
+  struct Search {
+    HMONITOR own;
+    bool found;
+  } search{MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST), false};
+  EnumDisplayMonitors(
+      nullptr, &rect,
+      [](HMONITOR monitor, HDC, LPRECT, LPARAM data) -> BOOL {
+        auto* search = reinterpret_cast<Search*>(data);
+        if (monitor == search->own) return TRUE;
+        search->found = true;
+        return FALSE;
+      },
+      reinterpret_cast<LPARAM>(&search));
+  return search.found;
+}
+
 }  // namespace
 
 Edge DetectEdge(const RECT& frame, const RECT& work, LONG threshold) {
@@ -161,6 +178,14 @@ Options Controller::options() const {
           Round(kRevealMarginDip * scale_), Round(kHotZoneDip * scale_)};
 }
 
+Edge Controller::HideableEdge(const RECT& frame, const RECT& work) const {
+  const Edge edge = DetectEdge(frame, work, options().threshold);
+  if (edge == Edge::none) return edge;
+  const RECT hidden =
+      HiddenRect(SnappedRect(frame, work, edge), work, edge, options().strip);
+  return OverlapsOtherMonitor(window_, hidden) ? Edge::none : edge;
+}
+
 void Controller::Init(HWND window) {
   window_ = window;
 }
@@ -227,7 +252,7 @@ void Controller::OnDragFinished() {
   if (!enabled_ || !mini_active_ || !window_) return;
   const RECT frame = WindowFrame(window_);
   const RECT work = MonitorWorkArea(window_);
-  const Edge edge = DetectEdge(frame, work, options().threshold);
+  const Edge edge = HideableEdge(frame, work);
   if (edge == Edge::none) {
     if (hidden_) {
       Reveal();
@@ -260,7 +285,7 @@ void Controller::OnTimerTick() {
   if (revealed_ && !Contains(Enlarged(frame, options().reveal_margin), cursor)) {
     const Edge edge = edge_ != Edge::none
                           ? edge_
-                          : DetectEdge(frame, work, options().threshold);
+                          : HideableEdge(frame, work);
     Hide(edge, frame);
   }
 }
