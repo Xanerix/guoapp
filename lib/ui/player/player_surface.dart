@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+
+import '../widgets/material_surface.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 
@@ -956,7 +958,8 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
         onSelected: (value) => _change(() async => value.apply(_session)),
       ),
     };
-    return Material(
+    return MaterialSurface(
+      mode: GlassSurfaceMode.tint,
       color: const Color(0xE0141414),
       borderRadius: BorderRadius.circular(12),
       child: Padding(padding: const EdgeInsets.all(6), child: body),
@@ -1100,7 +1103,8 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
     right: 12,
     child: Align(
       alignment: Alignment.topCenter,
-      child: Material(
+      child: MaterialSurface(
+        mode: GlassSurfaceMode.tint,
         color: const Color(0xE6322424),
         borderRadius: BorderRadius.circular(10),
         child: Padding(

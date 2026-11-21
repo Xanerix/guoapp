@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 
 import '../../native_text_input.dart';
 import '../app_scope.dart';
+import 'material_surface.dart';
 
 class FormTextField extends StatelessWidget {
   const FormTextField({
@@ -29,25 +30,38 @@ class FormTextField extends StatelessWidget {
   final ValueChanged<String>? onSubmitted;
 
   @override
-  Widget build(BuildContext context) =>
-      AppScope.of(context).television &&
-          defaultTargetPlatform == TargetPlatform.android
-      ? _TelevisionTextField(field: this)
-      : TextField(
-          controller: controller,
-          focusNode: focusNode,
-          enabled: enabled,
-          autofocus: autofocus,
-          obscureText: obscure,
-          keyboardType: url ? TextInputType.url : null,
-          enableSuggestions: !obscure && !url,
-          autocorrect: !obscure && !url,
-          inputFormatters: [
-            if (maxLength != null) LengthLimitingTextInputFormatter(maxLength),
-          ],
-          onSubmitted: onSubmitted,
-          decoration: decoration,
-        );
+  Widget build(BuildContext context) {
+    final glass = MaterialSurface.glassEnabled(context);
+    final field =
+        AppScope.of(context).television &&
+            defaultTargetPlatform == TargetPlatform.android
+        ? _TelevisionTextField(field: this)
+        : TextField(
+            controller: controller,
+            focusNode: focusNode,
+            enabled: enabled,
+            autofocus: autofocus,
+            obscureText: obscure,
+            keyboardType: url ? TextInputType.url : null,
+            enableSuggestions: !obscure && !url,
+            autocorrect: !obscure && !url,
+            inputFormatters: [
+              if (maxLength != null)
+                LengthLimitingTextInputFormatter(maxLength),
+            ],
+            onSubmitted: onSubmitted,
+            decoration: glass
+                ? decoration.copyWith(fillColor: Colors.transparent)
+                : decoration,
+          );
+    return glass
+        ? MaterialSurface(
+            color: Theme.of(context).colorScheme.surfaceContainerHigh,
+            borderRadius: BorderRadius.circular(16),
+            child: field,
+          )
+        : field;
+  }
 }
 
 class _TelevisionTextField extends StatefulWidget {

@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+
+import '../widgets/material_chrome.dart';
 import 'package:flutter/services.dart';
 
 import '../../app_build.dart';
@@ -107,7 +109,7 @@ Future<bool?> _confirm(
   required String action,
 }) => showDialog<bool>(
   context: context,
-  builder: (context) => AlertDialog(
+  builder: (context) => SurfaceAlertDialog(
     title: Text(title),
     content: Text(message),
     actions: [

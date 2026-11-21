@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+
+import '../widgets/material_chrome.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -249,7 +251,7 @@ class _SoraniLoginDialogState extends State<_SoraniLoginDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
+  Widget build(BuildContext context) => SurfaceAlertDialog(
     title: Text(_verifying ? '安全验证' : '登录青空'),
     content: SizedBox(
       width: 352,

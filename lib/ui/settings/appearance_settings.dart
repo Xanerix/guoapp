@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../local_store.dart';
+import '../../interface_material.dart';
 import '../../theme_color.dart';
 import '../app_scope.dart';
 import '../theme/motion.dart';
@@ -42,6 +43,32 @@ class AppearanceSettings extends StatelessWidget {
       children: [
         GroupCard(
           children: [
+            if (supportsInterfaceMaterial &&
+                !AppScope.of(context).television) ...[
+              SettingsTile(
+                title: '界面材质',
+                subtitle: '半透明卡片与玻璃导航，保留当前主题配色',
+                value: store.interfaceMaterial.label,
+                onTap: () async {
+                  final selection = await showOptionDialog(
+                    context,
+                    title: '界面材质',
+                    options: {
+                      for (final material in InterfaceMaterial.values)
+                        material: material.label,
+                    },
+                    selected: store.interfaceMaterial,
+                  );
+                  if (selection != null && context.mounted) {
+                    await saveSetting(
+                      context,
+                      () => store.setInterfaceMaterial(selection),
+                    );
+                  }
+                },
+              ),
+              const Divider(indent: 16, endIndent: 16),
+            ],
             SettingsTile(
               title: '主题模式',
               subtitle: themeModes[store.themeMode] ?? themeModes['system']!,

@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../widgets/material_chrome.dart';
+
 import '../../local_store.dart';
 import '../app_scope.dart';
 import '../users/password_dialog.dart';
@@ -55,7 +57,7 @@ class _DataCardState extends State<DataCard> {
   Future<void> _deleteAll() async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => SurfaceAlertDialog(
         title: const Text('删除全部数据？'),
         content: const Text(
           '将删除所有用户、追剧、观看记录、设置、已安装模块、缓存和已下载的视频，无法恢复。已导出到相册的视频保留。完成后应用会退出。',
@@ -101,7 +103,7 @@ class _DataCardState extends State<DataCard> {
       barrierDismissible: false,
       builder: (context) => const PopScope(
         canPop: false,
-        child: AlertDialog(
+        child: SurfaceAlertDialog(
           content: Row(
             spacing: 20,
             children: [
@@ -132,7 +134,7 @@ class _DataCardState extends State<DataCard> {
       barrierDismissible: false,
       builder: (context) => PopScope(
         canPop: false,
-        child: AlertDialog(
+        child: SurfaceAlertDialog(
           title: const Text('数据已删除'),
           content: SelectableText(
             [

@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../widgets/material_chrome.dart';
+
 import '../theme/motion.dart';
 import '../widgets/focus_ring.dart';
 import '../widgets/form_text_field.dart';
@@ -72,7 +74,7 @@ class _PasswordDialogState extends State<_PasswordDialog>
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
+  Widget build(BuildContext context) => SurfaceAlertDialog(
     title: Text(widget.title),
     content: SizedBox(
       width: 352,

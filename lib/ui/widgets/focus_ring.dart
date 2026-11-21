@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/material.dart';
+
+import 'material_surface.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
@@ -541,7 +543,7 @@ class FocusPill extends StatelessWidget {
                       alpha: selected ? 1 : 0,
                     ),
             ),
-            child: Material(
+            child: MaterialSurface(
               type: MaterialType.transparency,
               shape: const StadiumBorder(),
               clipBehavior: Clip.antiAlias,

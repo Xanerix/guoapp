@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/material_chrome.dart';
+
 import '../../local_store.dart';
 import '../../models.dart';
 import '../../source_modules.dart';
@@ -92,7 +94,7 @@ class _HistoryPageState extends State<HistoryPage> {
     final colors = Theme.of(context).colorScheme;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => SurfaceAlertDialog(
         title: Text(clear ? '清空观看记录？' : '删除 ${ids.length} 条观看记录？'),
         content: Text(
           clear ? '将删除当前列出的 ${ids.length} 条观看记录，追剧不受影响。' : '追剧不受影响。',
@@ -314,7 +316,7 @@ class _HistoryPageState extends State<HistoryPage> {
     return Scaffold(
       appBar: root
           ? null
-          : AppBar(
+          : SurfaceAppBar(
               leading: selection == null
                   ? null
                   : IconButton(

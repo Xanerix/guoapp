@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+
+import '../widgets/material_chrome.dart';
 import 'package:flutter/services.dart';
 
 import '../../core_bridge.dart';
@@ -148,7 +150,7 @@ class _SearchPageState extends State<SearchPage> {
       );
     }
     return Scaffold(
-      appBar: AppBar(
+      appBar: SurfaceAppBar(
         titleSpacing: 0,
         title: Padding(padding: const EdgeInsets.only(right: 16), child: field),
       ),

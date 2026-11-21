@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'material_surface.dart';
+
 import '../app_scope.dart';
 import 'bar_button.dart';
 import 'page_header.dart';
@@ -147,7 +149,7 @@ class _RecentSearchFieldState extends State<_RecentSearchField> {
           child: TextFieldTapRegion(
             child: SizedBox(
               width: widget.width,
-              child: Material(
+              child: MaterialSurface(
                 elevation: 3,
                 borderRadius: BorderRadius.circular(12),
                 clipBehavior: Clip.antiAlias,

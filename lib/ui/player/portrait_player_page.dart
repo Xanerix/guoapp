@@ -3,6 +3,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+
+import '../widgets/material_surface.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 
@@ -852,7 +854,8 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
             top: padding.top + 64,
             left: 12,
             right: 12,
-            child: Material(
+            child: MaterialSurface(
+              mode: GlassSurfaceMode.tint,
               color: const Color(0xE6322424),
               borderRadius: BorderRadius.circular(10),
               child: Padding(
@@ -1038,7 +1041,8 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
     final drama = _session.detail.drama;
     final count = _session.detail.episodes.length;
     final status = _status(drama);
-    return Material(
+    return MaterialSurface(
+      mode: GlassSurfaceMode.tint,
       color: Colors.white.withValues(alpha: .14),
       borderRadius: BorderRadius.circular(12),
       clipBehavior: Clip.antiAlias,
@@ -1270,7 +1274,8 @@ class _EpisodeSheetState extends State<EpisodeSheet> {
         .firstOrNull;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-      child: Material(
+      child: MaterialSurface(
+        mode: GlassSurfaceMode.tint,
         color: colors.surfaceContainerHighest.withValues(alpha: .55),
         borderRadius: BorderRadius.circular(12),
         clipBehavior: Clip.antiAlias,
@@ -1357,7 +1362,8 @@ class SeasonSheet extends StatelessWidget {
               itemBuilder: (context, index) {
                 final season = seasons[index];
                 final current = season.drama.id == playing;
-                return Material(
+                return MaterialSurface(
+                  mode: GlassSurfaceMode.tint,
                   color: current
                       ? colors.primaryContainer
                       : colors.surfaceContainerHighest.withValues(alpha: .55),

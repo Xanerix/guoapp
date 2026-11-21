@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/material_chrome.dart';
+
 import '../../download_collections.dart';
 import '../../local_store.dart';
 import '../../models.dart';
@@ -49,7 +51,7 @@ Future<bool> confirmRemoval(
   final colors = Theme.of(context).colorScheme;
   final confirmed = await showDialog<bool>(
     context: context,
-    builder: (context) => AlertDialog(
+    builder: (context) => SurfaceAlertDialog(
       title: Text(title),
       content: Text(message),
       actions: [

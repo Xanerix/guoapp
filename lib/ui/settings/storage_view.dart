@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+
+import '../widgets/material_chrome.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -94,7 +96,7 @@ class _StorageViewState extends State<StorageView> {
   Future<void> _migrate(String parent, String destination) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => SurfaceAlertDialog(
         title: const Text('迁移已下载内容？'),
         content: Text(
           '将下载目录里的全部内容迁移到：\n$destination\n\n下载会先暂停，复制成功后清理旧目录。请保证目标有足够空间，并在完成后继续下载。',
@@ -120,7 +122,7 @@ class _StorageViewState extends State<StorageView> {
       barrierDismissible: false,
       builder: (context) => const PopScope(
         canPop: false,
-        child: AlertDialog(
+        child: SurfaceAlertDialog(
           content: Row(
             spacing: 20,
             children: [
@@ -145,7 +147,7 @@ class _StorageViewState extends State<StorageView> {
     if (leftover.path.isEmpty || !mounted) return;
     await showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => SurfaceAlertDialog(
         title: const Text('旧下载目录没有删干净'),
         content: SelectableText(
           '下载内容已迁移到新位置，但旧目录没能删除，仍然占用空间：\n${leftover.path}\n\n系统报错：${leftover.reason}\n\n常见原因是文件被其他程序占用、只读或没有权限，处理后请手动删除该文件夹。',

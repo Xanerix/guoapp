@@ -2,6 +2,9 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+
+import '../widgets/material_chrome.dart';
+import '../widgets/material_surface.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
@@ -236,7 +239,7 @@ class _ModulesPageState extends State<ModulesPage>
   Future<bool> _confirmUninstall(SourceModule module) async {
     final accepted = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => SurfaceAlertDialog(
         title: Text('卸载 ${module.name}？'),
         content: const Text('该站源的追剧、观看记录和已下载视频会保留，但在重新安装前不再显示，正在下载的集会暂停。'),
         actions: [
@@ -357,7 +360,7 @@ class _ModulesPageState extends State<ModulesPage>
     onReorderItem: (from, to) => _reorder(modules, from, to),
     proxyDecorator: (child, _, animation) => ScaleTransition(
       scale: Tween(begin: 1.0, end: 1.03).animate(animation),
-      child: Material(type: MaterialType.transparency, child: child),
+      child: MaterialSurface(type: MaterialType.transparency, child: child),
     ),
     children: [
       for (final (index, module) in modules.indexed)
@@ -699,7 +702,7 @@ class _ModulesPageState extends State<ModulesPage>
     builder: (context, _) => AppScope.of(context).television
         ? _television()
         : Scaffold(
-            appBar: AppBar(
+            appBar: SurfaceAppBar(
               title: const Text('模块'),
               actions: [?_refreshButton(), const SizedBox(width: 8)],
               bottom: PreferredSize(
@@ -1203,7 +1206,7 @@ class _FullTextDialogState extends State<_FullTextDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
+  Widget build(BuildContext context) => SurfaceAlertDialog(
     content: SizedBox(
       width: 600,
       child: Focus(
@@ -1224,7 +1227,7 @@ class _ModuleDialog extends StatelessWidget {
   final bool install;
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
+  Widget build(BuildContext context) => SurfaceAlertDialog(
     title: Text(
       !install
           ? module.name
@@ -1285,7 +1288,7 @@ class _ModuleMenu extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final toggle = onToggle;
-    return AlertDialog(
+    return SurfaceAlertDialog(
       title: Text(module.name),
       content: _ModuleDetails(
         module: module,
@@ -1358,7 +1361,7 @@ class _AddressDialogState extends State<_AddressDialog> {
   void _submit() => Navigator.pop(context, _controller.text.trim());
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
+  Widget build(BuildContext context) => SurfaceAlertDialog(
     title: const Text('从地址安装'),
     content: FormTextField(
       controller: _controller,

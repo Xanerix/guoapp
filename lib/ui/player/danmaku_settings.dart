@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/material_chrome.dart';
+
 import '../../catalog_sort.dart';
 import '../../playback_preferences.dart';
 import '../../playback_session.dart';
@@ -330,7 +332,7 @@ class _WordsDialogState extends State<_WordsDialog> {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return AlertDialog(
+    return SurfaceAlertDialog(
       title: const Text('弹幕屏蔽词'),
       content: SizedBox(
         width: 420,

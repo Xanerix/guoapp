@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'material_chrome.dart';
+
 import 'focus_ring.dart';
 import 'motion/motion_widgets.dart';
 
@@ -74,7 +76,7 @@ class _LetterKeyboardState extends State<_LetterKeyboard> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
-    return Dialog(
+    return SurfaceDialog(
       child: SizedBox(
         width: 720,
         child: Padding(

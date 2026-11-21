@@ -60,8 +60,7 @@ class DanmakuController extends ChangeNotifier {
   bool get canRetry => visible && _failures.isNotEmpty;
   List<String> get blockedWords => _words;
   DanmakuMerge get mergeWindow => _merge;
-  int get itemCount =>
-      items.fold<int>(0, (total, item) => total + item.count);
+  int get itemCount => items.fold<int>(0, (total, item) => total + item.count);
   int get blockedCount => _blocked;
   String get status {
     if (!_enabled) return '弹幕已关闭';

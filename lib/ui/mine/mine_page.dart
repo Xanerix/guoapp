@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../widgets/material_surface.dart';
 import 'package:flutter/services.dart';
 
 import '../../download_converter.dart';
@@ -394,7 +396,7 @@ class _UserCard extends StatelessWidget {
     final profile = store.profile;
     return FocusRing(
       radius: 20,
-      child: Material(
+      child: MaterialSurface(
         color: colors.surfaceContainer,
         borderRadius: BorderRadius.circular(20),
         clipBehavior: Clip.antiAlias,
@@ -466,7 +468,7 @@ class _Entry extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     return FocusRing(
       radius: 20,
-      child: Material(
+      child: MaterialSurface(
         color: colors.surfaceContainer,
         borderRadius: BorderRadius.circular(20),
         clipBehavior: Clip.antiAlias,
@@ -513,7 +515,7 @@ class _AllHistoryTile extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     return FocusRing(
       radius: 12,
-      child: Material(
+      child: MaterialSurface(
         color: colors.surfaceContainer,
         borderRadius: BorderRadius.circular(12),
         clipBehavior: Clip.antiAlias,
@@ -580,7 +582,7 @@ class _TelevisionEntry extends StatelessWidget {
     return FocusRing(
       radius: 20,
       scale: 1,
-      child: Material(
+      child: MaterialSurface(
         color: colors.surfaceContainer,
         borderRadius: BorderRadius.circular(20),
         clipBehavior: Clip.antiAlias,

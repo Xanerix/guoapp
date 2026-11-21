@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/material_chrome.dart';
+import '../widgets/material_surface.dart';
+
 import '../../download_collections.dart';
 import '../../download_converter.dart';
 import '../../download_overview.dart';
@@ -409,7 +412,7 @@ class _DownloadsPageState extends State<DownloadsPage>
     final selection = view.selection;
     return Scaffold(
       appBar: selection == null
-          ? AppBar(
+          ? SurfaceAppBar(
               title: const Text('下载'),
               actions: [
                 if (_pendingTab && view.pending.isNotEmpty) ...[
@@ -446,7 +449,7 @@ class _DownloadsPageState extends State<DownloadsPage>
                 child: _tabBar(4),
               ),
             )
-          : AppBar(
+          : SurfaceAppBar(
               leading: IconButton(
                 tooltip: '退出编辑',
                 onPressed: () => setState(() => _selection = null),
@@ -850,7 +853,7 @@ class _JobRow extends StatelessWidget {
       checked: selected,
       child: FocusRing(
         radius: 16,
-        child: Material(
+        child: MaterialSurface(
           color: colors.surfaceContainer,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
@@ -1015,7 +1018,7 @@ class _MergeRow extends StatelessWidget {
     final secondary = TextStyle(fontSize: 12, color: colors.onSurfaceVariant);
     return Semantics(
       label: '${task.fileName}，$state${detail.isEmpty ? '' : '，$detail'}',
-      child: Material(
+      child: MaterialSurface(
         color: colors.surfaceContainer,
         borderRadius: BorderRadius.circular(16),
         clipBehavior: Clip.antiAlias,

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../widgets/material_surface.dart';
 import 'package:flutter/services.dart';
 
 import '../../diary_service.dart';
@@ -107,7 +109,7 @@ class _DiaryViewState extends State<DiaryView> {
                   onFocusChange: (focused) =>
                       setState(() => _focused = focused),
                   onKeyEvent: (_, event) => _onKey(event),
-                  child: Material(
+                  child: MaterialSurface(
                     color: colors.surfaceContainer,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(20),

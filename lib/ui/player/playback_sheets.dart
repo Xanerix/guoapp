@@ -1,6 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../widgets/material_surface.dart';
+
+import '../widgets/material_chrome.dart';
 
 import '../../playback_preferences.dart';
 import '../../playback_session.dart';
@@ -31,7 +34,8 @@ Future<void> showPlayerSheet(
 }) {
   final theme = dark ? playerTheme(context) : Theme.of(context);
   final height = MediaQuery.sizeOf(context).height * .6;
-  return showModalBottomSheet<void>(
+  return showSurfaceModalBottomSheet<void>(
+    glassMode: GlassSurfaceMode.tint,
     context: context,
     isScrollControlled: true,
     barrierColor: barrierColor,

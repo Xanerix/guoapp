@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+
+import '../widgets/material_surface.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 
@@ -1208,7 +1210,8 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
     );
   }
 
-  Widget _saveWarning(String warning) => Material(
+  Widget _saveWarning(String warning) => MaterialSurface(
+    mode: GlassSurfaceMode.tint,
     color: const Color(0xE6322424),
     borderRadius: BorderRadius.circular(10),
     child: Padding(
@@ -1235,7 +1238,8 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
     final right = MediaQuery.viewPaddingOf(context).right;
     final session = _session;
     final episodes = panel == _Panel.episodes;
-    return Material(
+    return MaterialSurface(
+      mode: GlassSurfaceMode.tint,
       color: colors.surfaceContainerLow.withValues(alpha: .94),
       child: Padding(
         padding: EdgeInsets.only(right: right, top: 8),
@@ -1296,7 +1300,8 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
 
   Widget _popup(BuildContext context, _Panel panel) {
     final session = _session;
-    return Material(
+    return MaterialSurface(
+      mode: GlassSurfaceMode.tint,
       color: const Color(0xE0141414),
       borderRadius: BorderRadius.circular(12),
       child: Padding(

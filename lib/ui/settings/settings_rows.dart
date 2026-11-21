@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/material_chrome.dart';
+
 import '../app_scope.dart';
 import '../widgets/focus_ring.dart';
 import '../widgets/group_card.dart';
@@ -30,9 +32,8 @@ Future<T?> showOptionDialog<T>(
   required T? selected,
 }) => showDialog<T>(
   context: context,
-  builder: (context) => SimpleDialog(
-    title: Text(title),
-    children: [
+  builder: (context) {
+    final children = <Widget>[
       for (final option in options.entries)
         TileFocus(
           builder: (focusNode) => ListTile(
@@ -47,8 +48,9 @@ Future<T?> showOptionDialog<T>(
             onTap: () => Navigator.pop(context, option.key),
           ),
         ),
-    ],
-  ),
+    ];
+    return SurfaceSimpleDialog(title: Text(title), children: children);
+  },
 );
 
 class SettingsCard extends StatelessWidget {

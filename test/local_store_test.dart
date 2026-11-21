@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:duanju_app/follow_state.dart';
+import 'package:duanju_app/interface_material.dart';
 import 'package:duanju_app/local_files.dart';
 import 'package:duanju_app/local_profiles.dart';
 import 'package:duanju_app/local_snapshot.dart';
@@ -64,6 +65,48 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   final first = drama('1', title: '旧资料');
   final second = drama('2', title: '新资料');
+
+  group('interface material', () {
+    test(
+      'material persists separately from themes and compatible backups',
+      () async {
+        final store = await _open({
+          LocalSnapshot.storageKey: _snapshot({'themeMode': 'dark'}),
+          'themeColor': 'teal',
+          'followSystemColor': false,
+        });
+        final backup = await store.exportBackup();
+        final settings = await store.files.read('settings.json');
+        expect(store.interfaceMaterial, InterfaceMaterial.standard);
+
+        await store.setInterfaceMaterial(InterfaceMaterial.liquidGlass);
+        expect(await store.exportBackup(), backup);
+        expect(await store.files.read('settings.json'), settings);
+        expect(store.themeMode, 'dark');
+        expect(store.themeColor, ThemeColor.teal);
+        expect(store.followSystemColor, isFalse);
+
+        final restarted = await restartStore(store);
+        expect(restarted.interfaceMaterial, InterfaceMaterial.liquidGlass);
+        expect(restarted.configurationError, isNull);
+        await restarted.setInterfaceMaterial(InterfaceMaterial.standard);
+        expect(
+          (await restartStore(restarted)).interfaceMaterial,
+          InterfaceMaterial.standard,
+        );
+      },
+    );
+
+    test('an unknown material leaves old configuration readable', () async {
+      final store = await _open({
+        LocalSnapshot.storageKey: _snapshot({'themeMode': 'light'}),
+        'interfaceMaterial.v1': 'future-material',
+      });
+      expect(store.configurationError, isNull);
+      expect(store.interfaceMaterial, InterfaceMaterial.standard);
+      expect(store.themeMode, 'light');
+    });
+  });
 
   group('migration', () {
     test('a v1 snapshot and standalone settings move into files', () async {
@@ -441,10 +484,10 @@ void main() {
       () async {
         installSourceFixture();
         final store = await _open();
-        final original = [for (final site in SourceSite.values) site.id];
+        final original = [for (final site in SourceSite.allValues) site.id];
         await store.setSourceOrder(['guipian', 'hongguo']);
         expect(
-          [for (final site in SourceSite.values) site.id],
+          [for (final site in SourceSite.allValues) site.id],
           [
             'guipian',
             'hongguo',
@@ -461,10 +504,14 @@ void main() {
 
         final restarted = await restartStore(store);
         expect(restarted.sourceOrder, ['hongguo', 'guipian']);
-        expect(SourceSite.values.take(2).map((site) => site.id), [
+        expect(SourceSite.allValues.take(2).map((site) => site.id), [
           'hongguo',
           'guipian',
         ]);
+        expect(
+          SourceSite.values.take(2).map((site) => site.id),
+          allSourcesEnabled ? ['hongguo', 'guipian'] : ['hongguo'],
+        );
       },
     );
 

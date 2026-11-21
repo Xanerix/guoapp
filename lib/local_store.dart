@@ -9,6 +9,7 @@ import 'diary_service.dart';
 import 'download_preferences.dart';
 import 'follow_state.dart';
 import 'hongguo_series.dart';
+import 'interface_material.dart';
 import 'local_files.dart';
 import 'local_profiles.dart';
 import 'local_snapshot.dart';
@@ -470,6 +471,8 @@ class LocalStore extends ChangeNotifier {
   }
 
   bool get followSystemColor => _flag('followSystemColor', true);
+  InterfaceMaterial get interfaceMaterial =>
+      InterfaceMaterial.parse(preferences.getString('interfaceMaterial.v1'));
   ThemeColor get themeColor =>
       ThemeColor.byName(_settings['themeColor']) ?? ThemeColor.orange;
   bool get sideBarExpanded => preferences.getBool('sideBarExpanded') ?? true;
@@ -617,6 +620,11 @@ class LocalStore extends ChangeNotifier {
       _setting('followSystemColor', value);
   Future<void> setThemeColor(ThemeColor value) =>
       _setting('themeColor', value.name);
+  Future<void> setInterfaceMaterial(InterfaceMaterial value) =>
+      _queue(() async {
+        await preferences.setString('interfaceMaterial.v1', value.name);
+        _notify();
+      });
   Future<void> setSideBarExpanded(bool value) => _queue(() async {
     await preferences.setBool('sideBarExpanded', value);
     _notify();

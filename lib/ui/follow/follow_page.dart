@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../widgets/material_chrome.dart';
 import 'package:flutter/services.dart';
 
 import '../../follow_list.dart';
@@ -97,7 +99,7 @@ class _FollowPageState extends State<FollowPage> {
     final colors = Theme.of(context).colorScheme;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => SurfaceAlertDialog(
         title: Text('取消追剧 ${ids.length} 部？'),
         content: const Text('观看记录会保留。'),
         actions: [

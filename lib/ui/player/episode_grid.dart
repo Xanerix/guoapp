@@ -4,6 +4,8 @@ import 'dart:math';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
+import '../widgets/material_surface.dart';
+
 import '../../models.dart';
 import '../theme/motion.dart';
 import '../widgets/cover_image.dart';
@@ -396,7 +398,8 @@ class _EpisodeCell extends StatelessWidget {
             ),
           ),
         ),
-        child: Material(
+        child: MaterialSurface(
+          mode: GlassSurfaceMode.tint,
           type: MaterialType.transparency,
           shape: RoundedRectangleBorder(borderRadius: radius),
           clipBehavior: Clip.antiAlias,

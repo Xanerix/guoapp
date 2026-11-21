@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+
+import 'widgets/material_chrome.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -93,7 +95,7 @@ Future<_UpdateChoice?> _askUpdate(
 }) {
   return showDialog<_UpdateChoice>(
     context: context,
-    builder: (dialogContext) => AlertDialog(
+    builder: (dialogContext) => SurfaceAlertDialog(
       title: Text('发现新版本 ${update.version}'),
       content: Text(
         manual ? '当前版本 $current。' : '当前版本 $current。选「不再提醒」后可在设置 › 关于中重新打开检查更新。',

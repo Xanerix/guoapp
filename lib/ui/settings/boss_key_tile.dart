@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/material_chrome.dart';
+
 import '../../boss_key.dart';
 import '../widgets/focus_ring.dart';
 import '../widgets/group_card.dart';
@@ -52,7 +54,7 @@ class _BossKeyDialogState extends State<_BossKeyDialog> {
     return Focus(
       autofocus: true,
       onKeyEvent: _onKey,
-      child: AlertDialog(
+      child: SurfaceAlertDialog(
         title: const Text('老板键'),
         content: Text(
           '按下新的快捷键：字母、数字或 F1~F12，可搭配修饰键。'
