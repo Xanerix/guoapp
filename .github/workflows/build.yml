@@ -216,6 +216,7 @@ jobs:
           pod --version
           go version
           flutter --version
+          brew install meson ninja cmake pkgconf
           flutter precache --ios
       - name: Build unsigned iOS packages
         run: python scripts/build_ios.py

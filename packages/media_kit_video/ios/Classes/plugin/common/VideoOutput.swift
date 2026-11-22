@@ -36,14 +36,14 @@ public class VideoOutput: NSObject {
   private var textureId: Int64 = -1
   private var currentSize: CGSize = CGSize.zero
   private var disposed: Bool = false
+  private(set) var ownsFrameBuffers = false
 
   init(
     handle: Int64,
     configuration: VideoOutputConfiguration,
     registry: FlutterTextureRegistry,
     textureUpdateCallback: @escaping TextureUpdateCallback,
-    onFrame: @escaping (ResizableTextureProtocol) -> Void,
-    useSoftwareRendering: Bool
+    onFrame: @escaping (ResizableTextureProtocol) -> Void
   ) {
     let handle = OpaquePointer(bitPattern: Int(handle))
     assert(handle != nil, "handle casting")
@@ -51,8 +51,7 @@ public class VideoOutput: NSObject {
     self.handle = handle!
     width = configuration.width
     height = configuration.height
-    // OpenGL ES drawing is unavailable while the app is in the background.
-    enableHardwareAcceleration = configuration.enableHardwareAcceleration && !useSoftwareRendering
+    enableHardwareAcceleration = configuration.enableHardwareAcceleration
     self.onFrame = onFrame
     self.registry = registry
     self.textureUpdateCallback = textureUpdateCallback
@@ -97,19 +96,12 @@ public class VideoOutput: NSObject {
       )
     }
 
-    if enableHardwareAcceleration {
-      texture = SafeResizableTexture(
-        TextureHW(
-          handle: handle,
-          // Use `weak self` to prevent memory leaks
-          updateCallback: { [weak self]() in
-            guard let that = self else {
-              return
-            }
-            that.updateCallback()
-          }
-        )
-      )
+    if enableHardwareAcceleration,
+      let output = TextureVideoToolbox(handle: handle, updateCallback: { [weak self] in
+        self?.updateCallback()
+      }) {
+      ownsFrameBuffers = true
+      texture = SafeResizableTexture(output)
     } else {
       texture = SafeResizableTexture(
         TextureSW(
@@ -160,7 +152,7 @@ public class VideoOutput: NSObject {
   private func _updateCallback() {
     let size = videoSize
 
-    if size.width == 0 || size.height == 0 {
+    if (size.width == 0 || size.height == 0) && !ownsFrameBuffers {
       return
     }
 

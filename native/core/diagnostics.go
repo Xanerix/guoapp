@@ -6,14 +6,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"sync"
 	"time"
 )
 
-const diagnosticLogBytes = 5 * 1024 * 1024
-
-const diagnosticLogBackups = 2
+const diagnosticLogBytes = 10 * 1024 * 1024
 
 type diagnosticEvent struct {
 	HTTPStatus   int       `json:"httpStatus,omitempty"`
@@ -38,7 +35,12 @@ type diagnosticLog struct {
 }
 
 func newDiagnosticLog(directory string) *diagnosticLog {
-	return &diagnosticLog{path: filepath.Join(directory, "logs", "app.log"), limit: diagnosticLogBytes}
+	log := &diagnosticLog{path: filepath.Join(directory, "logs", "app.log"), limit: diagnosticLogBytes}
+	// Older versions kept a second backup.
+	if err := os.Remove(log.path + ".2"); err != nil && !errors.Is(err, os.ErrNotExist) {
+		fmt.Fprintf(os.Stderr, "旧诊断日志清理失败：%v\n", PublicError(err))
+	}
+	return log
 }
 
 func (log *diagnosticLog) write(event diagnosticEvent) error {
@@ -64,7 +66,7 @@ func (log *diagnosticLog) write(event diagnosticEvent) error {
 		return err
 	}
 	if info != nil && info.Size()+int64(len(data)) > log.limit {
-		if err := log.rotate(); err != nil {
+		if err := os.Rename(log.path, log.path+".1"); err != nil {
 			return err
 		}
 	}
@@ -74,23 +76,6 @@ func (log *diagnosticLog) write(event diagnosticEvent) error {
 	}
 	_, writeErr := file.Write(data)
 	return errors.Join(writeErr, file.Close())
-}
-
-func (log *diagnosticLog) rotate() error {
-	oldest := log.path + "." + strconv.Itoa(diagnosticLogBackups)
-	if err := os.Remove(oldest); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	for index := diagnosticLogBackups; index > 0; index-- {
-		previous := log.path
-		if index > 1 {
-			previous += "." + strconv.Itoa(index-1)
-		}
-		if err := os.Rename(previous, log.path+"."+strconv.Itoa(index)); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
-	}
-	return nil
 }
 
 func (downloader *Downloader) recordDiagnostic(event diagnosticEvent) {

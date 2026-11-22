@@ -95,12 +95,17 @@ final class PictureInPicture: NSObject, AVPictureInPictureControllerDelegate,
     self.selectedHandle == handle && (!hasFrame || starting || controller.isPictureInPictureActive)
   }
 
-  func enqueue(_ source: CVPixelBuffer, handle: Int64, refresh: Bool = false) {
+  func enqueue(
+    _ source: CVPixelBuffer, handle: Int64, refresh: Bool = false, decodedFrame: Bool = false
+  ) {
     guard self.selectedHandle == handle, refresh || needsFrame(handle: handle) else { return }
     if layer.superlayer == nil { attachLayer() }
     if layer.status == .failed { layer.flush() }
-    guard layer.isReadyForMoreMediaData, let buffer = copyFrame(source) else { return }
-    CVBufferSetAttachment(buffer, kCVImageBufferAlphaChannelIsOpaque, kCFBooleanTrue, .shouldPropagate)
+    guard layer.isReadyForMoreMediaData,
+          let buffer = decodedFrame ? source : copyFrame(source) else { return }
+    if !decodedFrame {
+      CVBufferSetAttachment(buffer, kCVImageBufferAlphaChannelIsOpaque, kCFBooleanTrue, .shouldPropagate)
+    }
     var format: CMVideoFormatDescription?
     guard CMVideoFormatDescriptionCreateForImageBuffer(
       allocator: kCFAllocatorDefault, imageBuffer: buffer, formatDescriptionOut: &format
