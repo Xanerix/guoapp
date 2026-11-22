@@ -329,7 +329,7 @@ class SettingsSection extends StatelessWidget {
             ),
           ],
         ),
-      if (Platform.isAndroid && !television)
+      if ((Platform.isAndroid || Platform.isIOS) && !television)
         SettingsCard(
           children: [
             SwitchTile(

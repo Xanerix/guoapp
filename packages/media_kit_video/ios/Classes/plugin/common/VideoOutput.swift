@@ -28,6 +28,7 @@ public class VideoOutput: NSObject {
   private let enableHardwareAcceleration: Bool
   private let registry: FlutterTextureRegistry
   private let textureUpdateCallback: TextureUpdateCallback
+  private let onFrame: (ResizableTextureProtocol) -> Void
   private let worker: Worker = .init()
   private var width: Int64?
   private var height: Int64?
@@ -40,7 +41,9 @@ public class VideoOutput: NSObject {
     handle: Int64,
     configuration: VideoOutputConfiguration,
     registry: FlutterTextureRegistry,
-    textureUpdateCallback: @escaping TextureUpdateCallback
+    textureUpdateCallback: @escaping TextureUpdateCallback,
+    onFrame: @escaping (ResizableTextureProtocol) -> Void,
+    useSoftwareRendering: Bool
   ) {
     let handle = OpaquePointer(bitPattern: Int(handle))
     assert(handle != nil, "handle casting")
@@ -48,7 +51,9 @@ public class VideoOutput: NSObject {
     self.handle = handle!
     width = configuration.width
     height = configuration.height
-    enableHardwareAcceleration = configuration.enableHardwareAcceleration
+    // OpenGL ES drawing is unavailable while the app is in the background.
+    enableHardwareAcceleration = configuration.enableHardwareAcceleration && !useSoftwareRendering
+    self.onFrame = onFrame
     self.registry = registry
     self.textureUpdateCallback = textureUpdateCallback
 
@@ -64,6 +69,11 @@ public class VideoOutput: NSObject {
 
     disposed = true
     disposeTextureId()
+  }
+
+  func currentFrame() -> CVPixelBuffer? {
+    guard textureId >= 0 else { return nil }
+    return texture.copyPixelBuffer()?.takeRetainedValue()
   }
 
   public func setSize(width: Int64?, height: Int64?) {
@@ -173,6 +183,7 @@ public class VideoOutput: NSObject {
     DispatchQueue.main.sync { [weak self] in
       guard let that = self else { return }
       // Textures must be marked as available from the main thread
+      that.onFrame(that.texture)
       that.registry.textureFrameAvailable(that.textureId)
     }
   }
