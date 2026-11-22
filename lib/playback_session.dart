@@ -54,12 +54,28 @@ bool audioOnly(Tracks tracks) {
       );
 }
 
+final _diagnosticAddress = RegExp(r'[a-z]+://\S+', caseSensitive: false);
+
 String _diagnostic(Object error) {
-  final text = error.toString().replaceAll(
-    RegExp(r'[a-z]+://\S+', caseSensitive: false),
-    '[地址]',
-  );
+  final text = error.toString().replaceAll(_diagnosticAddress, '[地址]');
   return text.length > 300 ? text.substring(0, 300) : text;
+}
+
+String _diagnosticPlaybackTarget(String? address) {
+  if (address == null || address.isEmpty) return 'unknown';
+  final uri = Uri.tryParse(address);
+  if (uri == null) return 'unknown';
+  if (uri.scheme == 'file') return 'local_file';
+  if (!const {'http', 'https', 'tcp', 'tls'}.contains(uri.scheme)) {
+    return 'unknown';
+  }
+  final host = uri.host;
+  if (host.isEmpty) return 'unknown';
+  if (host.toLowerCase() == 'localhost' ||
+      InternetAddress.tryParse(host)?.isLoopback == true) {
+    return 'loopback port=${uri.port}';
+  }
+  return 'remote';
 }
 
 class PlaybackSession extends ChangeNotifier {
@@ -532,7 +548,15 @@ class PlaybackSession extends ChangeNotifier {
 
   void _playerError(String error) {
     if (_closed || !_acceptErrors || error.trim().isEmpty) return;
-    DiaryService.add('[Play] 播放器报错：${_diagnostic(error)}');
+    final target = _diagnosticAddress.firstMatch(error)?.group(0);
+    final plan = _plan;
+    final planned = plan?.local == true
+        ? 'local_file'
+        : _diagnosticPlaybackTarget(plan?.url);
+    DiaryService.add(
+      '[Play] 播放器报错：${_diagnostic(error)} '
+      'error_target=${_diagnosticPlaybackTarget(target)} plan_target=$planned',
+    );
     _queueRecovery('player_error');
   }
 
@@ -1546,6 +1570,10 @@ class PlaybackSession extends ChangeNotifier {
       DiaryService.add('[Play] 应用不可见，后台继续播放');
     }
     if (!Platform.isIOS) return;
+    if (visible) {
+      _dropStandby();
+      _preloader.clear();
+    }
     for (final target in [_player, ?_standby]) {
       final platform = target.platform;
       if (platform is! NativePlayer) continue;
