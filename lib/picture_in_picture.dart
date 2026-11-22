@@ -71,6 +71,7 @@ class PictureInPicture extends ChangeNotifier {
   bool get window => _window;
 
   bool get active => _active || _ios && _pending;
+  bool get systemWindowActive => _active;
 
   Future<void> _status() async {
     try {

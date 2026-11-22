@@ -232,9 +232,10 @@ class _PlaybackPageState extends State<PlaybackPage> {
   @override
   Widget build(BuildContext context) {
     final live = MediaQuery.of(context);
-    final shown =
-        !Platform.isIOS &&
-        (_pip.shown || _pip.leaving && live.size != _media?.size);
+    final ios = Platform.isIOS;
+    final shown = ios
+        ? _pip.systemWindowActive
+        : _pip.shown || _pip.leaving && live.size != _media?.size;
     if (!shown || _media == null) _media = live;
     return Stack(
       fit: StackFit.expand,
@@ -242,6 +243,7 @@ class _PlaybackPageState extends State<PlaybackPage> {
         FocusScope(
           node: _pageScope,
           autofocus: true,
+          descendantsAreFocusable: !ios || !shown,
           onKeyEvent: _key,
           child: Offstage(
             offstage: shown,
@@ -251,7 +253,16 @@ class _PlaybackPageState extends State<PlaybackPage> {
             ),
           ),
         ),
-        if (shown)
+        if (ios && shown)
+          Scaffold(
+            body: Center(
+              child: OutlinedButton(
+                onPressed: () => unawaited(_enterMini()),
+                child: const Text('返回播放器'),
+              ),
+            ),
+          )
+        else if (shown)
           _pip.window
               ? MiniWindowView(
                   handle: widget.handle,
