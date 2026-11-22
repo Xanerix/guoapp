@@ -1,3 +1,5 @@
+import CoreVideo
+
 public class TextureSWContext {
   public let pixelBuffer: CVPixelBuffer
 
@@ -10,10 +12,10 @@ public class TextureSWContext {
   }
 
   private static func createPixelBuffer(_ size: CGSize) -> CVPixelBuffer {
-    let attrs =
-      [
-        kCVPixelBufferMetalCompatibilityKey: true
-      ] as CFDictionary
+    let attrs: [String: Any] = [
+      kCVPixelBufferMetalCompatibilityKey as String: true,
+      kCVPixelBufferIOSurfacePropertiesKey as String: [:],
+    ]
 
     var pixelBuffer: CVPixelBuffer?
     let cvret = CVPixelBufferCreate(
@@ -21,7 +23,7 @@ public class TextureSWContext {
       Int(size.width),
       Int(size.height),
       kCVPixelFormatType_32BGRA,
-      attrs,
+      attrs as CFDictionary,
       &pixelBuffer
     )
     assert(cvret == kCVReturnSuccess, "CVPixelBufferCreate")

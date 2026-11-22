@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
+import 'package:media_kit/media_kit.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'app_device.dart';
@@ -31,16 +32,22 @@ Size _miniSize(double ratio, double extent) =>
 
 class PictureInPicture extends ChangeNotifier {
   PictureInPicture._() {
-    if (defaultTargetPlatform != TargetPlatform.android) return;
-    AppDevice.channel.setMethodCallHandler(_handle);
+    if (!_system) return;
+    _channel.setMethodCallHandler(_handle);
     AppLifecycleListener(onStateChange: _lifecycleChanged);
     unawaited(_status());
   }
 
   static final instance = PictureInPicture._();
+  static const _iosChannel = MethodChannel('duanju/ios_pip');
+
+  bool get _ios => defaultTargetPlatform == TargetPlatform.iOS;
+  bool get _system => _ios || defaultTargetPlatform == TargetPlatform.android;
+  MethodChannel get _channel => _ios ? _iosChannel : AppDevice.channel;
 
   void Function(String action)? onAction;
   bool _supported = false;
+  bool _iosPossible = false;
   bool _active = false;
   bool _pending = false;
   bool _leaving = false;
@@ -48,10 +55,13 @@ class PictureInPicture extends ChangeNotifier {
   double? _windowRatio;
   Timer? _timer;
   Map<String, Object>? _sent;
+  ({Player player, bool playing, bool autoEnter})? _iosSent;
+  int _iosUpdate = 0;
   ({Rect bounds, bool maximized, bool fullScreen})? _macRestore;
 
   bool get available => switch (defaultTargetPlatform) {
     TargetPlatform.android => _supported,
+    TargetPlatform.iOS => _supported && (_iosPossible || _active),
     TargetPlatform.windows || TargetPlatform.macOS => true,
     _ => false,
   };
@@ -60,14 +70,15 @@ class PictureInPicture extends ChangeNotifier {
   bool get leaving => _leaving;
   bool get window => _window;
 
-  bool get active => _active;
+  bool get active => _active || _ios && _pending;
 
   Future<void> _status() async {
     try {
-      final status = await AppDevice.channel.invokeMapMethod<String, dynamic>(
+      final status = await _channel.invokeMapMethod<String, dynamic>(
         'pictureInPictureStatus',
       );
       _supported = status?['supported'] == true;
+      _iosPossible = status?['possible'] == true;
     } catch (_) {
       _supported = false;
     }
@@ -80,13 +91,33 @@ class PictureInPicture extends ChangeNotifier {
       case 'pictureInPictureChanged':
         _setActive(arguments is Map && arguments['active'] == true);
       case 'pictureInPicturePending':
-        _pending = true;
+        if (_ios) {
+          _setPending();
+        } else {
+          _pending = true;
+          notifyListeners();
+        }
+      case 'pictureInPicturePossible':
+        final possible = arguments == true;
+        if (_iosPossible == possible) return;
+        _iosPossible = possible;
         notifyListeners();
       case 'pictureInPictureAction':
         if (arguments case {'action': final String action}) {
           onAction?.call(action);
         }
     }
+  }
+
+  void _setPending() {
+    _pending = true;
+    _timer?.cancel();
+    _timer = Timer(const Duration(seconds: 2), () {
+      if (!_pending) return;
+      _pending = false;
+      notifyListeners();
+    });
+    notifyListeners();
   }
 
   void _setActive(bool active) {
@@ -104,7 +135,7 @@ class PictureInPicture extends ChangeNotifier {
   }
 
   void _lifecycleChanged(AppLifecycleState state) {
-    if (!_pending || state == AppLifecycleState.inactive) return;
+    if (_ios || !_pending || state == AppLifecycleState.inactive) return;
     _pending = false;
     notifyListeners();
   }
@@ -115,8 +146,20 @@ class PictureInPicture extends ChangeNotifier {
     required bool hasPrevious,
     required bool hasNext,
     required bool autoEnter,
+    Player? iosPlayer,
   }) {
-    if (defaultTargetPlatform != TargetPlatform.android || !_supported) return;
+    if (!_system || !_supported) return;
+    if (_ios) {
+      if (iosPlayer == null) {
+        clear();
+        return;
+      }
+      final next = (player: iosPlayer, playing: playing, autoEnter: autoEnter);
+      if (_iosSent == next) return;
+      _iosSent = next;
+      unawaited(_updateIOS(iosPlayer, playing, autoEnter, ++_iosUpdate));
+      return;
+    }
     final next = <String, Object>{
       ..._ratio(aspectRatio),
       'playing': playing,
@@ -133,19 +176,48 @@ class PictureInPicture extends ChangeNotifier {
     );
   }
 
+  Future<void> _updateIOS(
+    Player player,
+    bool playing,
+    bool autoEnter,
+    int revision,
+  ) async {
+    try {
+      final handle = await player.handle;
+      if (_iosUpdate != revision) return;
+      await _iosChannel.invokeMethod<void>('updatePictureInPicture', {
+        'handle': handle,
+        'playing': playing,
+        'autoEnter': autoEnter,
+      });
+    } catch (_) {}
+  }
+
   void clear() {
-    if (_sent == null) return;
-    _sent = null;
+    if (_ios) {
+      if (_iosSent == null) return;
+      _iosSent = null;
+      _iosUpdate++;
+    } else {
+      if (_sent == null) return;
+      _sent = null;
+    }
     unawaited(
-      AppDevice.channel
+      _channel
           .invokeMethod<void>('updatePictureInPicture')
           .catchError((Object _) {}),
     );
   }
 
   Future<void> enter(double aspectRatio, {MiniWindowFrame? frame}) async {
+    if (_ios && _active) {
+      await _iosChannel
+          .invokeMethod<void>('stopPictureInPicture')
+          .catchError((Object _) {});
+      return;
+    }
     if (shown || !available) return;
-    if (defaultTargetPlatform == TargetPlatform.android) {
+    if (_system) {
       return _enterSystem(aspectRatio);
     }
     final ratio = _clampRatio(aspectRatio);
@@ -174,22 +246,20 @@ class PictureInPicture extends ChangeNotifier {
   }
 
   Future<void> _enterSystem(double aspectRatio) async {
-    _timer?.cancel();
-    _pending = true;
-    notifyListeners();
+    if (_ios) {
+      _setPending();
+    } else {
+      _timer?.cancel();
+      _pending = true;
+      notifyListeners();
+    }
     try {
-      final status = await AppDevice.channel.invokeMapMethod<String, dynamic>(
+      final status = await _channel.invokeMapMethod<String, dynamic>(
         'enterPictureInPicture',
         _ratio(aspectRatio),
       );
       if (status?['active'] == true || status?['requested'] == true) {
-        if (_pending) {
-          _timer = Timer(const Duration(seconds: 2), () {
-            if (!_pending) return;
-            _pending = false;
-            notifyListeners();
-          });
-        }
+        if (!_ios && _pending) _setPending();
         return;
       }
     } catch (_) {}

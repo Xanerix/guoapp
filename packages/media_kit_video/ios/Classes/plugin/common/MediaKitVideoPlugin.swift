@@ -1,22 +1,13 @@
-#if canImport(Flutter)
-  import Flutter
-#elseif canImport(FlutterMacOS)
-  import FlutterMacOS
-#endif
+import AVKit
+import Flutter
 
 public class MediaKitVideoPlugin: NSObject, FlutterPlugin {
   private static let CHANNEL_NAME = "com.alexmercerind/media_kit_video"
 
   public static func register(with registrar: FlutterPluginRegistrar) {
-    #if canImport(Flutter)
-      let binaryMessenger = registrar.messenger()
-      let registry = registrar.textures()
-      let utils: UtilsProtocol? = nil
-    #elseif canImport(FlutterMacOS)
-      let binaryMessenger = registrar.messenger
-      let registry = registrar.textures
-      let utils: UtilsProtocol? = Utils(registrar)
-    #endif
+    let binaryMessenger = registrar.messenger()
+    let registry = registrar.textures()
+    let utils: UtilsProtocol? = nil
 
     let channel = FlutterMethodChannel(
       name: CHANNEL_NAME,
@@ -28,6 +19,48 @@ public class MediaKitVideoPlugin: NSObject, FlutterPlugin {
       utils: utils
     )
     registrar.addMethodCallDelegate(instance, channel: channel)
+    if #available(iOS 15.0, *) {
+      let pipChannel = FlutterMethodChannel(name: "duanju/ios_pip", binaryMessenger: binaryMessenger)
+      let pip = AVPictureInPictureController.isPictureInPictureSupported()
+        ? PictureInPicture(channel: pipChannel) : nil
+      if let pip {
+        instance.videoOutputManager.onFrame = { handle, texture in
+          guard pip.needsFrame(handle: handle),
+                let frame = texture.copyPixelBuffer()?.takeRetainedValue() else { return }
+          pip.enqueue(frame, handle: handle)
+        }
+      }
+      pipChannel.setMethodCallHandler { [weak instance] call, result in
+        let args = call.arguments as? [String: Any]
+        switch call.method {
+        case "pictureInPictureStatus":
+          result(["supported": pip != nil, "possible": pip?.possible ?? false])
+        case "updatePictureInPicture":
+          let handle = (args?["handle"] as? NSNumber)?.int64Value
+          pip?.update(
+            handle: handle, playing: args?["playing"] as? Bool ?? false,
+            autoEnter: args?["autoEnter"] as? Bool ?? false
+          )
+          if let pip, let handle, pip.needsFrame(handle: handle),
+             let frame = instance?.videoOutputManager.currentFrame(handle: handle) {
+            pip.enqueue(frame, handle: handle)
+          }
+          result(nil)
+        case "enterPictureInPicture":
+          if let pip, let handle = pip.selectedHandle,
+             let frame = instance?.videoOutputManager.currentFrame(handle: handle) {
+            pip.enqueue(frame, handle: handle, refresh: true)
+          }
+          result(["requested": pip?.start() ?? false])
+        case "stopPictureInPicture":
+          pip?.stop()
+          result(nil)
+        default:
+          result(FlutterMethodNotImplemented)
+        }
+      }
+    }
+
   }
 
   private let channel: FlutterMethodChannel
