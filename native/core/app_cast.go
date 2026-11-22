@@ -358,13 +358,18 @@ func (engine *nativeEngine) castPlay(ctx context.Context, input nativeInput) (an
 		return nil, err
 	}
 	local, token := stream.nativeOpen(SourceFromDramaID(input.Drama.ID), *media)
+	localURL, err := url.Parse(local)
+	if err != nil {
+		stream.nativeRelease(token)
+		return nil, err
+	}
 	if len(media.CENCKey) > 0 {
 		if err := stream.nativeDecrypt(ctx, token, *media); err != nil {
 			stream.nativeRelease(token)
 			return nil, err
 		}
 	}
-	address := origin + strings.TrimPrefix(local, stream.address)
+	address := origin + localURL.EscapedPath()
 	contentType := "video/mp4"
 	if strings.HasSuffix(local, ".m3u8") {
 		contentType = "application/vnd.apple.mpegurl"

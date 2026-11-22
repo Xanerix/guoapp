@@ -60,7 +60,7 @@ func (stream *nativeStreamServer) nativePrefetch(ctx context.Context, token, ent
 		}
 		visited[local] = true
 		parsed, err := url.Parse(local)
-		if err != nil || !strings.HasPrefix(local, stream.address+"/"+token+"/") {
+		if err != nil || !strings.HasPrefix(local, session.origin+"/"+token+"/") {
 			return false
 		}
 		id := strings.TrimPrefix(parsed.Path, "/"+token+"/")
