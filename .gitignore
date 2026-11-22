@@ -37,9 +37,6 @@ venv/
 .idea/
 .vscode/
 packages/*/pubspec.lock
-/packages/media_kit_video/android/.gradle/
-/packages/media_kit_video/common/darwin/.cache/
-/packages/media_kit_video/ios/Headers/
 *.iml
 *.log
 .DS_Store

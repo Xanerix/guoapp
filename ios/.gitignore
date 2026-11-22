@@ -33,4 +33,3 @@ Runner/GeneratedPluginRegistrant.*
 !default.pbxuser
 !default.perspectivev3
 Flutter/AppVariant.xcconfig
-/Podfile.lock
