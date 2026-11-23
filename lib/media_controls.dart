@@ -68,25 +68,40 @@ class MediaControls {
   bool _listening = false;
   Object? _owner;
   MediaCommandHandler? _handler;
+  bool _localPlaying = false;
+  bool _published = false;
   Map<String, Object>? _sentIdentity;
   MediaState? _sent;
   DateTime _sentAt = DateTime(2000);
 
   bool owns(Object owner) => identical(owner, _owner);
 
+  void track(Object owner, bool playing, MediaCommandHandler handler) {
+    if (!supported) return;
+    if (_published) {
+      _published = false;
+      _clearPublished();
+    }
+    _owner = owner;
+    _handler = handler;
+    _localPlaying = playing;
+  }
+
   void update(Object owner, MediaState state, MediaCommandHandler handler) {
     if (!supported) return;
+    _owner = owner;
+    _handler = handler;
+    _localPlaying = state.playing;
     if (!_listening) {
       _listening = true;
       _channel.setMethodCallHandler(_handle);
     }
-    _owner = owner;
-    _handler = handler;
     final identity = state._identity;
     if (mapEquals(identity, _sentIdentity) && !_drifted(state)) return;
     _sentIdentity = identity;
     _sent = state;
     _sentAt = DateTime.now();
+    _published = true;
     unawaited(
       _channel
           .invokeMethod<void>('update', {
@@ -107,16 +122,22 @@ class MediaControls {
     return (state.position - (sent.position + elapsed)).abs() > _drift;
   }
 
-  void release(Object owner) {
-    if (!identical(owner, _owner)) return;
-    _owner = null;
-    _handler = null;
+  void _clearPublished() {
     _sentIdentity = null;
     _sent = null;
     unawaited(_channel.invokeMethod<void>('clear').catchError((Object _) {}));
   }
 
-  bool get playing => _sent?.playing ?? false;
+  void release(Object owner) {
+    if (!identical(owner, _owner)) return;
+    _owner = null;
+    _handler = null;
+    _localPlaying = false;
+    _published = false;
+    _clearPublished();
+  }
+
+  bool get playing => _localPlaying;
 
   void play() => _handler?.call(MediaCommand.play, null);
 

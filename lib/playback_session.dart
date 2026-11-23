@@ -417,29 +417,30 @@ class PlaybackSession extends ChangeNotifier {
   void _syncMedia() {
     if (_closed) return;
     final controls = MediaControls.instance;
-    if (!_backgroundPlayback || !_engaged || !_usable || store.locked) {
+    if (!_engaged || !_usable || store.locked) {
       controls.release(this);
       return;
     }
     if (!_playIntent && !controls.owns(this)) return;
     final state = player.state;
     final opened = ready && _openedIndex == _index;
-    controls.update(
-      this,
-      MediaState(
-        title: detail.drama.title,
-        subtitle: episode.title,
-        artwork: repository.knownCover(detail.drama) ?? '',
-        active: _playIntent && _error == null,
-        playing: _playIntent && state.playing,
-        position: opened ? state.position : Duration.zero,
-        duration: opened ? state.duration : Duration.zero,
-        rate: state.rate,
-        hasPrevious: hasPrevious,
-        hasNext: hasNext,
-      ),
-      _mediaCommand,
+    final media = MediaState(
+      title: detail.drama.title,
+      subtitle: episode.title,
+      artwork: repository.knownCover(detail.drama) ?? '',
+      active: _playIntent && _error == null,
+      playing: _playIntent && state.playing,
+      position: opened ? state.position : Duration.zero,
+      duration: opened ? state.duration : Duration.zero,
+      rate: state.rate,
+      hasPrevious: hasPrevious,
+      hasNext: hasNext,
     );
+    if (_backgroundPlayback) {
+      controls.update(this, media, _mediaCommand);
+    } else {
+      controls.track(this, media.playing, _mediaCommand);
+    }
   }
 
   void _mediaCommand(MediaCommand command, Duration? position) {
