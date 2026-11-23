@@ -24,6 +24,7 @@ import 'episode_grid.dart';
 import 'mini_player.dart';
 import 'playback_handle.dart';
 import 'playback_sheets.dart';
+import 'player_home_button.dart';
 import 'player_lock.dart';
 import 'player_status.dart';
 import 'fade_presence.dart';
@@ -692,6 +693,8 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
                 () => unawaited(Navigator.maybePop(context)),
               ),
               const Spacer(),
+              if (PlayerHomeButton.available(context))
+                const PlayerHomeButton(size: 44),
               if (widget.onMiniWindow case final onMiniWindow?)
                 _icon(Icons.picture_in_picture_alt_rounded, '小窗', onMiniWindow),
               _icon(Icons.settings_rounded, '播放设置', _openSettings),
@@ -847,6 +850,8 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
               if (session.danmakuSupported) _danmakuButton(context),
               if (widget.onMiniWindow case final onMiniWindow?)
                 _icon(Icons.picture_in_picture_alt_rounded, '小窗', onMiniWindow),
+              if (PlayerHomeButton.available(context))
+                const PlayerHomeButton(size: 44),
               _icon(
                 Icons.settings_rounded,
                 '播放设置',
