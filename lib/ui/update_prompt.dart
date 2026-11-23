@@ -8,6 +8,7 @@ import '../app_update.dart';
 import '../core_bridge.dart';
 import '../local_store.dart';
 import 'app_scope.dart';
+import 'modules/module_update_prompt.dart';
 import 'widgets/focus_ring.dart';
 
 var _checked = false;
@@ -18,6 +19,14 @@ AppUpdate? _lastManualUpdate;
 enum _UpdateChoice { mute, skip, dismiss, download }
 
 Future<void> runStartupChecks(BuildContext context, LocalStore store) async {
+  await _checkAppUpdateAtStartup(context, store);
+  if (context.mounted) await checkModuleUpdatesAtStartup(context, store);
+}
+
+Future<void> _checkAppUpdateAtStartup(
+  BuildContext context,
+  LocalStore store,
+) async {
   if (_checked) return;
   _checked = true;
   final repository = AppScope.of(context).repository;
