@@ -91,6 +91,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: guoapp-modules/hongguo
+          ssh-key: ${{ secrets.HONGGUO_DEPLOY_KEY }}
           path: bundled-modules/hongguo
       - &setup-python
         uses: actions/setup-python@v5
