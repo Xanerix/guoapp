@@ -111,3 +111,9 @@ func TestModuleIndexInstallFallsBackAndVerifies(t *testing.T) {
 		t.Fatalf("format error = %v", err)
 	}
 }
+
+func TestModuleIndexMirrorsMatchFilePatterns(t *testing.T) {
+	if len(moduleIndexAddresses) != len(moduleFileAddresses) {
+		t.Fatalf("index mirrors (%d) != file mirrors (%d)", len(moduleIndexAddresses), len(moduleFileAddresses))
+	}
+}
