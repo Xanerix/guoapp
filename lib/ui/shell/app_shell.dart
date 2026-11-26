@@ -97,10 +97,10 @@ class AppShell extends StatefulWidget {
   final LocalStore store;
 
   @override
-  State<AppShell> createState() => _AppShellState();
+  State<AppShell> createState() => AppShellState();
 }
 
-class _AppShellState extends State<AppShell> {
+class AppShellState extends State<AppShell> {
   final _navigators = [
     for (final _ in AppTab.values) GlobalKey<NavigatorState>(),
   ];
@@ -125,6 +125,14 @@ class _AppShellState extends State<AppShell> {
   FollowUpdater? _followUpdater;
 
   NavigatorState? get _navigator => _navigators[_tab.index].currentState;
+
+  bool get canPopCurrentTab => _navigator?.canPop() ?? false;
+
+  Future<bool> popCurrentTab() async {
+    final navigator = _navigator;
+    if (navigator == null || !navigator.canPop()) return false;
+    return navigator.maybePop();
+  }
 
   @override
   void initState() {

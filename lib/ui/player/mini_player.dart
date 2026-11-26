@@ -107,20 +107,26 @@ class _MiniWindowViewState extends State<MiniWindowView> {
   }
 
   @override
-  Widget build(BuildContext context) => KeyboardControls(
-    child: Focus(
-      focusNode: _focus,
-      onKeyEvent: _key,
-      child: MouseRegion(
-        onEnter: (_) => setState(() => _hover = true),
-        onExit: (_) => setState(() => _hover = false),
-        child: ListenableBuilder(
-          listenable: _session,
-          builder: (context, _) => StreamBuilder<bool>(
-            stream: _session.player.stream.playing,
-            initialData: _session.player.state.playing,
-            builder: (context, snapshot) =>
-                _body(context, playing: snapshot.data ?? false),
+  Widget build(BuildContext context) => PopScope(
+    canPop: false,
+    onPopInvokedWithResult: (didPop, _) {
+      if (!didPop) widget.onRestore();
+    },
+    child: KeyboardControls(
+      child: Focus(
+        focusNode: _focus,
+        onKeyEvent: _key,
+        child: MouseRegion(
+          onEnter: (_) => setState(() => _hover = true),
+          onExit: (_) => setState(() => _hover = false),
+          child: ListenableBuilder(
+            listenable: _session,
+            builder: (context, _) => StreamBuilder<bool>(
+              stream: _session.player.stream.playing,
+              initialData: _session.player.state.playing,
+              builder: (context, snapshot) =>
+                  _body(context, playing: snapshot.data ?? false),
+            ),
           ),
         ),
       ),

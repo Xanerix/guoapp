@@ -263,7 +263,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     );
     final panel = _roomy && (!_wide || _selecting);
     return PopScope(
-      canPop: !_fullscreen && !_selecting && !_wide,
+      canPop: !_playback.locked && !_fullscreen && !_selecting && !_wide,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) _back();
       },
