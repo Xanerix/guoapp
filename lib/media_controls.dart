@@ -78,10 +78,7 @@ class MediaControls {
 
   void track(Object owner, bool playing, MediaCommandHandler handler) {
     if (!supported) return;
-    if (_published) {
-      _published = false;
-      _clearPublished();
-    }
+    if (_published) _clearPublished();
     _owner = owner;
     _handler = handler;
     _localPlaying = playing;
@@ -123,6 +120,7 @@ class MediaControls {
   }
 
   void _clearPublished() {
+    _published = false;
     _sentIdentity = null;
     _sent = null;
     unawaited(_channel.invokeMethod<void>('clear').catchError((Object _) {}));
@@ -133,8 +131,7 @@ class MediaControls {
     _owner = null;
     _handler = null;
     _localPlaying = false;
-    _published = false;
-    _clearPublished();
+    if (_published) _clearPublished();
   }
 
   bool get playing => _localPlaying;

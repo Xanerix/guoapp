@@ -17,8 +17,7 @@ bool playerVisible(AppLifecycleState? state) =>
     state == null ||
     state == AppLifecycleState.resumed ||
     state == AppLifecycleState.inactive ||
-    PictureInPicture.instance.active ||
-    PictureInPicture.instance.window;
+    PictureInPicture.instance.active;
 
 Widget _video(PlaybackHandle handle) => PlayerVideo(
   key: ValueKey(handle.session.player),
