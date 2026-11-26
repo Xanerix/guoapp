@@ -13,6 +13,7 @@ import '../downloads/download_picker_page.dart';
 import '../player/playback_handle.dart';
 import '../player/playback_page.dart';
 import '../shell/app_shell.dart';
+import '../widgets/choice_panel.dart';
 import '../widgets/cover_backdrop.dart';
 import '../widgets/cover_image.dart';
 import '../widgets/focus_ring.dart';
@@ -185,6 +186,7 @@ class _DetailPageState extends State<DetailPage> {
   String? _groupPagerDrama;
   int? _groupTarget;
   bool _groupDragging = false;
+  final _groupScroll = ScrollController();
   final _televisionDetail = GlobalKey<TelevisionDetailState>();
   bool _entered = false;
   PlaybackHandle? _watched;
@@ -209,6 +211,7 @@ class _DetailPageState extends State<DetailPage> {
     _handle?.dispose();
     _details?.dispose();
     _groupPager?.dispose();
+    _groupScroll.dispose();
     super.dispose();
   }
 
@@ -419,6 +422,7 @@ class _DetailPageState extends State<DetailPage> {
       _groupTarget = null;
       pager.jumpToPage(group);
     }
+    _revealGroupChip(group);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final target = _currentEpisode.currentContext;
       if (target == null || !target.mounted) return;
@@ -727,14 +731,7 @@ class _DetailPageState extends State<DetailPage> {
               if (details.groupCount > 1)
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (var group = 0; group < details.groupCount; group++)
-                        _groupChip(details, m, group),
-                    ],
-                  ),
+                  child: _wideGroupBar(details, m),
                 ),
               Padding(
                 padding: const EdgeInsets.only(top: 14),
@@ -756,31 +753,49 @@ class _DetailPageState extends State<DetailPage> {
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: _appBar(details, 64),
-      body: SingleChildScrollView(
-        child: _withBackdrop(
-          drama,
-          top + 336,
-          Padding(
-            padding: EdgeInsets.fromLTRB(inset, top + 4, inset, 40),
-            child: LayoutBuilder(
-              builder: (context, constraints) =>
-                  constraints.maxWidth >= side + gap + 480
-                  ? Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      spacing: gap,
-                      children: [
-                        SizedBox(width: side, child: info),
-                        Expanded(child: episodes),
-                      ],
-                    )
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      spacing: gap,
-                      children: [info, episodes],
-                    ),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final split = constraints.maxWidth - inset * 2 >= side + gap + 480;
+          if (!split) {
+            return SingleChildScrollView(
+              child: _withBackdrop(
+                drama,
+                top + 336,
+                Padding(
+                  padding: EdgeInsets.fromLTRB(inset, top + 4, inset, 40),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    spacing: gap,
+                    children: [info, episodes],
+                  ),
+                ),
+              ),
+            );
+          }
+          return _withBackdrop(
+            drama,
+            top + 336,
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(
+                  width: side + inset,
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.fromLTRB(inset, top + 4, 0, 40),
+                    child: info,
+                  ),
+                ),
+                SizedBox(width: gap),
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.fromLTRB(0, top + 4, inset, 40),
+                    child: episodes,
+                  ),
+                ),
+              ],
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
@@ -1201,6 +1216,76 @@ class _DetailPageState extends State<DetailPage> {
     await details.selectSeason(season);
   }
 
+  Widget _wideGroupBar(DramaDetails details, _Metrics m) {
+    if (details.groupCount <= 8) {
+      return Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (var group = 0; group < details.groupCount; group++)
+            _groupChip(details, m, group),
+        ],
+      );
+    }
+    return Row(
+      spacing: 8,
+      children: [
+        Expanded(
+          child: SizedBox(
+            height: m.chip + 2,
+            child: ListView.separated(
+              controller: _groupScroll,
+              scrollDirection: Axis.horizontal,
+              itemCount: details.groupCount,
+              separatorBuilder: (_, _) => const SizedBox(width: 8),
+              itemBuilder: (context, group) => _groupChip(details, m, group),
+            ),
+          ),
+        ),
+        Builder(
+          builder: (anchor) => FocusRing(
+            radius: m.chipRadius,
+            child: OutlinedButton.icon(
+              onPressed: () => unawaited(_openGroupPicker(anchor, details)),
+              style: OutlinedButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(m.chipRadius),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                minimumSize: Size(0, m.chip),
+                foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
+                side: BorderSide(
+                  color: Theme.of(context).colorScheme.outlineVariant,
+                ),
+                textStyle: TextStyle(fontSize: m.chipText),
+              ),
+              icon: const Icon(Icons.apps_rounded, size: 16),
+              label: const Text('全部'),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _openGroupPicker(
+    BuildContext anchor,
+    DramaDetails details,
+  ) async {
+    final picked = await showChoicePanel<int>(
+      context: anchor,
+      title: '选集分段',
+      selected: details.group,
+      grid: ChoiceGrid.categories,
+      options: [
+        for (var group = 0; group < details.groupCount; group++)
+          ChoiceOption(group, details.groupLabel(group)),
+      ],
+    );
+    if (!mounted || picked == null) return;
+    _swipeTo(details, picked);
+  }
+
   Widget _groupChip(DramaDetails details, _Metrics m, int group) => _GroupChip(
     key: _groupKey(group),
     label: details.groupLabel(group),
@@ -1226,7 +1311,7 @@ class _DetailPageState extends State<DetailPage> {
     final pager = _groupPagerFor(details);
     final group = details.group;
     WidgetsBinding.instance.addPostFrameCallback((_) => _followGroup(group));
-    final extent = _cellExtent(m);
+    final extent = _cellExtent(details, m);
     return LayoutBuilder(
       builder: (context, constraints) {
         final columns = _columnsFor(
@@ -1337,6 +1422,10 @@ class _DetailPageState extends State<DetailPage> {
 
   void _swipeTo(DramaDetails details, int group) {
     details.selectGroup(group);
+    _revealGroupChip(group);
+  }
+
+  void _revealGroupChip(int group) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final chip = _groupKey(group).currentContext;
       if (chip == null || !chip.mounted) return;
@@ -1357,14 +1446,20 @@ class _DetailPageState extends State<DetailPage> {
     });
   }
 
-  int _columnsFor(DramaDetails details, _Metrics m, double width) =>
-      episodesNamed(details.episodes) ? 1 : m.columnsFor(width);
+  int _columnsFor(DramaDetails details, _Metrics m, double width) {
+    if (!episodesNamed(details.episodes)) return m.columnsFor(width);
+    return math.max(1, ((width + m.cellGap) / (280 + m.cellGap)).floor());
+  }
 
-  double _cellExtent(_Metrics m) =>
-      math.max(m.cell, MediaQuery.textScalerOf(context).scale(m.cellText) + 28);
+  double _cellExtent(DramaDetails details, _Metrics m) {
+    final named = episodesNamed(details.episodes);
+    final base = named && m.columns == 0 ? 44.0 : m.cell;
+    final text = named && m.columns == 0 ? 14.0 : m.cellText;
+    return math.max(base, MediaQuery.textScalerOf(context).scale(text) + 24);
+  }
 
   Widget _grid(DramaDetails details, _Metrics m) {
-    final extent = _cellExtent(m);
+    final extent = _cellExtent(details, m);
     return LayoutBuilder(
       builder: (context, constraints) {
         final fade = Motion.of(context, Motion.medium);
@@ -1515,7 +1610,7 @@ class _EpisodeCell extends StatelessWidget {
     final dark = theme.brightness == Brightness.dark;
     final radius = BorderRadius.circular(metrics.cellRadius);
     final style = TextStyle(
-      fontSize: metrics.cellText,
+      fontSize: named && metrics.columns == 0 ? 14 : metrics.cellText,
       fontWeight: current
           ? FontWeight.w800
           : watched

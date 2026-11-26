@@ -217,12 +217,13 @@ class _EpisodeGridState extends State<EpisodeGrid> {
       _gridWidth = constraints.maxWidth;
       _gridHeight = constraints.maxHeight;
       final named = episodesNamed(_episodes);
+      final available = _gridWidth - widget.inset * 2;
       _columns = switch (widget.minCellWidth) {
-        _ when named => 1,
+        null when named => 1,
         null => 5,
         final minimum => max(
           1,
-          ((_gridWidth - widget.inset * 2 + _cellGap) / (minimum + _cellGap))
+          ((available + _cellGap) / ((named ? 280.0 : minimum) + _cellGap))
               .floor(),
         ),
       };

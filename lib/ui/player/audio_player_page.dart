@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -13,11 +14,13 @@ import '../downloads/download_actions.dart';
 import '../downloads/download_picker_page.dart';
 import '../shell/app_shell.dart';
 import '../theme/app_theme.dart';
+import '../widgets/choice_panel.dart';
 import '../widgets/contained_slider.dart';
 import '../widgets/cover_backdrop.dart';
 import '../widgets/cover_image.dart';
 import '../widgets/follow_button.dart';
 import 'cast_page.dart';
+import 'episode_grid.dart';
 import 'mini_player.dart';
 import 'playback_handle.dart';
 import 'playback_sheets.dart';
@@ -47,12 +50,15 @@ class _AudioPlayerPageState extends State<AudioPlayerPage>
   final List<StreamSubscription<dynamic>> _subscriptions = [];
   Player? _bound;
   double? _seekValue;
+  bool _showPlaylist = true;
 
   PlaybackSession get _session => widget.handle.session;
 
   bool get _canDownload =>
       AppScope.of(context).repository.supportsDownloads &&
       widget.store.canDownload;
+
+  bool get _touch => AppScope.formFactorOf(context) != FormFactor.window;
 
   @override
   void initState() {
@@ -85,7 +91,12 @@ class _AudioPlayerPageState extends State<AudioPlayerPage>
     }
     _subscriptions.clear();
     final stream = player.stream;
-    for (final changes in [stream.duration, stream.buffering, stream.playing]) {
+    for (final changes in [
+      stream.duration,
+      stream.buffering,
+      stream.playing,
+      stream.volume,
+    ]) {
       _subscriptions.add(changes.listen((_) => _refresh()));
     }
   }
@@ -129,14 +140,37 @@ class _AudioPlayerPageState extends State<AudioPlayerPage>
     );
   }
 
-  Future<void> _openSettings() => showPlayerSheet(
-    context,
-    (_) => PlaybackSettings(
-      session: _session,
-      onFailure: _saveFailed,
-      onMiniWindow: widget.onMiniWindow,
-    ),
-  );
+  Future<void> _openSettings({BuildContext? anchor}) {
+    if (anchor != null) {
+      final theme = playerTheme(context);
+      return showAnchoredPanel<void>(
+        context: anchor,
+        width: 340,
+        theme: theme,
+        builder: (context) => ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 460),
+          child: PlaybackSettings(
+            session: _session,
+            onFailure: _saveFailed,
+            onMiniWindow: widget.onMiniWindow == null
+                ? null
+                : () {
+                    Navigator.pop(context);
+                    widget.onMiniWindow!();
+                  },
+          ),
+        ),
+      );
+    }
+    return showPlayerSheet(
+      context,
+      (_) => PlaybackSettings(
+        session: _session,
+        onFailure: _saveFailed,
+        onMiniWindow: widget.onMiniWindow,
+      ),
+    );
+  }
 
   Future<void> _openEpisodes() => showPlayerSheet(
     context,
@@ -152,7 +186,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage>
     ),
   );
 
-  Future<void> _openSeasons() async {
+  Future<void> _openSeasons({bool reopenEpisodes = true}) async {
     DramaSeason? picked;
     await showPlayerSheet(
       context,
@@ -162,18 +196,70 @@ class _AudioPlayerPageState extends State<AudioPlayerPage>
     );
     if (!mounted) return;
     if (picked case final season?) {
-      if (_session.switchingSeason) return;
-      if (!await _session.playSeason(season) && mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('${season.label}切换失败，请稍后重试')));
-      }
-    } else {
+      await _switchSeason(season);
+    } else if (reopenEpisodes) {
       await _openEpisodes();
     }
   }
 
-  Future<void> _openSpeed() => _choices(
+  Future<void> _openSeasonsMenu(BuildContext anchor) async {
+    final seasons = _session.detail.seasons;
+    final current = _session.detail.drama.id;
+    final picked = await showAnchoredPanel<DramaSeason>(
+      context: anchor,
+      width: 280,
+      theme: playerTheme(context),
+      builder: (context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SheetHeader(
+            children: [
+              Expanded(
+                child: Text(
+                  '切换分季',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final season in seasons)
+                  ChoiceChip(
+                    label: Text(season.label),
+                    selected: season.drama.id == current,
+                    showCheckmark: false,
+                    shape: const StadiumBorder(),
+                    onSelected: (_) => Navigator.pop(context, season),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || picked == null) return;
+    await _switchSeason(picked);
+  }
+
+  Future<void> _switchSeason(DramaSeason season) async {
+    if (_session.switchingSeason || season.drama.id == _session.detail.drama.id) {
+      return;
+    }
+    if (!await _session.playSeason(season) && mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${season.label}切换失败，请稍后重试')));
+    }
+  }
+
+  Future<void> _openSpeed({BuildContext? anchor}) => _choices(
+    anchor: anchor,
     title: '倍速',
     choices: [
       for (final speed in playbackSpeeds)
@@ -185,7 +271,8 @@ class _AudioPlayerPageState extends State<AudioPlayerPage>
     ],
   );
 
-  Future<void> _openSleep() => _choices(
+  Future<void> _openSleep({BuildContext? anchor}) => _choices(
+    anchor: anchor,
     title: sleepTimerLabel(_session),
     choices: [
       for (final choice in sleepChoices)
@@ -198,27 +285,36 @@ class _AudioPlayerPageState extends State<AudioPlayerPage>
   );
 
   Future<void> _choices({
+    BuildContext? anchor,
     required String title,
     required List<({String label, bool selected, VoidCallback apply})> choices,
-  }) => showPlayerSheet(
-    context,
-    fitContent: true,
-    (context) => Column(
+  }) {
+    Widget body(BuildContext context, {bool compact = false}) => Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SheetHeader(
           children: [
-            Expanded(child: Text(title, style: sheetTitle)),
-            IconButton(
-              onPressed: () => Navigator.pop(context),
-              icon: const Icon(Icons.close_rounded),
-              tooltip: '关闭',
+            Expanded(
+              child: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: compact
+                    ? const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)
+                    : sheetTitle,
+              ),
             ),
+            if (!compact)
+              IconButton(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.close_rounded),
+                tooltip: '关闭',
+              ),
           ],
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+          padding: EdgeInsets.fromLTRB(16, 4, 16, compact ? 16 : 24),
           child: Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -238,8 +334,21 @@ class _AudioPlayerPageState extends State<AudioPlayerPage>
           ),
         ),
       ],
-    ),
-  );
+    );
+    if (anchor != null) {
+      return showAnchoredPanel<void>(
+        context: anchor,
+        width: 300,
+        theme: playerTheme(context),
+        builder: (context) => body(context, compact: true),
+      );
+    }
+    return showPlayerSheet(
+      context,
+      fitContent: true,
+      (context) => body(context),
+    );
+  }
 
   void _openDownloads() => openPage<void>(
     context,
@@ -261,6 +370,17 @@ class _AudioPlayerPageState extends State<AudioPlayerPage>
                 _seekBy(-_seekStep),
             const SingleActivator(LogicalKeyboardKey.arrowRight): () =>
                 _seekBy(_seekStep),
+            const SingleActivator(LogicalKeyboardKey.arrowUp): () =>
+                _session.changeVolume(5),
+            const SingleActivator(LogicalKeyboardKey.arrowDown): () =>
+                _session.changeVolume(-5),
+            const SingleActivator(LogicalKeyboardKey.keyM): _session.toggleMute,
+            const SingleActivator(LogicalKeyboardKey.pageUp): () {
+              if (_session.hasPrevious) unawaited(_session.previous());
+            },
+            const SingleActivator(LogicalKeyboardKey.pageDown): () {
+              if (_session.hasNext) unawaited(_session.next());
+            },
           },
           child: Focus(
             autofocus: true,
@@ -274,14 +394,19 @@ class _AudioPlayerPageState extends State<AudioPlayerPage>
                   overlay: const LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [Color(0x4D000000), Color(0xA6000000)],
+                    colors: [Color(0x59000000), Color(0xB3000000)],
                   ),
                 ),
                 LayoutBuilder(
-                  builder: (context, box) =>
-                      box.maxWidth > box.maxHeight && box.maxWidth >= 600
-                      ? SafeArea(child: _wide())
-                      : _narrow(),
+                  builder: (context, box) {
+                    if (box.maxWidth >= 820) {
+                      return SafeArea(child: _desktopWide(box));
+                    }
+                    if (box.maxWidth > box.maxHeight && box.maxWidth >= 600) {
+                      return SafeArea(child: _compactWide(box));
+                    }
+                    return _narrow();
+                  },
                 ),
               ],
             ),
@@ -307,7 +432,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage>
                 top: padding.top,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [_header(), ?_saveWarning()],
+                  children: [_header(wide: false), ?_saveWarning()],
                 ),
               ),
             ],
@@ -315,29 +440,34 @@ class _AudioPlayerPageState extends State<AudioPlayerPage>
         ),
         Padding(
           padding: EdgeInsets.fromLTRB(24, 8, 24, 12 + padding.bottom),
-          child: _panel(),
+          child: _panel(wide: false),
         ),
       ],
     );
   }
 
-  Widget _wide() => Column(
+  Widget _compactWide(BoxConstraints box) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      _header(),
+      _header(wide: true),
       ?_saveWarning(),
       Expanded(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(32, 8, 32, 24),
           child: Row(
-            spacing: 48,
+            spacing: 40,
             children: [
-              Expanded(child: _artwork(fade: false)),
+              Expanded(
+                child: _artwork(
+                  fade: false,
+                  maxHeight: math.min(340, box.maxHeight * .62),
+                ),
+              ),
               Expanded(
                 child: Center(
                   child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 480),
-                    child: SingleChildScrollView(child: _panel()),
+                    constraints: const BoxConstraints(maxWidth: 440),
+                    child: SingleChildScrollView(child: _panel(wide: true)),
                   ),
                 ),
               ),
@@ -348,8 +478,205 @@ class _AudioPlayerPageState extends State<AudioPlayerPage>
     ],
   );
 
-  Widget _header() {
+  Widget _desktopWide(BoxConstraints box) {
+    final panelWidth = (box.maxWidth * .33).clamp(320.0, 420.0);
+    final stage = Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 480),
+        child: LayoutBuilder(
+          builder: (context, stageBox) {
+            final artHeight = math.min(
+              320.0,
+              math.max(150.0, stageBox.maxHeight - 290),
+            );
+            return SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _artwork(fade: false, maxHeight: artHeight),
+                  const SizedBox(height: 24),
+                  _panel(
+                    wide: true,
+                    hasSidebar: true,
+                    sidebarOpen: _showPlaylist,
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _header(wide: true),
+        ?_saveWarning(),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 24, 24),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(child: stage),
+                if (_showPlaylist) ...[
+                  const SizedBox(width: 16),
+                  SizedBox(width: panelWidth, child: _playlistCard()),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _playlistCard() {
+    final session = _session;
+    final episodes = session.detail.episodes;
+    final seasons = session.detail.seasons;
+    final currentSeason = seasons
+        .where((season) => season.drama.id == session.detail.drama.id)
+        .firstOrNull;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: ColoredBox(
+        color: Colors.black.withValues(alpha: .36),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white.withValues(alpha: .1)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 12, 4),
+                child: Row(
+                  spacing: 8,
+                  children: [
+                    const Text(
+                      '选集',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        '${session.index + 1} / ${episodes.length}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: .62),
+                          fontSize: 13,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                    ),
+                    if (seasons.isNotEmpty)
+                      Builder(
+                        builder: (anchor) => TextButton.icon(
+                          onPressed: () => unawaited(_openSeasonsMenu(anchor)),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.white.withValues(alpha: .9),
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            minimumSize: const Size(0, 34),
+                          ),
+                          icon: const Icon(Icons.layers_rounded, size: 16),
+                          label: Text(currentSeason?.label ?? '分季'),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: EpisodeGrid(
+                    episodes: episodes,
+                    current: session.index,
+                    selecting: false,
+                    selected: const {},
+                    touch: _touch,
+                    inset: 12,
+                    onSelectionChanged: () {},
+                    onPick: (index) {
+                      if (index != session.index) unawaited(session.play(index));
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _header({required bool wide}) {
     final home = PlayerHomeButton.available(context);
+    final drama = _session.detail.drama;
+    final source = SourceSite.byId(drama.source).name;
+    if (wide) {
+      return SizedBox(
+        height: 56,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(
+            spacing: 8,
+            children: [
+              IconButton(
+                onPressed: () => unawaited(Navigator.maybePop(context)),
+                icon: const Icon(Icons.arrow_back_rounded),
+                color: Colors.white,
+                tooltip: '返回',
+              ),
+              if (home) const PlayerHomeButton(),
+              Expanded(
+                child: Row(
+                  spacing: 8,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        drama.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    if (source.isNotEmpty)
+                      Text(
+                        '· $source',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: .65),
+                          fontSize: 13,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              if (widget.onMiniWindow case final mini?)
+                IconButton(
+                  onPressed: mini,
+                  icon: const Icon(Icons.picture_in_picture_alt_rounded),
+                  color: Colors.white.withValues(alpha: .85),
+                  tooltip: '小窗播放',
+                ),
+            ],
+          ),
+        ),
+      );
+    }
     return SizedBox(
       height: 56,
       child: Row(
@@ -364,7 +691,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage>
           if (home) const PlayerHomeButton(),
           Expanded(
             child: Text(
-              SourceSite.byId(_session.detail.drama.source).name,
+              source,
               textAlign: TextAlign.center,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -409,7 +736,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage>
     );
   }
 
-  Widget _artwork({required bool fade}) {
+  Widget _artwork({required bool fade, double? maxHeight}) {
     if (_session.error case final error?) {
       return PlaybackFailure(session: _session, error: error);
     }
@@ -431,36 +758,61 @@ class _AudioPlayerPageState extends State<AudioPlayerPage>
         child: DramaCover(drama: drama, radius: 0, details: false),
       );
     }
-    return Center(
-      child: AspectRatio(
-        aspectRatio: 3 / 4,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: const [
-              BoxShadow(color: Color(0x66000000), blurRadius: 32),
-            ],
-          ),
-          child: DramaCover(drama: drama, radius: 20, details: false),
+    final cover = AspectRatio(
+      aspectRatio: 3 / 4,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x73000000),
+              blurRadius: 32,
+              offset: Offset(0, 12),
+            ),
+          ],
         ),
+        child: DramaCover(drama: drama, radius: 18, details: false),
       ),
+    );
+    return Center(
+      child: maxHeight != null
+          ? ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: maxHeight,
+                maxWidth: maxHeight * 3 / 4,
+              ),
+              child: cover,
+            )
+          : cover,
     );
   }
 
-  Widget _panel() => Column(
+  Widget _panel({
+    required bool wide,
+    bool hasSidebar = false,
+    bool sidebarOpen = false,
+  }) => Column(
     mainAxisSize: MainAxisSize.min,
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       _info(),
-      const SizedBox(height: 20),
+      const SizedBox(height: 18),
       PlaybackProgressBuilder(
         player: _session.player,
         builder: (context) => _progress(),
       ),
+      const SizedBox(height: 14),
+      _transport(
+        wide: wide,
+        hasSidebar: hasSidebar,
+        sidebarOpen: sidebarOpen,
+      ),
+      if (wide && !_touch) ...[
+        const SizedBox(height: 14),
+        _volumeBar(),
+      ],
       const SizedBox(height: 16),
-      _transport(),
-      const SizedBox(height: 20),
-      _actions(),
+      _actions(wide: wide),
     ],
   );
 
@@ -599,27 +951,90 @@ class _AudioPlayerPageState extends State<AudioPlayerPage>
     );
   }
 
-  Widget _transport() {
+  Widget _volumeBar() {
+    final volume = _session.player.state.volume.clamp(0.0, 100.0);
+    final icon = volume == 0
+        ? Icons.volume_off_rounded
+        : volume < 50
+        ? Icons.volume_down_rounded
+        : Icons.volume_up_rounded;
+    return Row(
+      spacing: 8,
+      children: [
+        IconButton(
+          onPressed: _session.toggleMute,
+          icon: Icon(icon, size: 20),
+          color: Colors.white.withValues(alpha: .78),
+          tooltip: volume == 0 ? '取消静音' : '静音',
+          visualDensity: VisualDensity.compact,
+        ),
+        Expanded(
+          child: SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 2,
+              padding: EdgeInsets.zero,
+              activeTrackColor: Colors.white.withValues(alpha: .85),
+              thumbColor: Colors.white,
+              inactiveTrackColor: Colors.white.withValues(alpha: .2),
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+              overlayShape: SliderComponentShape.noOverlay,
+              trackShape: const RoundedRectSliderTrackShape(),
+            ),
+            child: ContainedSlider(
+              slider: Slider(
+                value: volume,
+                max: 100,
+                semanticFormatterCallback: (value) => '音量 ${value.round()}%',
+                onChanged: _session.setVolume,
+              ),
+            ),
+          ),
+        ),
+        SizedBox(
+          width: 34,
+          child: Text(
+            '${volume.round()}%',
+            textAlign: TextAlign.right,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: .6),
+              fontSize: 12,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _transport({
+    required bool wide,
+    required bool hasSidebar,
+    required bool sidebarOpen,
+  }) {
     final session = _session;
     final busy = session.loading || session.ready && session.stalled;
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        SizedBox.square(
-          dimension: 48,
-          child: TextButton(
-            onPressed: session.ready ? () => unawaited(_openSpeed()) : null,
-            style: TextButton.styleFrom(
-              foregroundColor: Colors.white,
-              disabledForegroundColor: Colors.white38,
-              padding: EdgeInsets.zero,
-              shape: const CircleBorder(),
-              textStyle: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
+        Builder(
+          builder: (anchor) => SizedBox.square(
+            dimension: 48,
+            child: TextButton(
+              onPressed: session.ready
+                  ? () => unawaited(_openSpeed(anchor: wide ? anchor : null))
+                  : null,
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.white,
+                disabledForegroundColor: Colors.white38,
+                padding: EdgeInsets.zero,
+                shape: const CircleBorder(),
+                textStyle: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
+              child: Text('${session.speed}x'),
             ),
-            child: Text('${session.speed}x'),
           ),
         ),
         IconButton(
@@ -661,27 +1076,38 @@ class _AudioPlayerPageState extends State<AudioPlayerPage>
           tooltip: '下一集',
         ),
         IconButton(
-          onPressed: () => unawaited(_openEpisodes()),
+          onPressed: hasSidebar
+              ? () => setState(() => _showPlaylist = !_showPlaylist)
+              : () => unawaited(_openEpisodes()),
           icon: const Icon(Icons.queue_music_rounded, size: 28),
-          color: Colors.white,
-          tooltip: '选集',
+          color: sidebarOpen
+              ? Theme.of(context).colorScheme.primary
+              : Colors.white,
+          tooltip: hasSidebar
+              ? (sidebarOpen ? '收起选集' : '展开选集')
+              : '选集',
         ),
       ],
     );
   }
 
-  Widget _actions() {
+  Widget _actions({required bool wide}) {
     final session = _session;
     final sleeping = session.sleepAtEpisodeEnd || session.sleepAt != null;
     final idle = Colors.white.withValues(alpha: .75);
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceAround,
       children: [
-        IconButton(
-          onPressed: () => unawaited(_openSleep()),
-          icon: Icon(sleeping ? Icons.bedtime_rounded : Icons.bedtime_outlined),
-          color: sleeping ? Theme.of(context).colorScheme.primary : idle,
-          tooltip: sleepTimerLabel(session),
+        Builder(
+          builder: (anchor) => IconButton(
+            onPressed: () =>
+                unawaited(_openSleep(anchor: wide ? anchor : null)),
+            icon: Icon(
+              sleeping ? Icons.bedtime_rounded : Icons.bedtime_outlined,
+            ),
+            color: sleeping ? Theme.of(context).colorScheme.primary : idle,
+            tooltip: sleepTimerLabel(session),
+          ),
         ),
         if (_canDownload)
           IconButton(
@@ -697,11 +1123,14 @@ class _AudioPlayerPageState extends State<AudioPlayerPage>
             color: idle,
             tooltip: '投屏',
           ),
-        IconButton(
-          onPressed: () => unawaited(_openSettings()),
-          icon: const Icon(Icons.more_horiz_rounded),
-          color: idle,
-          tooltip: '播放设置',
+        Builder(
+          builder: (anchor) => IconButton(
+            onPressed: () =>
+                unawaited(_openSettings(anchor: wide ? anchor : null)),
+            icon: const Icon(Icons.more_horiz_rounded),
+            color: idle,
+            tooltip: '播放设置',
+          ),
         ),
       ],
     );
