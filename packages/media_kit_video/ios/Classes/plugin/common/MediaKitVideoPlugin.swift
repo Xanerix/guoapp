@@ -24,17 +24,23 @@ public class MediaKitVideoPlugin: NSObject, FlutterPlugin {
       let pip = AVPictureInPictureController.isPictureInPictureSupported()
         ? PictureInPicture(channel: pipChannel) : nil
       if let pip {
-        instance.videoOutputManager.onFrame = { handle, texture in
+        instance.videoOutputManager.onFrame = { [weak instance] handle, texture in
           guard pip.needsFrame(handle: handle),
                 let frame = texture.copyPixelBuffer()?.takeRetainedValue() else { return }
-          pip.enqueue(frame, handle: handle)
+          pip.enqueue(
+            frame, handle: handle,
+            decodedFrame: instance?.videoOutputManager.ownsFrameBuffers(handle: handle) ?? false
+          )
         }
       }
       pipChannel.setMethodCallHandler { [weak instance] call, result in
         let args = call.arguments as? [String: Any]
         switch call.method {
         case "pictureInPictureStatus":
-          result(["supported": pip != nil, "possible": pip?.possible ?? false])
+          result([
+            "supported": pip != nil,
+            "possible": pip?.possible ?? false,
+          ])
         case "updatePictureInPicture":
           let handle = (args?["handle"] as? NSNumber)?.int64Value
           pip?.update(
@@ -43,13 +49,19 @@ public class MediaKitVideoPlugin: NSObject, FlutterPlugin {
           )
           if let pip, let handle, pip.needsFrame(handle: handle),
              let frame = instance?.videoOutputManager.currentFrame(handle: handle) {
-            pip.enqueue(frame, handle: handle)
+            pip.enqueue(
+            frame, handle: handle,
+            decodedFrame: instance?.videoOutputManager.ownsFrameBuffers(handle: handle) ?? false
+          )
           }
           result(nil)
         case "enterPictureInPicture":
           if let pip, let handle = pip.selectedHandle,
              let frame = instance?.videoOutputManager.currentFrame(handle: handle) {
-            pip.enqueue(frame, handle: handle, refresh: true)
+            pip.enqueue(
+              frame, handle: handle, refresh: true,
+              decodedFrame: instance?.videoOutputManager.ownsFrameBuffers(handle: handle) ?? false
+            )
           }
           result(["requested": pip?.start() ?? false])
         case "stopPictureInPicture":

@@ -38,3 +38,19 @@ post_install do |installer|
     end
   end
 end
+
+post_integrate do |_installer|
+  script = File.join(__dir__, 'Pods', 'Target Support Files', 'media_kit_libs_ios_video',
+                     'media_kit_libs_ios_video-xcframeworks.sh')
+  if File.file?(script)
+    marker = '# GuoApp iOS pixel-buffer backend'
+    content = File.read(script).split(marker, 2).first
+    File.write(script, content.rstrip + "\n" + <<~'SH')
+      # GuoApp iOS pixel-buffer backend
+      guoapp_mpv="${PODS_ROOT}/../../native/build/ios/mpv/Mpv"
+      if [[ "${PLATFORM_NAME}" == "iphoneos" && -f "${guoapp_mpv}" ]]; then
+        cp "${guoapp_mpv}" "${PODS_XCFRAMEWORKS_BUILD_DIR}/media_kit_libs_ios_video/Mpv.framework/Mpv"
+      fi
+    SH
+  end
+end

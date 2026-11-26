@@ -66,6 +66,9 @@ class DiaryService {
             final name = event['event'] as String? ?? '';
             if (name.startsWith('stream.')) {
               lines.add(_nativeLine(event, name.substring('stream.'.length)));
+            } else if (name == 'video.decoder') {
+              final time = DateTime.parse(event['time'] as String).toLocal();
+              lines.add('[${_clock(time)}] [Video] ${event['message']}');
             }
           } catch (_) {}
         }

@@ -36,6 +36,9 @@ def validate_package(package, prefix):
         for name in [prefix + '/Runner', prefix + '/Info.plist']:
             if name not in archive.namelist() or archive.getinfo(name).file_size == 0:
                 raise SystemExit('iOS 压缩包缺少必要文件：' + name)
+        mpv_path = prefix + '/Frameworks/Mpv.framework/Mpv'
+        if mpv_path not in archive.namelist() or b'guoapp-ios-pixelbuffer' not in archive.read(mpv_path):
+            raise SystemExit('iOS 压缩包缺少 VideoToolbox 原始帧后端。')
         corrupt = archive.testzip()
         if corrupt:
             raise SystemExit('iOS 压缩包损坏：' + corrupt)
@@ -114,6 +117,7 @@ def main():
         raise SystemExit('请安装 Flutter 和 CocoaPods。')
     run([flutter, 'pub', 'get', '--enforce-lockfile'])
     run(['pod', 'install'], cwd=root / 'ios')
+    run([sys.executable, str(root / 'native/ios_mpv/build.py')])
     output = root / 'dist' / 'ios'
     output.mkdir(parents=True, exist_ok=True)
     version = re.search(r'^version:\s*(\S+)', (root / 'pubspec.yaml').read_text(), re.MULTILINE).group(1)
@@ -125,6 +129,7 @@ def main():
         run([flutter, 'build', 'ipa', '--release', '--no-pub', '--export-options-plist', str(config), *app.flutter_arguments])
         for package in (root / 'build' / 'ios' / 'ipa').glob('*.ipa'):
             destination = output / f'{app.slug}-{version}-ios.ipa'
+            validate_package(package, 'Payload/Runner.app')
             shutil.copy2(package, destination)
             artifacts.append(destination)
     else:

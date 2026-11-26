@@ -10,21 +10,11 @@ import '../../playback_preferences.dart';
 import '../../playback_session.dart';
 
 Player _player() => Player(
-  configuration: const PlayerConfiguration(
+  configuration: PlayerConfiguration(
     bufferSize: 32 * 1024 * 1024,
-    logLevel: MPVLogLevel.error,
+    logLevel: Platform.isIOS ? MPVLogLevel.v : MPVLogLevel.error,
   ),
 );
-
-VideoControllerConfiguration _videoConfiguration(LocalStore store) =>
-    Platform.isAndroid &&
-        store.playbackPreferences.televisionDecoder ==
-            TelevisionDecoder.hardwareDirect
-    ? const VideoControllerConfiguration(
-        vo: 'mediacodec_embed',
-        hwdec: 'mediacodec',
-      )
-    : const VideoControllerConfiguration();
 
 class PlaybackHandle {
   PlaybackHandle({
@@ -36,9 +26,21 @@ class PlaybackHandle {
     bool autoplay = true,
     bool preopen = true,
   }) {
+    final decoder = store.playbackPreferences.televisionDecoder;
     final main = _player();
     final standby = preopen ? _player() : null;
-    final configuration = _videoConfiguration(store);
+    final configuration =
+        Platform.isAndroid &&
+            decoder == TelevisionDecoder.hardwareDirect
+        ? const VideoControllerConfiguration(
+            vo: 'mediacodec_embed',
+            hwdec: 'mediacodec',
+          )
+        : VideoControllerConfiguration(
+            enableHardwareAcceleration: !Platform.isIOS ||
+                decoder == TelevisionDecoder.optimized ||
+                decoder == TelevisionDecoder.hardwareDirect,
+          );
     _videos[main] = VideoController(main, configuration: configuration);
     if (standby != null) {
       _videos[standby] = VideoController(standby, configuration: configuration);

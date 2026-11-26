@@ -23,11 +23,14 @@ public class VideoOutputManager: NSObject {
       configuration: configuration,
       registry: self.registry,
       textureUpdateCallback: textureUpdateCallback,
-      onFrame: { [weak self] texture in self?.onFrame?(handle, texture) },
-      useSoftwareRendering: onFrame != nil
+      onFrame: { [weak self] texture in self?.onFrame?(handle, texture) }
     )
 
     self.videoOutputs[handle] = videoOutput
+  }
+
+  func ownsFrameBuffers(handle: Int64) -> Bool {
+    videoOutputs[handle]?.ownsFrameBuffers ?? false
   }
 
   func currentFrame(handle: Int64) -> CVPixelBuffer? {

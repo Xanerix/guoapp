@@ -65,6 +65,7 @@ type LibraryDrama struct {
 }
 
 type nativeInput struct {
+	Message         string                  `json:"message"`
 	SystemProxy     nativeSystemProxy       `json:"systemProxy"`
 	Settings        nativeResourceSettings  `json:"settings"`
 	JobIDs          []string                `json:"jobIds"`
@@ -362,6 +363,11 @@ func nativeDispatch(input nativeInput) (any, error) {
 		ctx = work
 	}
 	switch input.Action {
+	case "recordVideoDiagnostic":
+		message := Truncate(redactErrorString(input.Message), 4096)
+		return true, engine.downloader.diagnostics.write(diagnosticEvent{
+			Event: "video.decoder", Level: "info", Message: message,
+		})
 	case "updateSystemProxy":
 		return true, engine.updateSystemProxy(input.SystemProxy)
 	case "resourceSettings":
