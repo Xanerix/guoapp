@@ -651,7 +651,7 @@ class SettingsSection extends StatelessWidget {
           const _UpdateCheckTile(),
           SwitchTile(
             title: '启动时检查更新',
-            subtitle: '有新版本时每次启动都会提示，可在提示里忽略此版本',
+            subtitle: '应用或已安装站源有新版本时启动提示，可忽略指定版本',
             value: store.checkUpdates,
             onChanged: (value) =>
                 saveSetting(context, () => store.setCheckUpdates(value)),
