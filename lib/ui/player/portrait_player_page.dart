@@ -22,6 +22,7 @@ import 'fade_presence.dart';
 import 'mini_player.dart';
 import 'playback_sheets.dart';
 import 'playback_handle.dart';
+import 'player_home_button.dart';
 import 'player_lock.dart';
 import 'player_surface.dart';
 import 'player_video.dart';
@@ -929,6 +930,7 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
           color: Colors.white,
           activeColor: Theme.of(context).colorScheme.primaryFixedDim,
         ),
+        if (PlayerHomeButton.available(context)) const PlayerHomeButton(),
         if (!desktopPlatform) PlayerLockButton(locked: false, onPressed: _lock),
       ],
     );

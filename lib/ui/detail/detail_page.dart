@@ -278,7 +278,7 @@ class _DetailPageState extends State<DetailPage> {
       if (_direct) await _awaitVideoSize();
       if (!mounted) return;
       final watched = await _play(details.resumeIndex, resume: true);
-      if (!mounted) return;
+      if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
       if (_direct && watched) {
         Navigator.pop(context);
         return;
