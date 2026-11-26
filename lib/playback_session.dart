@@ -112,7 +112,7 @@ class PlaybackSession extends ChangeNotifier {
     store.addListener(_accessChanged);
     store.addListener(_syncDanmakuOptions);
     store.addListener(_syncMedia);
-    if (Platform.isIOS) {
+    if (Platform.isIOS && !kReleaseMode) {
       for (final target in [_player, ?_standby]) {
         _mpvLogSubscriptions.add(
           target.stream.log.listen((log) => _logMpvHardware(target, log)),
@@ -448,8 +448,7 @@ class PlaybackSession extends ChangeNotifier {
 
   bool get _backgroundPlayback => store.playbackPreferences.backgroundPlayback;
 
-  bool get _videoHidden =>
-      Platform.isIOS && !_visible && _backgroundPlayback;
+  bool get _videoHidden => Platform.isIOS && !_visible && _backgroundPlayback;
 
   void _syncMedia() {
     if (_closed) return;
@@ -818,13 +817,13 @@ class PlaybackSession extends ChangeNotifier {
     final hwdec = switch (decoder) {
       TelevisionDecoder.software => 'no',
       TelevisionDecoder.hardwareDirect when Platform.isAndroid => 'mediacodec',
-      TelevisionDecoder.hardware ||
-      TelevisionDecoder.hardwareSwapUv when Platform.isAndroid =>
+      TelevisionDecoder.hardware || TelevisionDecoder.hardwareSwapUv
+          when Platform.isAndroid =>
         'mediacodec-copy',
       TelevisionDecoder.hardware when Platform.isIOS || Platform.isMacOS =>
         'videotoolbox-copy',
-      TelevisionDecoder.optimized ||
-      TelevisionDecoder.hardwareDirect when Platform.isIOS =>
+      TelevisionDecoder.optimized || TelevisionDecoder.hardwareDirect
+          when Platform.isIOS =>
         'videotoolbox,videotoolbox-copy',
       _ when Platform.isIOS => 'videotoolbox-copy',
       _ when Platform.isWindows => 'd3d11va',
@@ -1601,9 +1600,7 @@ class PlaybackSession extends ChangeNotifier {
     _setVisible(visible);
     final foreground = visible || _backgroundPlayback;
     if (_foreground == foreground) return;
-    DiaryService.add(
-      foreground ? '[Play] 应用回到前台' : '[Play] 应用不可见，暂停播放',
-    );
+    DiaryService.add(foreground ? '[Play] 应用回到前台' : '[Play] 应用不可见，暂停播放');
     _foreground = foreground;
     _health.reset();
     _sync();

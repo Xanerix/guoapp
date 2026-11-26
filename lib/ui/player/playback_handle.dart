@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
@@ -12,7 +13,9 @@ import '../../playback_session.dart';
 Player _player() => Player(
   configuration: PlayerConfiguration(
     bufferSize: 32 * 1024 * 1024,
-    logLevel: Platform.isIOS ? MPVLogLevel.v : MPVLogLevel.error,
+    logLevel: Platform.isIOS && !kReleaseMode
+        ? MPVLogLevel.v
+        : MPVLogLevel.error,
   ),
 );
 
@@ -30,14 +33,14 @@ class PlaybackHandle {
     final main = _player();
     final standby = preopen ? _player() : null;
     final configuration =
-        Platform.isAndroid &&
-            decoder == TelevisionDecoder.hardwareDirect
+        Platform.isAndroid && decoder == TelevisionDecoder.hardwareDirect
         ? const VideoControllerConfiguration(
             vo: 'mediacodec_embed',
             hwdec: 'mediacodec',
           )
         : VideoControllerConfiguration(
-            enableHardwareAcceleration: !Platform.isIOS ||
+            enableHardwareAcceleration:
+                !Platform.isIOS ||
                 decoder == TelevisionDecoder.optimized ||
                 decoder == TelevisionDecoder.hardwareDirect,
           );

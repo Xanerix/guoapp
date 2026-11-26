@@ -935,10 +935,7 @@ class NativeRepository extends AppRepository {
   Future<void> recordVideoDiagnostic(String message) async {
     debugPrint('[Diary] [Video] $message');
     try {
-      await _call({
-        'action': 'recordVideoDiagnostic',
-        'message': message,
-      });
+      await _call({'action': 'recordVideoDiagnostic', 'message': message});
     } catch (_) {
       DiaryService.add('[Video] $message');
       DiaryService.add('[Video] 写入诊断文件失败');

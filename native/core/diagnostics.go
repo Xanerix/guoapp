@@ -66,7 +66,11 @@ func (log *diagnosticLog) write(event diagnosticEvent) error {
 		return err
 	}
 	if info != nil && info.Size()+int64(len(data)) > log.limit {
-		if err := os.Rename(log.path, log.path+".1"); err != nil {
+		backup := log.path + ".1"
+		if err := os.Remove(backup); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		if err := os.Rename(log.path, backup); err != nil {
 			return err
 		}
 	}

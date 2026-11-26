@@ -62,10 +62,7 @@ const _decoders = {
   TelevisionDecoder.hardware: '硬解（兼容）',
   TelevisionDecoder.software: '软解（兼容）',
 };
-const _iosDecoders = {
-  ..._decoders,
-  TelevisionDecoder.hardwareDirect: '硬解（直通）',
-};
+const _iosDecoders = {..._decoders, TelevisionDecoder.hardwareDirect: '硬解（直通）'};
 const _androidDecoders = {
   ..._decoders,
   TelevisionDecoder.hardwareSwapUv: '硬解（修正偏蓝）',

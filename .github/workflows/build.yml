@@ -220,6 +220,13 @@ jobs:
           flutter --version
           brew install meson ninja cmake pkgconf
           flutter precache --ios
+      - name: Cache iOS custom libmpv
+        uses: actions/cache@v4
+        with:
+          path: |
+            native/build/ios/mpv/Mpv
+            native/build/ios/mpv/stamp
+          key: ios-mpv-${{ runner.os }}-${{ hashFiles('native/ios_mpv/*', 'pubspec.lock') }}
       - name: Build unsigned iOS packages
         run: python scripts/build_ios.py
       - uses: actions/upload-artifact@v4

@@ -364,6 +364,9 @@ func nativeDispatch(input nativeInput) (any, error) {
 	}
 	switch input.Action {
 	case "recordVideoDiagnostic":
+		if engine.downloader == nil || engine.downloader.diagnostics == nil {
+			return true, nil
+		}
 		message := Truncate(redactErrorString(input.Message), 4096)
 		return true, engine.downloader.diagnostics.write(diagnosticEvent{
 			Event: "video.decoder", Level: "info", Message: message,
