@@ -521,7 +521,7 @@ class _FollowPageState extends State<FollowPage> {
                 ),
               ),
             )
-          else
+          else ...[
             for (final (label, dramas) in sections) ...[
               if (label != null)
                 SliverPadding(
@@ -593,11 +593,12 @@ class _FollowPageState extends State<FollowPage> {
                 ),
               ),
             ],
-          SliverPadding(
-            padding: EdgeInsets.only(
-              bottom: AppScope.of(context).television ? 27 : 32,
+            SliverPadding(
+              padding: EdgeInsets.only(
+                bottom: AppScope.of(context).television ? 27 : 32,
+              ),
             ),
-          ),
+          ],
         ],
       );
     },
