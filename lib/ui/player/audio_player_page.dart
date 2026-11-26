@@ -21,6 +21,7 @@ import 'cast_page.dart';
 import 'mini_player.dart';
 import 'playback_handle.dart';
 import 'playback_sheets.dart';
+import 'player_home_button.dart';
 import 'player_surface.dart';
 import 'portrait_player_page.dart';
 
@@ -347,33 +348,37 @@ class _AudioPlayerPageState extends State<AudioPlayerPage>
     ],
   );
 
-  Widget _header() => SizedBox(
-    height: 56,
-    child: Row(
-      children: [
-        const SizedBox(width: 4),
-        IconButton(
-          onPressed: () => unawaited(Navigator.maybePop(context)),
-          icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 32),
-          color: Colors.white,
-          tooltip: '返回',
-        ),
-        Expanded(
-          child: Text(
-            SourceSite.byId(_session.detail.drama.source).name,
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: .85),
-              fontSize: 16,
+  Widget _header() {
+    final home = PlayerHomeButton.available(context);
+    return SizedBox(
+      height: 56,
+      child: Row(
+        children: [
+          const SizedBox(width: 4),
+          IconButton(
+            onPressed: () => unawaited(Navigator.maybePop(context)),
+            icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 32),
+            color: Colors.white,
+            tooltip: '返回',
+          ),
+          if (home) const PlayerHomeButton(),
+          Expanded(
+            child: Text(
+              SourceSite.byId(_session.detail.drama.source).name,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: .85),
+                fontSize: 16,
+              ),
             ),
           ),
-        ),
-        const SizedBox(width: 52),
-      ],
-    ),
-  );
+          SizedBox(width: home ? 100 : 52),
+        ],
+      ),
+    );
+  }
 
   Widget? _saveWarning() {
     final warning = _session.saveWarning;

@@ -692,9 +692,9 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
                 '返回',
                 () => unawaited(Navigator.maybePop(context)),
               ),
-              const Spacer(),
               if (PlayerHomeButton.available(context))
                 const PlayerHomeButton(size: 44),
+              const Spacer(),
               if (widget.onMiniWindow case final onMiniWindow?)
                 _icon(Icons.picture_in_picture_alt_rounded, '小窗', onMiniWindow),
               _icon(Icons.settings_rounded, '播放设置', _openSettings),
@@ -782,6 +782,8 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
           child: Row(
             children: [
               _icon(Icons.arrow_back_rounded, '退出全屏', () => _rotate(true)),
+              if (PlayerHomeButton.available(context))
+                const PlayerHomeButton(size: 44),
               const SizedBox(width: 4),
               Expanded(
                 child: Column(
@@ -850,8 +852,6 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
               if (session.danmakuSupported) _danmakuButton(context),
               if (widget.onMiniWindow case final onMiniWindow?)
                 _icon(Icons.picture_in_picture_alt_rounded, '小窗', onMiniWindow),
-              if (PlayerHomeButton.available(context))
-                const PlayerHomeButton(size: 44),
               _icon(
                 Icons.settings_rounded,
                 '播放设置',

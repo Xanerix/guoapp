@@ -895,6 +895,7 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
           tooltip: '返回',
           style: IconButton.styleFrom(fixedSize: const Size.square(48)),
         ),
+        if (PlayerHomeButton.available(context)) const PlayerHomeButton(),
         Expanded(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -930,7 +931,6 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
           color: Colors.white,
           activeColor: Theme.of(context).colorScheme.primaryFixedDim,
         ),
-        if (PlayerHomeButton.available(context)) const PlayerHomeButton(),
         if (!desktopPlatform) PlayerLockButton(locked: false, onPressed: _lock),
       ],
     );
