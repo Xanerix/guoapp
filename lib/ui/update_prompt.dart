@@ -21,6 +21,7 @@ Future<void> runStartupChecks(BuildContext context, LocalStore store) async {
   if (_checked) return;
   _checked = true;
   final repository = AppScope.of(context).repository;
+  unawaited(repository.updateBundledModules().catchError((_) => false));
   final String current;
   final AppUpdate update;
   try {

@@ -392,6 +392,8 @@ func nativeDispatch(input nativeInput) (any, error) {
 		return engine.installModule(input.Token)
 	case "uninstallModule":
 		return engine.uninstallModule(input.Source)
+	case "updateBundledModules":
+		return engine.updateBundledModules(ctx)
 	case "sourceDevices":
 		return engine.sourceDevices(ctx, nativeActionSource(input), input.Command == "register")
 	case "soraniAccount", "sourceAccount":

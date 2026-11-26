@@ -180,6 +180,7 @@ abstract class AppRepository {
       throw AppFailure('当前环境不支持安装模块');
   Future<void> uninstallModule(String id) async =>
       throw AppFailure('当前环境不支持卸载模块');
+  Future<bool> updateBundledModules() async => false;
   Map<String, int> missingSourceDownloads() => const {};
   Future<List<String>> suggestions(String source, String query) async =>
       const [];
@@ -900,6 +901,16 @@ class NativeRepository extends AppRepository {
     _adminPermission();
     final result = await _call({'action': 'uninstallModule', 'source': id});
     _installSources(result['sources']);
+  }
+
+  @override
+  Future<bool> updateBundledModules() async {
+    final result = await _call({'action': 'updateBundledModules'});
+    if (result['updated'] == true) {
+      _installSources(result['sources']);
+      return true;
+    }
+    return false;
   }
 
   @override

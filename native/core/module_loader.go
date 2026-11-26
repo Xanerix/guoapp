@@ -231,12 +231,43 @@ func (d *Downloader) loadModules() {
 func (d *Downloader) moduleRoot() string { return filepath.Join(d.cfg.dataDir, moduleDirectory) }
 
 func (d *Downloader) reloadModuleLocked(id string) {
-	if loadedModules.ids[id] {
-		Unregister(id)
-		delete(loadedModules.ids, id)
+	if _, err := os.Stat(filepath.Join(d.moduleRoot(), id)); err != nil {
+		if loadedModules.ids[id] {
+			Unregister(id)
+			delete(loadedModules.ids, id)
+		}
+		return
 	}
-	if _, err := os.Stat(filepath.Join(d.moduleRoot(), id)); err == nil {
-		d.registerModuleLocked(id)
+	module, err := readModule(filepath.Join(d.moduleRoot(), id))
+	if err == nil && module.manifest.ID != id {
+		err = fmt.Errorf("模块文件夹名应与标识 %q 一致", module.manifest.ID)
+	}
+	if err == nil {
+		err = moduleConflict(module.manifest)
+	}
+	if err != nil {
+		d.recordModuleFailure(id, err)
+		return
+	}
+	d.replaceModuleLocked(module)
+}
+
+func (d *Downloader) replaceModuleLocked(module *jsModule) {
+	id := module.manifest.ID
+	var state json.RawMessage
+	if previous, ok := d.provider(id); ok {
+		if stateful, ok := providerAs[CatalogStateful](previous); ok {
+			state = stateful.CatalogState()
+		}
+	}
+	Replace(module.descriptor(), module.provider)
+	loadedModules.ids[id] = true
+	if len(state) > 0 {
+		if next, ok := d.provider(id); ok {
+			if stateful, ok := providerAs[CatalogStateful](next); ok {
+				stateful.RestoreCatalogState(state)
+			}
+		}
 	}
 }
 

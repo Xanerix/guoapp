@@ -13,6 +13,8 @@ env:
   GOPROXY: https://proxy.golang.org,direct
   GOSUMDB: sum.golang.org
   UPDATE_SERVER_URL: ${{ vars.UPDATE_SERVER_URL }}
+  MODULE_UPDATE_URL: ${{ vars.MODULE_UPDATE_URL }}
+  MODULE_UPDATE_PUBLIC_KEY: ${{ vars.MODULE_UPDATE_PUBLIC_KEY }}
   PACKAGE_NAME: ${{ vars.PACKAGE_NAME }}
   BUNDLED_MODULES: bundled-modules/hongguo
   PYTHONUTF8: '1'

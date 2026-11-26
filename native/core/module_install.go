@@ -147,7 +147,7 @@ func (engine *nativeEngine) installModule(token string) (map[string]any, error) 
 		return nil, err
 	}
 	_ = os.Remove(staged)
-	d.reloadModuleLocked(id)
+	d.replaceModuleLocked(module)
 	if !registeredProviderSource(id) {
 		return nil, errors.New("模块已写入但未能加载，详见诊断日志")
 	}
@@ -219,7 +219,11 @@ func (engine *nativeEngine) fetchLimited(ctx context.Context, address string, li
 	if response.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("HTTP %d", response.StatusCode)
 	}
-	raw, err := io.ReadAll(io.LimitReader(response.Body, int64(limit)+1))
+	return readLimitedBody(response.Body, limit)
+}
+
+func readLimitedBody(reader io.Reader, limit int) ([]byte, error) {
+	raw, err := io.ReadAll(io.LimitReader(reader, int64(limit)+1))
 	if err != nil {
 		return nil, err
 	}

@@ -203,6 +203,25 @@ func Register(descriptor SourceDescriptor, factory ProviderFactory) {
 	if _, dup := providerRegistry.factories[id]; dup {
 		panic("core.Register: duplicate source " + id)
 	}
+	registerProviderLocked(id, descriptor, factory)
+}
+
+func Replace(descriptor SourceDescriptor, factory ProviderFactory) {
+	id := strings.ToLower(strings.TrimSpace(descriptor.ID))
+	if id == "" || factory == nil {
+		panic("core.Replace: empty source id or nil factory")
+	}
+	descriptor.ID = id
+	providerRegistry.Lock()
+	defer providerRegistry.Unlock()
+	if _, existed := providerRegistry.factories[id]; existed {
+		maps.DeleteFunc(providerRegistry.aliases, func(_, target string) bool { return target == id })
+		providerRegistry.revisions[id]++
+	}
+	registerProviderLocked(id, descriptor, factory)
+}
+
+func registerProviderLocked(id string, descriptor SourceDescriptor, factory ProviderFactory) {
 	providerRegistry.factories[id] = factory
 	providerRegistry.descriptors[id] = descriptor
 	if !slices.Contains(providerRegistry.order, id) {

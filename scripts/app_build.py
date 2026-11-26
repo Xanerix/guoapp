@@ -36,6 +36,12 @@ class AppBuild:
         update_server = os.environ.get('UPDATE_SERVER_URL', '').strip()
         if update_server:
             flags += ' -X duanjuapp/native/core.nativeUpdateServer=' + update_server
+        module_update_server = os.environ.get('MODULE_UPDATE_URL', '').strip()
+        if module_update_server:
+            flags += ' -X duanjuapp/native/core.nativeModuleUpdateServer=' + module_update_server
+        module_public_key = os.environ.get('MODULE_UPDATE_PUBLIC_KEY', '').strip()
+        if module_public_key:
+            flags += ' -X duanjuapp/native/core.nativeModuleUpdatePublicKey=' + module_public_key
         project = os.environ.get('PROJECT_URL', '').strip()
         if project:
             flags += ' -X duanjuapp/native/core.nativeProjectURL=' + project
