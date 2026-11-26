@@ -11,6 +11,7 @@ import 'app_scope.dart';
 import 'modules/module_update_prompt.dart';
 import 'widgets/focus_ring.dart';
 
+var _backgroundStarted = false;
 var _checked = false;
 const _manualCooldown = Duration(seconds: 30);
 DateTime? _lastManualCheck;
@@ -18,9 +19,30 @@ AppUpdate? _lastManualUpdate;
 
 enum _UpdateChoice { mute, skip, dismiss, download }
 
-Future<void> runStartupChecks(BuildContext context, LocalStore store) async {
+void startBackgroundStartupTasks(BuildContext context, LocalStore store) {
+  if (_backgroundStarted) return;
+  _backgroundStarted = true;
+  final repository = AppScope.of(context).repository;
+  unawaited(repository.updateBundledModules().catchError((_) => false));
+  if (store.shareUsage) {
+    unawaited(
+      currentAppVersion()
+          .then((current) => repository.reportUsage(current))
+          .catchError((_) {}),
+    );
+  }
+}
+
+Future<void> runStartupChecks(
+  BuildContext context,
+  LocalStore store, {
+  bool checkModules = true,
+}) async {
+  startBackgroundStartupTasks(context, store);
   await _checkAppUpdateAtStartup(context, store);
-  if (context.mounted) await checkModuleUpdatesAtStartup(context, store);
+  if (checkModules && context.mounted) {
+    await checkModuleUpdatesAtStartup(context, store);
+  }
 }
 
 Future<void> _checkAppUpdateAtStartup(
@@ -30,14 +52,10 @@ Future<void> _checkAppUpdateAtStartup(
   if (_checked) return;
   _checked = true;
   final repository = AppScope.of(context).repository;
-  unawaited(repository.updateBundledModules().catchError((_) => false));
   final String current;
   final AppUpdate update;
   try {
     current = await currentAppVersion();
-    if (store.shareUsage) {
-      unawaited(repository.reportUsage(current).catchError((_) {}));
-    }
     if (!store.checkUpdates) return;
     final latest = await repository.checkUpdate(current);
     if (latest == null) return;

@@ -191,9 +191,19 @@ class _ModulesPageState extends State<ModulesPage>
       ),
     );
     if (accepted != true) return;
+    final epoch = _store.profileEpoch;
     await _run(
-      () async =>
-          _show(await installIndexedModules(_repository, _store, entries)),
+      () async => _show(
+        (await installIndexedModules(
+          _repository,
+          _store,
+          entries,
+          canContinue: () =>
+              _store.profile.admin &&
+              !_store.locked &&
+              _store.profileEpoch == epoch,
+        )).message,
+      ),
     );
   }
 

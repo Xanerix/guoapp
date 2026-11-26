@@ -132,7 +132,10 @@ class _AppShellState extends State<AppShell> {
     FocusManager.instance.addListener(_followFocus);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
-      await offerRestoredModules(context, widget.store);
+      startBackgroundStartupTasks(context, widget.store);
+      try {
+        await offerRestoredModules(context, widget.store);
+      } catch (_) {}
       if (mounted) await runStartupChecks(context, widget.store);
     });
   }

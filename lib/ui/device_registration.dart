@@ -42,7 +42,7 @@ class _DeviceRegistrationGateState extends State<DeviceRegistrationGate> {
     ];
     var ready = pending.isEmpty;
     if (!ready && mounted) {
-      await runStartupChecks(context, widget.store);
+      await runStartupChecks(context, widget.store, checkModules: false);
       if (!mounted) return;
       ready =
           await showDialog<bool>(

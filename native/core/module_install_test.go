@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func testModulePackage(t *testing.T, folder string, files map[string]string) string {
@@ -106,5 +107,50 @@ func TestModuleInstallUpdateAndUninstall(t *testing.T) {
 	}
 	if _, err := engine.uninstallModule("jsexample"); err != nil || nativeSourceAvailable("jsexample") {
 		t.Fatalf("uninstall left the module registered: %v", err)
+	}
+}
+
+func TestPrepareModulePreservesConcurrentStagedTokens(t *testing.T) {
+	example := filepath.Join("..", "module_example", "jsexample")
+	manifest, err := os.ReadFile(filepath.Join(example, moduleManifest))
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, err := os.ReadFile(filepath.Join(example, moduleEntry))
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := &nativeEngine{downloader: &Downloader{cfg: Config{dataDir: t.TempDir()}}, cacheDirectory: t.TempDir()}
+	ctx := context.Background()
+	t.Cleanup(func() {
+		_, _ = engine.uninstallModule("jsexample")
+	})
+
+	pkg := testModulePackage(t, "", map[string]string{moduleManifest: string(manifest), moduleEntry: string(code)})
+	first, err := engine.prepareModule(ctx, pkg, "", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale := filepath.Join(engine.cacheDirectory, modulePackageFolder, "00000000000000000000000000000000.zip")
+	if err := os.WriteFile(stale, []byte("old"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	expired := time.Now().Add(-2 * modulePackageTTL)
+	if err := os.Chtimes(stale, expired, expired); err != nil {
+		t.Fatal(err)
+	}
+
+	second, err := engine.prepareModule(ctx, pkg, "", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Fatalf("expired staged package was not cleaned: %v", err)
+	}
+	if _, err := engine.installModule(first.Token); err != nil {
+		t.Fatalf("first token invalidated by second prepare: %v", err)
+	}
+	if _, err := engine.installModule(second.Token); err != nil {
+		t.Fatalf("second token failed: %v", err)
 	}
 }

@@ -7,6 +7,7 @@ import '../widgets/focus_ring.dart';
 import 'module_install.dart';
 
 var _checked = false;
+var _checking = false;
 
 enum _ModuleUpdateChoice { later, ignore, update }
 
@@ -19,22 +20,28 @@ Future<void> checkModuleUpdatesAtStartup(
       store.profile.admin &&
       !store.locked &&
       store.checkUpdates;
-  if (_checked || !allowed()) return;
-  _checked = true;
+  if (_checked || _checking || !allowed()) return;
+  _checking = true;
   final epoch = store.profileEpoch;
   final repository = AppScope.of(context).repository;
   final preferences = ModuleUpdatePreferences(store.preferences);
   final List<ModuleUpdate> updates;
   try {
     final installed = await repository.modules();
-    if (installed.isEmpty) return;
+    if (installed.isEmpty) {
+      _checked = true;
+      return;
+    }
     updates = availableModuleUpdates(
       installed,
       (await repository.moduleIndex()).entries,
       preferences.ignored,
     );
+    _checked = true;
   } catch (_) {
     return;
+  } finally {
+    _checking = false;
   }
   if (!context.mounted ||
       !allowed() ||
@@ -56,7 +63,9 @@ Future<void> checkModuleUpdatesAtStartup(
             const Text('站源更新可能修复播放、搜索等问题，建议及时更新。'),
             for (final update in updates)
               Text(
-                '${update.module.name}  ${update.module.version} → ${update.latest.version}',
+                update.module.version.isEmpty
+                    ? '${update.module.name}  → ${update.latest.version}'
+                    : '${update.module.name}  ${update.module.version} → ${update.latest.version}',
               ),
           ],
         ),
@@ -96,11 +105,20 @@ Future<void> checkModuleUpdatesAtStartup(
       messenger.showSnackBar(
         SnackBar(content: Text('正在更新 ${updates.length} 个站源')),
       );
-      final summary = await installIndexedModules(repository, store, [
-        for (final update in updates) update.latest,
-      ], enable: false);
+      final result = await installIndexedModules(
+        repository,
+        store,
+        [for (final update in updates) update.latest],
+        enable: false,
+        verb: '更新',
+        canContinue: () =>
+            store.profile.admin && !store.locked && store.profileEpoch == epoch,
+      );
       if (allowed() && store.profileEpoch == epoch) {
-        messenger.showSnackBar(SnackBar(content: Text('更新完成：$summary')));
+        final text = result.succeeded == 0 && result.failed > 0
+            ? result.message
+            : '更新完成：${result.message}';
+        messenger.showSnackBar(SnackBar(content: Text(text)));
       }
     }
   } catch (failure) {
