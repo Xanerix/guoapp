@@ -1,0 +1,84 @@
+name: Build iOS test package
+
+on:
+  push:
+    branches:
+      - test/iphone-duo-ios27
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-test-${{ github.ref }}
+
+env:
+  GOPROXY: https://proxy.golang.org,direct
+  GOSUMDB: sum.golang.org
+  UPDATE_SERVER_URL: ${{ vars.UPDATE_SERVER_URL }}
+  MODULE_UPDATE_URL: ${{ vars.MODULE_UPDATE_URL }}
+  MODULE_UPDATE_PUBLIC_KEY: ${{ vars.MODULE_UPDATE_PUBLIC_KEY }}
+  PACKAGE_NAME: ${{ vars.PACKAGE_NAME }}
+  BUNDLED_MODULES: bundled-modules/hongguo
+  PYTHONUTF8: '1'
+  PROJECT_URL: ${{ vars.PROJECT_URL }}
+  TELEGRAM_GROUP_URL: ${{ vars.TELEGRAM_GROUP_URL }}
+  TELEGRAM_CHANNEL_URL: ${{ vars.TELEGRAM_CHANNEL_URL }}
+
+jobs:
+  ios:
+    runs-on: xcode-27
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: guoapp-modules/hongguo
+          ssh-key: ${{ secrets.HONGGUO_DEPLOY_KEY }}
+          path: bundled-modules/hongguo
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: native/go.mod
+          cache-dependency-path: native/go.sum
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.9'
+          channel: stable
+          cache: true
+      - name: Check Xcode and CocoaPods
+        id: xcode
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcode-select -p
+          xcodebuild -version
+          sdk_path="$(xcrun --sdk iphoneos --show-sdk-path)"
+          echo "$sdk_path"
+          echo "sdk=$(basename "$sdk_path")" >> "$GITHUB_OUTPUT"
+          xcrun --sdk iphoneos --find clang
+          if ! command -v pod >/dev/null 2>&1; then
+            brew install cocoapods
+          fi
+          pod --version
+          go version
+          flutter --version
+          brew install meson ninja cmake pkgconf
+          flutter precache --ios
+      - name: Cache iOS custom libmpv
+        uses: actions/cache@v4
+        with:
+          path: |
+            native/build/ios/mpv/Mpv
+            native/build/ios/mpv/stamp
+          key: ios-mpv-${{ runner.os }}-${{ steps.xcode.outputs.sdk }}-${{ hashFiles('native/ios_mpv/*', 'pubspec.lock') }}
+      - name: Build unsigned iOS packages
+        run: python scripts/build_ios.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-unsigned
+          path: dist/ios/*
+          if-no-files-found: error
+          retention-days: 14
