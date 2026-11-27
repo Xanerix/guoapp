@@ -34,8 +34,8 @@ import 'storage_view.dart';
 enum SettingsGroup {
   appearance('外观', Icons.palette_outlined),
   playback('播放', Icons.play_arrow_rounded),
+  bindings('快捷键', Icons.keyboard_outlined),
   danmaku('弹幕', Icons.subtitles_outlined),
-  bindings('按键', Icons.keyboard_outlined),
   slacking('摸鱼', Icons.set_meal_outlined),
   download('下载', Icons.download_rounded),
   storage('存储', Icons.folder_outlined),

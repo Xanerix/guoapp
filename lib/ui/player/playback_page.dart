@@ -11,6 +11,7 @@ import '../../local_store.dart';
 import '../../picture_in_picture.dart';
 import '../../playback_session.dart';
 import '../app_scope.dart';
+import '../widgets/focus_ring.dart';
 import 'audio_player_page.dart';
 import 'landscape_player_page.dart';
 import 'mini_player.dart';
@@ -267,9 +268,22 @@ class _PlaybackPageState extends State<PlaybackPage> {
           onKeyEvent: _key,
           child: Offstage(
             offstage: shown,
-            child: MediaQuery(
-              data: _media!,
-              child: Builder(builder: _page),
+            child: KeyboardControls(
+              handles: (event) {
+                if (!desktopPlatform || focusedTextField() != null) {
+                  return false;
+                }
+                final action = _inputs.bindings.resolve(
+                  event,
+                  PlayerInputScope.portrait,
+                );
+                return action != null &&
+                    _inputs.bindings.keys.containsKey(action);
+              },
+              child: MediaQuery(
+                data: _media!,
+                child: Builder(builder: _page),
+              ),
             ),
           ),
         ),

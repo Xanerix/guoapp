@@ -7,6 +7,7 @@ import '../../desktop_player_bindings.dart';
 import '../../local_store.dart';
 import '../../playback_session.dart';
 import '../app_scope.dart';
+import '../widgets/focus_ring.dart';
 
 class PlayerInputController {
   PlayerInputController({
@@ -19,8 +20,17 @@ class PlayerInputController {
   final VoidCallback? onFullscreen;
   final ValueChanged<String>? onHint;
   final int seekStep;
-  DateTime? _lastWheelEpisode;
-  PlayerInputAction? _lastWheelAction;
+  final _wheelClock = Stopwatch()..start();
+  Duration? _lastWheelEpisode;
+
+  bool acceptEpisodeWheel() {
+    final now = _wheelClock.elapsed;
+    final previous = _lastWheelEpisode;
+    _lastWheelEpisode = now;
+    return !session().loading &&
+        (previous == null ||
+            now - previous >= const Duration(milliseconds: 700));
+  }
 
   DesktopPlayerBindings get bindings => desktopPlatform
       ? session().preferences.desktopBindings
@@ -79,18 +89,7 @@ class PlayerInputController {
           session().locked) {
         return;
       }
-      if (action.episode) {
-        final now = DateTime.now();
-        final previous = _lastWheelEpisode;
-        _lastWheelEpisode = now;
-        final previousAction = _lastWheelAction;
-        _lastWheelAction = action;
-        if (previousAction == action &&
-            previous != null &&
-            now.difference(previous) < const Duration(milliseconds: 500)) {
-          return;
-        }
-      }
+      if (action.episode && !acceptEpisodeWheel()) return;
       invoke(action);
     });
     return true;
@@ -113,33 +112,41 @@ class DesktopPlayerShortcuts extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: Listenable.merge([store, FocusManager.instance]),
-    builder: (context, _) => CallbackShortcuts(
-      bindings:
+    builder: (context, _) => KeyboardControls(
+      handles: (event) =>
           desktopPlatform &&
-              controller.bindings.keys.isNotEmpty &&
-              FocusManager.instance.primaryFocus?.context
-                      ?.findAncestorWidgetOfExactType<EditableText>() !=
-                  null
-          ? const {}
-          : desktopPlatform && controller.bindings.keys.isNotEmpty
-          ? {
-              for (final action in PlayerInputAction.values)
-                if (action != PlayerInputAction.fullscreen)
-                  for (final binding in controller.bindings.bindings(
-                    action,
-                    PlayerInputScope.audio,
-                  ))
-                    binding.activator(
-                      repeats:
-                          !controller.bindings.keys.containsKey(action) ||
-                          action.repeats ||
-                          action == PlayerInputAction.seekForward ||
-                          action == PlayerInputAction.seekBackward,
-                    ): () =>
-                        controller.invoke(action),
-            }
-          : fallback,
-      child: child,
+          focusedTextField() == null &&
+          controller.bindings.resolve(event, PlayerInputScope.audio) != null &&
+          controller.bindings.resolve(event, PlayerInputScope.audio) !=
+              PlayerInputAction.fullscreen,
+      child: CallbackShortcuts(
+        bindings:
+            desktopPlatform &&
+                controller.bindings.keys.isNotEmpty &&
+                FocusManager.instance.primaryFocus?.context
+                        ?.findAncestorWidgetOfExactType<EditableText>() !=
+                    null
+            ? const {}
+            : desktopPlatform && controller.bindings.keys.isNotEmpty
+            ? {
+                for (final action in PlayerInputAction.values)
+                  if (action != PlayerInputAction.fullscreen)
+                    for (final binding in controller.bindings.bindings(
+                      action,
+                      PlayerInputScope.audio,
+                    ))
+                      binding.activator(
+                        repeats:
+                            !controller.bindings.keys.containsKey(action) ||
+                            action.repeats ||
+                            action == PlayerInputAction.seekForward ||
+                            action == PlayerInputAction.seekBackward,
+                      ): () =>
+                          controller.invoke(action),
+              }
+            : fallback,
+        child: child,
+      ),
     ),
   );
 }

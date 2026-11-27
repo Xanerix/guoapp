@@ -226,6 +226,55 @@ class DesktopPlayerBindings {
     return null;
   }
 
+  PlayerInputAction? wheelConflict(bool up, PlayerInputAction action) {
+    final owner = up ? wheelUp : wheelDown;
+    return owner == null || owner == PlayerInputAction.none || owner == action
+        ? null
+        : owner;
+  }
+
+  List<String> labels(PlayerInputAction action) => [
+    ...bindings(action).map((key) => key.label),
+    if (wheelUp == action) '滚轮向上',
+    if (wheelDown == action) '滚轮向下',
+  ];
+
+  DesktopPlayerBindings resetAction(PlayerInputAction action) {
+    var result = resetKey(action);
+    if (wheelUp == action) result = result.withWheel(up: true);
+    if (wheelDown == action) result = result.withWheel(up: false);
+    return result;
+  }
+
+  DesktopPlayerBindings recordKey(
+    PlayerInputAction action,
+    PlayerKeyBinding key,
+  ) {
+    var result = withKey(action, key);
+    if (wheelUp == action) {
+      result = result.withWheel(up: true, action: PlayerInputAction.none);
+    }
+    if (wheelDown == action) {
+      result = result.withWheel(up: false, action: PlayerInputAction.none);
+    }
+    return result;
+  }
+
+  DesktopPlayerBindings recordWheel(
+    PlayerInputAction action, {
+    required bool up,
+  }) {
+    if (action == PlayerInputAction.fullscreen) return this;
+    var result = withKey(action, null);
+    if (wheelUp == action && !up) {
+      result = result.withWheel(up: true, action: PlayerInputAction.none);
+    }
+    if (wheelDown == action && up) {
+      result = result.withWheel(up: false, action: PlayerInputAction.none);
+    }
+    return result.withWheel(up: up, action: action);
+  }
+
   DesktopPlayerBindings withKey(
     PlayerInputAction action,
     PlayerKeyBinding? key,
