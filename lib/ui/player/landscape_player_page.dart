@@ -32,6 +32,7 @@ import 'player_surface.dart';
 import 'player_video.dart';
 import 'swipe_controls.dart';
 import 'window_fullscreen.dart';
+import 'player_input.dart';
 
 enum _Panel { episodes, settings, speed, quality, fit }
 
@@ -472,6 +473,13 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
   }
 
   Widget _video(BuildContext context, bool full) {
+    return PlayerWheelRegion(controller: _inputs, child: _videoBody(context, full));
+  }
+
+  late final _inputs = PlayerInputController(session: () => _session,
+    onHint: _say, onFullscreen: () => _rotate(MediaQuery.sizeOf(context).width > MediaQuery.sizeOf(context).height));
+
+  Widget _videoBody(BuildContext context, bool full) {
     final session = _session;
     final locked = session.locked;
     final visible = !locked && (_visible || _pinned);

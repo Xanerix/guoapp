@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 
 import '../../app_device.dart';
+import '../../desktop_player_bindings.dart';
 import '../../local_store.dart';
 import '../../picture_in_picture.dart';
 import '../../playback_session.dart';
@@ -18,6 +19,7 @@ import 'player_page.dart';
 import 'portrait_player_page.dart';
 import 'television_player_page.dart';
 import 'window_fullscreen.dart';
+import 'player_input.dart';
 
 class PlaybackPage extends StatefulWidget {
   const PlaybackPage({super.key, required this.store, required this.handle});
@@ -30,6 +32,8 @@ class PlaybackPage extends StatefulWidget {
 
 class _PlaybackPageState extends State<PlaybackPage> {
   final _padFullscreen = ValueNotifier(false);
+  late final _inputs = PlayerInputController(session: () => _session,
+    onFullscreen: () => _padFullscreen.value = true);
   bool _windowFullscreen = false;
   final _pageScope = FocusScopeNode(debugLabel: 'playbackPage');
   final _pip = PictureInPicture.instance;
@@ -190,20 +194,24 @@ class _PlaybackPageState extends State<PlaybackPage> {
   }
 
   KeyEventResult _key(FocusNode _, KeyEvent event) {
-    final key = event.logicalKey;
     final size = MediaQuery.sizeOf(context);
     final form = AppScope.formFactorOf(context);
     if (!desktopPlatform ||
-        form != FormFactor.window && form != FormFactor.pad ||
+        _pip.shown ||
+        ModalRoute.of(context)?.isCurrent == false ||
         _padFullscreen.value ||
         _windowFullscreen ||
-        size.width > size.height ||
-        key != LogicalKeyboardKey.f11 &&
-            key != LogicalKeyboardKey.enter &&
-            key != LogicalKeyboardKey.numpadEnter) {
+        size.width > size.height) {
       return KeyEventResult.ignored;
     }
-    if (event is KeyDownEvent) _padFullscreen.value = true;
+    final focusContext = FocusManager.instance.primaryFocus?.context;
+    if (focusContext?.findAncestorWidgetOfExactType<EditableText>() != null) return KeyEventResult.ignored;
+    final action = _inputs.bindings.resolve(event, PlayerInputScope.portrait);
+    if (action == null ||
+        form != FormFactor.window && form != FormFactor.pad && !_inputs.bindings.keys.containsKey(action)) {
+      return KeyEventResult.ignored;
+    }
+    if (event is KeyDownEvent || action.repeats && event is KeyRepeatEvent) _inputs.invoke(action);
     return KeyEventResult.handled;
   }
 

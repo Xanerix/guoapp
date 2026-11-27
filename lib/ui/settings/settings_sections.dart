@@ -28,6 +28,7 @@ import 'backup_actions.dart';
 import 'boss_key_tile.dart';
 import 'diary_view.dart';
 import 'settings_rows.dart';
+import 'player_bindings_settings.dart';
 import 'storage_view.dart';
 
 enum SettingsGroup {
@@ -165,6 +166,15 @@ class SettingsSection extends StatelessWidget {
     void savePreferences(PlaybackPreferences next) =>
         saveSetting(context, () => store.setPlaybackPreferences(next));
     return [
+      if (desktopPlatform && !television)
+        SettingsCard(children: [
+          TileFocus(builder: (focus) => ListTile(focusNode: focus,
+            title: const Text('播放器按键与滚轮'),
+            subtitle: const Text('自定义键盘快捷键，以及滚轮向上、向下的操作'),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => open('播放器按键与滚轮', (_) => PlayerBindingsSettings(store: store)),
+          )),
+        ]),
       SettingsCard(
         children: [
           ValueTile<double>(
