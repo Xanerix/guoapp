@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui' show Size;
 
 import 'catalog_sort.dart';
+import 'desktop_player_bindings.dart';
 
 const playbackSpeeds = [.5, .75, 1.0, 1.1, 1.25, 1.5, 2.0, 3.0];
 const boostSpeeds = [1.5, 2.0, 2.5, 3.0, 4.0];
@@ -127,6 +128,7 @@ class PlaybackPreferences {
     this.autoPictureInPicture = false,
     this.backgroundPlayback = false,
     this.videoFit = VideoFit.auto,
+    this.desktopBindings = const DesktopPlayerBindings(),
   });
 
   final double speed;
@@ -163,6 +165,7 @@ class PlaybackPreferences {
   final bool autoPictureInPicture;
   final bool backgroundPlayback;
   final VideoFit videoFit;
+  final DesktopPlayerBindings desktopBindings;
 
   bool preopens({required bool television}) => preopen ?? !television;
 
@@ -198,6 +201,7 @@ class PlaybackPreferences {
     bool? autoPictureInPicture,
     bool? backgroundPlayback,
     VideoFit? videoFit,
+    DesktopPlayerBindings? desktopBindings,
   }) => PlaybackPreferences(
     speed: speed ?? this.speed,
     quality: quality ?? this.quality,
@@ -230,6 +234,7 @@ class PlaybackPreferences {
     autoPictureInPicture: autoPictureInPicture ?? this.autoPictureInPicture,
     backgroundPlayback: backgroundPlayback ?? this.backgroundPlayback,
     videoFit: videoFit ?? this.videoFit,
+    desktopBindings: desktopBindings ?? this.desktopBindings,
   );
 
   Map<String, dynamic> toJson() => {
@@ -264,6 +269,7 @@ class PlaybackPreferences {
     'autoPictureInPicture': autoPictureInPicture,
     'backgroundPlayback': backgroundPlayback,
     'videoFit': videoFit.name,
+    if (!desktopBindings.isDefault) 'desktopBindings': desktopBindings.toJson(),
   };
 
   factory PlaybackPreferences.fromJson(Map<String, dynamic> value) {
@@ -330,6 +336,7 @@ class PlaybackPreferences {
       autoPictureInPicture: value['autoPictureInPicture'] as bool? ?? false,
       backgroundPlayback: value['backgroundPlayback'] as bool? ?? false,
       videoFit: VideoFit.values.asNameMap()[value['videoFit']] ?? VideoFit.auto,
+      desktopBindings: DesktopPlayerBindings.fromJson(value['desktopBindings']),
     );
   }
 }

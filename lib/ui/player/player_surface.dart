@@ -43,6 +43,7 @@ class PlayerSurface extends StatefulWidget {
     required this.onFullscreen,
     required this.onWide,
     required this.onVolume,
+    this.onWheel,
     this.onMiniWindow,
     required this.onSurface,
     required this.onSay,
@@ -55,6 +56,7 @@ class PlayerSurface extends StatefulWidget {
   final VoidCallback onFullscreen;
   final VoidCallback onWide;
   final ValueChanged<double> onVolume;
+  final bool Function(PointerSignalEvent)? onWheel;
   final VoidCallback? onMiniWindow;
   final VoidCallback onSurface;
   final ValueChanged<String> onSay;
@@ -261,6 +263,7 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
   }
 
   void _wheel(PointerSignalEvent event) {
+    if (!_overBar && _popup == null && (widget.onWheel?.call(event) ?? false)) return;
     if (event is! PointerScrollEvent || event.scrollDelta.dy == 0) return;
     GestureBinding.instance.pointerSignalResolver.register(
       event,

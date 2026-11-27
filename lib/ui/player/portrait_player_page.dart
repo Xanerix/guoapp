@@ -25,6 +25,7 @@ import 'playback_handle.dart';
 import 'player_home_button.dart';
 import 'player_lock.dart';
 import 'player_surface.dart';
+import 'player_input.dart';
 import 'player_video.dart';
 import 'swipe_controls.dart';
 
@@ -53,6 +54,8 @@ class PortraitPlayerPage extends StatefulWidget {
 class _PortraitPlayerPageState extends State<PortraitPlayerPage>
     with WidgetsBindingObserver {
   late final _pages = PageController(initialPage: _session.index);
+  late final _inputs = PlayerInputController(session: () => _session,
+    onFullscreen: widget.onFullscreen, onHint: _say);
   final List<StreamSubscription<dynamic>> _subscriptions = [];
   Player? _bound;
   Timer? _hintTimer;
@@ -268,6 +271,7 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
 
   void _wheel(PointerSignalEvent event) {
     if (_session.locked) return;
+    if (_inputs.wheel(event, context)) return;
     if (event is! PointerScrollEvent || event.scrollDelta.dy == 0) return;
     GestureBinding.instance.pointerSignalResolver.register(event, (_) {
       if (_scrolling) return;

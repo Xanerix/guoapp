@@ -27,6 +27,7 @@ import 'playback_sheets.dart';
 import 'player_home_button.dart';
 import 'player_surface.dart';
 import 'portrait_player_page.dart';
+import 'player_input.dart';
 
 const _seekStep = Duration(seconds: 10);
 
@@ -47,6 +48,7 @@ class AudioPlayerPage extends StatefulWidget {
 
 class _AudioPlayerPageState extends State<AudioPlayerPage>
     with WidgetsBindingObserver {
+  late final _inputs = PlayerInputController(session: () => _session, seekStep: _seekStep.inSeconds);
   final List<StreamSubscription<dynamic>> _subscriptions = [];
   Player? _bound;
   double? _seekValue;
@@ -362,8 +364,10 @@ class _AudioPlayerPageState extends State<AudioPlayerPage>
       data: playerTheme(context),
       child: Scaffold(
         backgroundColor: Colors.black,
-        body: CallbackShortcuts(
-          bindings: {
+        body: DesktopPlayerShortcuts(
+          store: widget.store,
+          controller: _inputs,
+          fallback: {
             const SingleActivator(LogicalKeyboardKey.space):
                 _session.togglePlayback,
             const SingleActivator(LogicalKeyboardKey.arrowLeft): () =>
@@ -742,6 +746,10 @@ class _AudioPlayerPageState extends State<AudioPlayerPage>
   }
 
   Widget _artwork({required bool fade, double? maxHeight}) {
+    return PlayerWheelRegion(controller: _inputs, child: _artworkBody(fade: fade, maxHeight: maxHeight));
+  }
+
+  Widget _artworkBody({required bool fade, double? maxHeight}) {
     if (_session.error case final error?) {
       return PlaybackFailure(session: _session, error: error);
     }

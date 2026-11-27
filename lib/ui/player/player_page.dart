@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../local_store.dart';
+import '../../desktop_player_bindings.dart';
 import '../../models.dart';
 import '../../playback_session.dart';
 import '../app_scope.dart';
@@ -15,6 +16,7 @@ import 'episode_grid.dart';
 import 'mini_player.dart';
 import 'playback_handle.dart';
 import 'player_surface.dart';
+import 'player_input.dart';
 import 'window_fullscreen.dart';
 
 const _panelWidth = 360.0;
@@ -46,7 +48,10 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   Timer? _hintTimer;
   late bool _wide = !_touch && widget.store.playerWide;
   bool _windowFullscreen = false;
-  bool _seekHeld = false;
+  LogicalKeyboardKey? _seekKey;
+  int? _seekEpisode;
+  late final _inputs = PlayerInputController(session: () => _playback,
+    onFullscreen: () => unawaited(_toggleFullscreen()), onHint: _say);
   bool _selecting = false;
 
   PlaybackSession get _playback => widget.handle.session;
@@ -63,6 +68,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    if (_seekKey != null) _playback.endBoost();
     WidgetsBinding.instance.removeObserver(this);
     _hintTimer?.cancel();
     _hint.dispose();
@@ -178,49 +184,49 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     final key = event.logicalKey;
     final down = event is KeyDownEvent;
     final repeat = down || event is KeyRepeatEvent;
-    if (key == LogicalKeyboardKey.arrowRight && event is KeyUpEvent) {
-      if (!_seekHeld) return KeyEventResult.ignored;
-      _seekHeld = false;
-      if (!_playback.endBoost()) _seek(5);
+    if (key == _seekKey && event is KeyUpEvent) {
+      _seekKey = null;
+      final sameEpisode = _seekEpisode == _playback.index;
+      _seekEpisode = null;
+      if (!_playback.endBoost() && sameEpisode) _seek(5);
       return KeyEventResult.handled;
     }
     final keyboard = HardwareKeyboard.instance;
-    if (keyboard.isAltPressed ||
-        keyboard.isControlPressed ||
-        keyboard.isMetaPressed ||
-        keyboard.isShiftPressed) {
-      return KeyEventResult.ignored;
-    }
-    if (key == LogicalKeyboardKey.escape) {
+    if (ModalRoute.of(context)?.isCurrent == false) return KeyEventResult.ignored;
+    if (key == LogicalKeyboardKey.escape && !keyboard.isAltPressed &&
+        !keyboard.isControlPressed && !keyboard.isMetaPressed && !keyboard.isShiftPressed) {
       if (down) _back();
       return KeyEventResult.handled;
     }
-    if (key == LogicalKeyboardKey.f11) {
+    final action = _inputs.bindings.resolve(event, PlayerInputScope.video);
+    if (action == PlayerInputAction.fullscreen && key == LogicalKeyboardKey.f11 &&
+        !_inputs.bindings.keys.containsKey(PlayerInputAction.fullscreen)) {
       if (down) unawaited(_toggleFullscreen());
       return KeyEventResult.handled;
     }
     if (!_focus.hasPrimaryFocus) return KeyEventResult.ignored;
-    switch (key) {
-      case LogicalKeyboardKey.enter || LogicalKeyboardKey.numpadEnter:
+    switch (action) {
+      case PlayerInputAction.fullscreen:
         if (down) unawaited(_toggleFullscreen());
-      case LogicalKeyboardKey.space || LogicalKeyboardKey.mediaPlayPause:
+      case PlayerInputAction.playPause:
         if (down) _playback.togglePlayback();
-      case LogicalKeyboardKey.arrowRight:
+      case PlayerInputAction.seekForward:
         if (down) {
-          _seekHeld = true;
+          _seekKey = key;
+          _seekEpisode = _playback.index;
           _playback.beginBoost();
         }
-      case LogicalKeyboardKey.arrowLeft:
+      case PlayerInputAction.seekBackward:
         if (down) _seek(-5);
-      case LogicalKeyboardKey.arrowUp:
+      case PlayerInputAction.volumeUp:
         if (repeat) _volume(_playback.changeVolume(5));
-      case LogicalKeyboardKey.arrowDown:
+      case PlayerInputAction.volumeDown:
         if (repeat) _volume(_playback.changeVolume(-5));
-      case LogicalKeyboardKey.keyM:
+      case PlayerInputAction.mute:
         if (down) _volume(_playback.toggleMute());
-      case LogicalKeyboardKey.mediaTrackNext || LogicalKeyboardKey.pageDown:
+      case PlayerInputAction.nextEpisode:
         if (down) _episode(1);
-      case LogicalKeyboardKey.mediaTrackPrevious || LogicalKeyboardKey.pageUp:
+      case PlayerInputAction.previousEpisode:
         if (down) _episode(-1);
       default:
         return KeyEventResult.ignored;
@@ -254,6 +260,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
             onFullscreen: () => unawaited(_toggleFullscreen()),
             onWide: _toggleWide,
             onVolume: (delta) => _volume(_playback.changeVolume(delta)),
+            onWheel: (event) => _inputs.wheel(event, context),
             onMiniWindow: widget.onMiniWindow,
             onSurface: _focus.requestFocus,
             onSay: _say,
@@ -272,6 +279,9 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
           focusNode: _focus,
           autofocus: true,
           onKeyEvent: _key,
+          onFocusChange: (focused) {
+            if (!focused && _seekKey != null) { _seekKey = null; _playback.endBoost(); }
+          },
           child: Scaffold(
             backgroundColor: _filled ? Colors.black : theme.colorScheme.surface,
             body: _filled
