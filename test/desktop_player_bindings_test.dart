@@ -10,6 +10,166 @@ void main() {
   const defaults = DesktopPlayerBindings();
   const nextKey = PlayerKeyBinding(LogicalKeyboardKey.keyN, control: true);
 
+  test('wheel recording keeps the upstream fullscreen restriction', () {
+    final bindings = defaults.withKey(PlayerInputAction.fullscreen, nextKey);
+    final recorded = bindings.recordWheel(
+      PlayerInputAction.fullscreen,
+      up: true,
+    );
+    expect(recorded.toJson(), bindings.toJson());
+    expect(recorded.bindings(PlayerInputAction.fullscreen), [nextKey]);
+  });
+
+  test(
+    'all arrow directions can be assigned and persist as action mappings',
+    () {
+      for (final key in [
+        LogicalKeyboardKey.arrowUp,
+        LogicalKeyboardKey.arrowDown,
+        LogicalKeyboardKey.arrowLeft,
+        LogicalKeyboardKey.arrowRight,
+      ]) {
+        final binding = PlayerKeyBinding(key);
+        expect(binding.assignable, isTrue);
+        expect(PlayerKeyBinding.fromJson(binding.toJson()), binding);
+        final initial = DesktopPlayerBindings(
+          keys: {for (final action in PlayerInputAction.values) action: null},
+        );
+        for (final action in PlayerInputAction.values.where(
+          (value) => value != PlayerInputAction.none,
+        )) {
+          final saved = DesktopPlayerBindings.fromJson(
+            initial.recordKey(action, binding).toJson(),
+          );
+          expect(saved.bindings(action), [binding]);
+        }
+      }
+    },
+  );
+
+  test('recording a wheel replaces all keyboard aliases for that action', () {
+    final recorded = defaults.recordWheel(
+      PlayerInputAction.nextEpisode,
+      up: false,
+    );
+    expect(recorded.bindings(PlayerInputAction.nextEpisode), isEmpty);
+    expect(recorded.labels(PlayerInputAction.nextEpisode), ['滚轮向下']);
+    expect(
+      recorded.bindings(PlayerInputAction.playPause),
+      defaults.bindings(PlayerInputAction.playPause),
+    );
+  });
+
+  test('recording a keyboard input disables the old wheel for the action', () {
+    final recorded = defaults
+        .recordWheel(PlayerInputAction.nextEpisode, up: false)
+        .recordKey(PlayerInputAction.nextEpisode, nextKey);
+    expect(recorded.labels(PlayerInputAction.nextEpisode), ['Ctrl + N']);
+    expect(recorded.wheelDown, PlayerInputAction.none);
+  });
+
+  test(
+    'recording the other wheel direction replaces the previous direction',
+    () {
+      final recorded = defaults
+          .recordWheel(PlayerInputAction.nextEpisode, up: false)
+          .recordWheel(PlayerInputAction.nextEpisode, up: true);
+      expect(recorded.labels(PlayerInputAction.nextEpisode), ['滚轮向上']);
+      expect(recorded.wheelDown, PlayerInputAction.none);
+      expect(
+        DesktopPlayerBindings.fromJson(
+          recorded.toJson(),
+        ).labels(PlayerInputAction.nextEpisode),
+        ['滚轮向上'],
+      );
+    },
+  );
+
+  test(
+    'wheel capture preserves keyboard defaults and shows both on the action',
+    () {
+      final bindings = defaults.withWheel(
+        up: false,
+        action: PlayerInputAction.nextEpisode,
+      );
+      expect(bindings.keys, isEmpty);
+      expect(
+        bindings.bindings(PlayerInputAction.nextEpisode),
+        defaults.bindings(PlayerInputAction.nextEpisode),
+      );
+      expect(bindings.labels(PlayerInputAction.nextEpisode), contains('滚轮向下'));
+      expect(
+        bindings.labels(PlayerInputAction.volumeDown),
+        isNot(contains('滚轮向下')),
+      );
+    },
+  );
+
+  test(
+    'explicit wheel ownership conflicts across functions but not within the owner',
+    () {
+      final bindings = defaults
+          .withWheel(up: false, action: PlayerInputAction.nextEpisode)
+          .withWheel(up: true, action: PlayerInputAction.previousEpisode);
+      expect(
+        bindings.wheelConflict(false, PlayerInputAction.playPause),
+        PlayerInputAction.nextEpisode,
+      );
+      expect(
+        bindings.wheelConflict(true, PlayerInputAction.seekForward),
+        PlayerInputAction.previousEpisode,
+      );
+      expect(
+        bindings.wheelConflict(false, PlayerInputAction.nextEpisode),
+        isNull,
+      );
+      expect(
+        defaults.wheelConflict(false, PlayerInputAction.nextEpisode),
+        isNull,
+      );
+    },
+  );
+
+  test(
+    'resetting one function releases its wheel while preserving other choices',
+    () {
+      final bindings = defaults
+          .withKey(PlayerInputAction.nextEpisode, nextKey)
+          .withWheel(up: false, action: PlayerInputAction.nextEpisode)
+          .withWheel(up: true, action: PlayerInputAction.previousEpisode);
+      final reset = bindings.resetAction(PlayerInputAction.nextEpisode);
+      expect(reset.keys.containsKey(PlayerInputAction.nextEpisode), isFalse);
+      expect(reset.wheelDown, isNull);
+      expect(reset.wheelUp, PlayerInputAction.previousEpisode);
+    },
+  );
+
+  test(
+    'old separate wheel configurations remain compatible with unified labels',
+    () {
+      final restored = DesktopPlayerBindings.fromJson({
+        'keys': {},
+        'wheelDown': 'nextEpisode',
+        'wheelUp': 'previousEpisode',
+      });
+      expect(restored.labels(PlayerInputAction.nextEpisode), contains('滚轮向下'));
+      expect(
+        restored.labels(PlayerInputAction.previousEpisode),
+        contains('滚轮向上'),
+      );
+      expect(
+        DesktopPlayerBindings.fromJson(restored.toJson()).toJson(),
+        restored.toJson(),
+      );
+      expect(
+        restored
+            .withWheel(up: false, action: PlayerInputAction.none)
+            .wheelConflict(false, PlayerInputAction.playPause),
+        isNull,
+      );
+    },
+  );
+
   test('existing profiles retain default keys and wheel behavior', () {
     final preferences = PlaybackPreferences.fromJson({});
     expect(preferences.desktopBindings.isDefault, isTrue);

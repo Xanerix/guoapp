@@ -107,7 +107,7 @@ class _DuanjuAppState extends State<DuanjuApp> with WidgetsBindingObserver {
     final key = event.logicalKey;
     return key == LogicalKeyboardKey.tab ||
             focusedTextField() == null &&
-                !keyboardControlsFocused() &&
+                !keyboardControlsFocused(event) &&
                 _focusKeys.contains(key)
         ? KeyEventResult.handled
         : KeyEventResult.ignored;
@@ -144,7 +144,7 @@ class _DuanjuAppState extends State<DuanjuApp> with WidgetsBindingObserver {
         keyboard.isControlPressed ||
         keyboard.isAltPressed ||
         keyboard.isMetaPressed ||
-        keyboardControlsFocused() ||
+        keyboardControlsFocused(event) ||
         (focusedTextField()?.widget.maxLines ?? 1) != 1) {
       return KeyEventResult.ignored;
     }

@@ -277,7 +277,7 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
     if (_inputs.wheel(event, context)) return;
     if (event is! PointerScrollEvent || event.scrollDelta.dy == 0) return;
     GestureBinding.instance.pointerSignalResolver.register(event, (_) {
-      if (_scrolling) return;
+      if (!_inputs.acceptEpisodeWheel() || _scrolling) return;
       final target = _session.index + (event.scrollDelta.dy > 0 ? 1 : -1);
       if (target < 0) return _say('已经是第一集');
       if (target >= _session.detail.episodes.length) {
