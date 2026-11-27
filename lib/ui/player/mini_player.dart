@@ -97,14 +97,18 @@ class _MiniWindowViewState extends State<MiniWindowView> {
   }
 
   KeyEventResult _key(FocusNode _, KeyEvent event) {
-    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    final down = event is KeyDownEvent;
+    final repeat = down || event is KeyRepeatEvent;
+    if (!repeat) return KeyEventResult.ignored;
     if (event.logicalKey == LogicalKeyboardKey.escape) {
-      widget.onRestore();
+      if (down) widget.onRestore();
       return KeyEventResult.handled;
     }
     final action = _inputs.bindings.resolve(event, PlayerInputScope.mini);
-    if (action == null) return KeyEventResult.ignored;
-    _inputs.invoke(action);
+    if (action == null || action == PlayerInputAction.fullscreen) {
+      return KeyEventResult.ignored;
+    }
+    if (down || action.repeats) _inputs.invoke(action);
     return KeyEventResult.handled;
   }
 
@@ -136,7 +140,10 @@ class _MiniWindowViewState extends State<MiniWindowView> {
   );
 
   Widget _body(BuildContext context, {required bool playing}) {
-    return PlayerWheelRegion(controller: _inputs, child: _bodyContent(context, playing: playing));
+    return PlayerWheelRegion(
+      controller: _inputs,
+      child: _bodyContent(context, playing: playing),
+    );
   }
 
   Widget _bodyContent(BuildContext context, {required bool playing}) {

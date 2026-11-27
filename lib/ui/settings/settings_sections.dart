@@ -35,6 +35,7 @@ enum SettingsGroup {
   appearance('外观', Icons.palette_outlined),
   playback('播放', Icons.play_arrow_rounded),
   danmaku('弹幕', Icons.subtitles_outlined),
+  bindings('按键', Icons.keyboard_outlined),
   slacking('摸鱼', Icons.set_meal_outlined),
   download('下载', Icons.download_rounded),
   storage('存储', Icons.folder_outlined),
@@ -47,8 +48,11 @@ enum SettingsGroup {
   final String label;
   final IconData icon;
 
-  bool get visible =>
-      this != slacking || Platform.isWindows || Platform.isMacOS;
+  bool visibleFor({required bool television}) => switch (this) {
+    bindings => desktopPlatform && !television,
+    slacking => Platform.isWindows || Platform.isMacOS,
+    _ => true,
+  };
 }
 
 typedef OpenSubpage = void Function(String title, WidgetBuilder body);
@@ -108,6 +112,7 @@ class SettingsSection extends StatelessWidget {
             children: switch (group) {
               SettingsGroup.playback => _playback(context),
               SettingsGroup.danmaku => _danmaku(context),
+              SettingsGroup.bindings => [PlayerBindingsSettings(store: store)],
               SettingsGroup.slacking => _slacking(context),
               SettingsGroup.download => _download(context),
               SettingsGroup.storage => _storage(),
@@ -166,15 +171,6 @@ class SettingsSection extends StatelessWidget {
     void savePreferences(PlaybackPreferences next) =>
         saveSetting(context, () => store.setPlaybackPreferences(next));
     return [
-      if (desktopPlatform && !television)
-        SettingsCard(children: [
-          TileFocus(builder: (focus) => ListTile(focusNode: focus,
-            title: const Text('播放器按键与滚轮'),
-            subtitle: const Text('自定义键盘快捷键，以及滚轮向上、向下的操作'),
-            trailing: const Icon(Icons.chevron_right_rounded),
-            onTap: () => open('播放器按键与滚轮', (_) => PlayerBindingsSettings(store: store)),
-          )),
-        ]),
       SettingsCard(
         children: [
           ValueTile<double>(
@@ -380,7 +376,7 @@ class SettingsSection extends StatelessWidget {
   List<Widget> _slacking(BuildContext context) => [
     SettingsCard(
       children: [
-        const BossKeyTile(),
+        const BossKeySwitchTile(),
         if (Platform.isWindows)
           ValueListenableBuilder(
             valueListenable: miniEdgeSnap,

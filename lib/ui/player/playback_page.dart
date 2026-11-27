@@ -32,8 +32,10 @@ class PlaybackPage extends StatefulWidget {
 
 class _PlaybackPageState extends State<PlaybackPage> {
   final _padFullscreen = ValueNotifier(false);
-  late final _inputs = PlayerInputController(session: () => _session,
-    onFullscreen: () => _padFullscreen.value = true);
+  late final _inputs = PlayerInputController(
+    session: () => _session,
+    onFullscreen: () => _padFullscreen.value = true,
+  );
   bool _windowFullscreen = false;
   final _pageScope = FocusScopeNode(debugLabel: 'playbackPage');
   final _pip = PictureInPicture.instance;
@@ -197,6 +199,7 @@ class _PlaybackPageState extends State<PlaybackPage> {
     final size = MediaQuery.sizeOf(context);
     final form = AppScope.formFactorOf(context);
     if (!desktopPlatform ||
+        _audio ||
         _pip.shown ||
         ModalRoute.of(context)?.isCurrent == false ||
         _padFullscreen.value ||
@@ -205,13 +208,22 @@ class _PlaybackPageState extends State<PlaybackPage> {
       return KeyEventResult.ignored;
     }
     final focusContext = FocusManager.instance.primaryFocus?.context;
-    if (focusContext?.findAncestorWidgetOfExactType<EditableText>() != null) return KeyEventResult.ignored;
-    final action = _inputs.bindings.resolve(event, PlayerInputScope.portrait);
-    if (action == null ||
-        form != FormFactor.window && form != FormFactor.pad && !_inputs.bindings.keys.containsKey(action)) {
+    if (focusContext?.findAncestorWidgetOfExactType<EditableText>() != null) {
       return KeyEventResult.ignored;
     }
-    if (event is KeyDownEvent || action.repeats && event is KeyRepeatEvent) _inputs.invoke(action);
+    final action = _inputs.bindings.resolve(event, PlayerInputScope.portrait);
+    if (action == null) return KeyEventResult.ignored;
+    final canPadFullscreen =
+        form == FormFactor.window || form == FormFactor.pad;
+    if (action == PlayerInputAction.fullscreen && !canPadFullscreen) {
+      return KeyEventResult.ignored;
+    }
+    if (!canPadFullscreen && !_inputs.bindings.keys.containsKey(action)) {
+      return KeyEventResult.ignored;
+    }
+    if (event is KeyDownEvent || action.repeats && event is KeyRepeatEvent) {
+      _inputs.invoke(action);
+    }
     return KeyEventResult.handled;
   }
 

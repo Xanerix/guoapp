@@ -20,14 +20,42 @@ class BossKeyTile extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) => ValueListenableBuilder(
-    valueListenable: bossKey,
-    builder: (context, value, _) => SettingsTile(
-      title: '老板键',
-      subtitle: '在任何程序里按下快捷键，隐藏或恢复窗口，隐藏时暂停播放',
-      value: value?.label ?? '未设置',
-      onTap: () => _choose(context),
-    ),
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: Listenable.merge([bossKey, bossKeyEnabled]),
+    builder: (context, _) {
+      final value = bossKey.value;
+      return SettingsTile(
+        title: '老板键',
+        subtitle: value != null && !bossKeyEnabled.value
+            ? '已在摸鱼设置中关闭，可在摸鱼里重新开启'
+            : '在任何程序里按下快捷键，隐藏或恢复窗口，隐藏时暂停播放',
+        value: value?.label ?? '未设置',
+        onTap: () => _choose(context),
+      );
+    },
+  );
+}
+
+class BossKeySwitchTile extends StatelessWidget {
+  const BossKeySwitchTile({super.key});
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: Listenable.merge([bossKey, bossKeyEnabled]),
+    builder: (context, _) {
+      final value = bossKey.value;
+      return SwitchTile(
+        title: '老板键',
+        subtitle: value == null
+            ? '请先在「按键」中设置快捷键'
+            : '全局快捷键：${value.label}，按下后隐藏或恢复窗口并暂停播放',
+        value: value != null && bossKeyEnabled.value,
+        onChanged: value == null
+            ? null
+            : (enabled) =>
+                  saveSetting(context, () => setBossKeyEnabled(enabled)),
+      );
+    },
   );
 }
 

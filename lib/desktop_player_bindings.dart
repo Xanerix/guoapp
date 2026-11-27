@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
@@ -52,12 +54,8 @@ class PlayerKeyBinding {
       }.contains(key) &&
       !(alt && key == LogicalKeyboardKey.f4);
 
-  String get label => [
-    if (control) 'Ctrl',
-    if (alt) 'Alt',
-    if (shift) 'Shift',
-    if (meta) 'Win / Cmd',
-    switch (key) {
+  String get label {
+    final keyText = switch (key) {
       LogicalKeyboardKey.space => '空格',
       LogicalKeyboardKey.enter => 'Enter',
       LogicalKeyboardKey.numpadEnter => '小键盘 Enter',
@@ -68,9 +66,19 @@ class PlayerKeyBinding {
       LogicalKeyboardKey.mediaPlayPause => '媒体播放 / 暂停',
       LogicalKeyboardKey.mediaTrackNext => '媒体下一曲',
       LogicalKeyboardKey.mediaTrackPrevious => '媒体上一曲',
-      _ => key.keyLabel,
-    },
-  ].join(' + ');
+      _ =>
+        key.keyLabel.isNotEmpty
+            ? key.keyLabel
+            : (key.debugName ?? '按键 ${key.keyId}'),
+    };
+    return [
+      if (control) 'Ctrl',
+      if (alt) Platform.isMacOS ? 'Option' : 'Alt',
+      if (shift) 'Shift',
+      if (meta) Platform.isMacOS ? 'Cmd' : 'Win',
+      keyText,
+    ].join(' + ');
+  }
 
   SingleActivator activator({bool repeats = false}) => SingleActivator(
     key,
@@ -210,6 +218,14 @@ class DesktopPlayerBindings {
     return null;
   }
 
+  PlayerInputAction? resetConflict(PlayerInputAction action) {
+    for (final key in _videoDefaults[action] ?? const <PlayerKeyBinding>[]) {
+      final other = conflict(key, action);
+      if (other != null) return other;
+    }
+    return null;
+  }
+
   DesktopPlayerBindings withKey(
     PlayerInputAction action,
     PlayerKeyBinding? key,
@@ -256,17 +272,52 @@ class DesktopPlayerBindings {
         if (binding != null) overrides[action] = binding;
       }
     }
-    final result = DesktopPlayerBindings(keys: overrides);
-    for (final action in overrides.keys.toList()) {
-      final binding = overrides[action];
-      if (binding != null && result.conflict(binding, action) != null) {
-        overrides.remove(action);
+    final clean = <PlayerInputAction, PlayerKeyBinding?>{
+      for (final entry in overrides.entries)
+        if (entry.value == null) entry.key: null,
+    };
+    final used = <PlayerKeyBinding>{
+      for (final action in PlayerInputAction.values)
+        if (!overrides.containsKey(action)) ...?_videoDefaults[action],
+    };
+    final validOverrides = <PlayerInputAction, PlayerKeyBinding>{};
+    for (final entry in overrides.entries) {
+      final binding = entry.value;
+      if (binding != null && !used.contains(binding)) {
+        validOverrides[entry.key] = binding;
       }
     }
+    final counts = <PlayerKeyBinding, int>{};
+    for (final binding in validOverrides.values) {
+      counts[binding] = (counts[binding] ?? 0) + 1;
+    }
+    for (final entry in validOverrides.entries) {
+      if (counts[entry.value] == 1) clean[entry.key] = entry.value;
+    }
+    var changed = true;
+    while (changed) {
+      changed = false;
+      for (final action in PlayerInputAction.values) {
+        if (clean.containsKey(action)) continue;
+        final defaults = _videoDefaults[action] ?? const <PlayerKeyBinding>[];
+        for (final other in clean.keys.toList()) {
+          final binding = clean[other];
+          if (binding != null && defaults.contains(binding)) {
+            clean.remove(other);
+            changed = true;
+          }
+        }
+      }
+    }
+    PlayerInputAction? parseWheel(Object? raw) {
+      final action = PlayerInputAction.values.asNameMap()[raw];
+      return action == PlayerInputAction.fullscreen ? null : action;
+    }
+
     return DesktopPlayerBindings(
-      keys: Map.unmodifiable(overrides),
-      wheelUp: PlayerInputAction.values.asNameMap()[value['wheelUp']],
-      wheelDown: PlayerInputAction.values.asNameMap()[value['wheelDown']],
+      keys: Map.unmodifiable(clean),
+      wheelUp: parseWheel(value['wheelUp']),
+      wheelDown: parseWheel(value['wheelDown']),
     );
   }
 }

@@ -50,8 +50,11 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   bool _windowFullscreen = false;
   LogicalKeyboardKey? _seekKey;
   int? _seekEpisode;
-  late final _inputs = PlayerInputController(session: () => _playback,
-    onFullscreen: () => unawaited(_toggleFullscreen()), onHint: _say);
+  late final _inputs = PlayerInputController(
+    session: () => _playback,
+    onFullscreen: () => unawaited(_toggleFullscreen()),
+    onHint: _say,
+  );
   bool _selecting = false;
 
   PlaybackSession get _playback => widget.handle.session;
@@ -192,19 +195,32 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       return KeyEventResult.handled;
     }
     final keyboard = HardwareKeyboard.instance;
-    if (ModalRoute.of(context)?.isCurrent == false) return KeyEventResult.ignored;
-    if (key == LogicalKeyboardKey.escape && !keyboard.isAltPressed &&
-        !keyboard.isControlPressed && !keyboard.isMetaPressed && !keyboard.isShiftPressed) {
+    if (ModalRoute.of(context)?.isCurrent == false) {
+      return KeyEventResult.ignored;
+    }
+    if (key == LogicalKeyboardKey.escape &&
+        !keyboard.isAltPressed &&
+        !keyboard.isControlPressed &&
+        !keyboard.isMetaPressed &&
+        !keyboard.isShiftPressed) {
       if (down) _back();
       return KeyEventResult.handled;
     }
     final action = _inputs.bindings.resolve(event, PlayerInputScope.video);
-    if (action == PlayerInputAction.fullscreen && key == LogicalKeyboardKey.f11 &&
+    if (action == PlayerInputAction.fullscreen &&
+        key == LogicalKeyboardKey.f11 &&
         !_inputs.bindings.keys.containsKey(PlayerInputAction.fullscreen)) {
       if (down) unawaited(_toggleFullscreen());
       return KeyEventResult.handled;
     }
     if (!_focus.hasPrimaryFocus) return KeyEventResult.ignored;
+    if (_playback.locked) {
+      if (action == PlayerInputAction.fullscreen && down) {
+        unawaited(_toggleFullscreen());
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
+    }
     switch (action) {
       case PlayerInputAction.fullscreen:
         if (down) unawaited(_toggleFullscreen());
@@ -280,7 +296,10 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
           autofocus: true,
           onKeyEvent: _key,
           onFocusChange: (focused) {
-            if (!focused && _seekKey != null) { _seekKey = null; _playback.endBoost(); }
+            if (!focused && _seekKey != null) {
+              _seekKey = null;
+              _playback.endBoost();
+            }
           },
           child: Scaffold(
             backgroundColor: _filled ? Colors.black : theme.colorScheme.surface,

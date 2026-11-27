@@ -54,8 +54,11 @@ class PortraitPlayerPage extends StatefulWidget {
 class _PortraitPlayerPageState extends State<PortraitPlayerPage>
     with WidgetsBindingObserver {
   late final _pages = PageController(initialPage: _session.index);
-  late final _inputs = PlayerInputController(session: () => _session,
-    onFullscreen: widget.onFullscreen, onHint: _say);
+  late final _inputs = PlayerInputController(
+    session: () => _session,
+    onFullscreen: widget.onFullscreen,
+    onHint: _say,
+  );
   final List<StreamSubscription<dynamic>> _subscriptions = [];
   Player? _bound;
   Timer? _hintTimer;

@@ -48,7 +48,10 @@ class AudioPlayerPage extends StatefulWidget {
 
 class _AudioPlayerPageState extends State<AudioPlayerPage>
     with WidgetsBindingObserver {
-  late final _inputs = PlayerInputController(session: () => _session, seekStep: _seekStep.inSeconds);
+  late final _inputs = PlayerInputController(
+    session: () => _session,
+    seekStep: _seekStep.inSeconds,
+  );
   final List<StreamSubscription<dynamic>> _subscriptions = [];
   Player? _bound;
   double? _seekValue;
@@ -250,7 +253,8 @@ class _AudioPlayerPageState extends State<AudioPlayerPage>
   }
 
   Future<void> _switchSeason(DramaSeason season) async {
-    if (_session.switchingSeason || season.drama.id == _session.detail.drama.id) {
+    if (_session.switchingSeason ||
+        season.drama.id == _session.detail.drama.id) {
       return;
     }
     if (!await _session.playSeason(season) && mounted) {
@@ -614,7 +618,9 @@ class _AudioPlayerPageState extends State<AudioPlayerPage>
                     inset: 12,
                     onSelectionChanged: () {},
                     onPick: (index) {
-                      if (index != session.index) unawaited(session.play(index));
+                      if (index != session.index) {
+                        unawaited(session.play(index));
+                      }
                     },
                   ),
                 ),
@@ -746,7 +752,10 @@ class _AudioPlayerPageState extends State<AudioPlayerPage>
   }
 
   Widget _artwork({required bool fade, double? maxHeight}) {
-    return PlayerWheelRegion(controller: _inputs, child: _artworkBody(fade: fade, maxHeight: maxHeight));
+    return PlayerWheelRegion(
+      controller: _inputs,
+      child: _artworkBody(fade: fade, maxHeight: maxHeight),
+    );
   }
 
   Widget _artworkBody({required bool fade, double? maxHeight}) {
@@ -815,15 +824,8 @@ class _AudioPlayerPageState extends State<AudioPlayerPage>
         builder: (context) => _progress(),
       ),
       const SizedBox(height: 14),
-      _transport(
-        wide: wide,
-        hasSidebar: hasSidebar,
-        sidebarOpen: sidebarOpen,
-      ),
-      if (wide && !_touch) ...[
-        const SizedBox(height: 14),
-        _volumeBar(),
-      ],
+      _transport(wide: wide, hasSidebar: hasSidebar, sidebarOpen: sidebarOpen),
+      if (wide && !_touch) ...[const SizedBox(height: 14), _volumeBar()],
       const SizedBox(height: 16),
       _actions(wide: wide),
     ],
@@ -1096,9 +1098,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage>
           color: sidebarOpen
               ? Theme.of(context).colorScheme.primary
               : Colors.white,
-          tooltip: hasSidebar
-              ? (sidebarOpen ? '收起选集' : '展开选集')
-              : '选集',
+          tooltip: hasSidebar ? (sidebarOpen ? '收起选集' : '展开选集') : '选集',
         ),
       ],
     );

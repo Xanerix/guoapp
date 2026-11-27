@@ -11,6 +11,7 @@ import 'media_controls.dart';
 import 'mini_edge_snap.dart';
 
 const _preferenceKey = 'bossKey';
+const _enabledPreferenceKey = 'bossKeyEnabled';
 final _keyPattern = RegExp(r'^([A-Z0-9]|F([1-9]|1[0-2]))$');
 
 @immutable
@@ -85,6 +86,7 @@ class BossKey {
 }
 
 final bossKey = ValueNotifier<BossKey?>(null);
+final bossKeyEnabled = ValueNotifier<bool>(false);
 
 Future<bool> _register(BossKey? value) async {
   try {
@@ -107,27 +109,52 @@ Future<void> restoreBossKey() async {
   AppDevice.channel.setMethodCallHandler(_handle);
   final preferences = await SharedPreferences.getInstance();
   final value = BossKey.parse(preferences.getString(_preferenceKey));
+  final enabled = preferences.getBool(_enabledPreferenceKey) ?? value != null;
   bossKey.value = value;
-  if (value != null && !await _register(value)) {
+  bossKeyEnabled.value = value != null && enabled;
+  if (bossKeyEnabled.value && value != null && !await _register(value)) {
     DiaryService.add('[App] 老板键 ${value.label} 注册失败，可能已被其他程序占用');
   }
 }
 
 Future<void> suspendBossKey() => _register(null);
 
-Future<void> resumeBossKey() => _register(bossKey.value);
+Future<void> resumeBossKey() =>
+    _register(bossKeyEnabled.value ? bossKey.value : null);
 
 Future<void> setBossKey(BossKey? value) async {
-  if (value != null && !await _register(value)) {
-    await _register(bossKey.value);
+  final shouldRegister =
+      value != null && (bossKeyEnabled.value || bossKey.value == null);
+  if (shouldRegister && !await _register(value)) {
+    await resumeBossKey();
     throw AppFailure('${value.label} 已被其他程序占用');
   }
-  if (value == null) await _register(null);
+  if (!shouldRegister) await _register(null);
   final preferences = await SharedPreferences.getInstance();
   if (value == null) {
     await preferences.remove(_preferenceKey);
+    await preferences.setBool(_enabledPreferenceKey, false);
+    bossKey.value = null;
+    bossKeyEnabled.value = false;
   } else {
     await preferences.setString(_preferenceKey, value.encoded);
+    await preferences.setBool(_enabledPreferenceKey, shouldRegister);
+    bossKey.value = value;
+    bossKeyEnabled.value = shouldRegister;
   }
-  bossKey.value = value;
+}
+
+Future<void> setBossKeyEnabled(bool enabled) async {
+  final value = bossKey.value;
+  if (enabled) {
+    if (value == null) return;
+    if (!await _register(value)) {
+      throw AppFailure('${value.label} 已被其他程序占用');
+    }
+  } else {
+    await _register(null);
+  }
+  final preferences = await SharedPreferences.getInstance();
+  await preferences.setBool(_enabledPreferenceKey, enabled);
+  bossKeyEnabled.value = enabled;
 }

@@ -473,11 +473,22 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
   }
 
   Widget _video(BuildContext context, bool full) {
-    return PlayerWheelRegion(controller: _inputs, child: _videoBody(context, full));
+    return Listener(
+      behavior: HitTestBehavior.opaque,
+      onPointerSignal: (event) {
+        if (_panel == null) _inputs.wheel(event, context);
+      },
+      child: _videoBody(context, full),
+    );
   }
 
-  late final _inputs = PlayerInputController(session: () => _session,
-    onHint: _say, onFullscreen: () => _rotate(MediaQuery.sizeOf(context).width > MediaQuery.sizeOf(context).height));
+  late final _inputs = PlayerInputController(
+    session: () => _session,
+    onHint: _say,
+    onFullscreen: () => _rotate(
+      MediaQuery.sizeOf(context).width > MediaQuery.sizeOf(context).height,
+    ),
+  );
 
   Widget _videoBody(BuildContext context, bool full) {
     final session = _session;

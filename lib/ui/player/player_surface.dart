@@ -263,7 +263,9 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
   }
 
   void _wheel(PointerSignalEvent event) {
-    if (!_overBar && _popup == null && (widget.onWheel?.call(event) ?? false)) return;
+    if (!_overBar && _popup == null && (widget.onWheel?.call(event) ?? false)) {
+      return;
+    }
     if (event is! PointerScrollEvent || event.scrollDelta.dy == 0) return;
     GestureBinding.instance.pointerSignalResolver.register(
       event,

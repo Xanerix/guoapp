@@ -137,7 +137,7 @@ void main() {
           'unknown': nextKey.toJson(),
           'mute': {'key': LogicalKeyboardKey.escape.keyId},
         },
-        'wheelUp': 'unknown',
+        'wheelUp': 'fullscreen',
         'wheelDown': 'nextEpisode',
       });
       expect(bindings.keys, isEmpty);
@@ -145,6 +145,70 @@ void main() {
       expect(bindings.wheelDown, PlayerInputAction.nextEpisode);
       expect(DesktopPlayerBindings.fromJson('broken').isDefault, isTrue);
       expect(DesktopPlayerBindings.fromJson({'keys': 42}).isDefault, isTrue);
+    },
+  );
+
+  test(
+    'duplicate custom keys in persisted config both fall back deterministically',
+    () {
+      final bindings = DesktopPlayerBindings.fromJson({
+        'keys': {
+          'nextEpisode': nextKey.toJson(),
+          'previousEpisode': nextKey.toJson(),
+          'mute': const PlayerKeyBinding(LogicalKeyboardKey.keyK).toJson(),
+        },
+      });
+      expect(bindings.keys.containsKey(PlayerInputAction.nextEpisode), isFalse);
+      expect(
+        bindings.keys.containsKey(PlayerInputAction.previousEpisode),
+        isFalse,
+      );
+      expect(bindings.bindings(PlayerInputAction.mute), [
+        const PlayerKeyBinding(LogicalKeyboardKey.keyK),
+      ]);
+    },
+  );
+
+  test(
+    'swapped default keys survive persistence and detect reset conflict',
+    () {
+      final swapped = defaults
+          .withKey(
+            PlayerInputAction.nextEpisode,
+            const PlayerKeyBinding(LogicalKeyboardKey.pageUp),
+          )
+          .withKey(
+            PlayerInputAction.previousEpisode,
+            const PlayerKeyBinding(LogicalKeyboardKey.pageDown),
+          );
+      final restored = DesktopPlayerBindings.fromJson(swapped.toJson());
+      expect(restored.bindings(PlayerInputAction.nextEpisode), [
+        const PlayerKeyBinding(LogicalKeyboardKey.pageUp),
+      ]);
+      expect(restored.bindings(PlayerInputAction.previousEpisode), [
+        const PlayerKeyBinding(LogicalKeyboardKey.pageDown),
+      ]);
+      expect(
+        restored.resetConflict(PlayerInputAction.nextEpisode),
+        PlayerInputAction.previousEpisode,
+      );
+    },
+  );
+
+  test(
+    'resetConflict detects default key occupied by another custom action',
+    () {
+      final bindings = defaults
+          .withKey(PlayerInputAction.playPause, null)
+          .withKey(
+            PlayerInputAction.nextEpisode,
+            const PlayerKeyBinding(LogicalKeyboardKey.space),
+          );
+      expect(
+        bindings.resetConflict(PlayerInputAction.playPause),
+        PlayerInputAction.nextEpisode,
+      );
+      expect(bindings.resetConflict(PlayerInputAction.nextEpisode), isNull);
     },
   );
 
