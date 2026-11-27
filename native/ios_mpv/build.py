@@ -78,10 +78,23 @@ def build() -> Path:
          shlex.join([sys.executable, str(HERE / 'apply.py')]) + ' "$SRC_DIR"')
     edit(source, 'scripts/libxml2/meson.build', 'configure_options : [',
          "configure_options : [\n        '--without-lzma',")
+    edit(source, 'scripts/mbedtls/build.sh',
+         "find . -type f -name '*.dylib' -exec sh -c 'mv {} dist/lib' \\;",
+         "find build_cross/subprojects/mbedtls -maxdepth 1 -name '*.dylib' -exec cp -P {} dist/lib \\;\n"
+         "for lib in mbedtls mbedcrypto mbedx509; do\n"
+         "    if [ ! -e \"dist/lib/lib${lib}.dylib\" ]; then\n"
+         "        ver=$(cd dist/lib && ls lib${lib}.*.dylib | head -n 1)\n"
+         "        ln -s \"$ver\" \"dist/lib/lib${lib}.dylib\"\n"
+         "    fi\n"
+         "done")
     edit(source, 'scripts/uchardet/meson.build', 'options.add_cmake_defines({',
-         "options.add_cmake_defines({\n    'CMAKE_POLICY_VERSION_MINIMUM': '3.5',")
+         "options.add_cmake_defines({\n    'CMAKE_POLICY_VERSION_MINIMUM': '3.5',\n    'CMAKE_BUILD_TYPE': 'Release',")
     edit(source, 'scripts/uchardet/build.sh', 'cmake ./subprojects/uchardet',
          'export CMAKE_POLICY_VERSION_MINIMUM=3.5\ncmake ./subprojects/uchardet')
+    edit(source, 'scripts/uchardet/build.sh',
+         "cp 'build_cross/subprojects/uchardet/liblibuchardet.dylib' \"$DYLIB_FILE\"",
+         "CROSS_DYLIB=$(find build_cross/subprojects/uchardet -maxdepth 1 -type f -name 'liblibuchardet*.dylib' | head -n 1)\n"
+         "cp \"$CROSS_DYLIB\" \"$DYLIB_FILE\"")
     edit(source, 'scripts/harfbuzz/build.sh', 'cd ${SRC_DIR}',
          'cd ${SRC_DIR}\nsed -i "" "s/sincosf (/__sincosf (/g" src/OT/glyf/VarCompositeGlyph.hh')
     edit(source, 'scripts/freetype/build.sh', '-Dpng=enabled', '-Dpng=disabled')
