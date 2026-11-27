@@ -83,6 +83,8 @@ def build() -> Path:
          shlex.join([sys.executable, str(HERE / 'apply.py')]) + ' "$SRC_DIR"')
     edit(source, 'scripts/libxml2/meson.build', 'configure_options : [',
          "configure_options : [\n        '--without-lzma',")
+    edit(source, 'scripts/ffmpeg/meson.build', "find_program('pkgconfig')",
+         "find_program('pkg-config')")
     edit(source, 'scripts/mbedtls/build.sh',
          "find . -type f -name '*.dylib' -exec sh -c 'mv {} dist/lib' \\;",
          "find build_cross/subprojects/mbedtls -maxdepth 1 -name '*.dylib' -exec cp -P {} dist/lib \\;\n"
