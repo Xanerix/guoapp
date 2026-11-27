@@ -48,6 +48,7 @@ class FlutterWindow : public Win32Window {
   std::unique_ptr<MediaControls> media_controls_;
   Microsoft::WRL::ComPtr<ITaskbarList2> taskbar_;
   bool fullscreen_ = false;
+  bool restore_maximized_ = false;
   WINDOWPLACEMENT placement_before_fullscreen_{};
   bool mini_ = false;
   bool fullscreen_before_mini_ = false;

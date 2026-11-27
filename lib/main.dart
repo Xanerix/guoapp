@@ -34,7 +34,7 @@ Future<void> main() async {
     enablePortableData();
     if (portableDataPath == null) await migrateWindowsData();
     await windowManager.ensureInitialized();
-    await rememberWindowFrame();
+    await rememberWindowFrame(rememberMaximized: true);
   }
   if (Platform.isMacOS) {
     await windowManager.ensureInitialized();
