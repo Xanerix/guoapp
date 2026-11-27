@@ -75,7 +75,12 @@ class PlayerKeyBinding {
       if (control) 'Ctrl',
       if (alt) Platform.isMacOS ? 'Option' : 'Alt',
       if (shift) 'Shift',
-      if (meta) Platform.isMacOS ? 'Cmd' : 'Win',
+      if (meta)
+        Platform.isMacOS
+            ? 'Cmd'
+            : Platform.isLinux
+            ? 'Super'
+            : 'Win',
       keyText,
     ].join(' + ');
   }

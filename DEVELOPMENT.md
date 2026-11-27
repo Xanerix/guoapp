@@ -8,6 +8,7 @@ Flutter `3.47.9`、Dart `3.12+`、Go `1.24.1+`、Python `3.10+`。
 - Windows：Visual Studio C++ 桌面组件、MinGW-w64 x64、Inno Setup 6.5+（`winget install JRSoftware.InnoSetup`）
 - iOS：macOS、完整 Xcode、CocoaPods
 - macOS：完整 Xcode、CocoaPods，打 dmg 需 `pip install dmgbuild Pillow`；`xcode-select` 指向 Command Line Tools 时 `build_macos.py` 会自动改用 `/Applications/Xcode*.app`，也可以在系统层面执行 `sudo xcode-select -s`
+- Linux：Ubuntu 22.04（或兼容 glibc 2.35 环境）、`clang`、`cmake`、`ninja-build`、`pkg-config`、`libgtk-3-dev`、`libmpv-dev`、`libepoxy-dev`、`libjson-glib-dev`、`libx265-dev`、`libvidstab-dev`、`patchelf` 及 `appimagetool`
 
 构建脚本对子进程默认设置 `GOPROXY=https://goproxy.cn,direct`、`GOSUMDB=off`，同名环境变量可覆盖。
 
@@ -31,6 +32,7 @@ python3 scripts/build_android.py --abi arm64-v8a
 python scripts/build_windows.py
 python3 scripts/build_ios.py
 python3 scripts/build_macos.py
+python3 scripts/build_linux.py
 python3 scripts/build_ios.py --core-only [--simulator]
 python3 scripts/build_ios.py --export-options /path/to/ExportOptions.plist
 ~~~

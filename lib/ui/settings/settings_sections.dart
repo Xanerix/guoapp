@@ -355,7 +355,7 @@ class SettingsSection extends StatelessWidget {
             ),
           ],
         ),
-      if (Platform.isWindows || Platform.isMacOS)
+      if (Platform.isWindows || Platform.isMacOS || Platform.isLinux)
         SettingsCard(
           children: [
             ValueListenableBuilder(

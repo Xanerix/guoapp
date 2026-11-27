@@ -45,12 +45,12 @@ gboolean texture_sw_copy_pixels(FlPixelBufferTexture* texture,
                                 GError** error) {
   TextureSW* self = TEXTURE_SW(texture);
   VideoOutput* video_output = self->video_output;
-  gint32 required_width = (guint32)video_output_get_width(video_output);
-  gint32 required_height = (guint32)video_output_get_height(video_output);
+  gint32 required_width = (gint32)video_output_get_width(video_output);
+  gint32 required_height = (gint32)video_output_get_height(video_output);
   if (required_width > 0 && required_height > 0) {
     guint8* pixel_buffer = video_output_get_pixel_buffer(video_output);
-    if (self->current_width != required_width ||
-        self->current_height != required_height) {
+    if (self->current_width != (guint32)required_width ||
+        self->current_height != (guint32)required_height) {
       self->current_width = required_width;
       self->current_height = required_height;
       // Notify Flutter about the change in texture's dimensions.

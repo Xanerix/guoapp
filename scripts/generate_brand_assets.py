@@ -43,6 +43,7 @@ for entry in contents['images']:
         save(icon.resize((size, size), Image.Resampling.LANCZOS),
              'ios/Runner/Assets.xcassets/AppIcon.appiconset/' + entry['filename'])
 save(rounded.resize((256, 256), Image.Resampling.LANCZOS), 'windows/runner/resources/app_icon.ico')
+save(rounded.resize((512, 512), Image.Resampling.LANCZOS), 'linux/runner/resources/app_icon.png')
 macos_canvas = Image.new('RGBA', (1024, 1024))
 macos_badge = rounded.resize((824, 824), Image.Resampling.LANCZOS)
 macos_canvas.paste(macos_badge, (100, 100), macos_badge)

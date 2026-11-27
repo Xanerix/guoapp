@@ -9,7 +9,7 @@ Future<Color?> readSystemColor() async {
       final palette = await DynamicColorPlugin.getCorePalette();
       return palette == null ? null : Color(palette.primary.get(40));
     }
-    if (Platform.isWindows || Platform.isMacOS) {
+    if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
       return await DynamicColorPlugin.getAccentColor();
     }
   } catch (_) {}

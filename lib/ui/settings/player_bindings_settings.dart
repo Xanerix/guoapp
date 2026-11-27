@@ -196,6 +196,8 @@ class _KeyDialogState extends State<_KeyDialog> {
   Widget build(BuildContext context) {
     final modifiers = Platform.isMacOS
         ? 'Ctrl、Option、Shift 或 Cmd'
+        : Platform.isLinux
+        ? 'Ctrl、Alt、Shift 或 Super'
         : 'Ctrl、Alt、Shift 或 Win';
     return AlertDialog(
       title: Text('自定义${widget.action.label}'),

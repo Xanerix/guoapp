@@ -36,7 +36,7 @@ Future<void> main() async {
     await windowManager.ensureInitialized();
     await rememberWindowFrame(rememberMaximized: true);
   }
-  if (Platform.isMacOS) {
+  if (Platform.isMacOS || Platform.isLinux) {
     await windowManager.ensureInitialized();
     try {
       await windowManager.waitUntilReadyToShow(
@@ -46,18 +46,20 @@ Future<void> main() async {
           center: true,
         ),
         () async {
-          await rememberWindowFrame();
+          if (Platform.isMacOS) await rememberWindowFrame();
           await windowManager.show();
         },
       );
     } catch (_) {}
   }
-  if (Platform.isWindows || Platform.isMacOS) {
+  if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
     await restoreWindowOnTop();
-    await restoreBossKey();
+    if (Platform.isWindows || Platform.isMacOS) await restoreBossKey();
     if (Platform.isWindows) await restoreMiniEdgeSnap();
   }
-  MediaKit.ensureInitialized();
+  MediaKit.ensureInitialized(
+    libmpv: Platform.isLinux ? _bundledLinuxLibmpv() : null,
+  );
   final device = await AppDevice.detect();
   final rendering = Platform.isAndroid
       ? ', 渲染: ${await AppDevice.compatibleRendering() ? 'skia' : 'impeller'}'
@@ -67,6 +69,15 @@ Future<void> main() async {
     '平台: ${Platform.operatingSystem}$rendering',
   );
   runApp(AppBootstrap(device: device));
+}
+
+String? _bundledLinuxLibmpv() {
+  final libDir = path.join(path.dirname(Platform.resolvedExecutable), 'lib');
+  for (final name in const ['libmpv.so', 'libmpv.so.2', 'libmpv.so.1']) {
+    final candidate = path.join(libDir, name);
+    if (File(candidate).existsSync()) return candidate;
+  }
+  return null;
 }
 
 class AppBootstrap extends StatefulWidget {

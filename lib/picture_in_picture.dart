@@ -62,7 +62,9 @@ class PictureInPicture extends ChangeNotifier {
   bool get available => switch (defaultTargetPlatform) {
     TargetPlatform.android => _supported,
     TargetPlatform.iOS => _supported && (_iosPossible || _active),
-    TargetPlatform.windows || TargetPlatform.macOS => true,
+    TargetPlatform.windows ||
+    TargetPlatform.macOS ||
+    TargetPlatform.linux => true,
     _ => false,
   };
 

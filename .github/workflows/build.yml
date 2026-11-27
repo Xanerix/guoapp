@@ -273,8 +273,41 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  linux:
+    needs: prepare
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - *checkout-hongguo
+      - *setup-python
+      - *setup-go
+      - *setup-flutter
+      - name: Install Linux build dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang cmake ninja-build pkg-config \
+            libgtk-3-dev liblzma-dev libstdc++-12-dev \
+            libmpv-dev mpv libepoxy-dev libjson-glib-dev \
+            libx265-dev libvidstab-dev patchelf file
+          curl -fsSL -o "$RUNNER_TEMP/appimagetool" \
+            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x "$RUNNER_TEMP/appimagetool"
+          echo "APPIMAGETOOL=$RUNNER_TEMP/appimagetool" >> "$GITHUB_ENV"
+          flutter precache --linux
+      - name: Build Linux AppImage
+        run: python scripts/build_linux.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/linux/*
+          if-no-files-found: error
+          retention-days: 14
+
   release:
-    needs: [checks, prepare, android, windows, ios, macos]
+    needs: [checks, prepare, android, windows, ios, macos, linux]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -310,6 +343,9 @@ jobs:
 
           macOS：
           - *-macos-universal.dmg：适用于 macOS 12 及以上的 Apple 芯片和 Intel 电脑，打开后拖入 Applications；未经公证，首次打开前在终端执行 xattr -dr com.apple.quarantine /Applications/小果影视.app
+
+          Linux：
+          - *-linux-x86_64.AppImage：适用于 x86_64 Linux 桌面（glibc 2.35 及以上），赋予执行权限（chmod +x）后运行
 
           Android 签名证书 SHA-256：${SIGNING_CERT_SHA256}
           EOF

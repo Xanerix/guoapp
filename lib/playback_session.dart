@@ -827,6 +827,7 @@ class PlaybackSession extends ChangeNotifier {
         'mediacodec-copy',
       TelevisionDecoder.hardware when Platform.isIOS || Platform.isMacOS =>
         'videotoolbox-copy',
+      TelevisionDecoder.hardware when Platform.isLinux => 'auto-copy',
       TelevisionDecoder.optimized || TelevisionDecoder.hardwareDirect
           when Platform.isIOS =>
         'videotoolbox,videotoolbox-copy',
@@ -834,6 +835,7 @@ class PlaybackSession extends ChangeNotifier {
       _ when Platform.isWindows => 'd3d11va',
       _ when Platform.isAndroid => 'auto-safe',
       _ when Platform.isMacOS => 'auto-safe',
+      _ when Platform.isLinux => 'auto-safe',
       _ => null,
     };
     if (hwdec != null) {

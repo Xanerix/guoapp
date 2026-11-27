@@ -1,5 +1,6 @@
 import argparse
 import os
+import platform
 import plistlib
 import re
 import shutil
@@ -12,7 +13,7 @@ from app_build import app
 
 root = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
-parser.add_argument('--platform', choices=['android', 'windows', 'macos'], required=True)
+parser.add_argument('--platform', choices=['android', 'windows', 'macos', 'linux'], required=True)
 parser.add_argument('--abi', action='append', choices=['arm64-v8a', 'armeabi-v7a', 'x86_64'])
 parser.add_argument('--identity', default='',
                     help='macOS 签名身份；默认 ad-hoc 签名（-），有 Developer ID 时传证书名')
@@ -210,6 +211,288 @@ def package_windows_installer(bundle, bundle_executable):
     return target
 
 
+LINUX_SYSTEM_LIB_EXACT = {
+    'linux-vdso.so.1',
+    'ld-linux-x86-64.so.2',
+    'ld-linux-aarch64.so.1',
+    'libc.so.6',
+    'libm.so.6',
+    'libdl.so.2',
+    'librt.so.1',
+    'libpthread.so.0',
+    'libresolv.so.2',
+    'libutil.so.1',
+    'libanl.so.1',
+    'libnsl.so.1',
+    'libnss_compat.so.2',
+    'libnss_dns.so.2',
+    'libnss_files.so.2',
+    'libgcc_s.so.1',
+    'libstdc++.so.6',
+    'libz.so.1',
+    'libexpat.so.1',
+    'libuuid.so.1',
+    'libcom_err.so.2',
+    'libgpg-error.so.0',
+    'libkeyutils.so.1',
+    'libcap.so.2',
+    'libmount.so.1',
+    'libblkid.so.1',
+    'libudev.so.1',
+    'libsystemd.so.0',
+    'libdbus-1.so.3',
+    'libfontconfig.so.1',
+    'libfreetype.so.6',
+    'libharfbuzz.so.0',
+    'libfribidi.so.0',
+    'libthai.so.0',
+    'libgmp.so.10',
+    'libGL.so.1',
+    'libGLX.so.0',
+    'libGLdispatch.so.0',
+    'libEGL.so.1',
+    'libGLESv2.so.2',
+    'libOpenGL.so.0',
+    'libvulkan.so.1',
+    'libdrm.so.2',
+    'libgbm.so.1',
+    'libva.so.2',
+    'libva-drm.so.2',
+    'libva-wayland.so.2',
+    'libva-x11.so.2',
+    'libvdpau.so.1',
+    'libasound.so.2',
+    'libpulse.so.0',
+    'libpulse-simple.so.0',
+    'libpipewire-0.3.so.0',
+    'libjack.so.0',
+    'libOpenCL.so.1',
+    'libapparmor.so.1',
+    'libacl.so.1',
+    'libX11.so.6',
+    'libX11-xcb.so.1',
+    'libxcb.so.1',
+    'libXext.so.6',
+    'libXfixes.so.3',
+    'libXrender.so.1',
+    'libXi.so.6',
+    'libXrandr.so.2',
+    'libXcursor.so.1',
+    'libXcomposite.so.1',
+    'libXdamage.so.1',
+    'libXinerama.so.1',
+    'libXss.so.1',
+    'libXv.so.1',
+    'libXtst.so.6',
+    'libICE.so.6',
+    'libSM.so.6',
+    'libxkbcommon.so.0',
+    'libwayland-client.so.0',
+    'libwayland-cursor.so.0',
+    'libwayland-egl.so.1',
+    'libwayland-server.so.0',
+    'libgtk-3.so.0',
+    'libgdk-3.so.0',
+    'libgdk_pixbuf-2.0.so.0',
+    'libcairo.so.2',
+    'libcairo-gobject.so.2',
+    'libpango-1.0.so.0',
+    'libpangocairo-1.0.so.0',
+    'libpangoft2-1.0.so.0',
+    'libatk-1.0.so.0',
+    'libatk-bridge-2.0.so.0',
+    'libatspi.so.0',
+    'libepoxy.so.0',
+    'libglib-2.0.so.0',
+    'libgobject-2.0.so.0',
+    'libgio-2.0.so.0',
+    'libgmodule-2.0.so.0',
+    'libgthread-2.0.so.0',
+    'libpcre.so.3',
+    'libpcre2-8.so.0',
+    'libffi.so.8',
+    'libffi.so.7',
+    'libffi.so.6',
+    'libselinux.so.1',
+    'libssl.so.3',
+    'libcrypto.so.3',
+    'libgnutls.so.30',
+    'libp11-kit.so.0',
+    'libkrb5.so.3',
+    'libk5crypto.so.3',
+    'libgssapi_krb5.so.2',
+    'libkrb5support.so.0',
+}
+
+LINUX_SYSTEM_LIB_PREFIXES = (
+    'libxcb-',
+    'libdrm_',
+    'libnvidia-',
+    'libcuda',
+    'libEGL_',
+    'libGLX_',
+    'libmesa',
+    'libgallium',
+    'libpulsecommon-',
+)
+
+
+def is_linux_system_library(name):
+    return name in LINUX_SYSTEM_LIB_EXACT or name.startswith(LINUX_SYSTEM_LIB_PREFIXES)
+
+
+def linux_direct_needed(binary):
+    result = subprocess.run(['readelf', '-d', str(binary)], capture_output=True, text=True)
+    if result.returncode != 0:
+        raise SystemExit(f'readelf 检查失败：{binary}\n{result.stderr}')
+    return re.findall(r'\(NEEDED\)\s+Shared library:\s+\[([^\]]+)\]', result.stdout)
+
+
+def linux_ldd_dependencies(binary, lib_dir):
+    env = os.environ.copy()
+    existing = env.get('LD_LIBRARY_PATH', '')
+    env['LD_LIBRARY_PATH'] = f'{lib_dir}:{existing}' if existing else str(lib_dir)
+    result = subprocess.run(['ldd', str(binary)], capture_output=True, text=True, env=env)
+    if result.returncode != 0:
+        raise SystemExit(f'ldd 检查失败：{binary}\n{result.stderr}')
+    resolved = {}
+    missing = []
+    for line in result.stdout.splitlines():
+        text = line.strip()
+        if '=> not found' in text:
+            missing.append(text.split()[0])
+            continue
+        match = re.match(r'^(\S+)\s+=>\s+(\S+)\s+\(', text)
+        if match:
+            resolved[match.group(1)] = Path(match.group(2))
+    return resolved, missing
+
+
+def bundle_linux_dependencies(app_bin, lib_dir):
+    lib_dir_resolved = lib_dir.resolve()
+    queue = [app_bin, *sorted(lib_dir.glob('*.so*'))]
+    scanned = set()
+    missing_all = {}
+    while queue:
+        current = queue.pop(0)
+        if not current.is_file():
+            continue
+        key = current.resolve()
+        if key in scanned:
+            continue
+        scanned.add(key)
+        direct_needed = set(linux_direct_needed(current))
+        resolved, missing = linux_ldd_dependencies(current, lib_dir)
+        for name in missing:
+            if name in direct_needed and not is_linux_system_library(name):
+                missing_all.setdefault(name, []).append(current.name)
+        for soname in direct_needed:
+            if is_linux_system_library(soname):
+                continue
+            source = resolved.get(soname)
+            if source is None:
+                continue
+            target = lib_dir / soname
+            if target.exists():
+                queue.append(target)
+                continue
+            try:
+                source_resolved = source.resolve()
+            except OSError:
+                continue
+            if source_resolved.parent == lib_dir_resolved:
+                continue
+            if source_resolved.is_file():
+                shutil.copy2(source_resolved, target)
+                queue.append(target)
+    if missing_all:
+        details = '; '.join(f'{lib} (由 {", ".join(sorted(set(owners)))} 需要)'
+                            for lib, owners in sorted(missing_all.items()))
+        raise SystemExit('Linux 打包缺少动态库依赖：' + details)
+    patchelf = shutil.which('patchelf')
+    if patchelf:
+        for library in sorted(lib_dir.glob('*.so*')):
+            if library.is_file() and not library.is_symlink():
+                subprocess.run([patchelf, '--set-rpath', '$ORIGIN', str(library)],
+                               capture_output=True)
+
+
+def find_appimagetool():
+    for name in ('appimagetool', 'appimagetool-x86_64.AppImage'):
+        found = shutil.which(name)
+        if found:
+            return found
+    configured = os.environ.get('APPIMAGETOOL', '').strip()
+    if configured and Path(configured).is_file():
+        return configured
+    raise SystemExit('找不到 appimagetool，请先安装并将其加入 PATH，或设置 APPIMAGETOOL 环境变量。')
+
+
+def package_linux(bundle):
+    arch = platform.machine().lower()
+    if arch == 'amd64':
+        arch = 'x86_64'
+    required = [app.slug, 'lib/libduanju_core.so', 'lib/libflutter_linux_gtk.so',
+                'lib/libapp.so', 'lib/libffmpegkit.so', 'data/icudtl.dat', 'data/app_icon.png']
+    missing = [name for name in required if not (bundle / name).is_file()]
+    if missing:
+        raise SystemExit('Linux 构建产物缺少文件：' + ', '.join(missing))
+    staging = root / 'build' / 'linux-appdir'
+    if staging.exists():
+        shutil.rmtree(staging)
+    app_dir = staging / f'{app.slug}.AppDir'
+    usr_bin = app_dir / 'usr' / 'bin'
+    shutil.copytree(bundle, usr_bin, symlinks=True)
+    bundle_linux_dependencies(usr_bin / app.slug, usr_bin / 'lib')
+    mpv_soname = next(
+        (p.name for p in sorted((usr_bin / 'lib').glob('libmpv.so.*')) if p.is_file()),
+        None,
+    )
+    if mpv_soname:
+        mpv_link = usr_bin / 'lib' / 'libmpv.so'
+        if not mpv_link.exists():
+            os.symlink(mpv_soname, mpv_link)
+    icon_source = usr_bin / 'data' / 'app_icon.png'
+    icon_dir = app_dir / 'usr' / 'share' / 'icons' / 'hicolor' / '512x512' / 'apps'
+    icon_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(icon_source, icon_dir / f'{app.slug}.png')
+    shutil.copy2(icon_source, app_dir / f'{app.slug}.png')
+    shutil.copy2(icon_source, app_dir / '.DirIcon')
+    desktop_content = '\n'.join([
+        '[Desktop Entry]',
+        'Type=Application',
+        f'Name={app.display_name}',
+        f'Exec={app.slug}',
+        f'Icon={app.slug}',
+        'Categories=AudioVideo;Video;Player;',
+        'Terminal=false',
+        f'StartupWMClass={app.bundle_identifier}',
+    ]) + '\n'
+    applications_dir = app_dir / 'usr' / 'share' / 'applications'
+    applications_dir.mkdir(parents=True, exist_ok=True)
+    (applications_dir / f'{app.slug}.desktop').write_text(desktop_content, encoding='utf-8')
+    (app_dir / f'{app.slug}.desktop').write_text(desktop_content, encoding='utf-8')
+    apprun = app_dir / 'AppRun'
+    apprun.write_text('\n'.join([
+        '#!/bin/sh',
+        'HERE="$(dirname "$(readlink -f "$0")")"',
+        'export LD_LIBRARY_PATH="$HERE/usr/bin/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"',
+        'export LIBMPV_LIBRARY_PATH="$HERE/usr/bin/lib/libmpv.so"',
+        f'exec "$HERE/usr/bin/{app.slug}" "$@"',
+    ]) + '\n', encoding='utf-8')
+    apprun.chmod(0o755)
+    target = output / f'{app.slug}-{version}-linux-{arch}.AppImage'
+    if target.exists():
+        target.unlink()
+    tool = find_appimagetool()
+    env = os.environ.copy()
+    env['ARCH'] = arch
+    env['APPIMAGE_EXTRACT_AND_RUN'] = '1'
+    subprocess.run([tool, str(app_dir), str(target)], env=env, check=True)
+    target.chmod(0o755)
+    return target
+
+
 if options.platform == 'android':
     for abi in options.abi or ['arm64-v8a', 'armeabi-v7a', 'x86_64']:
         source = root / 'build' / 'app' / 'outputs' / 'flutter-apk' / f'app-{abi}-release.apk'
@@ -249,6 +532,14 @@ elif options.platform == 'windows':
         archive.writestr('userdata/', '')
     artifacts.append(target)
     artifacts.append(package_windows_installer(bundle, bundle_executable))
+elif options.platform == 'linux':
+    arch = {'x86_64': 'x64', 'amd64': 'x64', 'aarch64': 'arm64', 'arm64': 'arm64'}.get(
+        platform.machine().lower(), 'x64'
+    )
+    bundle = root / 'build' / 'linux' / arch / 'release' / 'bundle'
+    if not bundle.is_dir():
+        raise SystemExit('缺少 Linux 构建产物：' + str(bundle))
+    artifacts.append(package_linux(bundle))
 else:
     application = root / 'build' / 'macos' / 'Build' / 'Products' / 'Release' / 'duanju_app.app'
     if not application.is_dir():

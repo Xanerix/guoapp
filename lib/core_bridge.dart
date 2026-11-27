@@ -32,6 +32,15 @@ String _nativeRequest(String body) {
   final DynamicLibrary library;
   if (Platform.isAndroid) {
     library = DynamicLibrary.open('libduanju_core.so');
+  } else if (Platform.isLinux) {
+    final bundled = path.join(
+      path.dirname(Platform.resolvedExecutable),
+      'lib',
+      'libduanju_core.so',
+    );
+    library = DynamicLibrary.open(
+      File(bundled).existsSync() ? bundled : 'libduanju_core.so',
+    );
   } else if (Platform.isWindows) {
     library = DynamicLibrary.open(
       path.join(path.dirname(Platform.resolvedExecutable), 'duanju_core.dll'),
@@ -39,7 +48,7 @@ String _nativeRequest(String body) {
   } else if (Platform.isIOS || Platform.isMacOS) {
     library = DynamicLibrary.process();
   } else {
-    throw UnsupportedError('当前支持 Android、iOS、Windows 和 macOS');
+    throw UnsupportedError('当前支持 Android、iOS、Windows、macOS 和 Linux');
   }
   final request = library.lookupFunction<_NativeRequest, _DartRequest>(
     'DuanjuRequest',
