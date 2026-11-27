@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 
 import '../../app_device.dart';
+import '../../desktop_player_bindings.dart';
 import '../../local_store.dart';
 import '../../models.dart';
 import '../../playback_preferences.dart';
@@ -438,56 +439,62 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
       data: dark,
       child: Builder(builder: (context) => _video(context, full)),
     );
-    return PopScope(
-      canPop: !full && !_selecting && _panel == null && !_session.locked,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _back(full);
-      },
-      child: AnnotatedRegion<SystemUiOverlayStyle>(
-        value: full
-            ? AppTheme.systemBars(Brightness.dark)
-            : AppTheme.systemBars(theme.brightness).copyWith(
-                statusBarIconBrightness: Brightness.light,
-                statusBarBrightness: Brightness.dark,
-              ),
-        child: full
-            ? Scaffold(backgroundColor: Colors.black, body: video)
-            : Scaffold(
-                backgroundColor: theme.colorScheme.surface,
-                body: Column(
-                  children: [
-                    ColoredBox(
-                      color: Colors.black,
-                      child: SizedBox(
-                        width: double.infinity,
-                        height: MediaQuery.paddingOf(context).top,
-                      ),
-                    ),
-                    AspectRatio(aspectRatio: 16 / 9, child: video),
-                    Expanded(child: _details(context)),
-                  ],
+    return DesktopPlayerShortcuts(
+      store: widget.store,
+      controller: _inputs,
+      repeatSeek: false,
+      child: PopScope(
+        canPop: !full && !_selecting && _panel == null && !_session.locked,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _back(full);
+        },
+        child: AnnotatedRegion<SystemUiOverlayStyle>(
+          value: full
+              ? AppTheme.systemBars(Brightness.dark)
+              : AppTheme.systemBars(theme.brightness).copyWith(
+                  statusBarIconBrightness: Brightness.light,
+                  statusBarBrightness: Brightness.dark,
                 ),
-              ),
+          child: full
+              ? Scaffold(backgroundColor: Colors.black, body: video)
+              : Scaffold(
+                  backgroundColor: theme.colorScheme.surface,
+                  body: Column(
+                    children: [
+                      ColoredBox(
+                        color: Colors.black,
+                        child: SizedBox(
+                          width: double.infinity,
+                          height: MediaQuery.paddingOf(context).top,
+                        ),
+                      ),
+                      AspectRatio(aspectRatio: 16 / 9, child: video),
+                      Expanded(child: _details(context)),
+                    ],
+                  ),
+                ),
+        ),
       ),
     );
   }
 
   Widget _video(BuildContext context, bool full) {
-    return Listener(
-      behavior: HitTestBehavior.opaque,
-      onPointerSignal: (event) {
-        if (_panel == null) _inputs.wheel(event, context);
-      },
+    return PlayerPointerRegion(
+      controller: _inputs,
+      enabled: _panel == null,
       child: _videoBody(context, full),
     );
   }
 
   late final _inputs = PlayerInputController(
     session: () => _session,
+    scope: PlayerInputScope.video,
     onHint: _say,
-    onFullscreen: () => _rotate(
-      MediaQuery.sizeOf(context).width > MediaQuery.sizeOf(context).height,
-    ),
+    onFullscreen:
+        widget.onFullscreen ??
+        () => _rotate(
+          MediaQuery.sizeOf(context).width > MediaQuery.sizeOf(context).height,
+        ),
   );
 
   Widget _videoBody(BuildContext context, bool full) {

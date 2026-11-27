@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 
+import '../../desktop_player_bindings.dart';
 import '../../local_store.dart';
 import '../../models.dart';
 import '../../playback_preferences.dart';
@@ -40,11 +40,13 @@ class PortraitPlayerPage extends StatefulWidget {
     required this.store,
     required this.handle,
     this.onFullscreen,
+    this.onShortcutFullscreen,
     this.onMiniWindow,
   });
   final LocalStore store;
   final PlaybackHandle handle;
   final VoidCallback? onFullscreen;
+  final VoidCallback? onShortcutFullscreen;
   final VoidCallback? onMiniWindow;
 
   @override
@@ -56,7 +58,8 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
   late final _pages = PageController(initialPage: _session.index);
   late final _inputs = PlayerInputController(
     session: () => _session,
-    onFullscreen: widget.onFullscreen,
+    scope: PlayerInputScope.portrait,
+    onFullscreen: widget.onShortcutFullscreen ?? widget.onFullscreen,
     onHint: _say,
   );
   final List<StreamSubscription<dynamic>> _subscriptions = [];
@@ -272,28 +275,6 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
     return false;
   }
 
-  void _wheel(PointerSignalEvent event) {
-    if (_session.locked) return;
-    if (_inputs.wheel(event, context)) return;
-    if (event is! PointerScrollEvent || event.scrollDelta.dy == 0) return;
-    GestureBinding.instance.pointerSignalResolver.register(event, (_) {
-      if (!_inputs.acceptEpisodeWheel() || _scrolling) return;
-      final target = _session.index + (event.scrollDelta.dy > 0 ? 1 : -1);
-      if (target < 0) return _say('已经是第一集');
-      if (target >= _session.detail.episodes.length) {
-        return _say('已经是最后一集');
-      }
-      setState(() => _scrolling = true);
-      unawaited(
-        _pages.animateToPage(
-          target,
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeOutCubic,
-        ),
-      );
-    });
-  }
-
   double _fitWidth(VideoFit fit, Size video) => fit
       .size(
         MediaQuery.sizeOf(context),
@@ -495,53 +476,61 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
       value: AppTheme.systemBars(Brightness.dark),
       child: Theme(
         data: dark,
-        child: PopScope(
-          canPop: !_session.locked,
-          onPopInvokedWithResult: (didPop, _) {
-            if (!didPop) _say('已锁定，点屏幕显示锁图标');
-          },
-          child: Scaffold(
-            backgroundColor: Colors.black,
-            body: Stack(
-              fit: StackFit.expand,
-              children: [
-                Listener(
-                  onPointerDown: _pointerDown,
-                  onPointerMove: _pointerMove,
-                  onPointerUp: _pointerUp,
-                  onPointerCancel: _pointerUp,
-                  child: NotificationListener<ScrollNotification>(
-                    onNotification: _scrolled,
-                    child: PageView.builder(
-                      controller: _pages,
-                      scrollDirection: Axis.vertical,
-                      physics: _pinching || _session.locked
-                          ? const NeverScrollableScrollPhysics()
-                          : const _PagePhysics(),
-                      itemCount: _session.detail.episodes.length,
-                      itemBuilder: _page,
+        child: DesktopPlayerShortcuts(
+          store: widget.store,
+          controller: _inputs,
+          repeatSeek: false,
+          child: PopScope(
+            canPop: !_session.locked,
+            onPopInvokedWithResult: (didPop, _) {
+              if (!didPop) _say('已锁定，点屏幕显示锁图标');
+            },
+            child: Scaffold(
+              backgroundColor: Colors.black,
+              body: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Listener(
+                    onPointerDown: _pointerDown,
+                    onPointerMove: _pointerMove,
+                    onPointerUp: _pointerUp,
+                    onPointerCancel: _pointerUp,
+                    child: NotificationListener<ScrollNotification>(
+                      onNotification: _scrolled,
+                      child: PageView.builder(
+                        controller: _pages,
+                        scrollDirection: Axis.vertical,
+                        physics: _pinching || _session.locked
+                            ? const NeverScrollableScrollPhysics()
+                            : const _PagePhysics(),
+                        itemCount: _session.detail.episodes.length,
+                        itemBuilder: _page,
+                      ),
                     ),
                   ),
-                ),
-                IgnorePointer(ignoring: _scrolling, child: _controls(context)),
-                PlayerLockOverlay(
-                  locked: _session.locked,
-                  alignments: const [Alignment.topRight],
-                  padding: EdgeInsets.only(
-                    top: _bars.top + 6,
-                    right: _bars.right + 12,
+                  IgnorePointer(
+                    ignoring: _scrolling,
+                    child: _controls(context),
                   ),
-                  onUnlock: _unlock,
-                  onBlocked: () => _say('已锁定，点击锁图标解锁'),
-                ),
-                IgnorePointer(
-                  child: AnimatedOpacity(
-                    opacity: _sheets > 0 ? 1 : 0,
-                    duration: Motion.of(context, Motion.medium),
-                    child: const ColoredBox(color: Colors.black54),
+                  PlayerLockOverlay(
+                    locked: _session.locked,
+                    alignments: const [Alignment.topRight],
+                    padding: EdgeInsets.only(
+                      top: _bars.top + 6,
+                      right: _bars.right + 12,
+                    ),
+                    onUnlock: _unlock,
+                    onBlocked: () => _say('已锁定，点击锁图标解锁'),
                   ),
-                ),
-              ],
+                  IgnorePointer(
+                    child: AnimatedOpacity(
+                      opacity: _sheets > 0 ? 1 : 0,
+                      duration: Motion.of(context, Motion.medium),
+                      child: const ColoredBox(color: Colors.black54),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -558,8 +547,9 @@ class _PortraitPlayerPageState extends State<PortraitPlayerPage>
         ? session.standby
         : null;
     final waiting = player == null || current && session.loading;
-    return Listener(
-      onPointerSignal: _wheel,
+    return PlayerPointerRegion(
+      controller: _inputs,
+      enabled: !_session.locked,
       child: Stack(
         fit: StackFit.expand,
         children: [

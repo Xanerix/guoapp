@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 
+import '../../desktop_player_bindings.dart';
 import '../../local_store.dart';
 import '../../models.dart';
 import '../../playback_preferences.dart';
@@ -50,6 +51,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage>
     with WidgetsBindingObserver {
   late final _inputs = PlayerInputController(
     session: () => _session,
+    scope: PlayerInputScope.audio,
     seekStep: _seekStep.inSeconds,
   );
   final List<StreamSubscription<dynamic>> _subscriptions = [];
@@ -128,21 +130,6 @@ class _AudioPlayerPageState extends State<AudioPlayerPage>
     } catch (_) {
       _saveFailed();
     }
-  }
-
-  void _seekBy(Duration offset) {
-    final state = _session.player.state;
-    if (!_session.ready || state.duration <= Duration.zero) return;
-    final target = state.position + offset;
-    unawaited(
-      _session.seekTo(
-        target < Duration.zero
-            ? Duration.zero
-            : target > state.duration
-            ? state.duration
-            : target,
-      ),
-    );
   }
 
   Future<void> _openSettings({BuildContext? anchor}) {
@@ -371,27 +358,9 @@ class _AudioPlayerPageState extends State<AudioPlayerPage>
         body: DesktopPlayerShortcuts(
           store: widget.store,
           controller: _inputs,
-          fallback: {
-            const SingleActivator(LogicalKeyboardKey.space):
-                _session.togglePlayback,
-            const SingleActivator(LogicalKeyboardKey.arrowLeft): () =>
-                _seekBy(-_seekStep),
-            const SingleActivator(LogicalKeyboardKey.arrowRight): () =>
-                _seekBy(_seekStep),
-            const SingleActivator(LogicalKeyboardKey.arrowUp): () =>
-                _session.changeVolume(5),
-            const SingleActivator(LogicalKeyboardKey.arrowDown): () =>
-                _session.changeVolume(-5),
-            const SingleActivator(LogicalKeyboardKey.keyM): _session.toggleMute,
-            const SingleActivator(LogicalKeyboardKey.pageUp): () {
-              if (_session.hasPrevious) unawaited(_session.previous());
-            },
-            const SingleActivator(LogicalKeyboardKey.pageDown): () {
-              if (_session.hasNext) unawaited(_session.next());
-            },
-          },
-          child: Focus(
-            autofocus: true,
+          child: PlayerPointerRegion(
+            controller: _inputs,
+            wheel: false,
             child: Stack(
               fit: StackFit.expand,
               children: [
@@ -752,7 +721,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage>
   }
 
   Widget _artwork({required bool fade, double? maxHeight}) {
-    return PlayerWheelRegion(
+    return PlayerPointerRegion(
       controller: _inputs,
       child: _artworkBody(fade: fade, maxHeight: maxHeight),
     );

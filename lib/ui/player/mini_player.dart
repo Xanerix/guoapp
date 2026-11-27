@@ -75,7 +75,10 @@ class MiniWindowView extends StatefulWidget {
 }
 
 class _MiniWindowViewState extends State<MiniWindowView> {
-  late final _inputs = PlayerInputController(session: () => _session);
+  late final _inputs = PlayerInputController(
+    session: () => _session,
+    scope: PlayerInputScope.mini,
+  );
   final _focus = FocusNode(debugLabel: 'miniWindow');
   bool _hover = false;
   double? _seekValue;
@@ -104,8 +107,8 @@ class _MiniWindowViewState extends State<MiniWindowView> {
       if (down) widget.onRestore();
       return KeyEventResult.handled;
     }
-    final action = _inputs.bindings.resolve(event, PlayerInputScope.mini);
-    if (action == null || action == PlayerInputAction.fullscreen) {
+    final action = _inputs.bindings.resolveKey(event, PlayerInputScope.mini);
+    if (action == null) {
       return KeyEventResult.ignored;
     }
     if (down || action.repeats) _inputs.invoke(action);
@@ -140,7 +143,7 @@ class _MiniWindowViewState extends State<MiniWindowView> {
   );
 
   Widget _body(BuildContext context, {required bool playing}) {
-    return PlayerWheelRegion(
+    return PlayerPointerRegion(
       controller: _inputs,
       child: _bodyContent(context, playing: playing),
     );

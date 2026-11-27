@@ -42,8 +42,8 @@ class PlayerSurface extends StatefulWidget {
     required this.wide,
     required this.onFullscreen,
     required this.onWide,
-    required this.onVolume,
     this.onWheel,
+    this.onPointerDown,
     this.onMiniWindow,
     required this.onSurface,
     required this.onSay,
@@ -55,8 +55,8 @@ class PlayerSurface extends StatefulWidget {
   final bool wide;
   final VoidCallback onFullscreen;
   final VoidCallback onWide;
-  final ValueChanged<double> onVolume;
   final bool Function(PointerSignalEvent)? onWheel;
+  final bool Function(PointerDownEvent)? onPointerDown;
   final VoidCallback? onMiniWindow;
   final VoidCallback onSurface;
   final ValueChanged<String> onSay;
@@ -263,14 +263,13 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
   }
 
   void _wheel(PointerSignalEvent event) {
-    if (!_overBar && _popup == null && (widget.onWheel?.call(event) ?? false)) {
-      return;
-    }
-    if (event is! PointerScrollEvent || event.scrollDelta.dy == 0) return;
-    GestureBinding.instance.pointerSignalResolver.register(
-      event,
-      (_) => widget.onVolume(event.scrollDelta.dy < 0 ? 5 : -5),
-    );
+    if (_overBar || _popup != null) return;
+    widget.onWheel?.call(event);
+  }
+
+  void _pointerDown(PointerDownEvent event) {
+    if (_overBar || _popup != null) return;
+    widget.onPointerDown?.call(event);
   }
 
   void _startStreak(int side) {
@@ -369,26 +368,32 @@ class _PlayerSurfaceState extends State<PlayerSurface> {
               style: _session.danmakuStyle,
             ),
             if (widget.touch)
-              SwipeControls(
-                session: _session,
-                enabled: widget.fullscreen && !locked,
-                levels: _session.store.playbackPreferences.swipeLevels,
-                episodes: _session.store.playbackPreferences.swipeEpisodes,
-                child: LayoutBuilder(
-                  builder: (context, constraints) => GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTapUp: locked
-                        ? null
-                        : (details) => _tapUp(details, constraints.maxWidth),
-                    onLongPressStart: locked ? null : (_) => _pressStart(),
-                    onLongPressEnd: locked ? null : (_) => _pressEnd(),
-                    onLongPressCancel: locked ? null : _pressEnd,
+              Listener(
+                behavior: HitTestBehavior.translucent,
+                onPointerSignal: _wheel,
+                onPointerDown: _pointerDown,
+                child: SwipeControls(
+                  session: _session,
+                  enabled: widget.fullscreen && !locked,
+                  levels: _session.store.playbackPreferences.swipeLevels,
+                  episodes: _session.store.playbackPreferences.swipeEpisodes,
+                  child: LayoutBuilder(
+                    builder: (context, constraints) => GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTapUp: locked
+                          ? null
+                          : (details) => _tapUp(details, constraints.maxWidth),
+                      onLongPressStart: locked ? null : (_) => _pressStart(),
+                      onLongPressEnd: locked ? null : (_) => _pressEnd(),
+                      onLongPressCancel: locked ? null : _pressEnd,
+                    ),
                   ),
                 ),
               )
             else
               Listener(
                 onPointerSignal: _wheel,
+                onPointerDown: _pointerDown,
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: () {

@@ -154,7 +154,9 @@ class _SettingsPageState extends State<SettingsPage> {
       SettingsGroup.playback => '倍速、清晰度、解码与手势',
       SettingsGroup.danmaku => '字号、颜色、显示区域与屏蔽词',
       SettingsGroup.bindings =>
-        Platform.isWindows || Platform.isMacOS ? '老板键、播放器快捷键与滚轮' : '播放器快捷键与滚轮',
+        Platform.isWindows || Platform.isMacOS
+            ? '老板键、播放器键位与鼠标控制'
+            : '播放器键位与鼠标控制',
       SettingsGroup.slacking => Platform.isWindows ? '老板键开关、小窗贴边隐藏' : '老板键开关',
       SettingsGroup.download =>
         Platform.isAndroid ? '默认画质、同时下载数量、自动导出' : '默认画质、VIP 集、同时下载数量',

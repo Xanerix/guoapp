@@ -52,6 +52,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   int? _seekEpisode;
   late final _inputs = PlayerInputController(
     session: () => _playback,
+    scope: PlayerInputScope.video,
     onFullscreen: () => unawaited(_toggleFullscreen()),
     onHint: _say,
   );
@@ -206,10 +207,10 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       if (down) _back();
       return KeyEventResult.handled;
     }
-    final action = _inputs.bindings.resolve(event, PlayerInputScope.video);
+    final action = _inputs.bindings.resolveKey(event, PlayerInputScope.video);
     if (action == PlayerInputAction.fullscreen &&
-        key == LogicalKeyboardKey.f11 &&
-        !_inputs.bindings.keys.containsKey(PlayerInputAction.fullscreen)) {
+        !_focus.hasPrimaryFocus &&
+        focusedTextField() == null) {
       if (down) unawaited(_toggleFullscreen());
       return KeyEventResult.handled;
     }
@@ -275,8 +276,8 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
             wide: _wide,
             onFullscreen: () => unawaited(_toggleFullscreen()),
             onWide: _toggleWide,
-            onVolume: (delta) => _volume(_playback.changeVolume(delta)),
             onWheel: (event) => _inputs.wheel(event, context),
+            onPointerDown: (event) => _inputs.pointerDown(event, context),
             onMiniWindow: widget.onMiniWindow,
             onSurface: _focus.requestFocus,
             onSay: _say,

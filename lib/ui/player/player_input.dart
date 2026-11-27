@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../desktop_player_bindings.dart';
 import '../../local_store.dart';
@@ -9,21 +10,31 @@ import '../../playback_session.dart';
 import '../app_scope.dart';
 import '../widgets/focus_ring.dart';
 
+class PlayerPointerClaim {
+  static PointerDownEvent? _handled;
+
+  static void claim(PointerDownEvent event) => _handled = event;
+
+  static bool isClaimed(PointerDownEvent event) => identical(_handled, event);
+}
+
 class PlayerInputController {
   PlayerInputController({
     required this.session,
+    required this.scope,
     this.onFullscreen,
     this.onHint,
     this.seekStep = 5,
   });
   final PlaybackSession Function() session;
+  final PlayerInputScope scope;
   final VoidCallback? onFullscreen;
   final ValueChanged<String>? onHint;
   final int seekStep;
   final _wheelClock = Stopwatch()..start();
   Duration? _lastWheelEpisode;
 
-  bool acceptEpisodeWheel() {
+  bool _acceptEpisodeWheel() {
     final now = _wheelClock.elapsed;
     final previous = _lastWheelEpisode;
     _lastWheelEpisode = now;
@@ -38,7 +49,10 @@ class PlayerInputController {
 
   void invoke(PlayerInputAction action) {
     final playback = session();
-    if (playback.locked) return;
+    if (playback.locked) {
+      if (action == PlayerInputAction.fullscreen) onFullscreen?.call();
+      return;
+    }
     switch (action) {
       case PlayerInputAction.playPause:
         playback.togglePlayback();
@@ -62,14 +76,12 @@ class PlayerInputController {
         final volume = playback.changeVolume(
           action == PlayerInputAction.volumeUp ? 5 : -5,
         );
-        onHint?.call('音量 ${volume.round()}%');
+        onHint?.call(volume == 0 ? '已静音' : '音量 ${volume.round()}%');
       case PlayerInputAction.mute:
         final volume = playback.toggleMute();
         onHint?.call(volume == 0 ? '已静音' : '音量 ${volume.round()}%');
       case PlayerInputAction.fullscreen:
         onFullscreen?.call();
-      case PlayerInputAction.none:
-        break;
     }
   }
 
@@ -79,9 +91,7 @@ class PlayerInputController {
         event.scrollDelta.dy == 0) {
       return false;
     }
-    final action = event.scrollDelta.dy < 0
-        ? bindings.wheelUp
-        : bindings.wheelDown;
+    final action = bindings.resolveWheel(event.scrollDelta.dy < 0, scope);
     if (action == null) return false;
     GestureBinding.instance.pointerSignalResolver.register(event, (_) {
       if (!context.mounted ||
@@ -89,9 +99,23 @@ class PlayerInputController {
           session().locked) {
         return;
       }
-      if (action.episode && !acceptEpisodeWheel()) return;
+      if (action.episode && !_acceptEpisodeWheel()) return;
       invoke(action);
     });
+    return true;
+  }
+
+  bool pointerDown(PointerDownEvent event, BuildContext context) {
+    if (!desktopPlatform || PlayerPointerClaim.isClaimed(event)) return false;
+    final input = PlayerPointerInput.fromButtons(event.buttons);
+    if (input == null) return false;
+    final action = bindings.resolvePointer(input, scope);
+    if (action == null) return false;
+    if (!context.mounted || ModalRoute.of(context)?.isCurrent == false) {
+      return false;
+    }
+    PlayerPointerClaim.claim(event);
+    invoke(action);
     return true;
   }
 }
@@ -101,68 +125,74 @@ class DesktopPlayerShortcuts extends StatelessWidget {
     super.key,
     required this.store,
     required this.controller,
-    required this.fallback,
+    this.repeatSeek = true,
     required this.child,
   });
   final LocalStore store;
   final PlayerInputController controller;
-  final Map<ShortcutActivator, VoidCallback> fallback;
+  final bool repeatSeek;
   final Widget child;
+
+  KeyEventResult _onKey(BuildContext context, KeyEvent event) {
+    if (!desktopPlatform ||
+        ModalRoute.of(context)?.isCurrent == false ||
+        focusedTextField() != null) {
+      return KeyEventResult.ignored;
+    }
+    final action = controller.bindings.resolveKey(event, controller.scope);
+    if (action == null) return KeyEventResult.ignored;
+    final down = event is KeyDownEvent;
+    final repeat =
+        action.repeats ||
+        repeatSeek &&
+            (action == PlayerInputAction.seekForward ||
+                action == PlayerInputAction.seekBackward);
+    if (down || repeat && event is KeyRepeatEvent) {
+      controller.invoke(action);
+    }
+    return KeyEventResult.handled;
+  }
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: Listenable.merge([store, FocusManager.instance]),
+    listenable: store,
     builder: (context, _) => KeyboardControls(
       handles: (event) =>
           desktopPlatform &&
+          ModalRoute.of(context)?.isCurrent != false &&
           focusedTextField() == null &&
-          controller.bindings.resolve(event, PlayerInputScope.audio) != null &&
-          controller.bindings.resolve(event, PlayerInputScope.audio) !=
-              PlayerInputAction.fullscreen,
-      child: CallbackShortcuts(
-        bindings:
-            desktopPlatform &&
-                controller.bindings.keys.isNotEmpty &&
-                FocusManager.instance.primaryFocus?.context
-                        ?.findAncestorWidgetOfExactType<EditableText>() !=
-                    null
-            ? const {}
-            : desktopPlatform && controller.bindings.keys.isNotEmpty
-            ? {
-                for (final action in PlayerInputAction.values)
-                  if (action != PlayerInputAction.fullscreen)
-                    for (final binding in controller.bindings.bindings(
-                      action,
-                      PlayerInputScope.audio,
-                    ))
-                      binding.activator(
-                        repeats:
-                            !controller.bindings.keys.containsKey(action) ||
-                            action.repeats ||
-                            action == PlayerInputAction.seekForward ||
-                            action == PlayerInputAction.seekBackward,
-                      ): () =>
-                          controller.invoke(action),
-              }
-            : fallback,
+          controller.bindings.resolveKey(event, controller.scope) != null,
+      child: Focus(
+        autofocus: true,
+        onKeyEvent: (_, event) => _onKey(context, event),
         child: child,
       ),
     ),
   );
 }
 
-class PlayerWheelRegion extends StatelessWidget {
-  const PlayerWheelRegion({
+class PlayerPointerRegion extends StatelessWidget {
+  const PlayerPointerRegion({
     super.key,
     required this.controller,
+    this.wheel = true,
+    this.enabled = true,
     required this.child,
   });
   final PlayerInputController controller;
+  final bool wheel;
+  final bool enabled;
   final Widget child;
+
   @override
   Widget build(BuildContext context) => Listener(
-    behavior: HitTestBehavior.opaque,
-    onPointerSignal: (event) => controller.wheel(event, context),
+    behavior: HitTestBehavior.translucent,
+    onPointerSignal: enabled && wheel
+        ? (event) => controller.wheel(event, context)
+        : null,
+    onPointerDown: enabled
+        ? (event) => controller.pointerDown(event, context)
+        : null,
     child: child,
   );
 }

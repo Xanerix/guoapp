@@ -47,7 +47,7 @@ class BossKeySwitchTile extends StatelessWidget {
       return SwitchTile(
         title: '老板键',
         subtitle: value == null
-            ? '请先在「快捷键」中设置快捷键'
+            ? '请先在「控制」中设置快捷键'
             : '全局快捷键：${value.label}，按下后隐藏或恢复窗口并暂停播放',
         value: value != null && bossKeyEnabled.value,
         onChanged: value == null
