@@ -74,6 +74,15 @@ duanju_native_archive(
 )
 file(COPY "${LIBMPV_SRC}/include/mpv/" DESTINATION "${LIBMPV_SRC}/include")
 
+set(VULKAN_LOADER_SRC "${CMAKE_BINARY_DIR}/vulkan-loader")
+duanju_native_archive(
+  "ANGLE-v1.0.1.7z"
+  "https://github.com/Xanerix/guoapp/releases/download/windows-native-deps/ANGLE-v1.0.1.7z"
+  "cc5911bb15d596fd5a2b362613ad35b7093b427117269a7359054a65746a5f9a"
+  "${VULKAN_LOADER_SRC}"
+  "vulkan-1.dll"
+)
+
 set(PLUGIN_NAME "media_kit_libs_windows_video_plugin")
 add_library(${PLUGIN_NAME} SHARED
   "include/media_kit_libs_windows_video/media_kit_libs_windows_video_plugin_c_api.h"
@@ -87,5 +96,6 @@ target_link_libraries(${PLUGIN_NAME} PRIVATE flutter flutter_wrapper_plugin)
 
 set(media_kit_libs_windows_video_bundled_libraries
   "${LIBMPV_SRC}/libmpv-2.dll"
+  "${VULKAN_LOADER_SRC}/vulkan-1.dll"
   PARENT_SCOPE
 )

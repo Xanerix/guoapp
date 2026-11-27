@@ -229,7 +229,7 @@ elif options.platform == 'windows':
     bundle = root / 'build' / 'windows' / 'x64' / 'runner' / 'Release'
     bundle_executable = 'guoapp.exe'
     required = [bundle_executable, 'duanju_core.dll', 'flutter_windows.dll', 'libffmpegkit.dll',
-                'libmpv-2.dll', 'msvcp140.dll', 'vcruntime140.dll',
+                'libmpv-2.dll', 'vulkan-1.dll', 'msvcp140.dll', 'vcruntime140.dll',
                 'data/icudtl.dat', 'data/app.so']
     missing = [name for name in required if not (bundle / name).is_file()]
     if missing:
