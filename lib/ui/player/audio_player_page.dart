@@ -427,8 +427,8 @@ class _AudioPlayerPageState extends State<AudioPlayerPage>
             children: [
               _artwork(fade: true),
               Positioned(
-                left: 0,
-                right: 0,
+                left: padding.left,
+                right: padding.right,
                 top: padding.top,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -439,7 +439,12 @@ class _AudioPlayerPageState extends State<AudioPlayerPage>
           ),
         ),
         Padding(
-          padding: EdgeInsets.fromLTRB(24, 8, 24, 12 + padding.bottom),
+          padding: EdgeInsets.fromLTRB(
+            24 + padding.left,
+            8,
+            24 + padding.right,
+            12 + padding.bottom,
+          ),
           child: _panel(wide: false),
         ),
       ],

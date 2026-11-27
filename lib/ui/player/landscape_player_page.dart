@@ -665,6 +665,9 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
 
   Widget _miniControls(BuildContext context) {
     final session = _session;
+    final padding = MediaQuery.paddingOf(context);
+    final left = padding.left + 4;
+    final right = padding.right + 4;
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -681,8 +684,8 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
           ),
         ),
         Positioned(
-          left: 4,
-          right: 4,
+          left: left,
+          right: right,
           top: 0,
           height: 48,
           child: Row(
@@ -702,8 +705,8 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
           ),
         ),
         Positioned(
-          left: 4,
-          right: 4,
+          left: left,
+          right: right,
           bottom: 4,
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -749,6 +752,8 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
     final padding = MediaQuery.viewPaddingOf(context);
     final left = math.max(padding.left, 20.0);
     final right = math.max(padding.right, 20.0);
+    final top = math.max(padding.top, 8.0);
+    final bottom = math.max(padding.bottom, 8.0);
     const shadow = [Shadow(color: Color(0x66000000), blurRadius: 2)];
     final ready = session.ready;
     return Stack(
@@ -777,7 +782,7 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
         Positioned(
           left: left,
           right: right,
-          top: 8,
+          top: top,
           height: 56,
           child: Row(
             children: [
@@ -863,14 +868,14 @@ class _LandscapePlayerPageState extends State<LandscapePlayerPage>
         Positioned(
           left: left + 8,
           right: right + 8,
-          bottom: 60,
+          bottom: bottom + 52,
           height: 28,
           child: _progress(context, thumb: 8),
         ),
         Positioned(
           left: left,
           right: right,
-          bottom: 8,
+          bottom: bottom,
           height: 48,
           child: Row(
             children: [

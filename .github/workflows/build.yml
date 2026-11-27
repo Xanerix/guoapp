@@ -196,7 +196,7 @@ jobs:
 
   ios:
     needs: prepare
-    runs-on: macos-latest
+    runs-on: xcode-27
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -205,12 +205,15 @@ jobs:
       - *setup-go
       - *setup-flutter
       - name: Check Xcode and CocoaPods
+        id: xcode
         shell: bash
         run: |
           set -euo pipefail
           xcode-select -p
           xcodebuild -version
-          xcrun --sdk iphoneos --show-sdk-path
+          sdk_path="$(xcrun --sdk iphoneos --show-sdk-path)"
+          echo "$sdk_path"
+          echo "sdk=$(basename "$sdk_path")" >> "$GITHUB_OUTPUT"
           xcrun --sdk iphoneos --find clang
           if ! command -v pod >/dev/null 2>&1; then
             brew install cocoapods
@@ -226,7 +229,7 @@ jobs:
           path: |
             native/build/ios/mpv/Mpv
             native/build/ios/mpv/stamp
-          key: ios-mpv-${{ runner.os }}-${{ hashFiles('native/ios_mpv/*', 'pubspec.lock') }}
+          key: ios-mpv-${{ runner.os }}-${{ steps.xcode.outputs.sdk }}-${{ hashFiles('native/ios_mpv/*', 'pubspec.lock') }}
       - name: Build unsigned iOS packages
         run: python scripts/build_ios.py
       - uses: actions/upload-artifact@v4

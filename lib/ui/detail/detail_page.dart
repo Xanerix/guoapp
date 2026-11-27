@@ -525,7 +525,10 @@ class _DetailPageState extends State<DetailPage> {
 
   Widget _phonePage(DramaDetails details) {
     const m = _phone;
-    final top = MediaQuery.paddingOf(context).top + kToolbarHeight;
+    final padding = MediaQuery.paddingOf(context);
+    final top = padding.top + kToolbarHeight;
+    final left = padding.left;
+    final right = padding.right;
     final drama = details.drama;
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -541,7 +544,12 @@ class _DetailPageState extends State<DetailPage> {
                 drama,
                 top + 250,
                 Padding(
-                  padding: EdgeInsets.fromLTRB(20, top + 4, 20, 0),
+                  padding: EdgeInsets.fromLTRB(
+                    20 + left,
+                    top + 4,
+                    20 + right,
+                    0,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -589,7 +597,7 @@ class _DetailPageState extends State<DetailPage> {
             if (details.seasons.isNotEmpty)
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+                  padding: EdgeInsets.fromLTRB(16 + left, 14, 16 + right, 4),
                   child: _seasonRow(details, m),
                 ),
               ),
@@ -601,7 +609,7 @@ class _DetailPageState extends State<DetailPage> {
             else ...[
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 8, 0),
+                  padding: EdgeInsets.fromLTRB(20 + left, 8, 8 + right, 0),
                   child: _episodeHeader(details, m),
                 ),
               ),
@@ -611,7 +619,7 @@ class _DetailPageState extends State<DetailPage> {
                     height: m.chip + 2,
                     child: ListView.separated(
                       scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.fromLTRB(20, 2, 20, 0),
+                      padding: EdgeInsets.fromLTRB(20 + left, 2, 20 + right, 0),
                       itemCount: details.groupCount,
                       separatorBuilder: (_, _) => const SizedBox(width: 8),
                       itemBuilder: (context, group) =>
@@ -620,7 +628,7 @@ class _DetailPageState extends State<DetailPage> {
                   ),
                 ),
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(0, 12, 0, 24),
+                padding: EdgeInsets.fromLTRB(left, 12, right, 24),
                 sliver: SliverToBoxAdapter(
                   child: _swipeGroups(details, m, gutter: 20),
                 ),
@@ -661,7 +669,11 @@ class _DetailPageState extends State<DetailPage> {
 
   Widget _widePage(DramaDetails details, {required bool desktop}) {
     final m = desktop ? _desktop : _pad;
-    final top = MediaQuery.paddingOf(context).top + 64;
+    final padding = MediaQuery.paddingOf(context);
+    final top = padding.top + 64;
+    final left = padding.left;
+    final right = padding.right;
+    final bottom = padding.bottom;
     final inset = desktop ? 32.0 : 24.0;
     final gap = desktop ? 40.0 : 32.0;
     final side = desktop ? 420.0 : 380.0;
@@ -755,14 +767,21 @@ class _DetailPageState extends State<DetailPage> {
       appBar: _appBar(details, 64),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final split = constraints.maxWidth - inset * 2 >= side + gap + 480;
+          final split =
+              constraints.maxWidth - left - right - inset * 2 >=
+              side + gap + 480;
           if (!split) {
             return SingleChildScrollView(
               child: _withBackdrop(
                 drama,
                 top + 336,
                 Padding(
-                  padding: EdgeInsets.fromLTRB(inset, top + 4, inset, 40),
+                  padding: EdgeInsets.fromLTRB(
+                    inset + left,
+                    top + 4,
+                    inset + right,
+                    40 + bottom,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     spacing: gap,
@@ -779,16 +798,26 @@ class _DetailPageState extends State<DetailPage> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 SizedBox(
-                  width: side + inset,
+                  width: side + inset + left,
                   child: SingleChildScrollView(
-                    padding: EdgeInsets.fromLTRB(inset, top + 4, 0, 40),
+                    padding: EdgeInsets.fromLTRB(
+                      inset + left,
+                      top + 4,
+                      0,
+                      40 + bottom,
+                    ),
                     child: info,
                   ),
                 ),
                 SizedBox(width: gap),
                 Expanded(
                   child: SingleChildScrollView(
-                    padding: EdgeInsets.fromLTRB(0, top + 4, inset, 40),
+                    padding: EdgeInsets.fromLTRB(
+                      0,
+                      top + 4,
+                      inset + right,
+                      40 + bottom,
+                    ),
                     child: episodes,
                   ),
                 ),
