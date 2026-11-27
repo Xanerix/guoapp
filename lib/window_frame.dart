@@ -94,9 +94,13 @@ class _WindowFrameKeeper with WindowListener {
   void onWindowClose() async {
     if (!rememberMaximized || _closing) return;
     _closing = true;
-    await _queueSave();
-    windowManager.removeListener(this);
-    await windowManager.setPreventClose(false);
-    await windowManager.close();
+    try {
+      await _queueSave();
+      await windowManager.setPreventClose(false);
+      windowManager.removeListener(this);
+      await windowManager.close();
+    } catch (_) {
+      _closing = false;
+    }
   }
 }

@@ -346,10 +346,11 @@ flutter::EncodableValue FlutterWindow::WindowFrame() {
   } else if (!GetWindowPlacement(window, &placement)) {
     return flutter::EncodableValue();
   }
+  const bool minimized = placement.showCmd == SW_SHOWMINIMIZED;
   const bool maximized = placement.showCmd == SW_SHOWMAXIMIZED ||
-      (IsIconic(window) && (placement.flags & WPF_RESTORETOMAXIMIZED));
+      (minimized && (placement.flags & WPF_RESTORETOMAXIMIZED));
   RECT frame;
-  if (mini_ || fullscreen_ || maximized || IsIconic(window)) {
+  if (mini_ || fullscreen_ || maximized || minimized) {
     frame = placement.rcNormalPosition;
     MONITORINFO monitor{};
     monitor.cbSize = sizeof(monitor);
@@ -384,15 +385,19 @@ bool FlutterWindow::SetWindowFrame(const flutter::EncodableMap& args) {
     return false;
   }
   HWND window = GetHandle();
-  restore_maximized_ = BoolArgument(args, "maximized");
   const int title = static_cast<int>(std::lround(40 * WindowScale(window)));
   RECT strip{*left, *top, *left + *width, *top + std::min(*height, title)};
   if (!MonitorFromRect(&strip, MONITOR_DEFAULTTONULL)) {
+    restore_maximized_ = false;
     return true;
   }
+  restore_maximized_ = BoolArgument(args, "maximized");
   for (int pass = 0; pass < 2; ++pass) {
     SetWindowPos(window, nullptr, *left, *top, *width, *height,
                  SWP_NOZORDER | SWP_NOACTIVATE);
+  }
+  if (restore_maximized_ && IsWindowVisible(window)) {
+    ShowWindow(window, SW_SHOWMAXIMIZED);
   }
   return true;
 }
