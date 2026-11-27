@@ -33,6 +33,7 @@ dependencies:
   dynamic_color: ^2.1.0
   url_launcher: ^6.3.3
   lpinyin: ^2.0.3
+  qr: ^4.0.1
 
 dev_dependencies:
   flutter_test:

@@ -7,11 +7,13 @@ import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 
 import '../../core_bridge.dart';
+import '../../lan_module_server.dart';
 import '../../local_store.dart';
 import '../../models.dart';
 import '../../source_modules.dart';
 import '../app_scope.dart';
 import '../settings/settings_rows.dart';
+import 'lan_transfer_dialog.dart';
 import 'module_install.dart';
 import '../settings/sorani_account_view.dart';
 import '../widgets/bar_button.dart';
@@ -208,10 +210,18 @@ class _ModulesPageState extends State<ModulesPage>
   }
 
   Future<void> _installFile() => _run(() async {
-    final file = await FilePicker.pickFile(
-      type: FileType.custom,
-      allowedExtensions: ['zip'],
-    );
+    final PlatformFile? file;
+    try {
+      file = await FilePicker.pickFile(
+        type: FileType.custom,
+        allowedExtensions: ['zip'],
+      );
+    } on PlatformException catch (error) {
+      if (error.code == 'explorer_not_found') {
+        throw AppFailure('当前设备没有系统文件管理器，请使用「局域网传输安装」或「输入下载地址」');
+      }
+      rethrow;
+    }
     if (file == null) return;
     var location = file.path;
     if (location == null) {
@@ -237,6 +247,25 @@ class _ModulesPageState extends State<ModulesPage>
     await _run(
       () async => _install(await _repository.prepareModule(url: address)),
     );
+  }
+
+  Future<void> _installLan() async {
+    final payload = await showLanTransferDialog(context);
+    if (payload == null || !mounted) return;
+    await _run(() async {
+      switch (payload) {
+        case LanModuleUrl(:final url):
+          await _install(await _repository.prepareModule(url: url));
+        case LanModuleFile(:final path):
+          try {
+            await _install(await _repository.prepareModule(file: path));
+          } finally {
+            try {
+              await File(path).delete();
+            } catch (_) {}
+          }
+      }
+    });
   }
 
   Future<void> _uninstall(SourceModule module) async {
@@ -498,6 +527,16 @@ class _ModulesPageState extends State<ModulesPage>
             title: '输入下载地址',
             enabled: enabled,
             onTap: enabled ? _installAddress : null,
+          ),
+        ],
+      ),
+      GroupCard(
+        children: [
+          SettingsTile(
+            title: '局域网传输安装',
+            subtitle: '同一局域网下扫码发送地址或上传 .zip 安装包',
+            enabled: enabled,
+            onTap: enabled ? _installLan : null,
           ),
         ],
       ),

@@ -5,10 +5,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../app_build.dart';
+import '../../core_bridge.dart';
 import '../../local_store.dart';
 import '../app_scope.dart';
 import '../users/password_dialog.dart';
 import '../widgets/focus_ring.dart';
+
+Future<T> _runFilePicker<T>(Future<T> Function() work) async {
+  try {
+    return await work();
+  } on PlatformException catch (error) {
+    if (error.code == 'explorer_not_found') {
+      throw AppFailure('当前设备没有系统文件管理器，无法选择或保存文件');
+    }
+    rethrow;
+  }
+}
 
 Future<String?> exportBackupFile(BuildContext context, LocalStore store) async {
   final repository = AppScope.of(context).repository;
@@ -19,19 +31,23 @@ Future<String?> exportBackupFile(BuildContext context, LocalStore store) async {
     throw StateError('无法读取已安装模块，尚未写出备份文件：$failure');
   }
   final content = await store.exportBackup(modules: modules);
-  final saved = await FilePicker.saveFile(
-    fileName:
-        '$appSlug-backup-${DateTime.now().toIso8601String().substring(0, 10)}.json',
-    bytes: Uint8List.fromList(utf8.encode(content)),
-    mimeType: 'application/json',
+  final saved = await _runFilePicker(
+    () => FilePicker.saveFile(
+      fileName:
+          '$appSlug-backup-${DateTime.now().toIso8601String().substring(0, 10)}.json',
+      bytes: Uint8List.fromList(utf8.encode(content)),
+      mimeType: 'application/json',
+    ),
   );
   return saved == null ? null : '备份已保存';
 }
 
 Future<String?> _pickBackup() async {
-  final file = await FilePicker.pickFile(
-    type: FileType.custom,
-    allowedExtensions: ['json'],
+  final file = await _runFilePicker(
+    () => FilePicker.pickFile(
+      type: FileType.custom,
+      allowedExtensions: ['json'],
+    ),
   );
   if (file == null) return null;
   final size = await file.length();
@@ -92,10 +108,12 @@ Future<String?> recoverBackupFile(
 
 Future<String?> exportRecoveryFile(LocalStore store) async {
   final content = await store.exportRecoveryData();
-  final saved = await FilePicker.saveFile(
-    fileName: '$appSlug-recovery.json',
-    bytes: Uint8List.fromList(utf8.encode(content)),
-    mimeType: 'application/json',
+  final saved = await _runFilePicker(
+    () => FilePicker.saveFile(
+      fileName: '$appSlug-recovery.json',
+      bytes: Uint8List.fromList(utf8.encode(content)),
+      mimeType: 'application/json',
+    ),
   );
   return saved == null ? null : '原始配置已保存';
 }
