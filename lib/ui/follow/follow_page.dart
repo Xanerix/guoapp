@@ -632,9 +632,7 @@ class _FollowPageState extends State<FollowPage> {
       progress: watch != null && total > 0 ? watch.episode / total : 0,
       caption: caption,
       tag: SourceSite.byId(drama.source).name,
-      badge: state != null && state.hasUpdates
-          ? '${state.newEpisodes} 集更新'
-          : null,
+      badge: state?.updateBadge,
       selected: selection?.contains(drama.id),
       onTap: selection == null ? () => _open(drama) : () => _toggle(drama.id),
       onMore: selection == null

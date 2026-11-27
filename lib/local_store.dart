@@ -8,7 +8,6 @@ import 'catalog_sort.dart';
 import 'diary_service.dart';
 import 'download_preferences.dart';
 import 'follow_state.dart';
-import 'hongguo_series.dart';
 import 'local_files.dart';
 import 'local_profiles.dart';
 import 'local_snapshot.dart';
@@ -709,6 +708,11 @@ class LocalStore extends ChangeNotifier {
         if (entries.length >= 20000) throw StateError('追剧数量已达上限，请先整理追剧');
         entries[drama.id] = drama;
         states[drama.id] = FollowState.initial(drama);
+        for (final entry in states.entries.toList()) {
+          if (entry.key == drama.id) continue;
+          final pruned = entry.value.removeSeriesSeason(drama.id);
+          if (!identical(pruned, entry.value)) states[entry.key] = pruned;
+        }
       }
       await _saveStates(states);
       await _saveFavorites(entries);
@@ -747,14 +751,46 @@ class LocalStore extends ChangeNotifier {
     });
   }
 
-  Future<void> markSeriesSeasonRead(String id, String seasonId) {
+  Future<void> observeFollowSeasons(
+    String id,
+    List<DramaSeason> seasons, {
+    bool? baseline,
+  }) => observeFollowSeasonsBatch({id: seasons}, baseline: baseline);
+
+  Future<void> observeFollowSeasonsBatch(
+    Map<String, List<DramaSeason>> batches, {
+    bool? baseline,
+  }) {
     final epoch = _epoch;
+    final copied = Map<String, List<DramaSeason>>.of(batches);
     return _queue(() async {
-      if (!isFavorite(id) || epoch != _epoch) return;
-      final current = _followStates[id]!;
-      final updated = current.markSeriesSeasonRead(seasonId);
-      if (identical(current, updated)) return;
-      await _saveStates(Map.of(_followStates)..[id] = updated);
+      if (locked || epoch != _epoch) return;
+      final states = Map.of(_followStates);
+      final favoriteIds = _favorites.keys.toSet();
+      final watchedIds = _history.keys.toSet();
+      var changed = false;
+      for (final entry in copied.entries) {
+        final favorite = _favorites[entry.key];
+        final current = states[entry.key];
+        if (favorite == null ||
+            current == null ||
+            !allowsSource(favorite.source)) {
+          continue;
+        }
+        final updated = current.observeSeasons(
+          anchorId: entry.key,
+          seasons: entry.value,
+          favoriteIds: favoriteIds,
+          watchedIds: watchedIds,
+          baseline: baseline,
+        );
+        if (!identical(updated, current)) {
+          states[entry.key] = updated;
+          changed = true;
+        }
+      }
+      if (!changed) return;
+      await _saveStates(states);
       _notify();
     });
   }
@@ -787,11 +823,11 @@ class LocalStore extends ChangeNotifier {
           latest.drama.id != id ||
           latest.episode != current.episode ||
           jsonEncode(latest.drama) != jsonEncode(current.drama);
-      if (_followStates[id] case final following?) {
+      var states = _followStates;
+      if (states[id] case final following?) {
         final state = following.observe(current.drama);
         if (jsonEncode(state) != jsonEncode(following)) {
-          await _saveStates(Map.of(_followStates)..[id] = state);
-          changed = true;
+          states = Map.of(states)..[id] = state;
         }
         final favorite = _favorites[id]!;
         final merged = favorite.merge(current.drama);
@@ -799,6 +835,18 @@ class LocalStore extends ChangeNotifier {
           await _saveFavorites(Map.of(_favorites)..[id] = merged);
           changed = true;
         }
+      }
+      for (final item in states.entries.toList()) {
+        if (item.key == id) continue;
+        final marked = item.value.markSeriesSeasonRead(id);
+        if (!identical(marked, item.value)) {
+          if (identical(states, _followStates)) states = Map.of(states);
+          states[item.key] = marked;
+        }
+      }
+      if (!identical(states, _followStates)) {
+        await _saveStates(states);
+        changed = true;
       }
       if (changed) _notify();
     });
@@ -865,37 +913,6 @@ class LocalStore extends ChangeNotifier {
             historyChanged = true;
           }
         }
-      }
-      final candidates = <String, Drama>{
-        for (final entry in history.values) entry.drama.id: entry.drama,
-        ...favorites,
-        for (final drama in updates)
-          if (allowsSource(drama.source)) drama.id: drama,
-      };
-      for (final state in states.values) {
-        for (final notice in state.seriesSeasons.values) {
-          candidates.putIfAbsent(
-            notice.id,
-            () => Drama(
-              id: notice.id,
-              source: hongguoSourceId,
-              sourceId: notice.id.substring(hongguoSourceId.length + 1),
-              title: notice.title,
-            ),
-          );
-        }
-      }
-      final favoriteIds = favorites.keys.toSet();
-      for (final favorite in favorites.values) {
-        if (favorite.source != hongguoSourceId || states[favorite.id] == null) {
-          continue;
-        }
-        states[favorite.id] = observeHongguoSeriesSeasons(
-          anchor: favorite,
-          state: states[favorite.id]!,
-          candidates: candidates.values,
-          favoriteIds: favoriteIds,
-        );
       }
       final statesChanged = jsonEncode(states) != jsonEncode(_followStates);
       if (!favoritesChanged && !historyChanged && !statesChanged) return;

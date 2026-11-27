@@ -24,6 +24,7 @@ SourceSite _site(
   recommends: hongguo,
   danmaku: hongguo,
   devices: hongguo,
+  seasons: hongguo,
   account: account,
   vipPrompt: vipPrompt,
 );

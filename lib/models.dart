@@ -20,6 +20,7 @@ class SourceSite {
     this.devices = false,
     this.account = false,
     this.metadata = false,
+    this.seasons = false,
     this.adult = false,
     this.vipPrompt = true,
   });
@@ -38,6 +39,7 @@ class SourceSite {
     devices: json['devices'] == true,
     account: json['account'] == true,
     metadata: json['metadata'] == true,
+    seasons: json['seasons'] == true,
     adult: json['adult'] == true,
     vipPrompt: json['vipPrompt'] != false,
   );
@@ -55,6 +57,7 @@ class SourceSite {
   final bool devices;
   final bool account;
   final bool metadata;
+  final bool seasons;
   final bool adult;
   final bool vipPrompt;
   bool get onlineSearch => pagedSearch;

@@ -13,18 +13,21 @@ class FollowUpdater {
     this.startDelay = const Duration(seconds: 30),
     this.interval = const Duration(minutes: 30),
     this.recheck = const Duration(hours: 6),
+    this.seasonRecheck = const Duration(hours: 24),
     this.limit = 10,
     DateTime Function()? clock,
   }) : _epoch = store.profileEpoch,
        _clock = clock ?? DateTime.now;
 
   static const _maxBackoffShift = 3;
+  static const _never = 0;
 
   final AppRepository repository;
   final LocalStore store;
   final Duration startDelay;
   final Duration interval;
   final Duration recheck;
+  final Duration seasonRecheck;
   final int limit;
   final DateTime Function() _clock;
   final int _epoch;
@@ -47,27 +50,63 @@ class FollowUpdater {
 
   void _tick() => unawaited(run().catchError((Object _) {}));
 
-  List<Drama> _due(Map<String, FollowCheck> checks) {
-    final now = _clock();
-    final never = DateTime.fromMillisecondsSinceEpoch(0);
-    final items = store.favorites.where((drama) {
-      if (const {'finished', 'completed'}.contains(drama.releaseStatus)) {
-        return false;
-      }
-      final check = checks[drama.id];
-      return check == null ||
-          !now.isBefore(
-            check.checkedAt.add(
-              recheck * (1 << min(check.failures, _maxBackoffShift)),
-            ),
-          );
-    }).toList();
-    items.sort(
-      (a, b) => (checks[a.id]?.checkedAt ?? never).compareTo(
-        checks[b.id]?.checkedAt ?? never,
+  bool _needsDetail(Drama drama, FollowCheck? check, DateTime now) {
+    if (const {'finished', 'completed'}.contains(drama.releaseStatus)) {
+      return false;
+    }
+    if (check == null || check.checkedAt.millisecondsSinceEpoch == _never) {
+      return true;
+    }
+    return !now.isBefore(
+      check.checkedAt.add(
+        recheck * (1 << min(check.failures, _maxBackoffShift)),
       ),
     );
-    return items.take(limit).toList();
+  }
+
+  bool _needsSeasons(Drama drama, FollowCheck? check, DateTime now) {
+    if (!SourceSite.byId(drama.source).seasons) return false;
+    final checkedAt = check?.seasonsCheckedAt;
+    if (checkedAt == null) return true;
+    return !now.isBefore(
+      checkedAt.add(
+        seasonRecheck * (1 << min(check!.seasonFailures, _maxBackoffShift)),
+      ),
+    );
+  }
+
+  List<({Drama drama, bool detail, bool seasons})> _due(
+    Map<String, FollowCheck> checks,
+  ) {
+    final now = _clock();
+    final never = DateTime.fromMillisecondsSinceEpoch(_never);
+    DateTime oldest(Drama drama, bool detail, bool seasons) {
+      final check = checks[drama.id];
+      final detailAt = detail ? (check?.checkedAt ?? never) : null;
+      final seasonAt = seasons ? (check?.seasonsCheckedAt ?? never) : null;
+      if (detailAt == null) return seasonAt ?? never;
+      if (seasonAt == null) return detailAt;
+      return detailAt.isBefore(seasonAt) ? detailAt : seasonAt;
+    }
+
+    final items = <({Drama drama, bool detail, bool seasons, DateTime at})>[];
+    for (final drama in store.favorites) {
+      final check = checks[drama.id];
+      final detail = _needsDetail(drama, check, now);
+      final seasons = _needsSeasons(drama, check, now);
+      if (!detail && !seasons) continue;
+      items.add((
+        drama: drama,
+        detail: detail,
+        seasons: seasons,
+        at: oldest(drama, detail, seasons),
+      ));
+    }
+    items.sort((a, b) => a.at.compareTo(b.at));
+    return [
+      for (final item in items.take(limit))
+        (drama: item.drama, detail: item.detail, seasons: item.seasons),
+    ];
   }
 
   Future<void> run() async {
@@ -76,20 +115,37 @@ class FollowUpdater {
     try {
       final checks = store.followChecks;
       final updates = <Drama>[];
-      for (final drama in _due(checks)) {
+      final seasons = <String, List<DramaSeason>>{};
+      final never = DateTime.fromMillisecondsSinceEpoch(_never);
+      for (final task in _due(checks)) {
         if (!_valid) return;
-        try {
-          updates.add(await repository.followCheck(drama));
-          checks[drama.id] = FollowCheck(_clock());
-        } catch (_) {
-          checks[drama.id] = FollowCheck(
-            _clock(),
-            failures: (checks[drama.id]?.failures ?? 0) + 1,
-          );
+        final drama = task.drama;
+        var check = checks[drama.id] ?? FollowCheck(never);
+        if (task.detail) {
+          try {
+            updates.add(await repository.followCheck(drama));
+            check = check.withDetail(_clock());
+          } catch (_) {
+            check = check.withDetail(_clock(), failures: check.failures + 1);
+          }
         }
+        if (!_valid) return;
+        if (task.seasons) {
+          try {
+            seasons[drama.id] = await repository.followSeasons(drama);
+            check = check.withSeasons(_clock());
+          } catch (_) {
+            check = check.withSeasons(
+              _clock(),
+              failures: check.seasonFailures + 1,
+            );
+          }
+        }
+        checks[drama.id] = check;
       }
       if (!_valid) return;
       if (updates.isNotEmpty) await store.refreshDramas(updates);
+      if (seasons.isNotEmpty) await store.observeFollowSeasonsBatch(seasons);
       await store.saveFollowChecks(checks, epoch: _epoch);
     } finally {
       _running = false;

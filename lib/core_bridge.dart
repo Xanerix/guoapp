@@ -156,6 +156,7 @@ abstract class AppRepository {
   Future<Drama?> supplementMetadata(Drama drama) async => null;
   Future<List<DramaSeason>> seasons(Drama drama) async => const [];
   Future<Drama> followCheck(Drama drama) async => (await detail(drama)).drama;
+  Future<List<DramaSeason>> followSeasons(Drama drama) async => seasons(drama);
   Future<CatalogPage> recommendations(
     String source,
     String genre, {
@@ -480,6 +481,19 @@ class NativeRepository extends AppRepository {
       'drama': drama.toJson(),
     });
     return Drama.fromJson(Map<String, dynamic>.from(result['drama'] as Map));
+  }
+
+  @override
+  Future<List<DramaSeason>> followSeasons(Drama drama) async {
+    _authorize(drama.source);
+    final result = await _call({
+      'action': 'followSeasons',
+      'drama': drama.toJson(),
+    });
+    return [
+      for (final row in result['items'] as List? ?? const [])
+        DramaSeason.fromJson(Map<String, dynamic>.from(row as Map)),
+    ];
   }
 
   @override
@@ -828,6 +842,7 @@ class NativeRepository extends AppRepository {
               'detail',
               'seasons',
               'followCheck',
+              'followSeasons',
               'resolve',
               'fallback',
             }.contains(input['action'])

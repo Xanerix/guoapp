@@ -13,7 +13,7 @@ class DramaDetails extends ChangeNotifier {
   DramaDetails(this.repository, this.store, Drama drama)
     : _drama = repository.catalogUpdates.current(drama),
       _epoch = store.profileEpoch {
-    store.addListener(_notify);
+    store.addListener(_onStoreChanged);
     load();
   }
   final AppRepository repository;
@@ -100,7 +100,27 @@ class DramaDetails extends ChangeNotifier {
       if (!_current(generation)) return;
       _seasons = seasons;
       _notify();
+      _seedFollowSeasons();
     } catch (_) {}
+  }
+
+  void _seedFollowSeasons() {
+    if (_seasons.isEmpty ||
+        !allowed ||
+        !store.isFavorite(_drama.id) ||
+        store.following(_drama.id)?.seasonsSeeded == true) {
+      return;
+    }
+    unawaited(
+      store
+          .observeFollowSeasons(_drama.id, _seasons, baseline: true)
+          .catchError((Object _) {}),
+    );
+  }
+
+  void _onStoreChanged() {
+    _seedFollowSeasons();
+    _notify();
   }
 
   Future<void> selectSeason(DramaSeason season) async {
@@ -134,7 +154,7 @@ class DramaDetails extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
-    store.removeListener(_notify);
+    store.removeListener(_onStoreChanged);
     super.dispose();
   }
 }

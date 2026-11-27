@@ -288,14 +288,24 @@ class FakeRepository extends AppRepository {
       throw AppFailure('测试数据没有海报');
 
   final details = <String, DramaDetail>{};
+  final seasonLists = <String, List<DramaSeason>>{};
   String detailFailure = '';
+  String seasonFailure = '';
   int detailRequests = 0;
+  int seasonRequests = 0;
 
   @override
   Future<DramaDetail> detail(Drama drama) async {
     detailRequests++;
     if (detailFailure.isNotEmpty) throw AppFailure(detailFailure);
     return details[drama.id] ?? DramaDetail(drama, const []);
+  }
+
+  @override
+  Future<List<DramaSeason>> seasons(Drama drama) async {
+    seasonRequests++;
+    if (seasonFailure.isNotEmpty) throw AppFailure(seasonFailure);
+    return seasonLists[drama.id] ?? const [];
   }
 
   @override

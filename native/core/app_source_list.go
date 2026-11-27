@@ -15,6 +15,7 @@ type nativeSourceInfo struct {
 	Devices         bool   `json:"devices"`
 	Account         bool   `json:"account"`
 	Metadata        bool   `json:"metadata"`
+	Seasons         bool   `json:"seasons"`
 	Adult           bool   `json:"adult"`
 	VIPPrompt       bool   `json:"vipPrompt"`
 }
@@ -42,6 +43,7 @@ func (engine *nativeEngine) sourceList() []nativeSourceInfo {
 		_, info.Devices = providerAs[DeviceProvider](p)
 		_, info.Account = providerAs[AccountProvider](p)
 		_, info.Metadata = providerAs[MetadataEnricher](p)
+		_, info.Seasons = providerAs[SeasonProvider](p)
 		list = append(list, info)
 	}
 	return list

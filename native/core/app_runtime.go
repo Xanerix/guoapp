@@ -476,6 +476,8 @@ func nativeDispatch(input nativeInput) (any, error) {
 		return engine.nativeMetadata(ctx, input.Drama)
 	case "followCheck":
 		return engine.nativeFollowCheck(ctx, input.Drama)
+	case "followSeasons":
+		return engine.nativeFollowSeasons(ctx, input.Drama)
 	case "resolve", "fallback":
 		playback, finish, err := engine.nativeBeginPlayback(ctx, input.Sequence)
 		if err != nil {
