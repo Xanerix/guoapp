@@ -538,4 +538,33 @@ void main() {
     player.buffer(false);
     expect(session.stalled, isFalse);
   });
+
+  test('paused changes notify listeners on toggle, end, and background', () async {
+    final repository = _PlaybackRepository();
+    final store = await openStore();
+    final (session, player) = await _open(repository, store, index: 2);
+    final states = <bool>[];
+    session.addListener(() => states.add(session.paused));
+
+    session.togglePlayback();
+    expect(session.paused, isTrue);
+    expect(states, [true]);
+
+    session.togglePlayback();
+    expect(session.paused, isFalse);
+    expect(states, [true, false]);
+
+    player.progress(_seconds(100), duration: _seconds(100));
+    player.finish();
+    expect(session.paused, isTrue);
+    expect(states, [true, false, true]);
+
+    session.start(2);
+    expect(session.paused, isFalse);
+    expect(states, [true, false, true, false]);
+
+    session.setForeground(false);
+    expect(session.paused, isTrue);
+    expect(states, [true, false, true, false, true]);
+  });
 }

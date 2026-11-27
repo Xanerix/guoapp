@@ -425,6 +425,7 @@ class PlaybackSession extends ChangeNotifier {
       _playIntent = false;
       endBoost();
       unawaited(player.pause());
+      _notify();
     }
     if (store.profileEpoch != _epoch ||
         store.locked ||
@@ -618,10 +619,9 @@ class PlaybackSession extends ChangeNotifier {
         detail.nextSeason != null) {
       unawaited(_playNextSeason());
     } else {
-      final sleeping = _sleepAtEpisodeEnd;
-      if (sleeping) _clearSleep();
+      if (_sleepAtEpisodeEnd) _clearSleep();
       _stop();
-      if (sleeping) _notify();
+      _notify();
     }
   }
 
@@ -1193,6 +1193,7 @@ class PlaybackSession extends ChangeNotifier {
     _playIntent = true;
     if (!wasEngaged) unawaited(_limitCache(player, false));
     if (ready) unawaited(player.play());
+    _notify();
   }
 
   Future<void> retry() =>
@@ -1259,6 +1260,7 @@ class PlaybackSession extends ChangeNotifier {
     }
     if (!_playIntent) unawaited(saveProgress());
     _syncDanmaku();
+    _notify();
   }
 
   int _takePausedSeconds() {
@@ -1619,6 +1621,7 @@ class PlaybackSession extends ChangeNotifier {
       _preloader.clear();
       unawaited(player.pause());
       unawaited(saveProgress());
+      _notify();
     } else {
       _holdNetworkSpeed();
       if (_pendingError) _queueRecovery('foreground_pending_error');
