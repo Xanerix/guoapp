@@ -68,6 +68,7 @@ class DramaSliverGrid extends StatelessWidget {
     required this.onOpen,
     this.onMore,
     this.rankOf,
+    this.watchedOf,
     this.autofocus = false,
     this.entered,
     this.showScore = false,
@@ -79,6 +80,7 @@ class DramaSliverGrid extends StatelessWidget {
   final ValueChanged<Drama> onOpen;
   final ValueChanged<Drama>? onMore;
   final int? Function(Drama drama)? rankOf;
+  final bool Function(Drama drama)? watchedOf;
   final bool autofocus;
   final Set<Object>? entered;
   final bool showScore;
@@ -100,6 +102,7 @@ class DramaSliverGrid extends StatelessWidget {
           child: DramaTile(
             drama: drama,
             rank: rankOf?.call(drama),
+            watched: watchedOf?.call(drama) ?? false,
             autofocus: autofocus && index == 0,
             showScore: showScore,
             exploreBlur: exploreBlur,

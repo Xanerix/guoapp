@@ -223,37 +223,41 @@ class _SearchPageState extends State<SearchPage> {
         : AppScope.formFactorOf(context) == FormFactor.phone
         ? 16.0
         : 24.0;
-    return LayoutBuilder(
+    return ListenableBuilder(
       key: ValueKey(('results', _submitted)),
-      builder: (context, constraints) => AutoLoadMore(
-        feed: results,
-        child: CustomScrollView(
-          slivers: [
-            SliverPadding(
-              padding: EdgeInsets.fromLTRB(
-                inset,
-                television ? 16 : 8,
-                inset,
-                0,
+      listenable: widget.store,
+      builder: (context, _) => LayoutBuilder(
+        builder: (context, constraints) => AutoLoadMore(
+          feed: results,
+          child: CustomScrollView(
+            slivers: [
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(
+                  inset,
+                  television ? 16 : 8,
+                  inset,
+                  0,
+                ),
+                sliver: DramaSliverGrid(
+                  width: constraints.maxWidth - inset * 2,
+                  items: results.items,
+                  watchedOf: (drama) => widget.store.watched(drama.id) != null,
+                  autofocus: television,
+                  onOpen: _open,
+                  onMore: (drama) => quickFollow(context, widget.store, drama),
+                ),
               ),
-              sliver: DramaSliverGrid(
-                width: constraints.maxWidth - inset * 2,
-                items: results.items,
-                autofocus: television,
-                onOpen: _open,
-                onMore: (drama) => quickFollow(context, widget.store, drama),
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(
+                  inset,
+                  8,
+                  inset,
+                  television ? 27 : 16,
+                ),
+                sliver: SliverToBoxAdapter(child: FeedFooter(feed: results)),
               ),
-            ),
-            SliverPadding(
-              padding: EdgeInsets.fromLTRB(
-                inset,
-                8,
-                inset,
-                television ? 27 : 16,
-              ),
-              sliver: SliverToBoxAdapter(child: FeedFooter(feed: results)),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

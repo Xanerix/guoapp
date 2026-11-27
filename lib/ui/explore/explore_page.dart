@@ -487,6 +487,7 @@ class ExplorePageState extends State<ExplorePage> {
                 width: constraints.maxWidth - inset * 2,
                 items: items,
                 rankOf: (drama) => explore.rankIn(tab, drama),
+                watchedOf: (drama) => widget.store.watched(drama.id) != null,
                 autofocus:
                     television && hero == null && ShellForeground.of(context),
                 showScore: tab.id != recommendTab.id,
