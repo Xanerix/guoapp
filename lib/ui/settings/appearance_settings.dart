@@ -147,6 +147,14 @@ class AppearanceSettings extends StatelessWidget {
         ),
         GroupCard(
           children: [
+            SwitchTile(
+              title: '发现页显示横幅卡片',
+              subtitle: '关闭后不显示发现页顶部的继续观看与今日推荐横幅',
+              value: store.exploreBanner,
+              onChanged: (value) =>
+                  saveSetting(context, () => store.setExploreBanner(value)),
+            ),
+            const Divider(indent: 16, endIndent: 16),
             if (!AppScope.of(context).television) ...[
               SwitchTile(
                 title: '在主页底栏显示历史',

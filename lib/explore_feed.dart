@@ -56,6 +56,7 @@ class ExploreFeed extends ChangeNotifier {
   int? rankIn(CatalogCategory tab, Drama drama) => _rankings[tab.id]?[drama.id];
 
   WatchEntry? resumeIn(CatalogCategory tab) {
+    if (!store.exploreBanner) return null;
     final source = this.source;
     if (source == null || tab.id != tabs.first.id) return null;
     return store.history
@@ -64,7 +65,7 @@ class ExploreFeed extends ChangeNotifier {
   }
 
   Drama? featuredIn(CatalogCategory tab) =>
-      tab.id == recommendTab.id && resumeIn(tab) == null
+      store.exploreBanner && tab.id == recommendTab.id && resumeIn(tab) == null
       ? _feeds[tab.id]?.items.firstOrNull
       : null;
 

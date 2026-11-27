@@ -526,13 +526,16 @@ void main() {
         expect(store.blurAllCovers, isTrue);
         await store.setBlurCoversLaunch('adult');
         await store.setBlurAllCovers(false);
+        await store.setExploreBanner(false);
         final backup = jsonDecode(await store.exportBackup()) as Map;
 
         await store.setBlurCoversLaunch('off');
         await store.setBlurAllCovers(true);
+        await store.setExploreBanner(true);
         await store.importBackup(jsonEncode(backup));
         expect(store.blurCoversLaunch, 'adult');
         expect(store.blurAllCovers, isFalse);
+        expect(store.exploreBanner, isFalse);
 
         backup
           ..remove('blurCoversLaunch')

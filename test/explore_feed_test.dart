@@ -52,6 +52,30 @@ void main() {
     expect(_titles(explore), ['分类short_play']);
   });
 
+  test('disabling explore banner hides resume and featured cards', () async {
+    final explore = await _open(
+      FakeRepository(),
+      (store) async {
+        await store.setExploreBanner(false);
+        await store.saveWatch(watching(drama('w'), episode: 4));
+      },
+    );
+    expect(explore.resume, isNull);
+    expect(explore.featured, isNull);
+    expect(_titles(explore), ['推荐剧一', '推荐剧二', '推荐剧三']);
+
+    await explore.store.setExploreBanner(true);
+    expect(explore.resume?.episode, 4);
+
+    await explore.store.clearHistory();
+    expect(explore.featured?.title, '推荐剧一');
+    expect(_titles(explore), ['推荐剧二', '推荐剧三']);
+
+    await explore.store.setExploreBanner(false);
+    expect(explore.featured, isNull);
+    expect(_titles(explore), ['推荐剧一', '推荐剧二', '推荐剧三']);
+  });
+
   test(
     'a visited tab comes back with its list, without asking again',
     () async {
